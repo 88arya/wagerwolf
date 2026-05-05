@@ -13,4 +13,16 @@ router.post("/", async (req, res) => {
   res.status(201).json(user);
 });
 
+router.get("/", async (req, res) => {
+  const { email } = req.query;
+
+  const user = await prisma.user.findUnique({
+    where: { email: String(email) },
+  });
+
+  if (!user) { res.status(404).json({ error: "User not found" }); return; }
+
+  res.json(user);
+});
+
 export default router;

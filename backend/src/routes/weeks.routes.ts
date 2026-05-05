@@ -13,6 +13,14 @@ router.post("/", async (req, res) => {
   res.status(201).json(week);
 });
 
+router.get("/", async (req, res) => {
+  const weeks = await prisma.week.findMany({
+    orderBy: { number: "desc" },
+    include: { games: { include: { props: { include: { player: true } } } } },
+  });
+  res.json(weeks);
+});
+
 router.get("/:id", async (req, res) => {
   const week = await prisma.week.findUnique({
     where: { id: req.params.id },

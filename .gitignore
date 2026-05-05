@@ -3,3 +3,6 @@ node_modules/
 .env.local
 dist/
 build/
+.claude/
+spec.txt
+claudethoughts.txt
