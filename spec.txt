@@ -1,0 +1,81 @@
+PLAYBOOK V0 (concept only)
+
+V0 is a closed simulation of sports betting on NFL player props, built entirely on fixed data.
+
+There is no real-time data, no external APIs, and no drafting system. Everything is pre-seeded and controlled by you.
+
+What the product is
+
+Users join leagues and get a virtual bankroll. Each week they use that bankroll to place bets on player prop outcomes like passing yards, touchdowns, rushing yards, etc.
+
+Instead of drafting fantasy teams, users are just:
+
+betting on individual statistical outcomes.
+
+Core structure
+Users
+
+People with accounts who can join leagues and place bets.
+
+Leagues
+
+Isolated groups where users compete against each other. Each league has its own economy and leaderboard.
+
+Memberships
+
+This is the key concept. A membership connects a user to a league and stores that user’s balance inside that specific league. A user can have different balances in different leagues.
+
+Weekly system
+
+Each week you manually define:
+
+NFL games (schedule)
+players participating
+available props for those games
+
+Nothing is dynamic or live.
+
+Betting system
+
+Users place “picks” on props:
+
+choose over or under
+choose stake amount
+
+A pick is simply a recorded bet tied to:
+
+a user
+a league
+a specific prop
+Resolution system
+
+At the end of the week:
+
+game outcomes are manually set
+props are evaluated manually or via simple rules
+wins/losses are computed
+user balances in memberships are updated
+Leaderboard
+
+Within each league:
+
+users are ranked by their balance
+reflects performance over time
+What V0 intentionally avoids
+no real sportsbook data
+no live odds feeds
+no drafting mechanics
+no complex AI or predictions
+no automation of game results
+no real money logic
+What V0 proves
+
+If built correctly, V0 validates:
+
+can users engage with prop betting mechanics
+is the weekly cycle engaging
+does the league + balance system work
+is the core loop fun without real data complexity
+Core loop summary
+
+Join league → get balance → bet on props → wait for week → results applied → leaderboard updates → repeat

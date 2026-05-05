@@ -1,0 +1,118 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum StatType {
+  PASSING_YARDS
+  RUSHING_YARDS
+  RECEIVING_YARDS
+  TOUCHDOWNS
+  RECEPTIONS
+}
+
+enum Direction {
+  OVER
+  UNDER
+}
+
+enum Outcome {
+  PENDING
+  WIN
+  LOSS
+}
+
+model User {
+  id          String       @id @default(cuid())
+  email       String       @unique
+  password    String
+  name        String
+  displayName String
+  createdAt   DateTime     @default(now())
+  memberships Membership[]
+  picks       Pick[]
+}
+
+model League {
+  id              String       @id @default(cuid())
+  name            String
+  startingBalance Int
+  weeklyAllowance Int
+  createdAt       DateTime     @default(now())
+  memberships     Membership[]
+  picks           Pick[]
+}
+
+model Membership {
+  id        String   @id @default(cuid())
+  userId    String
+  leagueId  String
+  balance   Int
+  createdAt DateTime @default(now())
+
+  user   User   @relation(fields: [userId], references: [id])
+  league League @relation(fields: [leagueId], references: [id])
+
+  @@unique([userId, leagueId])
+}
+
+model Week {
+  id        String   @id @default(cuid())
+  number    Int      @unique
+  startDate DateTime
+  endDate   DateTime
+  resolved  Boolean  @default(false)
+  createdAt DateTime @default(now())
+  games     Game[]
+}
+
+model Game {
+  id       String   @id @default(cuid())
+  weekId   String
+  homeTeam String
+  awayTeam String
+  gameDate DateTime
+  week     Week     @relation(fields: [weekId], references: [id])
+  props    Prop[]
+}
+
+model Player {
+  id       String @id @default(cuid())
+  name     String
+  team     String
+  position String
+  props    Prop[]
+}
+
+model Prop {
+  id       String   @id @default(cuid())
+  gameId   String
+  playerId String
+  statType StatType
+  line     Float
+  result   Float?
+  game     Game     @relation(fields: [gameId], references: [id])
+  player   Player   @relation(fields: [playerId], references: [id])
+  picks    Pick[]
+}
+
+model Pick {
+  id        String    @id @default(cuid())
+  userId    String
+  leagueId  String
+  propId    String
+  direction Direction
+  stake     Int
+  outcome   Outcome   @default(PENDING)
+  createdAt DateTime  @default(now())
+
+  user   User   @relation(fields: [userId], references: [id])
+  league League @relation(fields: [leagueId], references: [id])
+  prop   Prop   @relation(fields: [propId], references: [id])
+}
