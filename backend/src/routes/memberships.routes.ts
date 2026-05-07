@@ -31,18 +31,40 @@ router.get("/leaderboard", requireAuth, async (req: any, res: any) => {
   try {
     const { id: leagueId } = req.params;
 
-    const memberships = await prisma.membership.findMany({
-      where: { leagueId },
-      orderBy: { balance: "desc" },
-      include: { user: { select: { id: true, displayName: true } } },
-    }) as any[];
+    const [memberships, matchups] = await Promise.all([
+      prisma.membership.findMany({
+        where: { leagueId },
+        include: { user: { select: { id: true, displayName: true } } },
+      }) as any,
+      prisma.matchup.findMany({
+        where: { leagueId, OR: [{ winnerId: { not: null } }, { isTie: true }] },
+      }) as any,
+    ]);
 
-    const leaderboard = memberships.map((m, i) => ({
-      rank: i + 1,
-      userId: m.user.id,
-      displayName: m.user.displayName,
-      balance: m.balance,
-    }));
+    const records: Record<string, { wins: number; losses: number; ties: number }> = {};
+    for (const m of memberships) {
+      records[m.user.id] = { wins: 0, losses: 0, ties: 0 };
+    }
+    for (const matchup of matchups) {
+      if (matchup.isTie) {
+        if (records[matchup.homeUserId]) records[matchup.homeUserId].ties++;
+        if (records[matchup.awayUserId]) records[matchup.awayUserId].ties++;
+      } else if (matchup.winnerId) {
+        const loserId = matchup.winnerId === matchup.homeUserId ? matchup.awayUserId : matchup.homeUserId;
+        if (records[matchup.winnerId]) records[matchup.winnerId].wins++;
+        if (records[loserId]) records[loserId].losses++;
+      }
+    }
+
+    const leaderboard = (memberships as any[])
+      .map((m: any) => ({
+        userId: m.user.id,
+        displayName: m.user.displayName,
+        balance: m.balance,
+        ...records[m.user.id],
+      }))
+      .sort((a: any, b: any) => b.wins - a.wins || b.balance - a.balance)
+      .map((entry: any, i: number) => ({ rank: i + 1, ...entry }));
 
     res.json(leaderboard);
   } catch (err: any) {

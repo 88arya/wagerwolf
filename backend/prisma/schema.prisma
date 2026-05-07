@@ -26,28 +26,51 @@ enum Outcome {
 }
 
 model User {
-  id          String       @id @default(cuid())
-  email       String       @unique
-  password    String
-  name        String
-  displayName String
-  isAdmin     Boolean      @default(false)
-  createdAt   DateTime     @default(now())
-  memberships Membership[]
-  picks       Pick[]
-  leagues     League[]     @relation("LeagueCreator")
+  id           String      @id @default(cuid())
+  email        String      @unique
+  password     String
+  name         String
+  displayName  String
+  isAdmin      Boolean     @default(false)
+  createdAt    DateTime    @default(now())
+  memberships  Membership[]
+  picks        Pick[]
+  leagues      League[]    @relation("LeagueCreator")
+  homeMatchups Matchup[]   @relation("HomeMatchups")
+  awayMatchups Matchup[]   @relation("AwayMatchups")
 }
 
 model League {
-  id              String       @id @default(cuid())
+  id              String      @id @default(cuid())
   name            String
   weeklyAllowance Int
-  inviteCode      String       @unique
+  inviteCode      String      @unique
   creatorId       String
-  creator         User         @relation("LeagueCreator", fields: [creatorId], references: [id])
-  createdAt       DateTime     @default(now())
+  seasonStarted   Boolean     @default(false)
+  creator         User        @relation("LeagueCreator", fields: [creatorId], references: [id])
+  createdAt       DateTime    @default(now())
   memberships     Membership[]
   picks           Pick[]
+  matchups        Matchup[]
+}
+
+model Matchup {
+  id         String   @id @default(cuid())
+  leagueId   String
+  weekNumber Int
+  homeUserId String
+  awayUserId String
+  homeProfit Int?
+  awayProfit Int?
+  winnerId   String?
+  isTie      Boolean  @default(false)
+  createdAt  DateTime @default(now())
+
+  league   League @relation(fields: [leagueId], references: [id])
+  homeUser User   @relation("HomeMatchups", fields: [homeUserId], references: [id])
+  awayUser User   @relation("AwayMatchups", fields: [awayUserId], references: [id])
+
+  @@unique([leagueId, weekNumber, homeUserId])
 }
 
 model Membership {
@@ -81,6 +104,7 @@ model Game {
   awayTeam   String
   gameDate   DateTime
   externalId String?  @unique
+  espnId     String?  @unique
   week       Week     @relation(fields: [weekId], references: [id])
   props      Prop[]
 }

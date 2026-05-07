@@ -131,6 +131,36 @@ router.post("/:id/resolve", requireAuth, requireAdmin, async (req: any, res: any
     });
 
     await prisma.week.update({ where: { id: weekId }, data: { resolved: true, locked: true } });
+
+    // Resolve head-to-head matchups for this week number
+    const allPicks = await prisma.pick.findMany({
+      where: { prop: { game: { weekId } } },
+      select: { userId: true, leagueId: true, stake: true, outcome: true },
+    });
+
+    const profitMap: Record<string, number> = {};
+    for (const pick of allPicks) {
+      const key = `${pick.userId}:${pick.leagueId}`;
+      if (!profitMap[key]) profitMap[key] = 0;
+      if (pick.outcome === "WIN") profitMap[key] += Number(pick.stake);
+      else if (pick.outcome === "LOSS") profitMap[key] -= Number(pick.stake);
+    }
+
+    const matchups = await prisma.matchup.findMany({
+      where: { weekNumber: week.number, winnerId: null, isTie: false },
+    }) as any[];
+
+    for (const matchup of matchups) {
+      const homeProfit = profitMap[`${matchup.homeUserId}:${matchup.leagueId}`] ?? 0;
+      const awayProfit = profitMap[`${matchup.awayUserId}:${matchup.leagueId}`] ?? 0;
+      const isTie = homeProfit === awayProfit;
+      const winnerId = isTie ? null : homeProfit > awayProfit ? matchup.homeUserId : matchup.awayUserId;
+      await prisma.matchup.update({
+        where: { id: matchup.id },
+        data: { homeProfit, awayProfit, winnerId, isTie },
+      });
+    }
+
     res.json({ message: "Week resolved", weekId });
   } catch (err: any) {
     res.status(500).json({ error: err.message });

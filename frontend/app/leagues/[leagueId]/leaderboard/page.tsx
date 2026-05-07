@@ -99,6 +99,14 @@ export default function LeaderboardPage({ params }: PageProps<"/leagues/[leagueI
                   </div>
                 </div>
                 <div style={{ textAlign: "right" }}>
+                  {(entry.wins > 0 || entry.losses > 0 || entry.ties > 0) && (
+                    <div style={{ fontSize: "0.78rem", color: "var(--text-2)", marginBottom: 2 }}>
+                      <span style={{ color: "var(--win)" }}>{entry.wins}W</span>
+                      {" · "}
+                      <span style={{ color: "var(--loss)" }}>{entry.losses}L</span>
+                      {entry.ties > 0 && <span style={{ color: "var(--text-3)" }}> · {entry.ties}T</span>}
+                    </div>
+                  )}
                   <div className="leaderboard-balance">${entry.balance.toLocaleString()}</div>
                 </div>
               </div>

@@ -113,6 +113,23 @@ export default function AdminPage() {
     } catch (err: any) { try { flash(JSON.parse(err.message).error, true); } catch { flash(err.message, true); } }
   }
 
+  async function syncGamesESPN(weekId: string) {
+    try {
+      const res = await api(`/espn/games/${weekId}`, { method: "POST" });
+      await loadWeeks();
+      loadGamesForWeek(weekId);
+      flash(`Synced ${res.synced} game${res.synced !== 1 ? "s" : ""} from ESPN`);
+    } catch (err: any) { try { flash(JSON.parse(err.message).error, true); } catch { flash(err.message, true); } }
+  }
+
+  async function autoResolve(weekId: string) {
+    try {
+      const res = await api(`/espn/resolve/${weekId}`, { method: "POST" });
+      await loadWeeks();
+      flash(`Auto-resolved — ${res.propsMatched} props matched, ${res.propsUnmatched} unmatched`);
+    } catch (err: any) { try { flash(JSON.parse(err.message).error, true); } catch { flash(err.message, true); } }
+  }
+
   async function syncProps(gameId: string) {
     try {
       const res = await api(`/sync/props/${gameId}`, { method: "POST" });
@@ -288,21 +305,21 @@ export default function AdminPage() {
                       <div style={{ fontWeight: 800, fontSize: "1rem" }}>Week {w.number}</div>
                       <span className={`badge ${statusClass}`}>{status}</span>
                     </div>
-                    <div style={{ display: "flex", gap: 8 }}>
-                      <button
-                        className="secondary"
-                        style={{ fontSize: "0.78rem", padding: "6px 14px" }}
-                        onClick={() => syncGames(w.id)}
-                      >
-                        Sync Games
+                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                      <button className="secondary" style={{ fontSize: "0.75rem", padding: "5px 10px" }} onClick={() => syncGamesESPN(w.id)}>
+                        ESPN
+                      </button>
+                      <button className="secondary" style={{ fontSize: "0.75rem", padding: "5px 10px" }} onClick={() => syncGames(w.id)}>
+                        Odds API
                       </button>
                       {!w.resolved && (
-                        <button
-                          className="secondary"
-                          style={{ fontSize: "0.78rem", padding: "6px 14px" }}
-                          onClick={() => toggleLock(w.id)}
-                        >
+                        <button className="secondary" style={{ fontSize: "0.75rem", padding: "5px 10px" }} onClick={() => toggleLock(w.id)}>
                           {w.locked ? "Unlock" : "Lock"}
+                        </button>
+                      )}
+                      {w.locked && !w.resolved && (
+                        <button style={{ fontSize: "0.75rem", padding: "5px 10px" }} onClick={() => autoResolve(w.id)}>
+                          Auto-Resolve
                         </button>
                       )}
                     </div>

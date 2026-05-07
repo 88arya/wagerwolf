@@ -16,6 +16,7 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
   const [members, setMembers] = useState<any[]>([]);
   const [showMembers, setShowMembers] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [matchup, setMatchup] = useState<any>(null);
 
   useEffect(() => {
     async function load() {
@@ -37,8 +38,15 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
           api("/weeks?current=true"),
           api(`/leagues/${leagueId}/leaderboard`),
         ]);
-        if (weeks?.length) setWeek(weeks[0]);
+        const currentWeek = weeks?.[0] ?? null;
+        if (currentWeek) setWeek(currentWeek);
         setMembers(board);
+
+        if (currentWeek) {
+          const weekMatchups = await api(`/leagues/${leagueId}/matchups?weekNumber=${currentWeek.number}`);
+          const mine = weekMatchups.find((m: any) => m.homeUserId === id || m.awayUserId === id);
+          setMatchup(mine ?? null);
+        }
       } catch {}
     }
     load();
@@ -61,6 +69,17 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
 
   const isCreator = league?.creatorId === userId;
   const myRank = members.findIndex((m) => m.userId === userId) + 1;
+  const myRecord = members.find((m) => m.userId === userId);
+
+  async function startSeason() {
+    try {
+      await api(`/leagues/${leagueId}/season/start`, { method: "POST" });
+      const leagueData = await api(`/leagues/${leagueId}`);
+      setLeague(leagueData);
+    } catch (err: any) {
+      try { alert(JSON.parse(err.message).error); } catch { alert(err.message); }
+    }
+  }
 
   if (!league) return <div className="loading">Loading…</div>;
 
@@ -87,14 +106,78 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
 
         {/* Balance hero */}
         <div className="card-accent" style={{ marginBottom: 10 }}>
-          <div className="label">Your Balance</div>
-          <div className="balance-big" style={{ marginTop: 4 }}>
-            ${(membership?.balance ?? 0).toLocaleString()}
-          </div>
-          <div style={{ marginTop: 8, color: "var(--text-2)", fontSize: "0.8rem" }}>
-            ${league.weeklyAllowance}/week allowance
+          <div className="row" style={{ alignItems: "flex-start" }}>
+            <div>
+              <div className="label">Your Balance</div>
+              <div className="balance-big" style={{ marginTop: 4 }}>
+                ${(membership?.balance ?? 0).toLocaleString()}
+              </div>
+              <div style={{ marginTop: 8, color: "var(--text-2)", fontSize: "0.8rem" }}>
+                ${league.weeklyAllowance}/week allowance
+              </div>
+            </div>
+            {myRecord && (myRecord.wins > 0 || myRecord.losses > 0 || myRecord.ties > 0) && (
+              <div style={{ textAlign: "right" }}>
+                <div className="label">Record</div>
+                <div style={{ fontSize: "1.4rem", fontWeight: 900, letterSpacing: "-0.02em", marginTop: 4 }}>
+                  <span style={{ color: "var(--win)" }}>{myRecord.wins}</span>
+                  <span style={{ color: "var(--text-3)" }}>-</span>
+                  <span style={{ color: "var(--loss)" }}>{myRecord.losses}</span>
+                  {myRecord.ties > 0 && <span style={{ color: "var(--text-3)" }}>-{myRecord.ties}</span>}
+                </div>
+              </div>
+            )}
           </div>
         </div>
+
+        {/* Matchup widget */}
+        {matchup && (
+          <div className="card" style={{ marginBottom: 10 }}>
+            <div className="label" style={{ marginBottom: 8 }}>This Week's Matchup</div>
+            {(() => {
+              const isHome = matchup.homeUserId === userId;
+              const me = isHome ? matchup.homeUser : matchup.awayUser;
+              const opp = isHome ? matchup.awayUser : matchup.homeUser;
+              const myProfit = isHome ? matchup.homeProfit : matchup.awayProfit;
+              const oppProfit = isHome ? matchup.awayProfit : matchup.homeProfit;
+              const resolved = matchup.homeProfit != null;
+              const iWon = matchup.winnerId === userId;
+              const iLost = matchup.winnerId && matchup.winnerId !== userId;
+
+              return (
+                <div className="row">
+                  <div style={{ textAlign: "center" }}>
+                    <div className="avatar" style={{ margin: "0 auto 4px" }}>{me.displayName.slice(0, 2).toUpperCase()}</div>
+                    <div style={{ fontSize: "0.78rem", fontWeight: 700 }}>You</div>
+                    {resolved && (
+                      <div style={{ fontSize: "1rem", fontWeight: 900, color: myProfit >= 0 ? "var(--win)" : "var(--loss)", marginTop: 2 }}>
+                        {myProfit >= 0 ? "+" : ""}{myProfit}
+                      </div>
+                    )}
+                  </div>
+                  <div style={{ textAlign: "center" }}>
+                    {resolved ? (
+                      <div style={{ fontWeight: 800, fontSize: "0.85rem", color: matchup.isTie ? "var(--text-2)" : iWon ? "var(--win)" : "var(--loss)" }}>
+                        {matchup.isTie ? "TIE" : iWon ? "WIN" : "LOSS"}
+                      </div>
+                    ) : (
+                      <div style={{ color: "var(--text-3)", fontWeight: 700, fontSize: "0.85rem" }}>VS</div>
+                    )}
+                  </div>
+                  <div style={{ textAlign: "center" }}>
+                    <div className="avatar" style={{ margin: "0 auto 4px" }}>{opp.displayName.slice(0, 2).toUpperCase()}</div>
+                    <div style={{ fontSize: "0.78rem", fontWeight: 700 }}>{opp.displayName}</div>
+                    {resolved && (
+                      <div style={{ fontSize: "1rem", fontWeight: 900, color: oppProfit >= 0 ? "var(--win)" : "var(--loss)", marginTop: 2 }}>
+                        {oppProfit >= 0 ? "+" : ""}{oppProfit}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })()}
+          </div>
+        )}
 
         {/* Commissioner panel */}
         {isCreator && (
@@ -113,6 +196,27 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
                 </button>
               </div>
             </div>
+            {!league.seasonStarted && (
+              <div style={{ marginTop: showMembers ? 0 : 12, paddingTop: 12, borderTop: "1px solid var(--border)" }}>
+                <div style={{ color: "var(--text-2)", fontSize: "0.8rem", marginBottom: 8 }}>
+                  {members.length % 2 !== 0
+                    ? `Need even number of members (currently ${members.length})`
+                    : `${members.length} members ready — start when everyone has joined`}
+                </div>
+                <button
+                  onClick={startSeason}
+                  disabled={members.length < 2 || members.length % 2 !== 0}
+                  style={{ width: "100%", padding: "12px" }}
+                >
+                  Start Season →
+                </button>
+              </div>
+            )}
+            {league.seasonStarted && (
+              <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--border)" }}>
+                <span className="badge badge-green">Season Active</span>
+              </div>
+            )}
             {showMembers && (
               <div>
                 <hr />
