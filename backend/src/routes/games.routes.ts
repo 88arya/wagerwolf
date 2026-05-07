@@ -1,9 +1,10 @@
 import { Router } from "express";
 import { prisma } from "../db/prisma";
+import { requireAuth, requireAdmin } from "../middleware/auth";
 
 const router = Router();
 
-router.post("/", async (req: any, res: any) => {
+router.post("/", requireAuth, requireAdmin, async (req: any, res: any) => {
   try {
     const { weekId, homeTeam, awayTeam, gameDate } = req.body;
     if (!weekId || !homeTeam || !awayTeam || !gameDate) {

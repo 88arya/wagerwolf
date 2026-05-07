@@ -1,12 +1,13 @@
 import { Router } from "express";
 import { prisma } from "../db/prisma";
+import { requireAuth } from "../middleware/auth";
 
 const router = Router({ mergeParams: true });
 
-router.post("/join", async (req: any, res: any) => {
+router.post("/join", requireAuth, async (req: any, res: any) => {
   try {
     const { id: leagueId } = req.params;
-    const { userId } = req.body;
+    const userId = req.userId;
 
     const league = await prisma.league.findUnique({ where: { id: leagueId } });
     if (!league) { res.status(404).json({ error: "League not found" }); return; }
@@ -25,7 +26,8 @@ router.post("/join", async (req: any, res: any) => {
   }
 });
 
-router.get("/leaderboard", async (req: any, res: any) => {
+
+router.get("/leaderboard", requireAuth, async (req: any, res: any) => {
   try {
     const { id: leagueId } = req.params;
 
@@ -43,6 +45,28 @@ router.get("/leaderboard", async (req: any, res: any) => {
     }));
 
     res.json(leaderboard);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.delete("/members/:memberId", requireAuth, async (req: any, res: any) => {
+  try {
+    const { id: leagueId, memberId } = req.params;
+
+    const league = await prisma.league.findUnique({ where: { id: leagueId } });
+    if (!league) { res.status(404).json({ error: "League not found" }); return; }
+    if (league.creatorId !== req.userId) {
+      res.status(403).json({ error: "Only the league creator can remove members" });
+      return;
+    }
+    if (memberId === req.userId) {
+      res.status(400).json({ error: "Cannot remove yourself" });
+      return;
+    }
+
+    await prisma.membership.deleteMany({ where: { userId: memberId, leagueId } });
+    res.json({ message: "Member removed" });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }

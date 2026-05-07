@@ -1,9 +1,10 @@
 import { Router } from "express";
 import { prisma } from "../db/prisma";
+import { requireAuth, requireAdmin } from "../middleware/auth";
 
 const router = Router();
 
-router.post("/", async (req: any, res: any) => {
+router.post("/", requireAuth, requireAdmin, async (req: any, res: any) => {
   try {
     const { gameId, playerId, statType, line } = req.body;
     if (!gameId || !playerId || !statType || line == null) {
@@ -19,7 +20,7 @@ router.post("/", async (req: any, res: any) => {
   }
 });
 
-router.get("/", async (req: any, res: any) => {
+router.get("/", requireAuth, async (req: any, res: any) => {
   try {
     const { weekId } = req.query;
     const props = await prisma.prop.findMany({

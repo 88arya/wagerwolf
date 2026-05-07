@@ -1,9 +1,10 @@
 import { Router } from "express";
 import { prisma } from "../db/prisma";
+import { requireAuth, requireAdmin } from "../middleware/auth";
 
 const router = Router();
 
-router.post("/", async (req: any, res: any) => {
+router.post("/", requireAuth, requireAdmin, async (req: any, res: any) => {
   try {
     const { number, startDate, endDate } = req.body;
     if (!number || !startDate || !endDate) {
@@ -31,7 +32,7 @@ router.post("/", async (req: any, res: any) => {
   }
 });
 
-router.get("/", async (req: any, res: any) => {
+router.get("/", requireAuth, async (req: any, res: any) => {
   try {
     const { current } = req.query;
 
@@ -55,13 +56,12 @@ router.get("/", async (req: any, res: any) => {
   }
 });
 
-router.get("/:id", async (req: any, res: any) => {
+router.get("/:id", requireAuth, async (req: any, res: any) => {
   try {
     const week = await prisma.week.findUnique({
       where: { id: req.params.id },
       include: { games: { include: { props: { include: { player: true } } } } },
     });
-
     if (!week) { res.status(404).json({ error: "Week not found" }); return; }
     res.json(week);
   } catch (err: any) {
@@ -69,7 +69,23 @@ router.get("/:id", async (req: any, res: any) => {
   }
 });
 
-router.post("/:id/resolve", async (req: any, res: any) => {
+router.post("/:id/lock", requireAuth, requireAdmin, async (req: any, res: any) => {
+  try {
+    const week = await prisma.week.findUnique({ where: { id: req.params.id } });
+    if (!week) { res.status(404).json({ error: "Week not found" }); return; }
+    if (week.resolved) { res.status(400).json({ error: "Week already resolved" }); return; }
+
+    const updated = await prisma.week.update({
+      where: { id: req.params.id },
+      data: { locked: !week.locked },
+    });
+    res.json(updated);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post("/:id/resolve", requireAuth, requireAdmin, async (req: any, res: any) => {
   try {
     const { id: weekId } = req.params;
     const { results } = req.body as { results: { propId: string; result: number }[] };
@@ -96,16 +112,25 @@ router.post("/:id/resolve", async (req: any, res: any) => {
         (pick.direction === "UNDER" && result < pick.prop.line);
 
       const outcome = won ? "WIN" : "LOSS";
-      const balanceDelta = won ? pick.stake : -pick.stake;
 
       await prisma.pick.update({ where: { id: pick.id }, data: { outcome } });
-      await prisma.membership.updateMany({
-        where: { userId: pick.userId, leagueId: pick.leagueId },
-        data: { balance: { increment: balanceDelta } },
-      });
+
+      if (won) {
+        // stake was already deducted at bet time — return stake + equal profit
+        await prisma.membership.updateMany({
+          where: { userId: pick.userId, leagueId: pick.leagueId },
+          data: { balance: { increment: pick.stake * 2 } },
+        });
+      }
     }
 
-    await prisma.week.update({ where: { id: weekId }, data: { resolved: true } });
+    // floor any negative balances at 0
+    await prisma.membership.updateMany({
+      where: { balance: { lt: 0 } },
+      data: { balance: 0 },
+    });
+
+    await prisma.week.update({ where: { id: weekId }, data: { resolved: true, locked: true } });
     res.json({ message: "Week resolved", weekId });
   } catch (err: any) {
     res.status(500).json({ error: err.message });

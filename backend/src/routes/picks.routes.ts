@@ -1,20 +1,31 @@
 import { Router } from "express";
 import { prisma } from "../db/prisma";
+import { requireAuth } from "../middleware/auth";
 
 const router = Router();
 
-router.post("/", async (req: any, res: any) => {
+router.post("/", requireAuth, async (req: any, res: any) => {
   try {
-    const { userId, leagueId, propId, direction, stake } = req.body;
+    const { leagueId, propId, direction, stake } = req.body;
+    const userId = req.userId;
 
-    if (!userId || !leagueId || !propId || !direction || stake == null) {
-      res.status(400).json({ error: "userId, leagueId, propId, direction, and stake are required" });
+    if (!leagueId || !propId || !direction || stake == null) {
+      res.status(400).json({ error: "leagueId, propId, direction, and stake are required" });
       return;
     }
     if (Number(stake) <= 0) {
       res.status(400).json({ error: "Stake must be greater than 0" });
       return;
     }
+
+    const prop = await prisma.prop.findUnique({
+      where: { id: propId },
+      include: { game: { include: { week: true } } },
+    }) as any;
+
+    if (!prop) { res.status(404).json({ error: "Prop not found" }); return; }
+    if (prop.game.week.locked) { res.status(400).json({ error: "This week is locked" }); return; }
+    if (prop.game.week.resolved) { res.status(400).json({ error: "This week is already resolved" }); return; }
 
     const membership = await prisma.membership.findUnique({
       where: { userId_leagueId: { userId, leagueId } },
@@ -30,9 +41,13 @@ router.post("/", async (req: any, res: any) => {
     });
     if (existing) { res.status(409).json({ error: "Already placed a bet on this prop" }); return; }
 
-    const pick = await prisma.pick.create({
-      data: { userId, leagueId, propId, direction, stake: Number(stake) },
-    });
+    const [pick] = await prisma.$transaction([
+      prisma.pick.create({ data: { userId, leagueId, propId, direction, stake: Number(stake) } }),
+      prisma.membership.update({
+        where: { userId_leagueId: { userId, leagueId } },
+        data: { balance: { decrement: Number(stake) } },
+      }),
+    ]);
 
     res.status(201).json(pick);
   } catch (err: any) {
@@ -40,13 +55,13 @@ router.post("/", async (req: any, res: any) => {
   }
 });
 
-router.get("/", async (req: any, res: any) => {
+router.get("/", requireAuth, async (req: any, res: any) => {
   try {
-    const { userId, leagueId } = req.query;
+    const { leagueId } = req.query;
 
     const picks = await prisma.pick.findMany({
       where: {
-        ...(userId ? { userId: String(userId) } : {}),
+        userId: req.userId,
         ...(leagueId ? { leagueId: String(leagueId) } : {}),
       },
       include: { prop: { include: { player: true, game: { include: { week: true } } } } },
