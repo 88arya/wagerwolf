@@ -9,6 +9,7 @@ export default function BetPage({ params }: PageProps<"/leagues/[leagueId]/bet">
   const router = useRouter();
   const [leagueId, setLeagueId] = useState("");
   const [userId, setUserId] = useState("");
+  const [balance, setBalance] = useState<number | null>(null);
   const [props, setProps] = useState<any[]>([]);
   const [picks, setPicks] = useState<Record<string, { direction: string; stake: string }>>({});
   const [submitted, setSubmitted] = useState<string[]>([]);
@@ -24,7 +25,14 @@ export default function BetPage({ params }: PageProps<"/leagues/[leagueId]/bet">
       setLeagueId(leagueId);
 
       try {
-        const weeks = await api(`/weeks?current=true`);
+        const [weeks, memberships] = await Promise.all([
+          api(`/weeks?current=true`),
+          api(`/memberships?userId=${id}`),
+        ]);
+
+        const m = memberships.find((m: any) => m.leagueId === leagueId);
+        if (m) setBalance(m.balance);
+
         if (weeks?.length) {
           const [weekProps, existingPicks] = await Promise.all([
             api(`/props?weekId=${weeks[0].id}`),
@@ -55,6 +63,10 @@ export default function BetPage({ params }: PageProps<"/leagues/[leagueId]/bet">
       setError("Select OVER or UNDER and enter a stake.");
       return;
     }
+    if (Number(pick.stake) <= 0) {
+      setError("Stake must be greater than 0.");
+      return;
+    }
     setError("");
     try {
       await api("/picks", {
@@ -68,6 +80,7 @@ export default function BetPage({ params }: PageProps<"/leagues/[leagueId]/bet">
         }),
       });
       setSubmitted((prev) => [...prev, propId]);
+      setBalance((prev) => prev !== null ? prev - Number(pick.stake) : prev);
     } catch (err: any) {
       setError(err.message);
     }
@@ -79,12 +92,20 @@ export default function BetPage({ params }: PageProps<"/leagues/[leagueId]/bet">
         <strong>Playbook</strong>
         <Link href="/leagues">Leagues</Link>
         <Link href={`/leagues/${leagueId}`}>Dashboard</Link>
+        <Link href={`/leagues/${leagueId}/history`}>History</Link>
         <Link href={`/leagues/${leagueId}/leaderboard`}>Leaderboard</Link>
       </nav>
 
       <div className="page">
         <h1>Place Bets</h1>
         <p className="subtitle">Pick OVER or UNDER for each prop</p>
+
+        {balance !== null && (
+          <div className="card" style={{ marginBottom: 16 }}>
+            <div style={{ fontSize: "0.85rem", color: "#888", marginBottom: 4 }}>Your Balance</div>
+            <div style={{ fontSize: "1.8rem", fontWeight: 700 }}>${balance}</div>
+          </div>
+        )}
 
         {error && <p className="error" style={{ marginBottom: 16 }}>{error}</p>}
 
@@ -101,7 +122,7 @@ export default function BetPage({ params }: PageProps<"/leagues/[leagueId]/bet">
               <div style={{ marginBottom: 12 }}>
                 <strong>{prop.player?.name}</strong>
                 <span className="tag" style={{ marginLeft: 8 }}>
-                  {prop.statType.replace("_", " ")}
+                  {prop.statType.replaceAll("_", " ")}
                 </span>
               </div>
               <div style={{ fontSize: "1.4rem", fontWeight: 700, marginBottom: 16 }}>
@@ -130,6 +151,7 @@ export default function BetPage({ params }: PageProps<"/leagues/[leagueId]/bet">
                     <input
                       type="number"
                       placeholder="Stake"
+                      min="1"
                       value={picks[prop.id]?.stake ?? ""}
                       onChange={(e) => setPick(prop.id, "stake", e.target.value)}
                     />
