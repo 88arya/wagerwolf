@@ -42,7 +42,6 @@ model User {
 model League {
   id              String       @id @default(cuid())
   name            String
-  startingBalance Int
   weeklyAllowance Int
   createdAt       DateTime     @default(now())
   memberships     Membership[]
@@ -115,4 +114,6 @@ model Pick {
   user   User   @relation(fields: [userId], references: [id])
   league League @relation(fields: [leagueId], references: [id])
   prop   Prop   @relation(fields: [propId], references: [id])
+
+  @@unique([userId, leagueId, propId])
 }

@@ -18,7 +18,7 @@ router.post("/join", async (req: any, res: any) => {
     data: {
       userId,
       leagueId,
-      balance: league.startingBalance,
+      balance: 0,
     },
   });
 

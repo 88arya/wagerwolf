@@ -10,10 +10,33 @@ router.post("/", async (req, res) => {
     data: { number, startDate: new Date(startDate), endDate: new Date(endDate) },
   });
 
+  // Distribute weekly allowance to every member in every league
+  const leagues = await prisma.league.findMany({ include: { memberships: true } });
+  for (const league of leagues) {
+    for (const membership of league.memberships) {
+      await prisma.membership.update({
+        where: { id: membership.id },
+        data: { balance: { increment: league.weeklyAllowance } },
+      });
+    }
+  }
+
   res.status(201).json(week);
 });
 
 router.get("/", async (req, res) => {
+  const { current } = req.query;
+
+  if (current === "true") {
+    const week = await prisma.week.findFirst({
+      where: { resolved: false },
+      orderBy: { number: "desc" },
+      include: { games: { include: { props: { include: { player: true } } } } },
+    });
+    res.json(week ? [week] : []);
+    return;
+  }
+
   const weeks = await prisma.week.findMany({
     orderBy: { number: "desc" },
     include: { games: { include: { props: { include: { player: true } } } } },

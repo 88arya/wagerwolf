@@ -26,8 +26,16 @@ export default function BetPage({ params }: PageProps<"/leagues/[leagueId]/bet">
       try {
         const weeks = await api(`/weeks?current=true`);
         if (weeks?.length) {
-          const weekProps = await api(`/props?weekId=${weeks[0].id}`);
+          const [weekProps, existingPicks] = await Promise.all([
+            api(`/props?weekId=${weeks[0].id}`),
+            api(`/picks?userId=${id}&leagueId=${leagueId}`),
+          ]);
           setProps(weekProps);
+          const weekPropIds = new Set(weekProps.map((p: any) => p.id));
+          const alreadyBet = existingPicks
+            .filter((pick: any) => weekPropIds.has(pick.propId))
+            .map((pick: any) => pick.propId);
+          setSubmitted(alreadyBet);
         }
       } catch {}
     }

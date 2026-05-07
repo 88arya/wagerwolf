@@ -9,7 +9,7 @@ export default function LeaguesPage() {
   const router = useRouter();
   const [userId, setUserId] = useState("");
   const [memberships, setMemberships] = useState<any[]>([]);
-  const [form, setForm] = useState({ name: "", startingBalance: "1000", weeklyAllowance: "200" });
+  const [form, setForm] = useState({ name: "", weeklyAllowance: "200" });
   const [joinId, setJoinId] = useState("");
   const [error, setError] = useState("");
 
@@ -35,7 +35,6 @@ export default function LeaguesPage() {
         method: "POST",
         body: JSON.stringify({
           name: form.name,
-          startingBalance: Number(form.startingBalance),
           weeklyAllowance: Number(form.weeklyAllowance),
         }),
       });
@@ -44,7 +43,7 @@ export default function LeaguesPage() {
         body: JSON.stringify({ userId }),
       });
       loadMemberships(userId);
-      setForm({ name: "", startingBalance: "1000", weeklyAllowance: "200" });
+      setForm({ name: "", weeklyAllowance: "200" });
     } catch (err: any) {
       setError(err.message);
     }
@@ -107,13 +106,6 @@ export default function LeaguesPage() {
               placeholder="League name"
               value={form.name}
               onChange={(e) => setForm({ ...form, name: e.target.value })}
-              required
-            />
-            <input
-              type="number"
-              placeholder="Starting balance"
-              value={form.startingBalance}
-              onChange={(e) => setForm({ ...form, startingBalance: e.target.value })}
               required
             />
             <input
