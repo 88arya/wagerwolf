@@ -39,6 +39,7 @@ export default function LeaderboardPage({ params }: PageProps<"/leagues/[leagueI
         <Link href="/leagues">Leagues</Link>
         <Link href={`/leagues/${leagueId}`}>Dashboard</Link>
         <Link href={`/leagues/${leagueId}/bet`}>Bet</Link>
+        <Link href={`/leagues/${leagueId}/history`}>History</Link>
       </nav>
 
       <div className="page">

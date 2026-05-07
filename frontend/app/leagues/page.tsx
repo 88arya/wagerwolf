@@ -68,6 +68,7 @@ export default function LeaguesPage() {
     <>
       <nav className="nav">
         <strong>Playbook</strong>
+        <Link href="/admin">Admin</Link>
         <a onClick={() => { localStorage.clear(); router.push("/"); }} style={{ cursor: "pointer" }}>
           Sign out
         </a>

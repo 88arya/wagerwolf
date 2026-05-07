@@ -47,6 +47,7 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
         <strong>Playbook</strong>
         <Link href="/leagues">Leagues</Link>
         <Link href={`/leagues/${leagueId}/bet`}>Bet</Link>
+        <Link href={`/leagues/${leagueId}/history`}>History</Link>
         <Link href={`/leagues/${leagueId}/leaderboard`}>Leaderboard</Link>
       </nav>
 
@@ -80,7 +81,7 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
                         <div>
                           <strong>{prop.player?.name}</strong>
                           <div style={{ color: "#888", fontSize: "0.85rem" }}>
-                            {prop.statType.replace("_", " ")} — line {prop.line}
+                            {prop.statType.replaceAll("_", " ")} — line {prop.line}
                           </div>
                         </div>
                         <span className="tag">
