@@ -3,19 +3,29 @@ import { prisma } from "../db/prisma";
 
 const router = Router();
 
-router.post("/", async (req, res) => {
-  const { name, team, position } = req.body;
-
-  const player = await prisma.player.create({
-    data: { name, team, position },
-  });
-
-  res.status(201).json(player);
+router.post("/", async (req: any, res: any) => {
+  try {
+    const { name, team, position } = req.body;
+    if (!name || !team || !position) {
+      res.status(400).json({ error: "name, team, and position are required" });
+      return;
+    }
+    const player = await prisma.player.create({
+      data: { name, team, position },
+    });
+    res.status(201).json(player);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
-router.get("/", async (req, res) => {
-  const players = await prisma.player.findMany();
-  res.json(players);
+router.get("/", async (req: any, res: any) => {
+  try {
+    const players = await prisma.player.findMany({ orderBy: { name: "asc" } });
+    res.json(players);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 export default router;
