@@ -2,7 +2,7 @@ import { Router } from "express";
 import { StatType } from "@prisma/client";
 import { prisma } from "../db/prisma";
 import { requireAuth, requireAdmin } from "../middleware/auth";
-import { getNFLEvents, getPlayerProps } from "../services/oddsApi";
+import { getNFLEvents, getPlayerProps, getGameLines } from "../services/oddsApi";
 
 const router = Router();
 
@@ -102,6 +102,40 @@ router.post("/props/:gameId", requireAuth, requireAdmin, async (req: any, res: a
     }
 
     res.json({ synced: created.length, props: created });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Pull moneyline, spread, and totals for a specific game from The Odds API
+router.post("/lines/:gameId", requireAuth, requireAdmin, async (req: any, res: any) => {
+  try {
+    const game = await prisma.game.findUnique({ where: { id: req.params.gameId } });
+    if (!game) { res.status(404).json({ error: "Game not found" }); return; }
+    if (!game.externalId) {
+      res.status(400).json({ error: "Game was not synced from The Odds API — no external ID" });
+      return;
+    }
+
+    const rawLines = await getGameLines(game.externalId, game.homeTeam, game.awayTeam);
+    const created = [];
+
+    for (const raw of rawLines) {
+      const line = await prisma.gameLine.upsert({
+        where: { gameId_market: { gameId: game.id, market: raw.market } },
+        update: { label: raw.label, odds: raw.odds, line: raw.line },
+        create: {
+          gameId: game.id,
+          market: raw.market,
+          label: raw.label,
+          odds: raw.odds,
+          line: raw.line,
+        },
+      });
+      created.push(line);
+    }
+
+    res.json({ synced: created.length, lines: created });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }

@@ -23,6 +23,7 @@ enum Outcome {
   PENDING
   WIN
   LOSS
+  VOID
 }
 
 model User {
@@ -35,23 +36,29 @@ model User {
   createdAt    DateTime    @default(now())
   memberships  Membership[]
   picks        Pick[]
+  gamePicks    GamePick[]
+  parlays      Parlay[]
   leagues      League[]    @relation("LeagueCreator")
   homeMatchups Matchup[]   @relation("HomeMatchups")
   awayMatchups Matchup[]   @relation("AwayMatchups")
 }
 
 model League {
-  id              String      @id @default(cuid())
-  name            String
-  weeklyAllowance Int
-  inviteCode      String      @unique
-  creatorId       String
-  seasonStarted   Boolean     @default(false)
-  creator         User        @relation("LeagueCreator", fields: [creatorId], references: [id])
-  createdAt       DateTime    @default(now())
-  memberships     Membership[]
-  picks           Pick[]
-  matchups        Matchup[]
+  id                 String      @id @default(cuid())
+  name               String
+  weeklyAllowance    Int
+  inviteCode         String      @unique
+  creatorId          String
+  seasonStarted      Boolean     @default(false)
+  regularSeasonWeeks Int         @default(13)
+  playoffSize        Int         @default(4)
+  creator            User        @relation("LeagueCreator", fields: [creatorId], references: [id])
+  createdAt          DateTime    @default(now())
+  memberships        Membership[]
+  picks              Pick[]
+  gamePicks          GamePick[]
+  parlays            Parlay[]
+  matchups           Matchup[]
 }
 
 model Matchup {
@@ -64,6 +71,7 @@ model Matchup {
   awayProfit Int?
   winnerId   String?
   isTie      Boolean  @default(false)
+  isPlayoff  Boolean  @default(false)
   createdAt  DateTime @default(now())
 
   league   League @relation(fields: [leagueId], references: [id])
@@ -74,11 +82,12 @@ model Matchup {
 }
 
 model Membership {
-  id        String   @id @default(cuid())
-  userId    String
-  leagueId  String
-  balance   Int
-  createdAt DateTime @default(now())
+  id             String   @id @default(cuid())
+  userId         String
+  leagueId       String
+  balance        Int
+  weeklyWinnings Int      @default(0)
+  createdAt      DateTime @default(now())
 
   user   User   @relation(fields: [userId], references: [id])
   league League @relation(fields: [leagueId], references: [id])
@@ -98,15 +107,18 @@ model Week {
 }
 
 model Game {
-  id         String   @id @default(cuid())
+  id         String     @id @default(cuid())
   weekId     String
   homeTeam   String
   awayTeam   String
   gameDate   DateTime
-  externalId String?  @unique
-  espnId     String?  @unique
-  week       Week     @relation(fields: [weekId], references: [id])
+  externalId String?    @unique
+  espnId     String?    @unique
+  homeScore  Int?
+  awayScore  Int?
+  week       Week       @relation(fields: [weekId], references: [id])
   props      Prop[]
+  gameLines  GameLine[]
 }
 
 model Player {
@@ -118,15 +130,17 @@ model Player {
 }
 
 model Prop {
-  id       String   @id @default(cuid())
-  gameId   String
-  playerId String
-  statType StatType
-  line     Float
-  result   Float?
-  game     Game     @relation(fields: [gameId], references: [id])
-  player   Player   @relation(fields: [playerId], references: [id])
-  picks    Pick[]
+  id         String     @id @default(cuid())
+  gameId     String
+  playerId   String
+  statType   StatType
+  line       Float
+  odds       Int        @default(-110)
+  result     Float?
+  game       Game       @relation(fields: [gameId], references: [id])
+  player     Player     @relation(fields: [playerId], references: [id])
+  picks      Pick[]
+  parlayLegs ParlayLeg[]
 }
 
 model Pick {
@@ -136,6 +150,7 @@ model Pick {
   propId    String
   direction Direction
   stake     Int
+  odds      Int       @default(-110)
   outcome   Outcome   @default(PENDING)
   createdAt DateTime  @default(now())
 
@@ -144,4 +159,66 @@ model Pick {
   prop   Prop   @relation(fields: [propId], references: [id])
 
   @@unique([userId, leagueId, propId])
+}
+
+// Game-level markets: moneyline, spread, totals
+model GameLine {
+  id         String     @id @default(cuid())
+  gameId     String
+  market     String     // MONEYLINE_HOME | MONEYLINE_AWAY | SPREAD_HOME | SPREAD_AWAY | TOTAL_OVER | TOTAL_UNDER
+  label      String     // "Chiefs -6.5", "Over 48.5"
+  odds       Int        // American: -110, +150
+  line       Float?     // spread or total point value
+  result     Boolean?   // true=won, false=lost, null=pending
+  game       Game       @relation(fields: [gameId], references: [id])
+  gamePicks  GamePick[]
+  parlayLegs ParlayLeg[]
+
+  @@unique([gameId, market])
+}
+
+model GamePick {
+  id         String   @id @default(cuid())
+  userId     String
+  leagueId   String
+  gameLineId String
+  stake      Int
+  odds       Int
+  outcome    Outcome  @default(PENDING)
+  createdAt  DateTime @default(now())
+
+  user     User     @relation(fields: [userId], references: [id])
+  league   League   @relation(fields: [leagueId], references: [id])
+  gameLine GameLine @relation(fields: [gameLineId], references: [id])
+
+  @@unique([userId, leagueId, gameLineId])
+}
+
+model Parlay {
+  id        String      @id @default(cuid())
+  userId    String
+  leagueId  String
+  stake     Int
+  totalOdds Int
+  payout    Int         // pre-calculated total return on win
+  outcome   Outcome     @default(PENDING)
+  createdAt DateTime    @default(now())
+  legs      ParlayLeg[]
+
+  user   User   @relation(fields: [userId], references: [id])
+  league League @relation(fields: [leagueId], references: [id])
+}
+
+model ParlayLeg {
+  id         String     @id @default(cuid())
+  parlayId   String
+  propId     String?
+  gameLineId String?
+  direction  Direction?
+  odds       Int
+  outcome    Outcome    @default(PENDING)
+
+  parlay   Parlay    @relation(fields: [parlayId], references: [id])
+  prop     Prop?     @relation(fields: [propId], references: [id])
+  gameLine GameLine? @relation(fields: [gameLineId], references: [id])
 }

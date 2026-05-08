@@ -14,6 +14,9 @@ import pickRoutes from "./routes/picks.routes";
 import syncRoutes from "./routes/sync.routes";
 import seasonRoutes from "./routes/season.routes";
 import espnRoutes from "./routes/espn.routes";
+import gamelineRoutes from "./routes/gamelines.routes";
+import gamePickRoutes from "./routes/gamepicks.routes";
+import parlayRoutes from "./routes/parlays.routes";
 
 dotenv.config();
 
@@ -35,6 +38,9 @@ app.use("/picks", pickRoutes);
 app.use("/sync", syncRoutes);
 app.use("/leagues", seasonRoutes);
 app.use("/espn", espnRoutes);
+app.use("/gamelines", gamelineRoutes);
+app.use("/gamepicks", gamePickRoutes);
+app.use("/parlays", parlayRoutes);
 
 app.get("/", (req, res) => {
   res.json({ status: "Playbook backend running" });

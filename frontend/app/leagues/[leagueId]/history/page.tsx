@@ -6,11 +6,35 @@ import Link from "next/link";
 import { api } from "@/lib/api";
 import BottomNav from "@/components/BottomNav";
 
+function calcProfit(stake: number, odds: number): number {
+  if (odds > 0) return Math.round((stake * odds) / 100);
+  return Math.round((stake * 100) / Math.abs(odds));
+}
+
+function fmtOdds(american: number): string {
+  return american > 0 ? `+${american}` : `${american}`;
+}
+
+function outcomeCard(outcome: string) {
+  if (outcome === "WIN") return "card card-win";
+  if (outcome === "LOSS") return "card card-loss";
+  return "card";
+}
+
+function outcomeText(outcome: string) {
+  if (outcome === "WIN") return "text-win";
+  if (outcome === "LOSS") return "text-loss";
+  return "text-pending";
+}
+
 export default function HistoryPage({ params }: PageProps<"/leagues/[leagueId]/history">) {
   const router = useRouter();
   const [leagueId, setLeagueId] = useState("");
   const [picks, setPicks] = useState<any[]>([]);
+  const [gamePicks, setGamePicks] = useState<any[]>([]);
+  const [parlays, setParlays] = useState<any[]>([]);
   const [league, setLeague] = useState<any>(null);
+  const [tab, setTab] = useState<"props" | "lines" | "parlays">("props");
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -19,11 +43,15 @@ export default function HistoryPage({ params }: PageProps<"/leagues/[leagueId]/h
       const { leagueId } = await params;
       setLeagueId(leagueId);
       try {
-        const [picksData, leagueData] = await Promise.all([
+        const [picksData, gamePicksData, parlaysData, leagueData] = await Promise.all([
           api(`/picks?leagueId=${leagueId}`),
+          api(`/gamepicks?leagueId=${leagueId}`),
+          api(`/parlays?leagueId=${leagueId}`),
           api(`/leagues/${leagueId}`),
         ]);
         setPicks(picksData);
+        setGamePicks(gamePicksData);
+        setParlays(parlaysData);
         setLeague(leagueData);
       } catch {} finally {
         setLoading(false);
@@ -32,27 +60,24 @@ export default function HistoryPage({ params }: PageProps<"/leagues/[leagueId]/h
     load();
   }, []);
 
-  const wins = picks.filter((p) => p.outcome === "WIN").length;
-  const losses = picks.filter((p) => p.outcome === "LOSS").length;
-  const pending = picks.filter((p) => p.outcome === "PENDING").length;
+  // Aggregate stats across all bet types
+  const allBets = [
+    ...picks.map((p) => ({ outcome: p.outcome, stake: p.stake, odds: p.odds ?? -110, type: "prop" })),
+    ...gamePicks.map((g) => ({ outcome: g.outcome, stake: g.stake, odds: g.odds, type: "line" })),
+    ...parlays.map((p) => ({ outcome: p.outcome, stake: p.stake, odds: p.totalOdds, type: "parlay", payout: p.payout })),
+  ];
 
-  const netReturn = picks.reduce((sum: number, p: any) => {
-    if (p.outcome === "WIN") return sum + Number(p.stake);
-    if (p.outcome === "LOSS") return sum - Number(p.stake);
+  const wins = allBets.filter((b) => b.outcome === "WIN").length;
+  const losses = allBets.filter((b) => b.outcome === "LOSS").length;
+  const pending = allBets.filter((b) => b.outcome === "PENDING").length;
+
+  const netReturn = allBets.reduce((sum, b) => {
+    if (b.outcome === "WIN") return sum + (b.type === "parlay" ? (b as any).payout - b.stake : calcProfit(Number(b.stake), b.odds));
+    if (b.outcome === "LOSS") return sum - Number(b.stake);
     return sum;
   }, 0);
 
-  function outcomeCardClass(outcome: string) {
-    if (outcome === "WIN") return "card card-win";
-    if (outcome === "LOSS") return "card card-loss";
-    return "card";
-  }
-
-  function outcomeTextClass(outcome: string) {
-    if (outcome === "WIN") return "text-win";
-    if (outcome === "LOSS") return "text-loss";
-    return "text-pending";
-  }
+  const totalCount = picks.length + gamePicks.length + parlays.length;
 
   return (
     <>
@@ -64,16 +89,16 @@ export default function HistoryPage({ params }: PageProps<"/leagues/[leagueId]/h
       <div className="page">
         <div style={{ marginBottom: 20 }}>
           <h1>History</h1>
-          {league && <p className="subtitle">{league.name} · {picks.length} pick{picks.length !== 1 ? "s" : ""}</p>}
+          {league && <p className="subtitle">{league.name} · {totalCount} bet{totalCount !== 1 ? "s" : ""}</p>}
         </div>
 
         {loading && (
           <div className="card">
-            <div className="empty"><div className="empty-text">Loading picks…</div></div>
+            <div className="empty"><div className="empty-text">Loading…</div></div>
           </div>
         )}
 
-        {!loading && picks.length > 0 && (
+        {!loading && totalCount > 0 && (
           <>
             <div className="stat-grid" style={{ marginBottom: 16 }}>
               <div className="stat-cell">
@@ -114,38 +139,171 @@ export default function HistoryPage({ params }: PageProps<"/leagues/[leagueId]/h
           </>
         )}
 
-        {!loading && picks.length === 0 && (
+        {!loading && totalCount === 0 && (
           <div className="card">
             <div className="empty">
               <div className="empty-icon">📋</div>
-              <div className="empty-text">No picks yet. Place some bets!</div>
+              <div className="empty-text">No bets yet. Place some bets!</div>
             </div>
           </div>
         )}
 
-        {picks.map((pick: any) => (
-          <div key={pick.id} className={outcomeCardClass(pick.outcome)} style={{ marginBottom: 8 }}>
-            <div className="row" style={{ marginBottom: 6 }}>
-              <div>
-                <div style={{ fontWeight: 700, fontSize: "0.95rem" }}>{pick.prop?.player?.name}</div>
-                <div style={{ color: "var(--text-3)", fontSize: "0.75rem", marginTop: 2 }}>
-                  {pick.prop?.player?.position} · {pick.prop?.player?.team}
-                </div>
-              </div>
-              <span className={`${outcomeTextClass(pick.outcome)}`} style={{ fontWeight: 800, fontSize: "0.9rem", letterSpacing: "0.04em" }}>
-                {pick.outcome}
-              </span>
+        {!loading && totalCount > 0 && (
+          <>
+            {/* Tab toggle */}
+            <div style={{ display: "flex", background: "var(--surface)", borderRadius: 8, padding: 4, marginBottom: 16 }}>
+              {([
+                ["props", `Props (${picks.length})`],
+                ["lines", `Lines (${gamePicks.length})`],
+                ["parlays", `Parlays (${parlays.length})`],
+              ] as const).map(([t, label]) => (
+                <button key={t} onClick={() => setTab(t)} style={{
+                  flex: 1, padding: "8px 0",
+                  background: tab === t ? "var(--surface-3)" : "transparent",
+                  color: tab === t ? "var(--text)" : "var(--text-2)",
+                  border: "none", borderRadius: 6,
+                  fontWeight: tab === t ? 700 : 500, fontSize: "0.78rem",
+                  boxShadow: "none",
+                }}>
+                  {label}
+                </button>
+              ))}
             </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-              <span className="tag">{pick.prop?.statType?.replaceAll("_", " ")}</span>
-              <span className="tag">{pick.direction} {pick.prop?.line}</span>
-              <span style={{ color: "var(--text-2)", fontSize: "0.78rem" }}>stake ${pick.stake}</span>
-              {pick.prop?.game?.week?.number != null && (
-                <span style={{ color: "var(--text-3)", fontSize: "0.78rem" }}>· Wk {pick.prop.game.week.number}</span>
-              )}
-            </div>
-          </div>
-        ))}
+
+            {/* Prop picks */}
+            {tab === "props" && (
+              <>
+                {picks.length === 0 && (
+                  <div className="card"><div className="empty"><div className="empty-text">No prop bets yet</div></div></div>
+                )}
+                {picks.map((pick: any) => {
+                  const profit = pick.outcome === "WIN" ? calcProfit(Number(pick.stake), pick.odds ?? -110) : null;
+                  return (
+                    <div key={pick.id} className={outcomeCard(pick.outcome)} style={{ marginBottom: 8 }}>
+                      <div className="row" style={{ marginBottom: 6 }}>
+                        <div>
+                          <div style={{ fontWeight: 700, fontSize: "0.95rem" }}>{pick.prop?.player?.name}</div>
+                          <div style={{ color: "var(--text-3)", fontSize: "0.75rem", marginTop: 2 }}>
+                            {pick.prop?.player?.position} · {pick.prop?.player?.team}
+                          </div>
+                        </div>
+                        <span className={outcomeText(pick.outcome)} style={{ fontWeight: 800, fontSize: "0.9rem", letterSpacing: "0.04em" }}>
+                          {pick.outcome}
+                        </span>
+                      </div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                        <span className="tag">{pick.prop?.statType?.replaceAll("_", " ")}</span>
+                        <span className="tag">{pick.direction} {pick.prop?.line}</span>
+                        <span style={{ color: "var(--text-2)", fontSize: "0.78rem" }}>{fmtOdds(pick.odds ?? -110)}</span>
+                        <span style={{ color: "var(--text-2)", fontSize: "0.78rem" }}>stake ${pick.stake}</span>
+                        {profit != null && <span style={{ color: "var(--win)", fontWeight: 700, fontSize: "0.78rem" }}>+${profit}</span>}
+                        {pick.prop?.game?.week?.number != null && (
+                          <span style={{ color: "var(--text-3)", fontSize: "0.78rem" }}>· Wk {pick.prop.game.week.number}</span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </>
+            )}
+
+            {/* Game picks */}
+            {tab === "lines" && (
+              <>
+                {gamePicks.length === 0 && (
+                  <div className="card"><div className="empty"><div className="empty-text">No game line bets yet</div></div></div>
+                )}
+                {gamePicks.map((gp: any) => {
+                  const profit = gp.outcome === "WIN" ? calcProfit(Number(gp.stake), gp.odds) : null;
+                  return (
+                    <div key={gp.id} className={outcomeCard(gp.outcome)} style={{ marginBottom: 8 }}>
+                      <div className="row" style={{ marginBottom: 6 }}>
+                        <div>
+                          <div style={{ fontWeight: 700, fontSize: "0.95rem" }}>{gp.gameLine?.label}</div>
+                          <div style={{ color: "var(--text-3)", fontSize: "0.75rem", marginTop: 2 }}>
+                            {gp.gameLine?.game?.homeTeam} vs {gp.gameLine?.game?.awayTeam}
+                          </div>
+                        </div>
+                        <span className={outcomeText(gp.outcome)} style={{ fontWeight: 800, fontSize: "0.9rem", letterSpacing: "0.04em" }}>
+                          {gp.outcome}
+                        </span>
+                      </div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                        <span className="tag">{gp.gameLine?.market?.replaceAll("_", " ")}</span>
+                        <span style={{ color: "var(--text-2)", fontSize: "0.78rem" }}>{fmtOdds(gp.odds)}</span>
+                        <span style={{ color: "var(--text-2)", fontSize: "0.78rem" }}>stake ${gp.stake}</span>
+                        {profit != null && <span style={{ color: "var(--win)", fontWeight: 700, fontSize: "0.78rem" }}>+${profit}</span>}
+                        {gp.gameLine?.game?.week?.number != null && (
+                          <span style={{ color: "var(--text-3)", fontSize: "0.78rem" }}>· Wk {gp.gameLine.game.week.number}</span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </>
+            )}
+
+            {/* Parlays */}
+            {tab === "parlays" && (
+              <>
+                {parlays.length === 0 && (
+                  <div className="card"><div className="empty"><div className="empty-text">No parlays yet</div></div></div>
+                )}
+                {parlays.map((parlay: any) => {
+                  const profit = parlay.outcome === "WIN" ? parlay.payout - parlay.stake : null;
+                  return (
+                    <div key={parlay.id} className={outcomeCard(parlay.outcome)} style={{ marginBottom: 10 }}>
+                      <div className="row" style={{ marginBottom: 8 }}>
+                        <div>
+                          <div style={{ fontWeight: 800, fontSize: "0.95rem" }}>{parlay.legs?.length}-Leg Parlay</div>
+                          <div style={{ color: "var(--text-3)", fontSize: "0.75rem", marginTop: 2 }}>
+                            {fmtOdds(parlay.totalOdds)} · stake ${parlay.stake}
+                          </div>
+                        </div>
+                        <div style={{ textAlign: "right" }}>
+                          <span className={outcomeText(parlay.outcome)} style={{ fontWeight: 800, fontSize: "0.9rem", letterSpacing: "0.04em" }}>
+                            {parlay.outcome}
+                          </span>
+                          {profit != null && (
+                            <div style={{ color: "var(--win)", fontWeight: 700, fontSize: "0.82rem", marginTop: 4 }}>+${profit.toLocaleString()}</div>
+                          )}
+                          {parlay.outcome === "PENDING" && (
+                            <div style={{ color: "var(--text-2)", fontSize: "0.78rem", marginTop: 4 }}>
+                              to win ${(parlay.payout - parlay.stake).toLocaleString()}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                      <div style={{ borderTop: "1px solid var(--border)", paddingTop: 8 }}>
+                        {parlay.legs?.map((leg: any, i: number) => (
+                          <div key={i} style={{
+                            display: "flex",
+                            justifyContent: "space-between",
+                            alignItems: "center",
+                            padding: "5px 0",
+                            borderBottom: i < parlay.legs.length - 1 ? "1px solid var(--border)" : "none",
+                          }}>
+                            <div style={{ fontSize: "0.8rem", color: "var(--text-2)" }}>
+                              {leg.prop
+                                ? `${leg.prop.player?.name} ${leg.direction} ${leg.prop.line} ${leg.prop.statType?.replaceAll("_", " ")}`
+                                : leg.gameLine?.label ?? "—"}
+                            </div>
+                            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                              <span style={{ fontSize: "0.75rem", color: "var(--text-3)" }}>{fmtOdds(leg.odds)}</span>
+                              <span className={`${outcomeText(leg.outcome)}`} style={{ fontSize: "0.72rem", fontWeight: 700 }}>
+                                {leg.outcome}
+                              </span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
+              </>
+            )}
+          </>
+        )}
       </div>
 
       <BottomNav leagueId={leagueId} />

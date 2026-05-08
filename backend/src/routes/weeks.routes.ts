@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { prisma } from "../db/prisma";
 import { requireAuth, requireAdmin } from "../middleware/auth";
+import { calcProfit } from "../lib/payout";
 
 const router = Router();
 
@@ -21,7 +22,7 @@ router.post("/", requireAuth, requireAdmin, async (req: any, res: any) => {
       for (const membership of league.memberships) {
         await prisma.membership.update({
           where: { id: membership.id },
-          data: { balance: { increment: league.weeklyAllowance } },
+          data: { balance: league.weeklyAllowance, weeklyWinnings: 0 },
         });
       }
     }
@@ -40,7 +41,7 @@ router.get("/", requireAuth, async (req: any, res: any) => {
       const week = await prisma.week.findFirst({
         where: { resolved: false },
         orderBy: { number: "desc" },
-        include: { games: { include: { props: { include: { player: true } } } } },
+        include: { games: { include: { props: { include: { player: true } }, gameLines: true } } },
       });
       res.json(week ? [week] : []);
       return;
@@ -48,7 +49,7 @@ router.get("/", requireAuth, async (req: any, res: any) => {
 
     const weeks = await prisma.week.findMany({
       orderBy: { number: "desc" },
-      include: { games: { include: { props: { include: { player: true } } } } },
+      include: { games: { include: { props: { include: { player: true } }, gameLines: true } } },
     });
     res.json(weeks);
   } catch (err: any) {
@@ -60,7 +61,7 @@ router.get("/:id", requireAuth, async (req: any, res: any) => {
   try {
     const week = await prisma.week.findUnique({
       where: { id: req.params.id },
-      include: { games: { include: { props: { include: { player: true } } } } },
+      include: { games: { include: { props: { include: { player: true } }, gameLines: true } } },
     });
     if (!week) { res.status(404).json({ error: "Week not found" }); return; }
     res.json(week);
@@ -111,17 +112,17 @@ router.post("/:id/resolve", requireAuth, requireAdmin, async (req: any, res: any
         (pick.direction === "OVER" && result > pick.prop.line) ||
         (pick.direction === "UNDER" && result < pick.prop.line);
 
-      const outcome = won ? "WIN" : "LOSS";
+      const profit = won ? calcProfit(Number(pick.stake), pick.odds) : 0;
 
-      await prisma.pick.update({ where: { id: pick.id }, data: { outcome } });
-
-      if (won) {
-        // stake was already deducted at bet time — return stake + equal profit
-        await prisma.membership.updateMany({
+      await prisma.$transaction([
+        prisma.pick.update({ where: { id: pick.id }, data: { outcome: won ? "WIN" : "LOSS" } }),
+        prisma.membership.updateMany({
           where: { userId: pick.userId, leagueId: pick.leagueId },
-          data: { balance: { increment: pick.stake * 2 } },
-        });
-      }
+          data: won
+            ? { balance: { increment: Number(pick.stake) + profit }, weeklyWinnings: { increment: profit } }
+            : { weeklyWinnings: { decrement: Number(pick.stake) } },
+        }),
+      ]);
     }
 
     // floor any negative balances at 0
@@ -132,27 +133,23 @@ router.post("/:id/resolve", requireAuth, requireAdmin, async (req: any, res: any
 
     await prisma.week.update({ where: { id: weekId }, data: { resolved: true, locked: true } });
 
-    // Resolve head-to-head matchups for this week number
-    const allPicks = await prisma.pick.findMany({
-      where: { prop: { game: { weekId } } },
-      select: { userId: true, leagueId: true, stake: true, outcome: true },
-    });
-
-    const profitMap: Record<string, number> = {};
-    for (const pick of allPicks) {
-      const key = `${pick.userId}:${pick.leagueId}`;
-      if (!profitMap[key]) profitMap[key] = 0;
-      if (pick.outcome === "WIN") profitMap[key] += Number(pick.stake);
-      else if (pick.outcome === "LOSS") profitMap[key] -= Number(pick.stake);
-    }
-
+    // Resolve head-to-head matchups using weeklyWinnings
     const matchups = await prisma.matchup.findMany({
       where: { weekNumber: week.number, winnerId: null, isTie: false },
     }) as any[];
 
     for (const matchup of matchups) {
-      const homeProfit = profitMap[`${matchup.homeUserId}:${matchup.leagueId}`] ?? 0;
-      const awayProfit = profitMap[`${matchup.awayUserId}:${matchup.leagueId}`] ?? 0;
+      const [homeMem, awayMem] = await Promise.all([
+        prisma.membership.findUnique({
+          where: { userId_leagueId: { userId: matchup.homeUserId, leagueId: matchup.leagueId } },
+        }),
+        prisma.membership.findUnique({
+          where: { userId_leagueId: { userId: matchup.awayUserId, leagueId: matchup.leagueId } },
+        }),
+      ]);
+
+      const homeProfit = homeMem?.weeklyWinnings ?? 0;
+      const awayProfit = awayMem?.weeklyWinnings ?? 0;
       const isTie = homeProfit === awayProfit;
       const winnerId = isTie ? null : homeProfit > awayProfit ? matchup.homeUserId : matchup.awayUserId;
       await prisma.matchup.update({

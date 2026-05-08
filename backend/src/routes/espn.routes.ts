@@ -3,16 +3,17 @@ import { StatType } from "@prisma/client";
 import { prisma } from "../db/prisma";
 import { requireAuth, requireAdmin } from "../middleware/auth";
 import { getNFLWeekGames, getGameStats } from "../services/espnApi";
+import { calcProfit } from "../lib/payout";
 
 const router = Router();
 
-const STAT_FIELD: Record<StatType, keyof Awaited<ReturnType<typeof getGameStats>> extends Map<string, infer V> ? V : never> = {
+const STAT_FIELD: Record<StatType, string> = {
   PASSING_YARDS: "passingYards",
   RUSHING_YARDS: "rushingYards",
   RECEIVING_YARDS: "receivingYards",
   RECEPTIONS: "receptions",
   TOUCHDOWNS: "touchdowns",
-} as any;
+};
 
 // Sync ESPN games into a week
 router.post("/games/:weekId", requireAuth, requireAdmin, async (req: any, res: any) => {
@@ -50,41 +51,127 @@ router.post("/resolve/:weekId", requireAuth, requireAdmin, async (req: any, res:
     const { weekId } = req.params;
     const week = await prisma.week.findUnique({
       where: { id: weekId },
-      include: { games: { include: { props: { include: { player: true } } } } },
+      include: {
+        games: {
+          include: {
+            props: { include: { player: true } },
+            gameLines: true,
+          },
+        },
+      },
     }) as any;
 
     if (!week) { res.status(404).json({ error: "Week not found" }); return; }
     if (week.resolved) { res.status(400).json({ error: "Week already resolved" }); return; }
 
     // Gather player stats from ESPN for every game that has an espnId
-    const masterStats = new Map<string, ReturnType<typeof Object.fromEntries>>();
+    const masterStats = new Map<string, any>();
     for (const game of week.games) {
       if (!game.espnId) continue;
       const gameStats = await getGameStats(game.espnId);
+
+      // Also store final scores for game line resolution
+      // getGameStats returns Map<playerName, stats> — we need scores separately
+      // Re-fetch summary to get scores (stored in game record)
       for (const [name, stats] of gameStats) {
         masterStats.set(name.toLowerCase(), stats);
       }
     }
 
+    // Fetch game scores and resolve game lines
+    let glMatched = 0;
+    let glUnmatched = 0;
+    for (const game of week.games) {
+      if (!game.espnId || !game.gameLines?.length) continue;
+
+      // Fetch score from ESPN summary endpoint
+      try {
+        const summaryRes = await fetch(
+          `https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?event=${game.espnId}`
+        );
+        const summary = await summaryRes.json();
+        const competitors = summary?.header?.competitions?.[0]?.competitors ?? [];
+        let homeScore: number | null = null;
+        let awayScore: number | null = null;
+
+        for (const c of competitors) {
+          const score = parseInt(c.score, 10);
+          if (c.homeAway === "home") homeScore = score;
+          else awayScore = score;
+        }
+
+        if (homeScore == null || awayScore == null) { glUnmatched += game.gameLines.length; continue; }
+
+        // Store scores on game
+        await prisma.game.update({
+          where: { id: game.id },
+          data: { homeScore, awayScore },
+        });
+
+        // Resolve each game line
+        for (const gl of game.gameLines) {
+          if (gl.result != null) continue;
+          let result: boolean | null = null;
+
+          switch (gl.market) {
+            case "MONEYLINE_HOME": result = homeScore > awayScore; break;
+            case "MONEYLINE_AWAY": result = awayScore > homeScore; break;
+            case "SPREAD_HOME":    result = gl.line != null ? (homeScore + gl.line) > awayScore : null; break;
+            case "SPREAD_AWAY":    result = gl.line != null ? (awayScore + gl.line) > homeScore : null; break;
+            case "TOTAL_OVER":     result = gl.line != null ? (homeScore + awayScore) > gl.line : null; break;
+            case "TOTAL_UNDER":    result = gl.line != null ? (homeScore + awayScore) < gl.line : null; break;
+          }
+
+          if (result == null) { glUnmatched++; continue; }
+          await prisma.gameLine.update({ where: { id: gl.id }, data: { result } });
+          glMatched++;
+        }
+      } catch {
+        glUnmatched += game.gameLines.length;
+      }
+    }
+
+    // Resolve game picks using settled game lines
+    const gamePicks = await prisma.gamePick.findMany({
+      where: { outcome: "PENDING", gameLine: { game: { weekId } } },
+      include: { gameLine: true },
+    }) as any[];
+
+    for (const gp of gamePicks) {
+      if (gp.gameLine.result == null) continue;
+      const won = gp.gameLine.result === true;
+      const profit = won ? calcProfit(gp.stake, gp.odds) : 0;
+
+      await prisma.$transaction([
+        prisma.gamePick.update({ where: { id: gp.id }, data: { outcome: won ? "WIN" : "LOSS" } }),
+        prisma.membership.updateMany({
+          where: { userId: gp.userId, leagueId: gp.leagueId },
+          data: won
+            ? { balance: { increment: gp.stake + profit }, weeklyWinnings: { increment: profit } }
+            : { weeklyWinnings: { decrement: gp.stake } },
+        }),
+      ]);
+    }
+
     // Set prop results by matching player names (case-insensitive)
-    let matched = 0;
-    let unmatched = 0;
+    let propMatched = 0;
+    let propUnmatched = 0;
     for (const game of week.games) {
       for (const prop of game.props) {
         if (prop.result != null) continue;
         const playerStats = masterStats.get(prop.player.name.toLowerCase());
-        if (!playerStats) { unmatched++; continue; }
+        if (!playerStats) { propUnmatched++; continue; }
 
         const statKey = STAT_FIELD[prop.statType as StatType];
         const result = (playerStats as any)[statKey] ?? null;
-        if (result == null) { unmatched++; continue; }
+        if (result == null) { propUnmatched++; continue; }
 
         await prisma.prop.update({ where: { id: prop.id }, data: { result } });
-        matched++;
+        propMatched++;
       }
     }
 
-    // Resolve picks
+    // Resolve prop picks
     const picks = await prisma.pick.findMany({
       where: { outcome: "PENDING", prop: { game: { weekId } } },
       include: { prop: true },
@@ -97,15 +184,71 @@ router.post("/resolve/:weekId", requireAuth, requireAdmin, async (req: any, res:
       const won =
         (pick.direction === "OVER" && result > pick.prop.line) ||
         (pick.direction === "UNDER" && result < pick.prop.line);
+      const profit = won ? calcProfit(pick.stake, pick.odds) : 0;
 
-      await prisma.pick.update({ where: { id: pick.id }, data: { outcome: won ? "WIN" : "LOSS" } });
-
-      if (won) {
-        await prisma.membership.updateMany({
+      await prisma.$transaction([
+        prisma.pick.update({ where: { id: pick.id }, data: { outcome: won ? "WIN" : "LOSS" } }),
+        prisma.membership.updateMany({
           where: { userId: pick.userId, leagueId: pick.leagueId },
-          data: { balance: { increment: pick.stake * 2 } },
+          data: won
+            ? { balance: { increment: pick.stake + profit }, weeklyWinnings: { increment: profit } }
+            : { weeklyWinnings: { decrement: pick.stake } },
+        }),
+      ]);
+    }
+
+    // Resolve parlay legs and parlays
+    const parlays = await prisma.parlay.findMany({
+      where: { outcome: "PENDING", league: { memberships: { some: {} } } },
+      include: {
+        legs: {
+          include: {
+            prop: true,
+            gameLine: true,
+          },
+        },
+      },
+    }) as any[];
+
+    for (const parlay of parlays) {
+      let allSettled = true;
+      let anyLoss = false;
+
+      for (const leg of parlay.legs) {
+        if (leg.outcome !== "PENDING") continue;
+
+        let legResult: boolean | null = null;
+        if (leg.prop && leg.prop.result != null) {
+          legResult =
+            (leg.direction === "OVER" && leg.prop.result > leg.prop.line) ||
+            (leg.direction === "UNDER" && leg.prop.result < leg.prop.line);
+        } else if (leg.gameLine && leg.gameLine.result != null) {
+          legResult = leg.gameLine.result === true;
+        }
+
+        if (legResult == null) { allSettled = false; continue; }
+
+        await prisma.parlayLeg.update({
+          where: { id: leg.id },
+          data: { outcome: legResult ? "WIN" : "LOSS" },
         });
+        if (!legResult) anyLoss = true;
       }
+
+      if (!allSettled) continue;
+
+      const parlayWon = !anyLoss;
+      const profit = parlayWon ? parlay.payout - parlay.stake : 0;
+
+      await prisma.$transaction([
+        prisma.parlay.update({ where: { id: parlay.id }, data: { outcome: parlayWon ? "WIN" : "LOSS" } }),
+        prisma.membership.updateMany({
+          where: { userId: parlay.userId, leagueId: parlay.leagueId },
+          data: parlayWon
+            ? { balance: { increment: parlay.payout }, weeklyWinnings: { increment: profit } }
+            : { weeklyWinnings: { decrement: parlay.stake } },
+        }),
+      ]);
     }
 
     // Floor negative balances
@@ -114,30 +257,39 @@ router.post("/resolve/:weekId", requireAuth, requireAdmin, async (req: any, res:
     // Mark week resolved
     await prisma.week.update({ where: { id: weekId }, data: { resolved: true, locked: true } });
 
-    // Resolve matchups
-    const allPicks = await prisma.pick.findMany({
-      where: { prop: { game: { weekId } } },
-      select: { userId: true, leagueId: true, stake: true, outcome: true },
-    });
-    const profitMap: Record<string, number> = {};
-    for (const p of allPicks) {
-      const key = `${p.userId}:${p.leagueId}`;
-      if (!profitMap[key]) profitMap[key] = 0;
-      if (p.outcome === "WIN") profitMap[key] += Number(p.stake);
-      else if (p.outcome === "LOSS") profitMap[key] -= Number(p.stake);
-    }
+    // Resolve matchups using weeklyWinnings
     const matchups = await prisma.matchup.findMany({
       where: { weekNumber: week.number, winnerId: null, isTie: false },
     }) as any[];
+
     for (const matchup of matchups) {
-      const homeProfit = profitMap[`${matchup.homeUserId}:${matchup.leagueId}`] ?? 0;
-      const awayProfit = profitMap[`${matchup.awayUserId}:${matchup.leagueId}`] ?? 0;
+      const [homeMem, awayMem] = await Promise.all([
+        prisma.membership.findUnique({
+          where: { userId_leagueId: { userId: matchup.homeUserId, leagueId: matchup.leagueId } },
+        }),
+        prisma.membership.findUnique({
+          where: { userId_leagueId: { userId: matchup.awayUserId, leagueId: matchup.leagueId } },
+        }),
+      ]);
+
+      const homeProfit = homeMem?.weeklyWinnings ?? 0;
+      const awayProfit = awayMem?.weeklyWinnings ?? 0;
       const isTie = homeProfit === awayProfit;
       const winnerId = isTie ? null : homeProfit > awayProfit ? matchup.homeUserId : matchup.awayUserId;
-      await prisma.matchup.update({ where: { id: matchup.id }, data: { homeProfit, awayProfit, winnerId, isTie } });
+
+      await prisma.matchup.update({
+        where: { id: matchup.id },
+        data: { homeProfit, awayProfit, winnerId, isTie },
+      });
     }
 
-    res.json({ message: "Week auto-resolved", propsMatched: matched, propsUnmatched: unmatched });
+    res.json({
+      message: "Week auto-resolved",
+      propsMatched: propMatched,
+      propsUnmatched: propUnmatched,
+      gameLinesMatched: glMatched,
+      gameLinesUnmatched: glUnmatched,
+    });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }

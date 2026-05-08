@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { prisma } from "../db/prisma";
 import { requireAuth } from "../middleware/auth";
+import { calcProfit } from "../lib/payout";
 
 const router = Router();
 
@@ -41,8 +42,16 @@ router.post("/", requireAuth, async (req: any, res: any) => {
     });
     if (existing) { res.status(409).json({ error: "Already placed a bet on this prop" }); return; }
 
+    // Anti-arbitrage: cannot bet opposite side of same prop
+    const opposite = await prisma.pick.findFirst({
+      where: { userId, leagueId, propId, direction: direction === "OVER" ? "UNDER" : "OVER" },
+    });
+    if (opposite) { res.status(409).json({ error: "Cannot bet both sides of the same prop" }); return; }
+
     const [pick] = await prisma.$transaction([
-      prisma.pick.create({ data: { userId, leagueId, propId, direction, stake: Number(stake) } }),
+      prisma.pick.create({
+        data: { userId, leagueId, propId, direction, stake: Number(stake), odds: prop.odds },
+      }),
       prisma.membership.update({
         where: { userId_leagueId: { userId, leagueId } },
         data: { balance: { decrement: Number(stake) } },
@@ -73,5 +82,30 @@ router.get("/", requireAuth, async (req: any, res: any) => {
     res.status(500).json({ error: err.message });
   }
 });
+
+// Internal helper exported for use in resolution routes
+export async function settlePick(pickId: string) {
+  const pick = await prisma.pick.findUnique({
+    where: { id: pickId },
+    include: { prop: true },
+  }) as any;
+  if (!pick || pick.outcome !== "PENDING" || pick.prop.result == null) return;
+
+  const won =
+    (pick.direction === "OVER" && pick.prop.result > pick.prop.line) ||
+    (pick.direction === "UNDER" && pick.prop.result < pick.prop.line);
+
+  const profit = won ? calcProfit(pick.stake, pick.odds) : 0;
+
+  await prisma.$transaction([
+    prisma.pick.update({ where: { id: pick.id }, data: { outcome: won ? "WIN" : "LOSS" } }),
+    prisma.membership.updateMany({
+      where: { userId: pick.userId, leagueId: pick.leagueId },
+      data: won
+        ? { balance: { increment: pick.stake + profit }, weeklyWinnings: { increment: profit } }
+        : { weeklyWinnings: { decrement: pick.stake } },
+    }),
+  ]);
+}
 
 export default router;
