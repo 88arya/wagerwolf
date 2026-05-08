@@ -25,8 +25,14 @@ router.post("/", requireAuth, async (req: any, res: any) => {
     }) as any;
 
     if (!prop) { res.status(404).json({ error: "Prop not found" }); return; }
+    if (prop.game.status === "CANCELLED") { res.status(400).json({ error: "This game has been cancelled" }); return; }
     if (prop.game.week.locked) { res.status(400).json({ error: "This week is locked" }); return; }
     if (prop.game.week.resolved) { res.status(400).json({ error: "This week is already resolved" }); return; }
+
+    // Per-game kickoff lock
+    if (new Date(prop.game.gameDate) <= new Date()) {
+      res.status(400).json({ error: "This game has already kicked off — bets are locked" }); return;
+    }
 
     const membership = await prisma.membership.findUnique({
       where: { userId_leagueId: { userId, leagueId } },
@@ -78,6 +84,36 @@ router.get("/", requireAuth, async (req: any, res: any) => {
     });
 
     res.json(picks);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Cashout a pending prop pick before kickoff — full stake refund
+router.post("/:id/cashout", requireAuth, async (req: any, res: any) => {
+  try {
+    const pick = await prisma.pick.findUnique({
+      where: { id: req.params.id },
+      include: { prop: { include: { game: true } } },
+    }) as any;
+
+    if (!pick) { res.status(404).json({ error: "Pick not found" }); return; }
+    if (pick.userId !== req.userId) { res.status(403).json({ error: "Not your pick" }); return; }
+    if (pick.outcome !== "PENDING") { res.status(400).json({ error: "Can only cash out pending bets" }); return; }
+    if (pick.cashedOut) { res.status(400).json({ error: "Already cashed out" }); return; }
+    if (new Date(pick.prop.game.gameDate) <= new Date()) {
+      res.status(400).json({ error: "Cannot cash out after game has started" }); return;
+    }
+
+    await prisma.$transaction([
+      prisma.pick.update({ where: { id: pick.id }, data: { outcome: "VOID", cashedOut: true } }),
+      prisma.membership.updateMany({
+        where: { userId: pick.userId, leagueId: pick.leagueId },
+        data: { balance: { increment: pick.stake } },
+      }),
+    ]);
+
+    res.json({ message: "Cashed out", refunded: pick.stake });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }

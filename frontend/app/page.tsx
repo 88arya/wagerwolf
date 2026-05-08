@@ -32,36 +32,37 @@ export default function AuthPage() {
   }
 
   return (
-    <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "24px 16px" }}>
+    <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "24px 16px", background: "var(--bg)" }}>
 
       {/* Logo */}
-      <div style={{ textAlign: "center", marginBottom: 40 }}>
-        <div style={{ fontSize: "2.8rem", fontWeight: 900, letterSpacing: "-0.04em", marginBottom: 6 }}>
+      <div style={{ textAlign: "center", marginBottom: 36 }}>
+        <div style={{ fontSize: "2.6rem", fontWeight: 900, letterSpacing: "-0.04em", marginBottom: 6, color: "var(--text)" }}>
           PLAY<span style={{ color: "var(--accent)" }}>BOOK</span>
         </div>
-        <div style={{ color: "var(--text-2)", fontSize: "0.85rem", fontWeight: 500, letterSpacing: "0.12em", textTransform: "uppercase" }}>
-          NFL Prop Betting
+        <div style={{ color: "var(--text-3)", fontSize: "0.78rem", fontWeight: 700, letterSpacing: "0.16em", textTransform: "uppercase" }}>
+          NFL Prop Betting League
         </div>
       </div>
 
       {/* Card */}
       <div style={{ width: "100%", maxWidth: 380 }}>
-        <div className="card-elevated" style={{ padding: 28 }}>
+        <div style={{ background: "var(--surface)", borderRadius: 10, border: "1px solid var(--border)", boxShadow: "0 4px 16px rgba(0,0,0,0.08)", padding: "28px 24px" }}>
 
           {/* Mode toggle */}
-          <div style={{ display: "flex", background: "var(--surface)", borderRadius: 8, padding: 4, marginBottom: 24 }}>
+          <div style={{ display: "flex", background: "var(--surface-2)", borderRadius: 6, padding: 3, marginBottom: 22, border: "1px solid var(--border)" }}>
             {(["login", "register"] as const).map((m) => (
               <button
                 key={m}
                 onClick={() => setMode(m)}
                 style={{
                   flex: 1, padding: "8px 0",
-                  background: mode === m ? "var(--surface-3)" : "transparent",
+                  background: mode === m ? "var(--surface)" : "transparent",
                   color: mode === m ? "var(--text)" : "var(--text-2)",
-                  border: "none", borderRadius: 6,
+                  border: mode === m ? "1px solid var(--border)" : "1px solid transparent",
+                  borderRadius: 5,
                   fontWeight: mode === m ? 700 : 500,
                   fontSize: "0.85rem",
-                  boxShadow: "none",
+                  boxShadow: mode === m ? "0 1px 3px rgba(0,0,0,0.08)" : "none",
                   letterSpacing: "0.01em",
                 }}
               >
@@ -92,8 +93,8 @@ export default function AuthPage() {
               <input type="password" placeholder="••••••••" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} required />
             </div>
             {error && <p className="error">{error}</p>}
-            <button type="submit" disabled={loading} style={{ marginTop: 4, width: "100%", padding: "14px", fontSize: "0.95rem" }}>
-              {loading ? "..." : mode === "register" ? "Create Account" : "Log In"}
+            <button type="submit" disabled={loading} style={{ marginTop: 6, width: "100%", padding: "14px", fontSize: "0.95rem" }}>
+              {loading ? "…" : mode === "register" ? "Create Account" : "Log In"}
             </button>
           </form>
         </div>

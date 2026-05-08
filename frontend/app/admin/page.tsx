@@ -138,11 +138,45 @@ export default function AdminPage() {
     } catch (err: any) { try { flash(JSON.parse(err.message).error, true); } catch { flash(err.message, true); } }
   }
 
+  async function syncLines(gameId: string) {
+    try {
+      const res = await api(`/sync/lines/${gameId}`, { method: "POST" });
+      await loadWeeks();
+      flash(`Synced ${res.synced} line${res.synced !== 1 ? "s" : ""} from Odds API`);
+    } catch (err: any) { try { flash(JSON.parse(err.message).error, true); } catch { flash(err.message, true); } }
+  }
+
+  async function cancelGame(gameId: string, homeTeam: string, awayTeam: string) {
+    if (!confirm(`Cancel ${homeTeam} vs ${awayTeam}? All pending bets will be voided and stakes refunded.`)) return;
+    try {
+      const res = await api(`/games/${gameId}/cancel`, { method: "POST" });
+      await loadWeeks();
+      flash(`Game cancelled — ${res.picksVoided + res.gamePicksVoided} bets voided, ${res.parlaysVoided} parlays voided`);
+    } catch (err: any) { try { flash(JSON.parse(err.message).error, true); } catch { flash(err.message, true); } }
+  }
+
   async function toggleLock(weekId: string) {
     try {
       await api(`/weeks/${weekId}/lock`, { method: "POST" });
       await loadWeeks();
       flash("Week lock toggled");
+    } catch (err: any) { try { flash(JSON.parse(err.message).error, true); } catch { flash(err.message, true); } }
+  }
+
+  async function deleteAllLeagues() {
+    if (!confirm("Delete ALL leagues, memberships, picks, and matchups? This cannot be undone.")) return;
+    try {
+      await api("/admin/leagues/delete-all", { method: "POST" });
+      flash("All leagues deleted");
+    } catch (err: any) { try { flash(JSON.parse(err.message).error, true); } catch { flash(err.message, true); } }
+  }
+
+  async function deleteWeek(weekId: string, weekNum: number) {
+    if (!confirm(`Delete Week ${weekNum} and all its games, props, and picks?`)) return;
+    try {
+      await api(`/weeks/${weekId}`, { method: "DELETE" });
+      await loadWeeks();
+      flash(`Week ${weekNum} deleted`);
     } catch (err: any) { try { flash(JSON.parse(err.message).error, true); } catch { flash(err.message, true); } }
   }
 
@@ -172,27 +206,36 @@ export default function AdminPage() {
 
       <div className="page">
         <div style={{ marginBottom: 20 }}>
-          <h1>Admin</h1>
-          <p className="subtitle">Manage the schedule and resolve weeks</p>
+          <div className="row" style={{ alignItems: "flex-start" }}>
+            <div>
+              <h1>Admin</h1>
+              <p className="subtitle">Manage the schedule and resolve weeks</p>
+            </div>
+            <button className="ghost" style={{ fontSize: "0.75rem", padding: "6px 12px", color: "var(--loss)", borderColor: "rgba(183,28,28,0.3)", flexShrink: 0 }} onClick={deleteAllLeagues}>
+              Delete All Leagues
+            </button>
+          </div>
         </div>
 
         {msg && (
-          <div style={{ background: "var(--win-bg)", border: "1px solid rgba(0,210,106,0.3)", borderRadius: 8, padding: "10px 14px", marginBottom: 12, color: "var(--win)", fontWeight: 600, fontSize: "0.85rem" }}>
+          <div style={{ background: "var(--win-bg)", border: "1px solid rgba(30,126,52,0.3)", borderRadius: 8, padding: "10px 14px", marginBottom: 12, color: "var(--win)", fontWeight: 600, fontSize: "0.85rem" }}>
             {msg}
           </div>
         )}
         {error && <p className="error" style={{ marginBottom: 12 }}>{error}</p>}
 
         {/* Tab toggle */}
-        <div style={{ display: "flex", background: "var(--surface)", borderRadius: 8, padding: 4, marginBottom: 20 }}>
+        <div style={{ display: "flex", background: "var(--surface-2)", borderRadius: 8, padding: 3, marginBottom: 20, border: "1px solid var(--border)" }}>
           {TABS.map((t) => (
             <button key={t} onClick={() => setTab(t)} style={{
               flex: 1, padding: "8px 0",
-              background: tab === t ? "var(--surface-3)" : "transparent",
+              background: tab === t ? "var(--surface)" : "transparent",
+              boxShadow: tab === t ? "0 1px 3px rgba(0,0,0,0.1)" : "none",
+              border: tab === t ? "1px solid var(--border)" : "1px solid transparent",
               color: tab === t ? "var(--text)" : "var(--text-2)",
-              border: "none", borderRadius: 6,
+              borderRadius: 6,
               fontWeight: tab === t ? 700 : 500, fontSize: "0.82rem",
-              boxShadow: "none", letterSpacing: "0.03em", textTransform: "capitalize",
+              letterSpacing: "0.03em", textTransform: "capitalize",
             }}>
               {t}
             </button>
@@ -322,6 +365,11 @@ export default function AdminPage() {
                           Auto-Resolve
                         </button>
                       )}
+                      {!w.resolved && (
+                        <button className="ghost" style={{ fontSize: "0.75rem", padding: "5px 10px", color: "var(--loss)", borderColor: "rgba(183,28,28,0.3)" }} onClick={() => deleteWeek(w.id, w.number)}>
+                          Delete
+                        </button>
+                      )}
                     </div>
                   </div>
                   {w.games?.map((g: any) => (
@@ -333,14 +381,33 @@ export default function AdminPage() {
                         <button
                           className="secondary"
                           style={{ fontSize: "0.72rem", padding: "4px 10px" }}
+                          onClick={() => syncLines(g.id)}
+                        >
+                          Sync Lines
+                        </button>
+                        <button
+                          className="secondary"
+                          style={{ fontSize: "0.72rem", padding: "4px 10px" }}
                           onClick={() => syncProps(g.id)}
                         >
                           Sync Props
                         </button>
+                        {g.status !== "CANCELLED" && (
+                          <button
+                            className="ghost"
+                            style={{ fontSize: "0.72rem", padding: "4px 10px", color: "var(--loss)", borderColor: "rgba(183,28,28,0.3)" }}
+                            onClick={() => cancelGame(g.id, g.homeTeam, g.awayTeam)}
+                          >
+                            Cancel
+                          </button>
+                        )}
+                        {g.status === "CANCELLED" && (
+                          <span className="badge badge-red" style={{ fontSize: "0.7rem" }}>CANCELLED</span>
+                        )}
                       </div>
                       {g.props?.map((p: any) => (
-                        <div key={p.id} style={{ display: "flex", justifyContent: "space-between", padding: "6px 8px", background: "var(--surface-2)", borderRadius: 6, marginBottom: 4, fontSize: "0.82rem" }}>
-                          <span style={{ color: "var(--text-2)" }}>{p.player?.name} — {p.statType.replaceAll("_", " ")} {p.line}</span>
+                        <div key={p.id} style={{ display: "flex", justifyContent: "space-between", padding: "6px 10px", background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 6, marginBottom: 4, fontSize: "0.81rem" }}>
+                          <span style={{ color: "var(--text-2)", fontWeight: 500 }}>{p.player?.name} — {p.statType.replaceAll("_", " ")} {p.line}</span>
                           {p.result != null && <span style={{ color: "var(--win)", fontWeight: 700 }}>{p.result}</span>}
                         </div>
                       ))}

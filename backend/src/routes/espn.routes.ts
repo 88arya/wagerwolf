@@ -27,7 +27,7 @@ router.post("/games/:weekId", requireAuth, requireAdmin, async (req: any, res: a
     for (const g of espnGames) {
       const game = await prisma.game.upsert({
         where: { espnId: g.espnId },
-        update: {},
+        update: { gameDate: g.gameDate },
         create: {
           weekId: week.id,
           homeTeam: g.homeTeam,
@@ -82,52 +82,56 @@ router.post("/resolve/:weekId", requireAuth, requireAdmin, async (req: any, res:
     let glMatched = 0;
     let glUnmatched = 0;
     for (const game of week.games) {
-      if (!game.espnId || !game.gameLines?.length) continue;
+      if (!game.gameLines?.length) continue;
 
-      // Fetch score from ESPN summary endpoint
-      try {
-        const summaryRes = await fetch(
-          `https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?event=${game.espnId}`
-        );
-        const summary = await summaryRes.json();
-        const competitors = summary?.header?.competitions?.[0]?.competitors ?? [];
-        let homeScore: number | null = null;
-        let awayScore: number | null = null;
+      let homeScore: number | null = null;
+      let awayScore: number | null = null;
 
-        for (const c of competitors) {
-          const score = parseInt(c.score, 10);
-          if (c.homeAway === "home") homeScore = score;
-          else awayScore = score;
-        }
-
-        if (homeScore == null || awayScore == null) { glUnmatched += game.gameLines.length; continue; }
-
-        // Store scores on game
-        await prisma.game.update({
-          where: { id: game.id },
-          data: { homeScore, awayScore },
-        });
-
-        // Resolve each game line
-        for (const gl of game.gameLines) {
-          if (gl.result != null) continue;
-          let result: boolean | null = null;
-
-          switch (gl.market) {
-            case "MONEYLINE_HOME": result = homeScore > awayScore; break;
-            case "MONEYLINE_AWAY": result = awayScore > homeScore; break;
-            case "SPREAD_HOME":    result = gl.line != null ? (homeScore + gl.line) > awayScore : null; break;
-            case "SPREAD_AWAY":    result = gl.line != null ? (awayScore + gl.line) > homeScore : null; break;
-            case "TOTAL_OVER":     result = gl.line != null ? (homeScore + awayScore) > gl.line : null; break;
-            case "TOTAL_UNDER":    result = gl.line != null ? (homeScore + awayScore) < gl.line : null; break;
+      if (game.espnId) {
+        // Fetch score from ESPN summary endpoint
+        try {
+          const summaryRes = await fetch(
+            `https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?event=${game.espnId}`
+          );
+          const summary = await summaryRes.json();
+          const competitors = summary?.header?.competitions?.[0]?.competitors ?? [];
+          for (const c of competitors) {
+            const score = parseInt(c.score, 10);
+            if (c.homeAway === "home") homeScore = score;
+            else awayScore = score;
           }
+        } catch { /* skip */ }
+      } else if (game.homeScore != null && game.awayScore != null) {
+        // Seeded game — use stored scores
+        homeScore = game.homeScore;
+        awayScore = game.awayScore;
+      }
 
-          if (result == null) { glUnmatched++; continue; }
-          await prisma.gameLine.update({ where: { id: gl.id }, data: { result } });
-          glMatched++;
+      if (homeScore == null || awayScore == null) { glUnmatched += game.gameLines.length; continue; }
+
+      // Store scores and mark game FINAL
+      await prisma.game.update({
+        where: { id: game.id },
+        data: { homeScore, awayScore, status: "FINAL" },
+      });
+
+      // Resolve each game line
+      for (const gl of game.gameLines) {
+        if (gl.result != null) { glMatched++; continue; }
+        let result: boolean | null = null;
+
+        switch (gl.market) {
+          case "MONEYLINE_HOME": result = homeScore > awayScore; break;
+          case "MONEYLINE_AWAY": result = awayScore > homeScore; break;
+          case "SPREAD_HOME":    result = gl.line != null ? (homeScore + gl.line) > awayScore : null; break;
+          case "SPREAD_AWAY":    result = gl.line != null ? (awayScore + gl.line) > homeScore : null; break;
+          case "TOTAL_OVER":     result = gl.line != null ? (homeScore + awayScore) > gl.line : null; break;
+          case "TOTAL_UNDER":    result = gl.line != null ? (homeScore + awayScore) < gl.line : null; break;
         }
-      } catch {
-        glUnmatched += game.gameLines.length;
+
+        if (result == null) { glUnmatched++; continue; }
+        await prisma.gameLine.update({ where: { id: gl.id }, data: { result } });
+        glMatched++;
       }
     }
 
@@ -153,12 +157,12 @@ router.post("/resolve/:weekId", requireAuth, requireAdmin, async (req: any, res:
       ]);
     }
 
-    // Set prop results by matching player names (case-insensitive)
+    // Set prop results — seeded props already have results; ESPN props use fetched stats
     let propMatched = 0;
     let propUnmatched = 0;
     for (const game of week.games) {
       for (const prop of game.props) {
-        if (prop.result != null) continue;
+        if (prop.result != null) { propMatched++; continue; } // already seeded
         const playerStats = masterStats.get(prop.player.name.toLowerCase());
         if (!playerStats) { propUnmatched++; continue; }
 

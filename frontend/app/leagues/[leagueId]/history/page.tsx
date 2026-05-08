@@ -27,6 +27,11 @@ function outcomeText(outcome: string) {
   return "text-pending";
 }
 
+function gameStarted(gameDate?: string): boolean {
+  if (!gameDate) return true;
+  return new Date(gameDate) <= new Date();
+}
+
 export default function HistoryPage({ params }: PageProps<"/leagues/[leagueId]/history">) {
   const router = useRouter();
   const [leagueId, setLeagueId] = useState("");
@@ -36,29 +41,48 @@ export default function HistoryPage({ params }: PageProps<"/leagues/[leagueId]/h
   const [league, setLeague] = useState<any>(null);
   const [tab, setTab] = useState<"props" | "lines" | "parlays">("props");
   const [loading, setLoading] = useState(true);
+  const [cashingOut, setCashingOut] = useState<string | null>(null);
+
+  async function load(lId: string) {
+    try {
+      const [picksData, gamePicksData, parlaysData, leagueData] = await Promise.all([
+        api(`/picks?leagueId=${lId}`),
+        api(`/gamepicks?leagueId=${lId}`),
+        api(`/parlays?leagueId=${lId}`),
+        api(`/leagues/${lId}`),
+      ]);
+      setPicks(picksData);
+      setGamePicks(gamePicksData);
+      setParlays(parlaysData);
+      setLeague(leagueData);
+    } catch {} finally {
+      setLoading(false);
+    }
+  }
 
   useEffect(() => {
-    async function load() {
+    async function init() {
       if (!localStorage.getItem("token")) { router.push("/"); return; }
       const { leagueId } = await params;
       setLeagueId(leagueId);
-      try {
-        const [picksData, gamePicksData, parlaysData, leagueData] = await Promise.all([
-          api(`/picks?leagueId=${leagueId}`),
-          api(`/gamepicks?leagueId=${leagueId}`),
-          api(`/parlays?leagueId=${leagueId}`),
-          api(`/leagues/${leagueId}`),
-        ]);
-        setPicks(picksData);
-        setGamePicks(gamePicksData);
-        setParlays(parlaysData);
-        setLeague(leagueData);
-      } catch {} finally {
-        setLoading(false);
-      }
+      await load(leagueId);
     }
-    load();
+    init();
   }, []);
+
+  async function cashOut(type: "pick" | "gamepick" | "parlay", id: string) {
+    setCashingOut(id);
+    try {
+      const endpoint = type === "pick" ? `/picks/${id}/cashout` : type === "gamepick" ? `/gamepicks/${id}/cashout` : `/parlays/${id}/cashout`;
+      const res = await api(endpoint, { method: "POST" });
+      alert(`Cashed out — $${res.refunded} refunded to your balance`);
+      await load(leagueId);
+    } catch (err: any) {
+      try { alert(JSON.parse(err.message).error); } catch { alert(err.message); }
+    } finally {
+      setCashingOut(null);
+    }
+  }
 
   // Aggregate stats across all bet types
   const allBets = [
@@ -151,7 +175,7 @@ export default function HistoryPage({ params }: PageProps<"/leagues/[leagueId]/h
         {!loading && totalCount > 0 && (
           <>
             {/* Tab toggle */}
-            <div style={{ display: "flex", background: "var(--surface)", borderRadius: 8, padding: 4, marginBottom: 16 }}>
+            <div style={{ display: "flex", background: "var(--surface-2)", borderRadius: 8, padding: 3, marginBottom: 16, border: "1px solid var(--border)" }}>
               {([
                 ["props", `Props (${picks.length})`],
                 ["lines", `Lines (${gamePicks.length})`],
@@ -159,11 +183,12 @@ export default function HistoryPage({ params }: PageProps<"/leagues/[leagueId]/h
               ] as const).map(([t, label]) => (
                 <button key={t} onClick={() => setTab(t)} style={{
                   flex: 1, padding: "8px 0",
-                  background: tab === t ? "var(--surface-3)" : "transparent",
+                  background: tab === t ? "var(--surface)" : "transparent",
+                  boxShadow: tab === t ? "0 1px 3px rgba(0,0,0,0.1)" : "none",
+                  border: tab === t ? "1px solid var(--border)" : "1px solid transparent",
                   color: tab === t ? "var(--text)" : "var(--text-2)",
-                  border: "none", borderRadius: 6,
+                  borderRadius: 6,
                   fontWeight: tab === t ? 700 : 500, fontSize: "0.78rem",
-                  boxShadow: "none",
                 }}>
                   {label}
                 </button>
@@ -178,6 +203,7 @@ export default function HistoryPage({ params }: PageProps<"/leagues/[leagueId]/h
                 )}
                 {picks.map((pick: any) => {
                   const profit = pick.outcome === "WIN" ? calcProfit(Number(pick.stake), pick.odds ?? -110) : null;
+                  const canCashout = pick.outcome === "PENDING" && !pick.cashedOut && !gameStarted(pick.prop?.game?.gameDate);
                   return (
                     <div key={pick.id} className={outcomeCard(pick.outcome)} style={{ marginBottom: 8 }}>
                       <div className="row" style={{ marginBottom: 6 }}>
@@ -187,9 +213,21 @@ export default function HistoryPage({ params }: PageProps<"/leagues/[leagueId]/h
                             {pick.prop?.player?.position} · {pick.prop?.player?.team}
                           </div>
                         </div>
-                        <span className={outcomeText(pick.outcome)} style={{ fontWeight: 800, fontSize: "0.9rem", letterSpacing: "0.04em" }}>
-                          {pick.outcome}
-                        </span>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          {canCashout && (
+                            <button
+                              className="secondary"
+                              style={{ fontSize: "0.72rem", padding: "4px 10px" }}
+                              disabled={cashingOut === pick.id}
+                              onClick={() => cashOut("pick", pick.id)}
+                            >
+                              {cashingOut === pick.id ? "…" : "Cash Out"}
+                            </button>
+                          )}
+                          <span className={outcomeText(pick.outcome)} style={{ fontWeight: 800, fontSize: "0.9rem", letterSpacing: "0.04em" }}>
+                            {pick.outcome === "VOID" && pick.cashedOut ? "CASHED" : pick.outcome}
+                          </span>
+                        </div>
                       </div>
                       <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                         <span className="tag">{pick.prop?.statType?.replaceAll("_", " ")}</span>
@@ -215,6 +253,7 @@ export default function HistoryPage({ params }: PageProps<"/leagues/[leagueId]/h
                 )}
                 {gamePicks.map((gp: any) => {
                   const profit = gp.outcome === "WIN" ? calcProfit(Number(gp.stake), gp.odds) : null;
+                  const canCashout = gp.outcome === "PENDING" && !gp.cashedOut && !gameStarted(gp.gameLine?.game?.gameDate);
                   return (
                     <div key={gp.id} className={outcomeCard(gp.outcome)} style={{ marginBottom: 8 }}>
                       <div className="row" style={{ marginBottom: 6 }}>
@@ -224,9 +263,21 @@ export default function HistoryPage({ params }: PageProps<"/leagues/[leagueId]/h
                             {gp.gameLine?.game?.homeTeam} vs {gp.gameLine?.game?.awayTeam}
                           </div>
                         </div>
-                        <span className={outcomeText(gp.outcome)} style={{ fontWeight: 800, fontSize: "0.9rem", letterSpacing: "0.04em" }}>
-                          {gp.outcome}
-                        </span>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          {canCashout && (
+                            <button
+                              className="secondary"
+                              style={{ fontSize: "0.72rem", padding: "4px 10px" }}
+                              disabled={cashingOut === gp.id}
+                              onClick={() => cashOut("gamepick", gp.id)}
+                            >
+                              {cashingOut === gp.id ? "…" : "Cash Out"}
+                            </button>
+                          )}
+                          <span className={outcomeText(gp.outcome)} style={{ fontWeight: 800, fontSize: "0.9rem", letterSpacing: "0.04em" }}>
+                            {gp.outcome === "VOID" && gp.cashedOut ? "CASHED" : gp.outcome}
+                          </span>
+                        </div>
                       </div>
                       <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                         <span className="tag">{gp.gameLine?.market?.replaceAll("_", " ")}</span>
@@ -251,6 +302,8 @@ export default function HistoryPage({ params }: PageProps<"/leagues/[leagueId]/h
                 )}
                 {parlays.map((parlay: any) => {
                   const profit = parlay.outcome === "WIN" ? parlay.payout - parlay.stake : null;
+                  const firstLegGame = parlay.legs?.[0]?.prop?.game ?? parlay.legs?.[0]?.gameLine?.game;
+                  const canCashout = parlay.outcome === "PENDING" && !parlay.cashedOut && !gameStarted(firstLegGame?.gameDate);
                   return (
                     <div key={parlay.id} className={outcomeCard(parlay.outcome)} style={{ marginBottom: 10 }}>
                       <div className="row" style={{ marginBottom: 8 }}>
@@ -261,9 +314,21 @@ export default function HistoryPage({ params }: PageProps<"/leagues/[leagueId]/h
                           </div>
                         </div>
                         <div style={{ textAlign: "right" }}>
-                          <span className={outcomeText(parlay.outcome)} style={{ fontWeight: 800, fontSize: "0.9rem", letterSpacing: "0.04em" }}>
-                            {parlay.outcome}
-                          </span>
+                          <div style={{ display: "flex", alignItems: "center", gap: 8, justifyContent: "flex-end" }}>
+                            {canCashout && (
+                              <button
+                                className="secondary"
+                                style={{ fontSize: "0.72rem", padding: "4px 10px" }}
+                                disabled={cashingOut === parlay.id}
+                                onClick={() => cashOut("parlay", parlay.id)}
+                              >
+                                {cashingOut === parlay.id ? "…" : "Cash Out"}
+                              </button>
+                            )}
+                            <span className={outcomeText(parlay.outcome)} style={{ fontWeight: 800, fontSize: "0.9rem", letterSpacing: "0.04em" }}>
+                              {parlay.outcome === "VOID" && parlay.cashedOut ? "CASHED" : parlay.outcome}
+                            </span>
+                          </div>
                           {profit != null && (
                             <div style={{ color: "var(--win)", fontWeight: 700, fontSize: "0.82rem", marginTop: 4 }}>+${profit.toLocaleString()}</div>
                           )}

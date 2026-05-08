@@ -34,8 +34,14 @@ router.post("/", requireAuth, async (req: any, res: any) => {
     }) as any;
 
     if (!gameLine) { res.status(404).json({ error: "Game line not found" }); return; }
+    if (gameLine.game.status === "CANCELLED") { res.status(400).json({ error: "This game has been cancelled" }); return; }
     if (gameLine.game.week.locked) { res.status(400).json({ error: "This week is locked" }); return; }
     if (gameLine.game.week.resolved) { res.status(400).json({ error: "This week is already resolved" }); return; }
+
+    // Per-game kickoff lock
+    if (new Date(gameLine.game.gameDate) <= new Date()) {
+      res.status(400).json({ error: "This game has already kicked off — bets are locked" }); return;
+    }
 
     const membership = await prisma.membership.findUnique({
       where: { userId_leagueId: { userId, leagueId } },
@@ -100,6 +106,36 @@ router.get("/", requireAuth, async (req: any, res: any) => {
     });
 
     res.json(gamePicks);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Cashout a pending game pick before kickoff — full stake refund
+router.post("/:id/cashout", requireAuth, async (req: any, res: any) => {
+  try {
+    const gp = await prisma.gamePick.findUnique({
+      where: { id: req.params.id },
+      include: { gameLine: { include: { game: true } } },
+    }) as any;
+
+    if (!gp) { res.status(404).json({ error: "Game pick not found" }); return; }
+    if (gp.userId !== req.userId) { res.status(403).json({ error: "Not your pick" }); return; }
+    if (gp.outcome !== "PENDING") { res.status(400).json({ error: "Can only cash out pending bets" }); return; }
+    if (gp.cashedOut) { res.status(400).json({ error: "Already cashed out" }); return; }
+    if (new Date(gp.gameLine.game.gameDate) <= new Date()) {
+      res.status(400).json({ error: "Cannot cash out after game has started" }); return;
+    }
+
+    await prisma.$transaction([
+      prisma.gamePick.update({ where: { id: gp.id }, data: { outcome: "VOID", cashedOut: true } }),
+      prisma.membership.updateMany({
+        where: { userId: gp.userId, leagueId: gp.leagueId },
+        data: { balance: { increment: gp.stake } },
+      }),
+    ]);
+
+    res.json({ message: "Cashed out", refunded: gp.stake });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }

@@ -22,7 +22,7 @@ function generateRoundRobin(userIds: string[]): Array<[string, string][]> {
   return rounds;
 }
 
-// Start the season — generate round-robin schedule
+// Start the season — generate round-robin schedule for regular season
 router.post("/:leagueId/season/start", requireAuth, async (req: any, res: any) => {
   try {
     const { leagueId } = req.params;
@@ -81,6 +81,150 @@ router.get("/:leagueId/matchups", requireAuth, async (req: any, res: any) => {
     });
 
     res.json(matchups);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Start playoffs — seed top N teams and generate first-round bracket
+router.post("/:leagueId/season/playoffs/start", requireAuth, async (req: any, res: any) => {
+  try {
+    const { leagueId } = req.params;
+    const { weekNumber } = req.body;
+
+    if (!weekNumber) { res.status(400).json({ error: "weekNumber is required" }); return; }
+
+    const league = await prisma.league.findUnique({
+      where: { id: leagueId },
+      include: { memberships: { include: { user: { select: { id: true, displayName: true } } } } },
+    }) as any;
+
+    if (!league) { res.status(404).json({ error: "League not found" }); return; }
+    if (league.creatorId !== req.userId) { res.status(403).json({ error: "Commissioner only" }); return; }
+    if (!league.seasonStarted) { res.status(400).json({ error: "Season has not started" }); return; }
+
+    const existingPlayoffs = await prisma.matchup.findFirst({ where: { leagueId, isPlayoff: true } });
+    if (existingPlayoffs) { res.status(400).json({ error: "Playoffs already started" }); return; }
+
+    // Build W-L records from settled matchups
+    const [memberships, matchups] = await Promise.all([
+      prisma.membership.findMany({
+        where: { leagueId },
+        include: { user: { select: { id: true, displayName: true } } },
+      }) as any,
+      prisma.matchup.findMany({
+        where: { leagueId, isPlayoff: false, OR: [{ winnerId: { not: null } }, { isTie: true }] },
+      }) as any,
+    ]);
+
+    const records: Record<string, { wins: number; losses: number; ties: number; balance: number }> = {};
+    for (const m of memberships) {
+      records[m.userId] = { wins: 0, losses: 0, ties: 0, balance: m.balance };
+    }
+    for (const matchup of matchups) {
+      if (matchup.isTie) {
+        if (records[matchup.homeUserId]) records[matchup.homeUserId].ties++;
+        if (records[matchup.awayUserId]) records[matchup.awayUserId].ties++;
+      } else if (matchup.winnerId) {
+        const loserId = matchup.winnerId === matchup.homeUserId ? matchup.awayUserId : matchup.homeUserId;
+        if (records[matchup.winnerId]) records[matchup.winnerId].wins++;
+        if (records[loserId]) records[loserId].losses++;
+      }
+    }
+
+    // Seed by wins DESC, balance DESC (cumulative tiebreaker)
+    const seeded = (memberships as any[])
+      .map((m: any) => ({ userId: m.userId, displayName: m.user.displayName, ...records[m.userId] }))
+      .sort((a: any, b: any) => b.wins - a.wins || b.balance - a.balance)
+      .slice(0, league.playoffSize);
+
+    if (seeded.length < 2) { res.status(400).json({ error: "Not enough teams for playoffs" }); return; }
+
+    // Classic bracket: 1 vs N, 2 vs N-1, …
+    const n = seeded.length;
+    const bracket = [];
+    for (let i = 0; i < Math.floor(n / 2); i++) {
+      const matchup = await prisma.matchup.create({
+        data: {
+          leagueId,
+          weekNumber: Number(weekNumber),
+          homeUserId: seeded[i].userId,
+          awayUserId: seeded[n - 1 - i].userId,
+          isPlayoff: true,
+          playoffRound: 1,
+        },
+      });
+      bracket.push({ ...matchup, homeSeed: i + 1, awaySeed: n - i, homeDisplayName: seeded[i].displayName, awayDisplayName: seeded[n - 1 - i].displayName });
+    }
+
+    res.json({ round: 1, weekNumber, seeds: seeded, bracket });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Advance playoffs — generate next elimination round from previous round's winners
+router.post("/:leagueId/season/playoffs/advance", requireAuth, async (req: any, res: any) => {
+  try {
+    const { leagueId } = req.params;
+    const { completedRound, nextWeekNumber } = req.body;
+
+    if (!completedRound || !nextWeekNumber) {
+      res.status(400).json({ error: "completedRound and nextWeekNumber are required" }); return;
+    }
+
+    const league = await prisma.league.findUnique({ where: { id: leagueId } });
+    if (!league) { res.status(404).json({ error: "League not found" }); return; }
+    if (league.creatorId !== req.userId) { res.status(403).json({ error: "Commissioner only" }); return; }
+
+    const completedMatchups = await prisma.matchup.findMany({
+      where: { leagueId, isPlayoff: true, playoffRound: Number(completedRound) },
+      include: {
+        homeUser: { select: { id: true, displayName: true } },
+        awayUser: { select: { id: true, displayName: true } },
+      },
+    }) as any[];
+
+    if (completedMatchups.length === 0) {
+      res.status(400).json({ error: `No matchups found for playoff round ${completedRound}` }); return;
+    }
+
+    const unresolvedCount = completedMatchups.filter((m) => m.winnerId == null && !m.isTie).length;
+    if (unresolvedCount > 0) {
+      res.status(400).json({ error: `${unresolvedCount} matchup(s) in round ${completedRound} are not yet resolved` }); return;
+    }
+
+    // For playoff ties: home user advances (eliminate ties in post-season by total balance)
+    const winners = completedMatchups.map((m) => ({
+      userId: m.winnerId ?? m.homeUserId,
+      displayName: m.winnerId
+        ? (m.winnerId === m.homeUserId ? m.homeUser.displayName : m.awayUser.displayName)
+        : m.homeUser.displayName,
+    }));
+
+    if (winners.length === 1) {
+      res.json({ message: "Tournament complete", champion: winners[0] }); return;
+    }
+
+    const nextRound = Number(completedRound) + 1;
+    const n = winners.length;
+    const bracket = [];
+
+    for (let i = 0; i < Math.floor(n / 2); i++) {
+      const matchup = await prisma.matchup.create({
+        data: {
+          leagueId,
+          weekNumber: Number(nextWeekNumber),
+          homeUserId: winners[i].userId,
+          awayUserId: winners[n - 1 - i].userId,
+          isPlayoff: true,
+          playoffRound: nextRound,
+        },
+      });
+      bracket.push({ ...matchup, homeDisplayName: winners[i].displayName, awayDisplayName: winners[n - 1 - i].displayName });
+    }
+
+    res.json({ round: nextRound, weekNumber: nextWeekNumber, bracket });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }

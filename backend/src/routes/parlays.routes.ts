@@ -67,9 +67,13 @@ router.post("/", requireAuth, async (req: any, res: any) => {
           include: { game: { include: { week: true } } },
         }) as any;
         if (!prop) { res.status(404).json({ error: `Prop ${leg.propId} not found` }); return; }
+        if (prop.game.status === "CANCELLED") { res.status(400).json({ error: "Cannot include bets on cancelled games in parlay" }); return; }
         if (prop.game.week.locked || prop.game.week.resolved) {
           res.status(400).json({ error: "Cannot include locked/resolved props in parlay" });
           return;
+        }
+        if (new Date(prop.game.gameDate) <= new Date()) {
+          res.status(400).json({ error: `Game has already kicked off — cannot include in parlay` }); return;
         }
 
         // Anti-arbitrage within legs: no OVER and UNDER on same prop
@@ -88,9 +92,13 @@ router.post("/", requireAuth, async (req: any, res: any) => {
           include: { game: { include: { week: true } } },
         }) as any;
         if (!gameLine) { res.status(404).json({ error: `GameLine ${leg.gameLineId} not found` }); return; }
+        if (gameLine.game.status === "CANCELLED") { res.status(400).json({ error: "Cannot include bets on cancelled games in parlay" }); return; }
         if (gameLine.game.week.locked || gameLine.game.week.resolved) {
           res.status(400).json({ error: "Cannot include locked/resolved game lines in parlay" });
           return;
+        }
+        if (new Date(gameLine.game.gameDate) <= new Date()) {
+          res.status(400).json({ error: `Game has already kicked off — cannot include in parlay` }); return;
         }
 
         if (seenGameLineIds.has(leg.gameLineId)) {
@@ -145,6 +153,49 @@ router.post("/", requireAuth, async (req: any, res: any) => {
     });
 
     res.status(201).json(parlay);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Cashout a pending parlay before all games have started — full stake refund
+router.post("/:id/cashout", requireAuth, async (req: any, res: any) => {
+  try {
+    const parlay = await prisma.parlay.findUnique({
+      where: { id: req.params.id },
+      include: {
+        legs: {
+          include: {
+            prop: { include: { game: true } },
+            gameLine: { include: { game: true } },
+          },
+        },
+      },
+    }) as any;
+
+    if (!parlay) { res.status(404).json({ error: "Parlay not found" }); return; }
+    if (parlay.userId !== req.userId) { res.status(403).json({ error: "Not your parlay" }); return; }
+    if (parlay.outcome !== "PENDING") { res.status(400).json({ error: "Can only cash out pending parlays" }); return; }
+    if (parlay.cashedOut) { res.status(400).json({ error: "Already cashed out" }); return; }
+
+    // Cashout only if every leg's game hasn't started
+    const now = new Date();
+    for (const leg of parlay.legs) {
+      const game = leg.prop?.game ?? leg.gameLine?.game;
+      if (game && new Date(game.gameDate) <= now) {
+        res.status(400).json({ error: "Cannot cash out — one or more games have already started" }); return;
+      }
+    }
+
+    await prisma.$transaction([
+      prisma.parlay.update({ where: { id: parlay.id }, data: { outcome: "VOID", cashedOut: true } }),
+      prisma.membership.updateMany({
+        where: { userId: parlay.userId, leagueId: parlay.leagueId },
+        data: { balance: { increment: parlay.stake } },
+      }),
+    ]);
+
+    res.json({ message: "Cashed out", refunded: parlay.stake });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }

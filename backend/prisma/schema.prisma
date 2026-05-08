@@ -50,7 +50,9 @@ model League {
   inviteCode         String      @unique
   creatorId          String
   seasonStarted      Boolean     @default(false)
+  startWeek          Int         @default(1)
   regularSeasonWeeks Int         @default(13)
+  playoffWeeks       Int         @default(3)
   playoffSize        Int         @default(4)
   creator            User        @relation("LeagueCreator", fields: [creatorId], references: [id])
   createdAt          DateTime    @default(now())
@@ -62,17 +64,18 @@ model League {
 }
 
 model Matchup {
-  id         String   @id @default(cuid())
-  leagueId   String
-  weekNumber Int
-  homeUserId String
-  awayUserId String
-  homeProfit Int?
-  awayProfit Int?
-  winnerId   String?
-  isTie      Boolean  @default(false)
-  isPlayoff  Boolean  @default(false)
-  createdAt  DateTime @default(now())
+  id           String   @id @default(cuid())
+  leagueId     String
+  weekNumber   Int
+  homeUserId   String
+  awayUserId   String
+  homeProfit   Int?
+  awayProfit   Int?
+  winnerId     String?
+  isTie        Boolean  @default(false)
+  isPlayoff    Boolean  @default(false)
+  playoffRound Int?
+  createdAt    DateTime @default(now())
 
   league   League @relation(fields: [leagueId], references: [id])
   homeUser User   @relation("HomeMatchups", fields: [homeUserId], references: [id])
@@ -112,6 +115,7 @@ model Game {
   homeTeam   String
   awayTeam   String
   gameDate   DateTime
+  status     String     @default("SCHEDULED") // SCHEDULED | LIVE | FINAL | CANCELLED
   externalId String?    @unique
   espnId     String?    @unique
   homeScore  Int?
@@ -144,15 +148,16 @@ model Prop {
 }
 
 model Pick {
-  id        String    @id @default(cuid())
-  userId    String
-  leagueId  String
-  propId    String
-  direction Direction
-  stake     Int
-  odds      Int       @default(-110)
-  outcome   Outcome   @default(PENDING)
-  createdAt DateTime  @default(now())
+  id         String    @id @default(cuid())
+  userId     String
+  leagueId   String
+  propId     String
+  direction  Direction
+  stake      Int
+  odds       Int       @default(-110)
+  outcome    Outcome   @default(PENDING)
+  cashedOut  Boolean   @default(false)
+  createdAt  DateTime  @default(now())
 
   user   User   @relation(fields: [userId], references: [id])
   league League @relation(fields: [leagueId], references: [id])
@@ -185,6 +190,7 @@ model GamePick {
   stake      Int
   odds       Int
   outcome    Outcome  @default(PENDING)
+  cashedOut  Boolean  @default(false)
   createdAt  DateTime @default(now())
 
   user     User     @relation(fields: [userId], references: [id])
@@ -202,6 +208,7 @@ model Parlay {
   totalOdds Int
   payout    Int         // pre-calculated total return on win
   outcome   Outcome     @default(PENDING)
+  cashedOut Boolean     @default(false)
   createdAt DateTime    @default(now())
   legs      ParlayLeg[]
 

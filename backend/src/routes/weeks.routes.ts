@@ -17,8 +17,11 @@ router.post("/", requireAuth, requireAdmin, async (req: any, res: any) => {
       data: { number: Number(number), startDate: new Date(startDate), endDate: new Date(endDate) },
     });
 
+    // Only reset memberships for leagues whose season includes this week
     const leagues = await prisma.league.findMany({ include: { memberships: true } });
     for (const league of leagues) {
+      const maxWeek = league.startWeek + league.regularSeasonWeeks + league.playoffWeeks - 1;
+      if (Number(number) < league.startWeek || Number(number) > maxWeek) continue;
       for (const membership of league.memberships) {
         await prisma.membership.update({
           where: { id: membership.id },
@@ -35,12 +38,26 @@ router.post("/", requireAuth, requireAdmin, async (req: any, res: any) => {
 
 router.get("/", requireAuth, async (req: any, res: any) => {
   try {
-    const { current } = req.query;
+    const { current, leagueId } = req.query;
 
     if (current === "true") {
+      if (leagueId) {
+        // Return the first unresolved week within this league's active range
+        const league = await prisma.league.findUnique({ where: { id: String(leagueId) } });
+        if (!league) { res.status(404).json({ error: "League not found" }); return; }
+        const maxWeek = league.startWeek + league.regularSeasonWeeks + league.playoffWeeks - 1;
+        const week = await prisma.week.findFirst({
+          where: { resolved: false, number: { gte: league.startWeek, lte: maxWeek } },
+          orderBy: { number: "asc" },
+          include: { games: { include: { props: { include: { player: true } }, gameLines: true } } },
+        });
+        res.json(week ? [week] : []);
+        return;
+      }
+
       const week = await prisma.week.findFirst({
         where: { resolved: false },
-        orderBy: { number: "desc" },
+        orderBy: { number: "asc" },
         include: { games: { include: { props: { include: { player: true } }, gameLines: true } } },
       });
       res.json(week ? [week] : []);
@@ -65,6 +82,28 @@ router.get("/:id", requireAuth, async (req: any, res: any) => {
     });
     if (!week) { res.status(404).json({ error: "Week not found" }); return; }
     res.json(week);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.delete("/:id", requireAuth, requireAdmin, async (req: any, res: any) => {
+  try {
+    const week = await prisma.week.findUnique({ where: { id: req.params.id }, include: { games: true } });
+    if (!week) { res.status(404).json({ error: "Week not found" }); return; }
+
+    // Delete in dependency order
+    const gameIds = week.games.map((g) => g.id);
+    await prisma.parlayLeg.deleteMany({ where: { prop: { gameId: { in: gameIds } } } });
+    await prisma.parlayLeg.deleteMany({ where: { gameLine: { gameId: { in: gameIds } } } });
+    await prisma.pick.deleteMany({ where: { prop: { gameId: { in: gameIds } } } });
+    await prisma.gamePick.deleteMany({ where: { gameLine: { gameId: { in: gameIds } } } });
+    await prisma.prop.deleteMany({ where: { gameId: { in: gameIds } } });
+    await prisma.gameLine.deleteMany({ where: { gameId: { in: gameIds } } });
+    await prisma.game.deleteMany({ where: { id: { in: gameIds } } });
+    await prisma.week.delete({ where: { id: req.params.id } });
+
+    res.json({ message: "Week deleted" });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }

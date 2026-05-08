@@ -15,8 +15,13 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
   const [week, setWeek] = useState<any>(null);
   const [members, setMembers] = useState<any[]>([]);
   const [showMembers, setShowMembers] = useState(false);
+  const [showStandings, setShowStandings] = useState(false);
   const [copied, setCopied] = useState(false);
   const [matchup, setMatchup] = useState<any>(null);
+  const [playoffWeekInput, setPlayoffWeekInput] = useState("");
+  const [advanceRound, setAdvanceRound] = useState("");
+  const [advanceWeek, setAdvanceWeek] = useState("");
+  const [playoffMatchups, setPlayoffMatchups] = useState<any[]>([]);
 
   useEffect(() => {
     async function load() {
@@ -35,7 +40,7 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
 
       try {
         const [weeks, board] = await Promise.all([
-          api("/weeks?current=true"),
+          api(`/weeks?current=true&leagueId=${leagueId}`),
           api(`/leagues/${leagueId}/leaderboard`),
         ]);
         const currentWeek = weeks?.[0] ?? null;
@@ -47,6 +52,10 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
           const mine = weekMatchups.find((m: any) => m.homeUserId === id || m.awayUserId === id);
           setMatchup(mine ?? null);
         }
+
+        // Load all playoff matchups
+        const allMatchups = await api(`/leagues/${leagueId}/matchups`);
+        setPlayoffMatchups(allMatchups.filter((m: any) => m.isPlayoff));
       } catch {}
     }
     load();
@@ -67,10 +76,6 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
     setTimeout(() => setCopied(false), 2000);
   }
 
-  const isCreator = league?.creatorId === userId;
-  const myRank = members.findIndex((m) => m.userId === userId) + 1;
-  const myRecord = members.find((m) => m.userId === userId);
-
   async function startSeason() {
     try {
       await api(`/leagues/${leagueId}/season/start`, { method: "POST" });
@@ -80,6 +85,62 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
       try { alert(JSON.parse(err.message).error); } catch { alert(err.message); }
     }
   }
+
+  async function startPlayoffs(e: React.FormEvent) {
+    e.preventDefault();
+    try {
+      const data = await api(`/leagues/${leagueId}/season/playoffs/start`, {
+        method: "POST",
+        body: JSON.stringify({ weekNumber: Number(playoffWeekInput) }),
+      });
+      alert(`Playoffs started! Round 1 matchups created for Week ${data.weekNumber}`);
+      setPlayoffMatchups((prev) => [...prev, ...data.bracket]);
+      setPlayoffWeekInput("");
+    } catch (err: any) {
+      try { alert(JSON.parse(err.message).error); } catch { alert(err.message); }
+    }
+  }
+
+  async function advancePlayoffs(e: React.FormEvent) {
+    e.preventDefault();
+    try {
+      const data = await api(`/leagues/${leagueId}/season/playoffs/advance`, {
+        method: "POST",
+        body: JSON.stringify({ completedRound: Number(advanceRound), nextWeekNumber: Number(advanceWeek) }),
+      });
+      if (data.champion) {
+        alert(`Playoffs complete! Champion: ${data.champion.displayName}`);
+      } else {
+        alert(`Round ${data.round} matchups created for Week ${data.weekNumber}`);
+        setPlayoffMatchups((prev) => [...prev, ...data.bracket]);
+      }
+      setAdvanceRound("");
+      setAdvanceWeek("");
+    } catch (err: any) {
+      try { alert(JSON.parse(err.message).error); } catch { alert(err.message); }
+    }
+  }
+
+  const isCreator = league?.creatorId === userId;
+  const myRank = members.findIndex((m) => m.userId === userId) + 1;
+  const myRecord = members.find((m) => m.userId === userId);
+
+  // Determine season phase
+  const regularSeasonWeeks = league?.regularSeasonWeeks ?? 13;
+  const startWeek = league?.startWeek ?? 1;
+  const playoffStartWeek = startWeek + regularSeasonWeeks;
+  const isPlayoffWeek = week && week.number >= playoffStartWeek;
+  const seasonPhase = !week ? null : isPlayoffWeek ? "Playoffs" : "Regular Season";
+  const leagueWeekNum = week ? week.number - startWeek + 1 : null;
+  const playoffWeekNum = week && isPlayoffWeek ? week.number - playoffStartWeek + 1 : null;
+  const weekLabel = week
+    ? isPlayoffWeek
+      ? `Playoff Week ${playoffWeekNum}`
+      : `League Week ${leagueWeekNum} of ${regularSeasonWeeks}`
+    : null;
+
+  // Max playoff round already generated
+  const maxPlayoffRound = playoffMatchups.length > 0 ? Math.max(...playoffMatchups.map((m) => m.playoffRound ?? 1)) : 0;
 
   if (!league) return <div className="loading">Loading…</div>;
 
@@ -97,33 +158,41 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
         {/* League header */}
         <div style={{ marginBottom: 20 }}>
           <h1>{league.name}</h1>
-          {myRank > 0 && (
-            <div style={{ color: "var(--text-2)", fontSize: "0.85rem", marginTop: 4 }}>
-              Rank #{myRank} of {members.length}
-            </div>
-          )}
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 4 }}>
+            {myRank > 0 && (
+              <span style={{ color: "var(--text-2)", fontSize: "0.85rem" }}>
+                Rank #{myRank} of {members.length}
+              </span>
+            )}
+            {seasonPhase && (
+              <>
+                <span style={{ color: "var(--border-2)" }}>·</span>
+                <span className={`badge ${isPlayoffWeek ? "badge-red" : "badge-green"}`}>{seasonPhase}</span>
+              </>
+            )}
+          </div>
         </div>
 
         {/* Balance hero */}
-        <div className="card-accent" style={{ marginBottom: 10 }}>
+        <div className="card" style={{ marginBottom: 10, borderLeft: "4px solid var(--accent)" }}>
           <div className="row" style={{ alignItems: "flex-start" }}>
             <div>
               <div className="label">Your Balance</div>
-              <div className="balance-big" style={{ marginTop: 4 }}>
+              <div className="balance-big" style={{ marginTop: 4, color: "var(--text)" }}>
                 ${(membership?.balance ?? 0).toLocaleString()}
               </div>
-              <div style={{ marginTop: 8, color: "var(--text-2)", fontSize: "0.8rem" }}>
-                ${league.weeklyAllowance}/week allowance
+              <div style={{ marginTop: 6, color: "var(--text-3)", fontSize: "0.78rem", fontWeight: 600 }}>
+                ${league.weeklyAllowance} / week · {weekLabel ?? "No active week"}
               </div>
             </div>
             {myRecord && (myRecord.wins > 0 || myRecord.losses > 0 || myRecord.ties > 0) && (
               <div style={{ textAlign: "right" }}>
                 <div className="label">Record</div>
-                <div style={{ fontSize: "1.4rem", fontWeight: 900, letterSpacing: "-0.02em", marginTop: 4 }}>
+                <div style={{ fontSize: "1.5rem", fontWeight: 900, letterSpacing: "-0.02em", marginTop: 4 }}>
                   <span style={{ color: "var(--win)" }}>{myRecord.wins}</span>
-                  <span style={{ color: "var(--text-3)" }}>-</span>
+                  <span style={{ color: "var(--text-3)", fontWeight: 400 }}>-</span>
                   <span style={{ color: "var(--loss)" }}>{myRecord.losses}</span>
-                  {myRecord.ties > 0 && <span style={{ color: "var(--text-3)" }}>-{myRecord.ties}</span>}
+                  {myRecord.ties > 0 && <span style={{ color: "var(--text-3)", fontWeight: 400 }}>-{myRecord.ties}</span>}
                 </div>
               </div>
             )}
@@ -133,7 +202,12 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
         {/* Matchup widget */}
         {matchup && (
           <div className="card" style={{ marginBottom: 10 }}>
-            <div className="label" style={{ marginBottom: 8 }}>This Week's Matchup</div>
+            <div className="label" style={{ marginBottom: 8 }}>
+              {matchup.isPlayoff ? "Playoff Matchup" : "This Week's Matchup"}
+              {matchup.isPlayoff && matchup.playoffRound && (
+                <span className="badge badge-red" style={{ marginLeft: 8 }}>Round {matchup.playoffRound}</span>
+              )}
+            </div>
             {(() => {
               const isHome = matchup.homeUserId === userId;
               const me = isHome ? matchup.homeUser : matchup.awayUser;
@@ -179,6 +253,64 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
           </div>
         )}
 
+        {/* Standings table */}
+        <div className="card" style={{ marginBottom: 10, padding: 0, overflow: "hidden" }}>
+          <div
+            className="row"
+            style={{ padding: "12px 16px", cursor: "pointer", borderBottom: showStandings ? "1px solid var(--border)" : "none" }}
+            onClick={() => setShowStandings(!showStandings)}
+          >
+            <div style={{ fontWeight: 700, fontSize: "0.9rem" }}>Standings</div>
+            <span style={{ color: "var(--text-3)", fontSize: "0.85rem" }}>{showStandings ? "▲" : "▼"}</span>
+          </div>
+          {showStandings && (
+            <div>
+              {/* Header row */}
+              <div style={{ display: "grid", gridTemplateColumns: "24px 1fr 60px 80px", padding: "6px 16px", background: "var(--surface-2)", borderBottom: "1px solid var(--border)" }}>
+                <span style={{ fontSize: "0.72rem", color: "var(--text-3)", fontWeight: 700 }}>#</span>
+                <span style={{ fontSize: "0.72rem", color: "var(--text-3)", fontWeight: 700 }}>PLAYER</span>
+                <span style={{ fontSize: "0.72rem", color: "var(--text-3)", fontWeight: 700, textAlign: "center" }}>W-L-T</span>
+                <span style={{ fontSize: "0.72rem", color: "var(--text-3)", fontWeight: 700, textAlign: "right" }}>BALANCE</span>
+              </div>
+              {members.map((m: any) => {
+                const isMe = m.userId === userId;
+                return (
+                  <div
+                    key={m.userId}
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "24px 1fr 60px 80px",
+                      padding: "10px 16px",
+                      borderBottom: "1px solid var(--border)",
+                      background: isMe ? "rgba(204,0,0,0.04)" : "transparent",
+                      alignItems: "center",
+                    }}
+                  >
+                    <span style={{ fontSize: "0.8rem", color: m.rank <= 3 ? "var(--accent)" : "var(--text-3)", fontWeight: m.rank <= 3 ? 800 : 500 }}>
+                      {m.rank}
+                    </span>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <div className="avatar" style={{ width: 26, height: 26, fontSize: "0.65rem", flexShrink: 0 }}>
+                        {m.displayName.slice(0, 2).toUpperCase()}
+                      </div>
+                      <span style={{ fontWeight: isMe ? 700 : 500, fontSize: "0.85rem", color: isMe ? "var(--text)" : "var(--text-2)" }}>
+                        {m.displayName}
+                        {isMe && <span style={{ color: "var(--accent)", marginLeft: 4, fontSize: "0.7rem" }}>you</span>}
+                      </span>
+                    </div>
+                    <span style={{ textAlign: "center", fontSize: "0.82rem", fontWeight: 600, color: "var(--text-2)" }}>
+                      {m.wins}-{m.losses}{m.ties > 0 ? `-${m.ties}` : ""}
+                    </span>
+                    <span style={{ textAlign: "right", fontSize: "0.82rem", fontWeight: 600, color: "var(--text)" }}>
+                      ${m.balance.toLocaleString()}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
         {/* Commissioner panel */}
         {isCreator && (
           <div className="card" style={{ marginBottom: 10 }}>
@@ -196,6 +328,7 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
                 </button>
               </div>
             </div>
+
             {!league.seasonStarted && (
               <div style={{ marginTop: showMembers ? 0 : 12, paddingTop: 12, borderTop: "1px solid var(--border)" }}>
                 <div style={{ color: "var(--text-2)", fontSize: "0.8rem", marginBottom: 8 }}>
@@ -212,14 +345,71 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
                 </button>
               </div>
             )}
+
             {league.seasonStarted && (
               <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--border)" }}>
-                <span className="badge badge-green">Season Active</span>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+                  <span className="badge badge-green">Season Active</span>
+                  <span style={{ fontSize: "0.8rem", color: "var(--text-3)" }}>
+                    {regularSeasonWeeks} reg season · {league.playoffSize} playoff teams
+                  </span>
+                </div>
+
+                {playoffMatchups.length === 0 && (
+                  <form onSubmit={startPlayoffs} style={{ display: "flex", gap: 8 }}>
+                    <input
+                      type="number"
+                      placeholder={`Playoff week # (after wk ${regularSeasonWeeks})`}
+                      value={playoffWeekInput}
+                      onChange={(e) => setPlayoffWeekInput(e.target.value)}
+                      style={{ flex: 1, fontSize: "0.82rem" }}
+                      required
+                    />
+                    <button type="submit" style={{ fontSize: "0.82rem", padding: "10px 14px", whiteSpace: "nowrap" }}>
+                      Start Playoffs →
+                    </button>
+                  </form>
+                )}
+
+                {playoffMatchups.length > 0 && (
+                  <div>
+                    <div style={{ fontWeight: 700, fontSize: "0.85rem", marginBottom: 8, color: "var(--text)" }}>
+                      Playoffs — Round {maxPlayoffRound}
+                    </div>
+                    {playoffMatchups.filter((m) => m.playoffRound === maxPlayoffRound).map((m: any) => (
+                      <div key={m.id} style={{ fontSize: "0.82rem", padding: "6px 0", color: "var(--text-2)", borderBottom: "1px solid var(--border)" }}>
+                        {m.homeUser?.displayName ?? "?"} <span style={{ color: "var(--text-3)" }}>vs</span> {m.awayUser?.displayName ?? "?"}
+                        {m.winnerId && <span style={{ color: "var(--win)", marginLeft: 8, fontWeight: 700 }}>✓</span>}
+                      </div>
+                    ))}
+                    <form onSubmit={advancePlayoffs} style={{ display: "grid", gridTemplateColumns: "1fr 1fr auto", gap: 8, marginTop: 12 }}>
+                      <input
+                        type="number"
+                        placeholder="Completed round #"
+                        value={advanceRound}
+                        onChange={(e) => setAdvanceRound(e.target.value)}
+                        style={{ fontSize: "0.82rem" }}
+                        required
+                      />
+                      <input
+                        type="number"
+                        placeholder="Next week #"
+                        value={advanceWeek}
+                        onChange={(e) => setAdvanceWeek(e.target.value)}
+                        style={{ fontSize: "0.82rem" }}
+                        required
+                      />
+                      <button type="submit" style={{ fontSize: "0.82rem", padding: "10px 14px", whiteSpace: "nowrap" }}>
+                        Advance →
+                      </button>
+                    </form>
+                  </div>
+                )}
               </div>
             )}
+
             {showMembers && (
-              <div>
-                <hr />
+              <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--border)" }}>
                 {members.map((m: any) => (
                   <div key={m.userId} className="row" style={{ marginBottom: 10 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -232,7 +422,7 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
                       </span>
                     </div>
                     {m.userId !== userId && (
-                      <button className="ghost" style={{ fontSize: "0.75rem", padding: "4px 10px", color: "var(--loss)", borderColor: "rgba(255,68,102,0.3)" }} onClick={() => removeMember(m.userId)}>
+                      <button className="ghost" style={{ fontSize: "0.75rem", padding: "4px 10px", color: "var(--loss)", borderColor: "rgba(183,28,28,0.3)" }} onClick={() => removeMember(m.userId)}>
                         Remove
                       </button>
                     )}
@@ -248,27 +438,40 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
         {week ? (
           <div className="card">
             <div className="row" style={{ marginBottom: 16 }}>
-              <div style={{ fontWeight: 800, fontSize: "1rem" }}>Week {week.number}</div>
+              <div style={{ fontWeight: 800, fontSize: "1rem" }}>
+                {weekLabel}
+                {isPlayoffWeek && <span className="badge badge-red" style={{ marginLeft: 8 }}>PLAYOFFS</span>}
+              </div>
               {weekStatus && <span className={`badge ${weekStatusClass}`}>{weekStatus}</span>}
             </div>
 
             {week.games?.length ? week.games.map((game: any) => (
               <div key={game.id} style={{ marginBottom: 16 }}>
-                <div style={{ fontSize: "0.78rem", fontWeight: 700, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 8 }}>
-                  {game.homeTeam} <span style={{ fontWeight: 400 }}>vs</span> {game.awayTeam}
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+                  <div style={{ fontSize: "0.78rem", fontWeight: 700, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
+                    {game.homeTeam} <span style={{ fontWeight: 400 }}>vs</span> {game.awayTeam}
+                  </div>
+                  {game.status === "CANCELLED" && (
+                    <span className="badge badge-red">CANCELLED</span>
+                  )}
+                  {game.status === "FINAL" && (
+                    <span style={{ fontSize: "0.72rem", color: "var(--text-3)", fontWeight: 600 }}>
+                      {game.homeScore}–{game.awayScore}
+                    </span>
+                  )}
                 </div>
                 {game.props?.map((prop: any) => (
-                  <div key={prop.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 12px", background: "var(--surface-2)", borderRadius: 8, marginBottom: 6 }}>
+                  <div key={prop.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "9px 12px", background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 6, marginBottom: 5 }}>
                     <div>
-                      <div style={{ fontWeight: 600, fontSize: "0.9rem" }}>{prop.player?.name}</div>
-                      <div style={{ color: "var(--text-3)", fontSize: "0.75rem", marginTop: 2 }}>
+                      <div style={{ fontWeight: 600, fontSize: "0.88rem", color: "var(--text)" }}>{prop.player?.name}</div>
+                      <div style={{ color: "var(--text-3)", fontSize: "0.73rem", marginTop: 1 }}>
                         {prop.statType.replaceAll("_", " ")} · O/U {prop.line}
                       </div>
                     </div>
                     {prop.result != null ? (
                       <span className="badge badge-green">{prop.result}</span>
                     ) : (
-                      <span style={{ color: "var(--text-3)", fontSize: "0.78rem" }}>Open</span>
+                      <span style={{ color: "var(--text-3)", fontSize: "0.76rem", fontWeight: 600 }}>Pending</span>
                     )}
                   </div>
                 ))}

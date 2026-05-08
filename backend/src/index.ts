@@ -17,6 +17,7 @@ import espnRoutes from "./routes/espn.routes";
 import gamelineRoutes from "./routes/gamelines.routes";
 import gamePickRoutes from "./routes/gamepicks.routes";
 import parlayRoutes from "./routes/parlays.routes";
+import adminRoutes from "./routes/admin.routes";
 
 dotenv.config();
 
@@ -41,6 +42,7 @@ app.use("/espn", espnRoutes);
 app.use("/gamelines", gamelineRoutes);
 app.use("/gamepicks", gamePickRoutes);
 app.use("/parlays", parlayRoutes);
+app.use("/admin", adminRoutes);
 
 app.get("/", (req, res) => {
   res.json({ status: "Playbook backend running" });

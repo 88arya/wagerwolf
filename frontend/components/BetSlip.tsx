@@ -145,7 +145,7 @@ export default function BetSlip({ leagueId }: { leagueId: string }) {
             padding: "10px 18px",
             fontWeight: 800,
             fontSize: "0.88rem",
-            boxShadow: "0 4px 16px rgba(99,102,241,0.5)",
+            boxShadow: "0 4px 16px rgba(204,0,0,0.3)",
             border: "none",
             display: "flex",
             alignItems: "center",

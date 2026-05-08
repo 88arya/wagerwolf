@@ -8,7 +8,7 @@ import { api } from "@/lib/api";
 export default function LeaguesPage() {
   const router = useRouter();
   const [memberships, setMemberships] = useState<any[]>([]);
-  const [form, setForm] = useState({ name: "", weeklyAllowance: "200" });
+  const [form, setForm] = useState({ name: "", weeklyAllowance: "200", startWeek: "1", regularSeasonWeeks: "13", playoffWeeks: "3", playoffSize: "4" });
   const [joinCode, setJoinCode] = useState("");
   const [error, setError] = useState("");
   const [joinError, setJoinError] = useState("");
@@ -33,11 +33,11 @@ export default function LeaguesPage() {
     try {
       const league = await api("/leagues", {
         method: "POST",
-        body: JSON.stringify({ name: form.name, weeklyAllowance: Number(form.weeklyAllowance) }),
+        body: JSON.stringify({ name: form.name, weeklyAllowance: Number(form.weeklyAllowance), startWeek: Number(form.startWeek), regularSeasonWeeks: Number(form.regularSeasonWeeks), playoffWeeks: Number(form.playoffWeeks), playoffSize: Number(form.playoffSize) }),
       });
       await api(`/leagues/${league.id}/join`, { method: "POST", body: JSON.stringify({}) });
       loadMemberships();
-      setForm({ name: "", weeklyAllowance: "200" });
+      setForm({ name: "", weeklyAllowance: "200", startWeek: "1", regularSeasonWeeks: "13", playoffWeeks: "3", playoffSize: "4" });
     } catch (err: any) {
       try { setError(JSON.parse(err.message).error); } catch { setError(err.message); }
     }
@@ -109,15 +109,17 @@ export default function LeaguesPage() {
         <h2>Get Started</h2>
 
         {/* Tab toggle */}
-        <div style={{ display: "flex", background: "var(--surface)", borderRadius: 8, padding: 4, marginBottom: 12 }}>
+        <div style={{ display: "flex", background: "var(--surface-2)", borderRadius: 8, padding: 3, marginBottom: 12, border: "1px solid var(--border)" }}>
           {(["join", "create"] as const).map((t) => (
             <button key={t} onClick={() => setTab(t)} style={{
               flex: 1, padding: "8px 0",
-              background: tab === t ? "var(--surface-3)" : "transparent",
+              background: tab === t ? "var(--surface)" : "transparent",
+              boxShadow: tab === t ? "0 1px 3px rgba(0,0,0,0.1)" : "none",
+              border: tab === t ? "1px solid var(--border)" : "1px solid transparent",
               color: tab === t ? "var(--text)" : "var(--text-2)",
-              border: "none", borderRadius: 6,
+              borderRadius: 6,
               fontWeight: tab === t ? 700 : 500, fontSize: "0.85rem",
-              boxShadow: "none", letterSpacing: "0.01em",
+              letterSpacing: "0.01em",
             }}>
               {t === "join" ? "Join League" : "Create League"}
             </button>
@@ -154,6 +156,44 @@ export default function LeaguesPage() {
               <div>
                 <div className="label">Weekly Allowance ($)</div>
                 <input type="number" placeholder="200" value={form.weeklyAllowance} onChange={(e) => setForm({ ...form, weeklyAllowance: e.target.value })} required />
+              </div>
+              <div>
+                <div className="label">Start on NFL Week</div>
+                <input
+                  type="number"
+                  placeholder="1"
+                  min="1"
+                  max="18"
+                  value={form.startWeek}
+                  onChange={(e) => setForm({ ...form, startWeek: e.target.value })}
+                  required
+                />
+                {(() => {
+                  const sw = Number(form.startWeek) || 1;
+                  const rsw = Number(form.regularSeasonWeeks) || 13;
+                  const pw = Number(form.playoffWeeks) || 3;
+                  const total = sw + rsw + pw - 1;
+                  const over = total > 18;
+                  return (
+                    <div style={{ fontSize: "0.73rem", marginTop: 4, color: over ? "var(--loss)" : "var(--text-3)" }}>
+                      {over ? `⚠ Exceeds 18 weeks (${total})` : `Ends NFL week ${total} · ${18 - total} weeks to spare`}
+                    </div>
+                  );
+                })()}
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
+                <div>
+                  <div className="label">Reg Season Wks</div>
+                  <input type="number" placeholder="13" min="1" max="17" value={form.regularSeasonWeeks} onChange={(e) => setForm({ ...form, regularSeasonWeeks: e.target.value })} required />
+                </div>
+                <div>
+                  <div className="label">Playoff Wks</div>
+                  <input type="number" placeholder="3" min="1" max="5" value={form.playoffWeeks} onChange={(e) => setForm({ ...form, playoffWeeks: e.target.value })} required />
+                </div>
+                <div>
+                  <div className="label">Playoff Teams</div>
+                  <input type="number" placeholder="4" min="2" max="16" value={form.playoffSize} onChange={(e) => setForm({ ...form, playoffSize: e.target.value })} required />
+                </div>
               </div>
               {error && <p className="error">{error}</p>}
               <button type="submit" style={{ width: "100%" }}>Create & Join</button>

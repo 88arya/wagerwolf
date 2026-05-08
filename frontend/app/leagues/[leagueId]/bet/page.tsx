@@ -19,6 +19,7 @@ export default function BetPage({ params }: PageProps<"/leagues/[leagueId]/bet">
   const [gameLines, setGameLines] = useState<any[]>([]);
   const [weekLocked, setWeekLocked] = useState(false);
   const [weekNumber, setWeekNumber] = useState<number | null>(null);
+  const [leagueWeekLabel, setLeagueWeekLabel] = useState<string | null>(null);
   const [tab, setTab] = useState<"props" | "lines">("props");
 
   // Prop straight bets
@@ -40,13 +41,26 @@ export default function BetPage({ params }: PageProps<"/leagues/[leagueId]/bet">
       const { leagueId } = await params;
       setLeagueId(leagueId);
       try {
-        const [weeks, memberships] = await Promise.all([api("/weeks?current=true"), api("/memberships")]);
+        const [weeks, memberships, leagueData] = await Promise.all([
+          api(`/weeks?current=true&leagueId=${leagueId}`),
+          api("/memberships"),
+          api(`/leagues/${leagueId}`),
+        ]);
         const m = memberships.find((m: any) => m.leagueId === leagueId);
         if (m) setBalance(m.balance);
         if (weeks?.length) {
           const week = weeks[0];
           setWeekLocked(week.locked || week.resolved);
           setWeekNumber(week.number);
+          const sw = leagueData?.startWeek ?? 1;
+          const rsw = leagueData?.regularSeasonWeeks ?? 13;
+          const playoffStart = sw + rsw;
+          const isPlayoff = week.number >= playoffStart;
+          setLeagueWeekLabel(
+            isPlayoff
+              ? `Playoff Week ${week.number - playoffStart + 1}`
+              : `League Week ${week.number - sw + 1} of ${rsw}`
+          );
 
           const [existingPicks, existingGamePicks] = await Promise.all([
             api(`/picks?leagueId=${leagueId}`),
@@ -160,7 +174,7 @@ export default function BetPage({ params }: PageProps<"/leagues/[leagueId]/bet">
           <h1>Place Bets</h1>
           {weekNumber && (
             <p className="subtitle">
-              Week {weekNumber} · {weekLocked ? "Locked" : `${remaining} prop${remaining !== 1 ? "s" : ""} available`}
+              {leagueWeekLabel ?? `Week ${weekNumber}`} · {weekLocked ? "Locked" : `${remaining} prop${remaining !== 1 ? "s" : ""} available`}
             </p>
           )}
         </div>
@@ -185,23 +199,25 @@ export default function BetPage({ params }: PageProps<"/leagues/[leagueId]/bet">
         )}
 
         {weekLocked && (
-          <div style={{ background: "var(--loss-bg)", border: "1px solid rgba(255,68,102,0.3)", borderRadius: 10, padding: "12px 16px", marginBottom: 12 }}>
-            <div style={{ color: "var(--loss)", fontWeight: 700, fontSize: "0.9rem" }}>Betting is locked for this week</div>
+          <div style={{ background: "var(--loss-bg)", border: "1px solid rgba(183,28,28,0.25)", borderRadius: 8, padding: "12px 16px", marginBottom: 12 }}>
+            <div style={{ color: "var(--loss)", fontWeight: 700, fontSize: "0.88rem" }}>Betting is locked for this week</div>
           </div>
         )}
 
         {error && <p className="error" style={{ marginBottom: 12 }}>{error}</p>}
 
         {/* Tab toggle */}
-        <div style={{ display: "flex", background: "var(--surface)", borderRadius: 8, padding: 4, marginBottom: 16 }}>
+        <div style={{ display: "flex", background: "var(--surface-2)", borderRadius: 8, padding: 3, marginBottom: 16, border: "1px solid var(--border)" }}>
           {(["props", "lines"] as const).map((t) => (
             <button key={t} onClick={() => setTab(t)} style={{
               flex: 1, padding: "8px 0",
-              background: tab === t ? "var(--surface-3)" : "transparent",
+              background: tab === t ? "var(--surface)" : "transparent",
+              boxShadow: tab === t ? "0 1px 3px rgba(0,0,0,0.1)" : "none",
+              border: tab === t ? "1px solid var(--border)" : "1px solid transparent",
               color: tab === t ? "var(--text)" : "var(--text-2)",
-              border: "none", borderRadius: 6,
+              borderRadius: 6,
               fontWeight: tab === t ? 700 : 500, fontSize: "0.82rem",
-              boxShadow: "none", letterSpacing: "0.03em", textTransform: "capitalize",
+              letterSpacing: "0.03em", textTransform: "capitalize",
             }}>
               {t === "props" ? `Props (${props.length})` : `Game Lines (${gameLines.length})`}
             </button>
