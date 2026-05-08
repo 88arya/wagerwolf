@@ -22,6 +22,10 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
   const [advanceRound, setAdvanceRound] = useState("");
   const [advanceWeek, setAdvanceWeek] = useState("");
   const [playoffMatchups, setPlayoffMatchups] = useState<any[]>([]);
+  const [showSettings, setShowSettings] = useState(false);
+  const [settingsForm, setSettingsForm] = useState({ startWeek: "", regularSeasonWeeks: "", playoffSize: "", consolationWeeks: "" });
+  const [settingsError, setSettingsError] = useState("");
+  const [settingsSaved, setSettingsSaved] = useState(false);
 
   useEffect(() => {
     async function load() {
@@ -37,6 +41,12 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
       ]);
       setMembership(memberships.find((m: any) => m.leagueId === leagueId) ?? null);
       setLeague(leagueData);
+      setSettingsForm({
+        startWeek: String(leagueData.startWeek ?? 1),
+        regularSeasonWeeks: String(leagueData.regularSeasonWeeks ?? 13),
+        playoffSize: String(leagueData.playoffSize ?? 4),
+        consolationWeeks: String(leagueData.consolationWeeks ?? 2),
+      });
 
       try {
         const [weeks, board] = await Promise.all([
@@ -118,6 +128,28 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
       setAdvanceWeek("");
     } catch (err: any) {
       try { alert(JSON.parse(err.message).error); } catch { alert(err.message); }
+    }
+  }
+
+  async function saveSettings(e: React.FormEvent) {
+    e.preventDefault();
+    setSettingsError("");
+    setSettingsSaved(false);
+    try {
+      const updated = await api(`/leagues/${leagueId}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          startWeek: Number(settingsForm.startWeek),
+          regularSeasonWeeks: Number(settingsForm.regularSeasonWeeks),
+          playoffSize: Number(settingsForm.playoffSize),
+          consolationWeeks: Number(settingsForm.consolationWeeks),
+        }),
+      });
+      setLeague(updated);
+      setSettingsSaved(true);
+      setTimeout(() => setSettingsSaved(false), 2500);
+    } catch (err: any) {
+      try { setSettingsError(JSON.parse(err.message).error); } catch { setSettingsError(err.message); }
     }
   }
 
@@ -330,20 +362,111 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
             </div>
 
             {!league.seasonStarted && (
-              <div style={{ marginTop: showMembers ? 0 : 12, paddingTop: 12, borderTop: "1px solid var(--border)" }}>
-                <div style={{ color: "var(--text-2)", fontSize: "0.8rem", marginBottom: 8 }}>
-                  {members.length % 2 !== 0
-                    ? `Need even number of members (currently ${members.length})`
-                    : `${members.length} members ready — start when everyone has joined`}
+              <>
+                {/* Advanced settings */}
+                <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--border)" }}>
+                  <div
+                    className="row"
+                    style={{ cursor: "pointer", marginBottom: showSettings ? 14 : 0 }}
+                    onClick={() => setShowSettings(!showSettings)}
+                  >
+                    <div style={{ fontWeight: 700, fontSize: "0.85rem" }}>League Settings</div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <span style={{ fontSize: "0.75rem", color: "var(--text-3)" }}>
+                        Wk {league.startWeek} · {league.regularSeasonWeeks} reg · {league.playoffSize} playoff
+                      </span>
+                      <span style={{ color: "var(--text-3)", fontSize: "0.85rem" }}>{showSettings ? "▲" : "▼"}</span>
+                    </div>
+                  </div>
+
+                  {showSettings && (() => {
+                    const sw = Number(settingsForm.startWeek) || 1;
+                    const rsw = Number(settingsForm.regularSeasonWeeks) || 13;
+                    const ps = Number(settingsForm.playoffSize) || 4;
+                    const pw = Number.isInteger(Math.log2(ps)) ? Math.log2(ps) : "?";
+                    const endWeek = sw + rsw + (typeof pw === "number" ? pw : 0) - 1;
+                    const overLimit = endWeek > 18;
+                    const maxTeams = league.maxTeams ?? 10;
+                    const validPlayoffSizes = [2, 4, 8, 16].filter((n) => n < maxTeams);
+
+                    return (
+                      <form onSubmit={saveSettings}>
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
+                          <div>
+                            <div className="label">Start Week (NFL)</div>
+                            <input
+                              type="number"
+                              min="1"
+                              max="17"
+                              value={settingsForm.startWeek}
+                              onChange={(e) => setSettingsForm({ ...settingsForm, startWeek: e.target.value })}
+                              required
+                            />
+                          </div>
+                          <div>
+                            <div className="label">Reg Season Weeks</div>
+                            <input
+                              type="number"
+                              min="1"
+                              value={settingsForm.regularSeasonWeeks}
+                              onChange={(e) => setSettingsForm({ ...settingsForm, regularSeasonWeeks: e.target.value })}
+                              required
+                            />
+                          </div>
+                          <div>
+                            <div className="label">Playoff Teams</div>
+                            <select
+                              value={settingsForm.playoffSize}
+                              onChange={(e) => setSettingsForm({ ...settingsForm, playoffSize: e.target.value })}
+                            >
+                              {validPlayoffSizes.map((n) => (
+                                <option key={n} value={n}>{n} teams</option>
+                              ))}
+                            </select>
+                          </div>
+                          <div>
+                            <div className="label">Consolation Weeks</div>
+                            <input
+                              type="number"
+                              min="1"
+                              value={settingsForm.consolationWeeks}
+                              onChange={(e) => setSettingsForm({ ...settingsForm, consolationWeeks: e.target.value })}
+                              required
+                            />
+                          </div>
+                        </div>
+
+                        <div style={{ fontSize: "0.75rem", color: overLimit ? "var(--loss)" : "var(--text-3)", marginBottom: 10 }}>
+                          {overLimit
+                            ? `⚠ Season ends NFL week ${endWeek}, exceeds week 18`
+                            : `Ends NFL week ${endWeek} · ${league.maxTeams - ps} consolation teams · ${pw} playoff weeks`}
+                        </div>
+
+                        {settingsError && <p className="error" style={{ marginBottom: 8 }}>{settingsError}</p>}
+                        <button type="submit" className="secondary" style={{ width: "100%", fontSize: "0.82rem", padding: "9px" }}>
+                          {settingsSaved ? "✓ Saved" : "Save Settings"}
+                        </button>
+                      </form>
+                    );
+                  })()}
                 </div>
-                <button
-                  onClick={startSeason}
-                  disabled={members.length < 2 || members.length % 2 !== 0}
-                  style={{ width: "100%", padding: "12px" }}
-                >
-                  Start Season →
-                </button>
-              </div>
+
+                {/* Start season */}
+                <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--border)" }}>
+                  <div style={{ color: "var(--text-2)", fontSize: "0.8rem", marginBottom: 8 }}>
+                    {members.length % 2 !== 0
+                      ? `Need even number of members (currently ${members.length})`
+                      : `${members.length} members ready — start when everyone has joined`}
+                  </div>
+                  <button
+                    onClick={startSeason}
+                    disabled={members.length < 2 || members.length % 2 !== 0}
+                    style={{ width: "100%", padding: "12px" }}
+                  >
+                    Start Season →
+                  </button>
+                </div>
+              </>
             )}
 
             {league.seasonStarted && (

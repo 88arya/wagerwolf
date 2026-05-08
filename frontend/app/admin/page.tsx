@@ -9,7 +9,7 @@ const STAT_TYPES = ["PASSING_YARDS", "RUSHING_YARDS", "RECEIVING_YARDS", "TOUCHD
 
 export default function AdminPage() {
   const router = useRouter();
-  const [tab, setTab] = useState<"players" | "schedule" | "resolve">("schedule");
+  const [tab, setTab] = useState<"players" | "schedule" | "resolve" | "leagues">("schedule");
 
   const [players, setPlayers] = useState<any[]>([]);
   const [playerForm, setPlayerForm] = useState({ name: "", team: "", position: "" });
@@ -28,6 +28,8 @@ export default function AdminPage() {
   const [resolveProps, setResolveProps] = useState<any[]>([]);
   const [results, setResults] = useState<Record<string, string>>({});
 
+  const [allLeagues, setAllLeagues] = useState<any[]>([]);
+
   const [msg, setMsg] = useState("");
   const [error, setError] = useState("");
 
@@ -36,7 +38,14 @@ export default function AdminPage() {
     if (localStorage.getItem("isAdmin") !== "true") { router.push("/leagues"); return; }
     loadPlayers();
     loadWeeks();
+    loadAllLeagues();
   }, []);
+
+  async function loadAllLeagues() {
+    try { setAllLeagues(await api("/admin/leagues")); } catch (err: any) {
+      try { flash(JSON.parse(err.message).error, true); } catch { flash(err.message, true); }
+    }
+  }
 
   async function loadPlayers() {
     try { setPlayers(await api("/players")); } catch {}
@@ -167,7 +176,17 @@ export default function AdminPage() {
     if (!confirm("Delete ALL leagues, memberships, picks, and matchups? This cannot be undone.")) return;
     try {
       await api("/admin/leagues/delete-all", { method: "POST" });
+      setAllLeagues([]);
       flash("All leagues deleted");
+    } catch (err: any) { try { flash(JSON.parse(err.message).error, true); } catch { flash(err.message, true); } }
+  }
+
+  async function deleteLeague(leagueId: string, name: string) {
+    if (!confirm(`Delete "${name}"? All picks, memberships, and matchups will be removed.`)) return;
+    try {
+      await api(`/leagues/${leagueId}`, { method: "DELETE" });
+      setAllLeagues((prev) => prev.filter((l) => l.id !== leagueId));
+      flash(`League "${name}" deleted`);
     } catch (err: any) { try { flash(JSON.parse(err.message).error, true); } catch { flash(err.message, true); } }
   }
 
@@ -195,7 +214,7 @@ export default function AdminPage() {
     } catch (err: any) { try { flash(JSON.parse(err.message).error, true); } catch { flash(err.message, true); } }
   }
 
-  const TABS = ["schedule", "resolve", "players"] as const;
+  const TABS = ["schedule", "resolve", "players", "leagues"] as const;
 
   return (
     <>
@@ -474,6 +493,40 @@ export default function AdminPage() {
                 </button>
               </form>
             )}
+          </>
+        )}
+
+        {/* ── Leagues ── */}
+        {tab === "leagues" && (
+          <>
+            <h2>All Leagues ({allLeagues.length})</h2>
+            {allLeagues.length === 0 && (
+              <div className="card">
+                <div className="empty" style={{ padding: "24px 0" }}>
+                  <div className="empty-icon">🏆</div>
+                  <div className="empty-text">No leagues exist</div>
+                </div>
+              </div>
+            )}
+            {allLeagues.map((l: any) => (
+              <div key={l.id} className="card" style={{ marginBottom: 8 }}>
+                <div className="row">
+                  <div>
+                    <div style={{ fontWeight: 700, fontSize: "0.95rem" }}>{l.name}</div>
+                    <div style={{ color: "var(--text-3)", fontSize: "0.75rem", marginTop: 2 }}>
+                      {l._count?.memberships ?? 0} members · ${l.weeklyAllowance}/wk · code {l.inviteCode}
+                    </div>
+                  </div>
+                  <button
+                    className="ghost"
+                    style={{ fontSize: "0.75rem", padding: "5px 12px", color: "var(--loss)", borderColor: "rgba(183,28,28,0.3)", flexShrink: 0 }}
+                    onClick={() => deleteLeague(l.id, l.name)}
+                  >
+                    Delete
+                  </button>
+                </div>
+              </div>
+            ))}
           </>
         )}
 

@@ -50,10 +50,13 @@ model League {
   inviteCode         String      @unique
   creatorId          String
   seasonStarted      Boolean     @default(false)
+  maxTeams           Int         @default(10)
   startWeek          Int         @default(1)
   regularSeasonWeeks Int         @default(13)
   playoffWeeks       Int         @default(3)
   playoffSize        Int         @default(4)
+  consolationTeams   Int         @default(6)
+  consolationWeeks   Int         @default(2)
   creator            User        @relation("LeagueCreator", fields: [creatorId], references: [id])
   createdAt          DateTime    @default(now())
   memberships        Membership[]

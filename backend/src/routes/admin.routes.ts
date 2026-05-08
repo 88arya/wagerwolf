@@ -4,6 +4,18 @@ import { requireAuth, requireAdmin } from "../middleware/auth";
 
 const router = Router();
 
+router.get("/leagues", requireAuth, requireAdmin, async (req: any, res: any) => {
+  try {
+    const leagues = await prisma.league.findMany({
+      orderBy: { createdAt: "desc" },
+      include: { _count: { select: { memberships: true } } },
+    });
+    res.json(leagues);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 router.post("/leagues/delete-all", requireAuth, requireAdmin, async (req: any, res: any) => {
   try {
     await prisma.parlayLeg.deleteMany({});

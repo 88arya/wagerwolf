@@ -5,10 +5,24 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { api } from "@/lib/api";
 
+const NFL_CITIES = [
+  "Arizona", "Atlanta", "Baltimore", "Buffalo", "Carolina", "Chicago",
+  "Cincinnati", "Cleveland", "Dallas", "Denver", "Detroit", "Green Bay",
+  "Houston", "Indianapolis", "Jacksonville", "Kansas City", "Las Vegas",
+  "Los Angeles", "Miami", "Minnesota", "New England", "New Orleans",
+  "New York", "Philadelphia", "Pittsburgh", "San Francisco", "Seattle",
+  "Tampa Bay", "Tennessee", "Washington",
+];
+
+function randomLeagueName() {
+  const city = NFL_CITIES[Math.floor(Math.random() * NFL_CITIES.length)];
+  return `${city} ${new Date().getFullYear()} League`;
+}
+
 export default function LeaguesPage() {
   const router = useRouter();
   const [memberships, setMemberships] = useState<any[]>([]);
-  const [form, setForm] = useState({ name: "", weeklyAllowance: "200", startWeek: "1", regularSeasonWeeks: "13", playoffWeeks: "3", playoffSize: "4" });
+  const [form, setForm] = useState({ name: "", weeklyAllowance: "300", maxTeams: "10" });
   const [joinCode, setJoinCode] = useState("");
   const [error, setError] = useState("");
   const [joinError, setJoinError] = useState("");
@@ -20,6 +34,7 @@ export default function LeaguesPage() {
     if (!localStorage.getItem("token")) { router.push("/"); return; }
     setIsAdmin(localStorage.getItem("isAdmin") === "true");
     setDisplayName(localStorage.getItem("displayName") ?? "");
+    setForm((f) => ({ ...f, name: randomLeagueName() }));
     loadMemberships();
   }, []);
 
@@ -33,11 +48,15 @@ export default function LeaguesPage() {
     try {
       const league = await api("/leagues", {
         method: "POST",
-        body: JSON.stringify({ name: form.name, weeklyAllowance: Number(form.weeklyAllowance), startWeek: Number(form.startWeek), regularSeasonWeeks: Number(form.regularSeasonWeeks), playoffWeeks: Number(form.playoffWeeks), playoffSize: Number(form.playoffSize) }),
+        body: JSON.stringify({
+          name: form.name,
+          weeklyAllowance: Number(form.weeklyAllowance),
+          maxTeams: Number(form.maxTeams),
+        }),
       });
       await api(`/leagues/${league.id}/join`, { method: "POST", body: JSON.stringify({}) });
       loadMemberships();
-      setForm({ name: "", weeklyAllowance: "200", startWeek: "1", regularSeasonWeeks: "13", playoffWeeks: "3", playoffSize: "4" });
+      setForm({ name: randomLeagueName(), weeklyAllowance: "300", maxTeams: "10" });
     } catch (err: any) {
       try { setError(JSON.parse(err.message).error); } catch { setError(err.message); }
     }
@@ -56,6 +75,14 @@ export default function LeaguesPage() {
   }
 
   const initials = displayName.slice(0, 2).toUpperCase();
+
+  const teamOptions = [4, 6, 8, 10, 12, 14, 16, 18, 20];
+
+  // Preview computed settings for the create form
+  const mt = Number(form.maxTeams) || 10;
+  const ps = mt >= 4 ? Math.pow(2, Math.floor(Math.log2(mt - 1))) : 2;
+  const pw = Math.log2(ps);
+  const ct = mt - ps;
 
   return (
     <>
@@ -108,7 +135,6 @@ export default function LeaguesPage() {
 
         <h2>Get Started</h2>
 
-        {/* Tab toggle */}
         <div style={{ display: "flex", background: "var(--surface-2)", borderRadius: 8, padding: 3, marginBottom: 12, border: "1px solid var(--border)" }}>
           {(["join", "create"] as const).map((t) => (
             <button key={t} onClick={() => setTab(t)} style={{
@@ -151,50 +177,48 @@ export default function LeaguesPage() {
             <form className="form" onSubmit={createLeague}>
               <div>
                 <div className="label">League Name</div>
-                <input placeholder="Sunday Funday" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required />
-              </div>
-              <div>
-                <div className="label">Weekly Allowance ($)</div>
-                <input type="number" placeholder="200" value={form.weeklyAllowance} onChange={(e) => setForm({ ...form, weeklyAllowance: e.target.value })} required />
-              </div>
-              <div>
-                <div className="label">Start on NFL Week</div>
                 <input
-                  type="number"
-                  placeholder="1"
-                  min="1"
-                  max="18"
-                  value={form.startWeek}
-                  onChange={(e) => setForm({ ...form, startWeek: e.target.value })}
+                  value={form.name}
+                  onChange={(e) => setForm({ ...form, name: e.target.value })}
                   required
                 />
-                {(() => {
-                  const sw = Number(form.startWeek) || 1;
-                  const rsw = Number(form.regularSeasonWeeks) || 13;
-                  const pw = Number(form.playoffWeeks) || 3;
-                  const total = sw + rsw + pw - 1;
-                  const over = total > 18;
-                  return (
-                    <div style={{ fontSize: "0.73rem", marginTop: 4, color: over ? "var(--loss)" : "var(--text-3)" }}>
-                      {over ? `⚠ Exceeds 18 weeks (${total})` : `Ends NFL week ${total} · ${18 - total} weeks to spare`}
-                    </div>
-                  );
-                })()}
               </div>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
+
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
                 <div>
-                  <div className="label">Reg Season Wks</div>
-                  <input type="number" placeholder="13" min="1" max="17" value={form.regularSeasonWeeks} onChange={(e) => setForm({ ...form, regularSeasonWeeks: e.target.value })} required />
+                  <div className="label">Teams</div>
+                  <select value={form.maxTeams} onChange={(e) => setForm({ ...form, maxTeams: e.target.value })}>
+                    {teamOptions.map((n) => (
+                      <option key={n} value={n}>{n} teams</option>
+                    ))}
+                  </select>
                 </div>
                 <div>
-                  <div className="label">Playoff Wks</div>
-                  <input type="number" placeholder="3" min="1" max="5" value={form.playoffWeeks} onChange={(e) => setForm({ ...form, playoffWeeks: e.target.value })} required />
-                </div>
-                <div>
-                  <div className="label">Playoff Teams</div>
-                  <input type="number" placeholder="4" min="2" max="16" value={form.playoffSize} onChange={(e) => setForm({ ...form, playoffSize: e.target.value })} required />
+                  <div className="label">Weekly Allowance</div>
+                  <input
+                    type="number"
+                    min="25"
+                    step="25"
+                    value={form.weeklyAllowance}
+                    onChange={(e) => setForm({ ...form, weeklyAllowance: e.target.value })}
+                    required
+                  />
                 </div>
               </div>
+
+              {/* Auto-computed settings preview */}
+              <div style={{ background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 8, padding: "10px 14px" }}>
+                <div style={{ fontSize: "0.72rem", color: "var(--text-3)", fontWeight: 700, marginBottom: 6, letterSpacing: "0.06em" }}>
+                  AUTO SETTINGS (adjustable after creation)
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "4px 16px", fontSize: "0.8rem", color: "var(--text-2)" }}>
+                  <span>Playoff teams: <strong style={{ color: "var(--text)" }}>{ps}</strong></span>
+                  <span>Playoff weeks: <strong style={{ color: "var(--text)" }}>{pw}</strong></span>
+                  <span>Consolation teams: <strong style={{ color: "var(--text)" }}>{ct}</strong></span>
+                  <span>Consolation weeks: <strong style={{ color: "var(--text)" }}>2</strong></span>
+                </div>
+              </div>
+
               {error && <p className="error">{error}</p>}
               <button type="submit" style={{ width: "100%" }}>Create & Join</button>
             </form>
