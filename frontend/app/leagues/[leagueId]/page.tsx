@@ -22,6 +22,10 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
   const [advanceRound, setAdvanceRound] = useState("");
   const [advanceWeek, setAdvanceWeek] = useState("");
   const [playoffMatchups, setPlayoffMatchups] = useState<any[]>([]);
+  const [consolationMatchups, setConsolationMatchups] = useState<any[]>([]);
+  const [consolationWeekInput, setConsolationWeekInput] = useState("");
+  const [consolationAdvanceRound, setConsolationAdvanceRound] = useState("");
+  const [consolationAdvanceWeek, setConsolationAdvanceWeek] = useState("");
   const [showSettings, setShowSettings] = useState(false);
   const [settingsForm, setSettingsForm] = useState({ startWeek: "", regularSeasonWeeks: "", playoffSize: "", consolationWeeks: "", maxPublicPlayers: "" });
   const [settingsError, setSettingsError] = useState("");
@@ -70,9 +74,10 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
           setMatchup(mine ?? null);
         }
 
-        // Load all playoff matchups
+        // Load all playoff and consolation matchups
         const allMatchups = await api(`/leagues/${leagueId}/matchups`);
         setPlayoffMatchups(allMatchups.filter((m: any) => m.isPlayoff));
+        setConsolationMatchups(allMatchups.filter((m: any) => m.isConsolation));
       } catch {}
     }
     load();
@@ -138,6 +143,41 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
     }
   }
 
+  async function startConsolation(e: React.FormEvent) {
+    e.preventDefault();
+    try {
+      const data = await api(`/leagues/${leagueId}/season/consolation/start`, {
+        method: "POST",
+        body: JSON.stringify({ weekNumber: Number(consolationWeekInput) }),
+      });
+      alert(`Consolation bracket started! Round 1 matchups created for Week ${data.weekNumber}`);
+      setConsolationMatchups((prev) => [...prev, ...data.bracket]);
+      setConsolationWeekInput("");
+    } catch (err: any) {
+      try { alert(JSON.parse(err.message).error); } catch { alert(err.message); }
+    }
+  }
+
+  async function advanceConsolation(e: React.FormEvent) {
+    e.preventDefault();
+    try {
+      const data = await api(`/leagues/${leagueId}/season/consolation/advance`, {
+        method: "POST",
+        body: JSON.stringify({ completedRound: Number(consolationAdvanceRound), nextWeekNumber: Number(consolationAdvanceWeek) }),
+      });
+      if (data.winner) {
+        alert(`Consolation complete! Winner: ${data.winner.displayName}`);
+      } else {
+        alert(`Consolation Round ${data.round} matchups created for Week ${data.weekNumber}`);
+        setConsolationMatchups((prev) => [...prev, ...data.bracket]);
+      }
+      setConsolationAdvanceRound("");
+      setConsolationAdvanceWeek("");
+    } catch (err: any) {
+      try { alert(JSON.parse(err.message).error); } catch { alert(err.message); }
+    }
+  }
+
   async function saveSettings(e: React.FormEvent) {
     e.preventDefault();
     setSettingsError("");
@@ -176,6 +216,16 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
     try {
       await api(`/leagues/${leagueId}/members/${memberId}`, { method: "DELETE" });
       setPendingMembers((prev) => prev.filter((m) => m.userId !== memberId));
+    } catch (err: any) {
+      try { alert(JSON.parse(err.message).error); } catch { alert(err.message); }
+    }
+  }
+
+  async function leaveLeague() {
+    if (!confirm(`Leave "${league?.name}"?`)) return;
+    try {
+      await api(`/leagues/${leagueId}/leave`, { method: "POST", body: JSON.stringify({}) });
+      router.push("/leagues");
     } catch (err: any) {
       try { alert(JSON.parse(err.message).error); } catch { alert(err.message); }
     }
@@ -242,6 +292,21 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
             )}
           </div>
         </div>
+
+        {/* Champion banner */}
+        {league.seasonEnded && (
+          <div className="card" style={{ marginBottom: 10, background: "linear-gradient(135deg, rgba(204,0,0,0.08), rgba(204,0,0,0.02))", borderColor: "var(--accent)" }}>
+            <div style={{ textAlign: "center", padding: "8px 0" }}>
+              <div style={{ fontSize: "1.5rem", marginBottom: 6 }}>🏆</div>
+              <div style={{ fontWeight: 800, fontSize: "1rem", color: "var(--accent)", marginBottom: 2 }}>Season Complete</div>
+              <div style={{ color: "var(--text-2)", fontSize: "0.88rem" }}>
+                Champion: <span style={{ fontWeight: 700, color: "var(--text)" }}>
+                  {members.find((m) => m.userId === league.championId)?.displayName ?? "—"}
+                </span>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Balance hero */}
         <div className="card" style={{ marginBottom: 10, borderLeft: "4px solid var(--accent)" }}>
@@ -568,7 +633,7 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
               </>
             )}
 
-            {league.seasonStarted && (
+            {league.seasonStarted && !league.seasonEnded && (
               <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--border)" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
                   <span className="badge badge-green">Season Active</span>
@@ -627,6 +692,73 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
                     </form>
                   </div>
                 )}
+              </div>
+            )}
+
+            {league.seasonEnded && (
+              <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--border)" }}>
+                <span className="badge">Season Complete</span>
+              </div>
+            )}
+
+            {/* Consolation bracket — available once season starts, independent of playoffs */}
+            {league.seasonStarted && !league.seasonEnded && league.consolationTeams >= 2 && (
+              <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--border)" }}>
+                <div style={{ fontWeight: 700, fontSize: "0.85rem", marginBottom: 10, color: "var(--text-2)" }}>
+                  Consolation ({league.consolationTeams} teams)
+                </div>
+
+                {consolationMatchups.length === 0 && (
+                  <form onSubmit={startConsolation} style={{ display: "flex", gap: 8 }}>
+                    <input
+                      type="number"
+                      placeholder="Start week #"
+                      value={consolationWeekInput}
+                      onChange={(e) => setConsolationWeekInput(e.target.value)}
+                      style={{ flex: 1, fontSize: "0.82rem" }}
+                      required
+                    />
+                    <button type="submit" style={{ fontSize: "0.82rem", padding: "10px 14px", whiteSpace: "nowrap" }}>
+                      Start →
+                    </button>
+                  </form>
+                )}
+
+                {consolationMatchups.length > 0 && (() => {
+                  const maxRound = Math.max(...consolationMatchups.map((m) => m.playoffRound ?? 1));
+                  return (
+                    <div>
+                      <div style={{ fontSize: "0.8rem", color: "var(--text-3)", marginBottom: 6 }}>Round {maxRound}</div>
+                      {consolationMatchups.filter((m) => m.playoffRound === maxRound).map((m: any) => (
+                        <div key={m.id} style={{ fontSize: "0.82rem", padding: "6px 0", color: "var(--text-2)", borderBottom: "1px solid var(--border)" }}>
+                          {m.homeUser?.displayName ?? "?"} <span style={{ color: "var(--text-3)" }}>vs</span> {m.awayUser?.displayName ?? "?"}
+                          {m.winnerId && <span style={{ color: "var(--win)", marginLeft: 8, fontWeight: 700 }}>✓</span>}
+                        </div>
+                      ))}
+                      <form onSubmit={advanceConsolation} style={{ display: "grid", gridTemplateColumns: "1fr 1fr auto", gap: 8, marginTop: 10 }}>
+                        <input
+                          type="number"
+                          placeholder="Completed round"
+                          value={consolationAdvanceRound}
+                          onChange={(e) => setConsolationAdvanceRound(e.target.value)}
+                          style={{ fontSize: "0.82rem" }}
+                          required
+                        />
+                        <input
+                          type="number"
+                          placeholder="Next week #"
+                          value={consolationAdvanceWeek}
+                          onChange={(e) => setConsolationAdvanceWeek(e.target.value)}
+                          style={{ fontSize: "0.82rem" }}
+                          required
+                        />
+                        <button type="submit" style={{ fontSize: "0.82rem", padding: "10px 14px", whiteSpace: "nowrap" }}>
+                          Advance →
+                        </button>
+                      </form>
+                    </div>
+                  );
+                })()}
               </div>
             )}
 
@@ -715,6 +847,18 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
           <Link href={`/leagues/${leagueId}/bet`}>
             <button style={{ width: "100%", marginTop: 4, padding: "15px" }}>Place Bets →</button>
           </Link>
+        )}
+
+        {!isCreator && !league.seasonStarted && membership && (
+          <div style={{ marginTop: 24, paddingTop: 16, borderTop: "1px solid var(--border)" }}>
+            <button
+              className="ghost"
+              style={{ width: "100%", fontSize: "0.82rem", padding: "9px", color: "var(--loss)", borderColor: "rgba(183,28,28,0.3)" }}
+              onClick={leaveLeague}
+            >
+              Leave League
+            </button>
+          </div>
         )}
       </div>
 

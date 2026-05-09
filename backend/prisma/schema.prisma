@@ -55,6 +55,8 @@ model League {
   inviteCode         String      @unique
   creatorId          String
   seasonStarted      Boolean     @default(false)
+  seasonEnded        Boolean     @default(false)
+  championId         String?
   isPublic           Boolean     @default(false)
   maxTeams           Int         @default(10)
   startWeek          Int         @default(1)
@@ -83,8 +85,9 @@ model Matchup {
   awayProfit   Int?
   winnerId     String?
   isTie        Boolean  @default(false)
-  isBye        Boolean  @default(false)
-  isPlayoff    Boolean  @default(false)
+  isBye          Boolean  @default(false)
+  isPlayoff      Boolean  @default(false)
+  isConsolation  Boolean  @default(false)
   playoffRound Int?
   createdAt    DateTime @default(now())
 

@@ -98,9 +98,16 @@ router.post("/members/:memberId/accept", requireAuth, async (req: any, res: any)
     if (!league) { res.status(404).json({ error: "League not found" }); return; }
     if (league.creatorId !== req.userId) { res.status(403).json({ error: "Commissioner only" }); return; }
 
+    const maxWeek = league.startWeek + league.regularSeasonWeeks + league.playoffWeeks - 1;
+    const activeWeek = await prisma.week.findFirst({
+      where: { resolved: false, number: { gte: league.startWeek, lte: maxWeek } },
+      orderBy: { number: "asc" },
+    });
+    const initialBalance = activeWeek ? league.weeklyAllowance : 0;
+
     const result = await prisma.membership.updateMany({
       where: { userId: memberId, leagueId, status: "PENDING" },
-      data: { status: "ACTIVE" },
+      data: { status: "ACTIVE", balance: initialBalance },
     });
     if (result.count === 0) { res.status(404).json({ error: "No pending request found" }); return; }
 
@@ -129,6 +136,26 @@ router.delete("/members/:memberId", requireAuth, async (req: any, res: any) => {
 
     await prisma.membership.deleteMany({ where: { userId: memberId, leagueId } });
     res.json({ message: "Member removed" });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Member leaves their own league (not commissioner, before season starts)
+router.post("/leave", requireAuth, async (req: any, res: any) => {
+  try {
+    const { id: leagueId } = req.params;
+    const userId = req.userId;
+
+    const league = await prisma.league.findUnique({ where: { id: leagueId } });
+    if (!league) { res.status(404).json({ error: "League not found" }); return; }
+    if (league.creatorId === userId) { res.status(400).json({ error: "Commissioner cannot leave the league" }); return; }
+    if (league.seasonStarted) { res.status(400).json({ error: "Cannot leave after season has started" }); return; }
+
+    const deleted = await prisma.membership.deleteMany({ where: { userId, leagueId } });
+    if (deleted.count === 0) { res.status(404).json({ error: "Not a member of this league" }); return; }
+
+    res.json({ message: "Left league" });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }

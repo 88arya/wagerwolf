@@ -4,6 +4,46 @@ import { requireAuth } from "../middleware/auth";
 
 const router = Router();
 
+async function ensureOpenPublicLeague(creatorId: string) {
+  const open = await prisma.league.findFirst({
+    where: { isPublic: true, seasonStarted: false },
+    include: { memberships: { where: { status: "ACTIVE" }, select: { id: true } } },
+  }) as any;
+  if (open && open.memberships.length < open.maxTeams) return;
+
+  const count = await prisma.league.count({ where: { isPublic: true } });
+  const playoffSize = 6;
+  const playoffWeeks = Math.ceil(Math.log2(playoffSize));
+  const maxTeams = 10;
+
+  const firstUnresolved = await prisma.week.findFirst({ where: { resolved: false }, orderBy: { number: "asc" } });
+  let startWeek = 1;
+  if (firstUnresolved) startWeek = firstUnresolved.number === 1 ? 2 : firstUnresolved.number;
+  const regularSeasonWeeks = Math.max(1, 18 - startWeek - playoffWeeks + 1);
+
+  let inviteCode = Math.random().toString(36).substring(2, 8).toUpperCase();
+  while (await prisma.league.findUnique({ where: { inviteCode } })) {
+    inviteCode = Math.random().toString(36).substring(2, 8).toUpperCase();
+  }
+
+  await prisma.league.create({
+    data: {
+      name: `Public League ${count + 1}`,
+      weeklyAllowance: 300,
+      inviteCode,
+      creatorId,
+      isPublic: true,
+      maxTeams,
+      startWeek,
+      regularSeasonWeeks,
+      playoffWeeks,
+      playoffSize,
+      consolationTeams: maxTeams - playoffSize,
+      consolationWeeks: 2,
+    },
+  });
+}
+
 // Active memberships only (shown in "My Leagues" list)
 router.get("/", requireAuth, async (req: any, res: any) => {
   try {
@@ -83,9 +123,23 @@ router.post("/join-public", requireAuth, async (req: any, res: any) => {
 
     if (availablePublic.length > 0) {
       const league = availablePublic[0];
-      const membership = await prisma.membership.create({
-        data: { userId: req.userId, leagueId: league.id, balance: 0, status: "ACTIVE", isPublicFill: false },
+      const maxWeek = league.startWeek + league.regularSeasonWeeks + league.playoffWeeks - 1;
+      const activeWeek = await prisma.week.findFirst({
+        where: { resolved: false, number: { gte: league.startWeek, lte: maxWeek } },
+        orderBy: { number: "asc" },
       });
+      const membership = await prisma.membership.create({
+        data: { userId: req.userId, leagueId: league.id, balance: activeWeek ? league.weeklyAllowance : 0, status: "ACTIVE", isPublicFill: false },
+      });
+      // If this join filled the public league, ensure another is open
+      const freshLeague = await prisma.league.findUnique({
+        where: { id: league.id },
+        include: { memberships: { where: { status: "ACTIVE" }, select: { id: true } } },
+      }) as any;
+      if (freshLeague && freshLeague.memberships.length >= freshLeague.maxTeams) {
+        await ensureOpenPublicLeague(league.creatorId);
+      }
+
       res.status(201).json({ ...membership, league });
       return;
     }
@@ -115,8 +169,13 @@ router.post("/join-public", requireAuth, async (req: any, res: any) => {
     }
 
     const league = availableFill[0];
+    const maxWeekFill = league.startWeek + league.regularSeasonWeeks + league.playoffWeeks - 1;
+    const activeWeekFill = await prisma.week.findFirst({
+      where: { resolved: false, number: { gte: league.startWeek, lte: maxWeekFill } },
+      orderBy: { number: "asc" },
+    });
     const membership = await prisma.membership.create({
-      data: { userId: req.userId, leagueId: league.id, balance: 0, status: "ACTIVE", isPublicFill: true },
+      data: { userId: req.userId, leagueId: league.id, balance: activeWeekFill ? league.weeklyAllowance : 0, status: "ACTIVE", isPublicFill: true },
     });
 
     res.status(201).json({ ...membership, league });

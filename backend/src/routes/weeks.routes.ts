@@ -128,7 +128,10 @@ router.post("/:id/lock", requireAuth, requireAdmin, async (req: any, res: any) =
 router.post("/:id/resolve", requireAuth, requireAdmin, async (req: any, res: any) => {
   try {
     const { id: weekId } = req.params;
-    const { results } = req.body as { results: { propId: string; result: number }[] };
+    const { results, gameLineResults } = req.body as {
+      results: { propId: string; result: number }[];
+      gameLineResults?: { gameLineId: string; result: boolean }[];
+    };
 
     const week = await prisma.week.findUnique({ where: { id: weekId } });
     if (!week) { res.status(404).json({ error: "Week not found" }); return; }
@@ -136,6 +139,12 @@ router.post("/:id/resolve", requireAuth, requireAdmin, async (req: any, res: any
 
     for (const { propId, result } of results) {
       await prisma.prop.update({ where: { id: propId }, data: { result } });
+    }
+
+    if (gameLineResults) {
+      for (const { gameLineId, result } of gameLineResults) {
+        await prisma.gameLine.update({ where: { id: gameLineId }, data: { result } });
+      }
     }
 
     const picks = await prisma.pick.findMany({
@@ -160,6 +169,72 @@ router.post("/:id/resolve", requireAuth, requireAdmin, async (req: any, res: any
           data: won
             ? { balance: { increment: Number(pick.stake) + profit }, weeklyWinnings: { increment: profit } }
             : { weeklyWinnings: { decrement: Number(pick.stake) } },
+        }),
+      ]);
+    }
+
+    // Resolve game picks for game lines that now have a result
+    const gamePicks = await prisma.gamePick.findMany({
+      where: { outcome: "PENDING", gameLine: { game: { weekId } } },
+      include: { gameLine: true },
+    }) as any[];
+
+    for (const gp of gamePicks) {
+      if (gp.gameLine.result == null) continue;
+      const won = gp.gameLine.result === true;
+      const profit = won ? calcProfit(Number(gp.stake), gp.odds) : 0;
+
+      await prisma.$transaction([
+        prisma.gamePick.update({ where: { id: gp.id }, data: { outcome: won ? "WIN" : "LOSS" } }),
+        prisma.membership.updateMany({
+          where: { userId: gp.userId, leagueId: gp.leagueId },
+          data: won
+            ? { balance: { increment: Number(gp.stake) + profit }, weeklyWinnings: { increment: profit } }
+            : { weeklyWinnings: { decrement: Number(gp.stake) } },
+        }),
+      ]);
+    }
+
+    // Resolve parlay legs and parlays
+    const parlays = await prisma.parlay.findMany({
+      where: { outcome: "PENDING" },
+      include: { legs: { include: { prop: true, gameLine: true } } },
+    }) as any[];
+
+    for (const parlay of parlays) {
+      let allSettled = true;
+      let anyLoss = false;
+
+      for (const leg of parlay.legs) {
+        if (leg.outcome !== "PENDING") continue;
+
+        let legResult: boolean | null = null;
+        if (leg.prop && leg.prop.result != null) {
+          legResult =
+            (leg.direction === "OVER" && leg.prop.result > leg.prop.line) ||
+            (leg.direction === "UNDER" && leg.prop.result < leg.prop.line);
+        } else if (leg.gameLine && leg.gameLine.result != null) {
+          legResult = leg.gameLine.result === true;
+        }
+
+        if (legResult == null) { allSettled = false; continue; }
+
+        await prisma.parlayLeg.update({ where: { id: leg.id }, data: { outcome: legResult ? "WIN" : "LOSS" } });
+        if (!legResult) anyLoss = true;
+      }
+
+      if (!allSettled) continue;
+
+      const parlayWon = !anyLoss;
+      const profit = parlayWon ? parlay.payout - parlay.stake : 0;
+
+      await prisma.$transaction([
+        prisma.parlay.update({ where: { id: parlay.id }, data: { outcome: parlayWon ? "WIN" : "LOSS" } }),
+        prisma.membership.updateMany({
+          where: { userId: parlay.userId, leagueId: parlay.leagueId },
+          data: parlayWon
+            ? { balance: { increment: parlay.payout }, weeklyWinnings: { increment: profit } }
+            : { weeklyWinnings: { decrement: parlay.stake } },
         }),
       ]);
     }
