@@ -19,6 +19,11 @@ enum Direction {
   UNDER
 }
 
+enum MembershipStatus {
+  PENDING
+  ACTIVE
+}
+
 enum Outcome {
   PENDING
   WIN
@@ -50,6 +55,7 @@ model League {
   inviteCode         String      @unique
   creatorId          String
   seasonStarted      Boolean     @default(false)
+  isPublic           Boolean     @default(false)
   maxTeams           Int         @default(10)
   startWeek          Int         @default(1)
   regularSeasonWeeks Int         @default(13)
@@ -57,6 +63,7 @@ model League {
   playoffSize        Int         @default(4)
   consolationTeams   Int         @default(6)
   consolationWeeks   Int         @default(2)
+  maxPublicPlayers   Int         @default(0)
   creator            User        @relation("LeagueCreator", fields: [creatorId], references: [id])
   createdAt          DateTime    @default(now())
   memberships        Membership[]
@@ -76,6 +83,7 @@ model Matchup {
   awayProfit   Int?
   winnerId     String?
   isTie        Boolean  @default(false)
+  isBye        Boolean  @default(false)
   isPlayoff    Boolean  @default(false)
   playoffRound Int?
   createdAt    DateTime @default(now())
@@ -88,12 +96,14 @@ model Matchup {
 }
 
 model Membership {
-  id             String   @id @default(cuid())
+  id             String           @id @default(cuid())
   userId         String
   leagueId       String
   balance        Int
-  weeklyWinnings Int      @default(0)
-  createdAt      DateTime @default(now())
+  weeklyWinnings Int              @default(0)
+  status         MembershipStatus @default(ACTIVE)
+  isPublicFill   Boolean          @default(false)
+  createdAt      DateTime         @default(now())
 
   user   User   @relation(fields: [userId], references: [id])
   league League @relation(fields: [leagueId], references: [id])

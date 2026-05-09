@@ -18,7 +18,7 @@ router.post("/", requireAuth, requireAdmin, async (req: any, res: any) => {
     });
 
     // Only reset memberships for leagues whose season includes this week
-    const leagues = await prisma.league.findMany({ include: { memberships: true } });
+    const leagues = await prisma.league.findMany({ include: { memberships: { where: { status: "ACTIVE" } } } });
     for (const league of leagues) {
       const maxWeek = league.startWeek + league.regularSeasonWeeks + league.playoffWeeks - 1;
       if (Number(number) < league.startWeek || Number(number) > maxWeek) continue;

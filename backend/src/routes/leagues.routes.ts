@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { prisma } from "../db/prisma";
-import { requireAuth, requireAdmin } from "../middleware/auth";
+import { requireAuth } from "../middleware/auth";
 
 const router = Router();
 
@@ -8,7 +8,6 @@ function generateInviteCode(): string {
   return Math.random().toString(36).substring(2, 8).toUpperCase();
 }
 
-// Largest power of 2 strictly less than n (e.g. 10→8, 8→4, 4→2)
 function nextSmallestPowerOf2(n: number): number {
   return Math.pow(2, Math.floor(Math.log2(n - 1)));
 }
@@ -16,8 +15,8 @@ function nextSmallestPowerOf2(n: number): number {
 router.post("/", requireAuth, async (req: any, res: any) => {
   try {
     const { name, weeklyAllowance, maxTeams } = req.body;
-    if (!name || !weeklyAllowance || Number(weeklyAllowance) <= 0) {
-      res.status(400).json({ error: "Name and a positive weekly allowance are required" });
+    if (!name || !weeklyAllowance || Number(weeklyAllowance) <= 0 || Number(weeklyAllowance) >= 1000000) {
+      res.status(400).json({ error: "Weekly allowance must be between $1 and $999,999" });
       return;
     }
 
@@ -28,11 +27,9 @@ router.post("/", requireAuth, async (req: any, res: any) => {
     }
 
     const ps = nextSmallestPowerOf2(mt);
-    const pw = Math.log2(ps);
+    const pw = Math.ceil(Math.log2(ps));
     const consolationTeams = mt - ps;
-    const consolationWeeks = 2;
 
-    // Default startWeek: first unresolved NFL week; if week 1 is live use week 2; offseason → week 1
     const firstUnresolved = await prisma.week.findFirst({
       where: { resolved: false },
       orderBy: { number: "asc" },
@@ -42,7 +39,6 @@ router.post("/", requireAuth, async (req: any, res: any) => {
       sw = firstUnresolved.number === 1 ? 2 : firstUnresolved.number;
     }
 
-    // Fill up to NFL week 18 by default
     const rsw = Math.max(1, 18 - sw - pw + 1);
 
     let inviteCode = generateInviteCode();
@@ -56,13 +52,14 @@ router.post("/", requireAuth, async (req: any, res: any) => {
         weeklyAllowance: Number(weeklyAllowance),
         inviteCode,
         creatorId: req.userId,
+        isPublic: false,
         maxTeams: mt,
         startWeek: sw,
         regularSeasonWeeks: rsw,
         playoffWeeks: pw,
         playoffSize: ps,
         consolationTeams,
-        consolationWeeks,
+        consolationWeeks: 2,
       },
     });
 
@@ -72,7 +69,8 @@ router.post("/", requireAuth, async (req: any, res: any) => {
   }
 });
 
-// Commissioner updates advanced settings (only before season starts)
+// Commissioner updates settings (only before season starts)
+// Accepts any playoff size ≥ 2 (non-power-of-2 handled by bye bracket system)
 router.patch("/:id", requireAuth, async (req: any, res: any) => {
   try {
     const league = await prisma.league.findUnique({ where: { id: req.params.id } });
@@ -80,12 +78,13 @@ router.patch("/:id", requireAuth, async (req: any, res: any) => {
     if (league.creatorId !== req.userId) { res.status(403).json({ error: "Commissioner only" }); return; }
     if (league.seasonStarted) { res.status(400).json({ error: "Cannot change settings after season has started" }); return; }
 
-    const { startWeek, regularSeasonWeeks, playoffSize, consolationWeeks } = req.body;
+    const { startWeek, regularSeasonWeeks, playoffSize, consolationWeeks, maxPublicPlayers } = req.body;
 
     const sw = startWeek !== undefined ? Number(startWeek) : league.startWeek;
     const rsw = regularSeasonWeeks !== undefined ? Number(regularSeasonWeeks) : league.regularSeasonWeeks;
     const ps = playoffSize !== undefined ? Number(playoffSize) : league.playoffSize;
     const cw = consolationWeeks !== undefined ? Number(consolationWeeks) : league.consolationWeeks;
+    const mpp = maxPublicPlayers !== undefined ? Number(maxPublicPlayers) : league.maxPublicPlayers;
 
     if (sw < 1 || sw > 17) {
       res.status(400).json({ error: "Start week must be between 1 and 17" }); return;
@@ -93,11 +92,14 @@ router.patch("/:id", requireAuth, async (req: any, res: any) => {
     if (rsw < 1) {
       res.status(400).json({ error: "Regular season must have at least 1 week" }); return;
     }
-    if (!Number.isInteger(Math.log2(ps)) || ps < 2 || ps >= league.maxTeams) {
-      res.status(400).json({ error: `Playoff teams must be a power of 2 less than ${league.maxTeams}` }); return;
+    if (ps < 2 || ps >= league.maxTeams) {
+      res.status(400).json({ error: `Playoff teams must be between 2 and ${league.maxTeams - 1}` }); return;
+    }
+    if (mpp < 0 || mpp > league.maxTeams) {
+      res.status(400).json({ error: "maxPublicPlayers must be between 0 and maxTeams" }); return;
     }
 
-    const pw = Math.log2(ps);
+    const pw = Math.ceil(Math.log2(ps));
     const endWeek = sw + rsw + pw - 1;
     if (endWeek > 18) {
       res.status(400).json({ error: `Season would end on NFL week ${endWeek}, which exceeds week 18` }); return;
@@ -112,6 +114,7 @@ router.patch("/:id", requireAuth, async (req: any, res: any) => {
         playoffSize: ps,
         consolationTeams: league.maxTeams - ps,
         consolationWeeks: cw,
+        maxPublicPlayers: mpp,
       },
     });
 
@@ -143,10 +146,25 @@ router.get("/:id", requireAuth, async (req: any, res: any) => {
   }
 });
 
-router.delete("/:id", requireAuth, requireAdmin, async (req: any, res: any) => {
+// Admin can always delete; commissioner can only delete if they're the sole member
+router.delete("/:id", requireAuth, async (req: any, res: any) => {
   try {
     const league = await prisma.league.findUnique({ where: { id: req.params.id } });
     if (!league) { res.status(404).json({ error: "League not found" }); return; }
+
+    const isAdminUser = req.isAdmin;
+    const isCreator = league.creatorId === req.userId;
+
+    if (!isAdminUser && !isCreator) {
+      res.status(403).json({ error: "Only the commissioner or an admin can delete a league" }); return;
+    }
+
+    if (!isAdminUser) {
+      const memberCount = await prisma.membership.count({ where: { leagueId: req.params.id } });
+      if (memberCount > 1) {
+        res.status(400).json({ error: "Cannot delete a league with other members" }); return;
+      }
+    }
 
     const parlays = await prisma.parlay.findMany({ where: { leagueId: req.params.id }, select: { id: true } });
     const parlayIds = parlays.map((p) => p.id);

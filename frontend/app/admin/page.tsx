@@ -172,6 +172,14 @@ export default function AdminPage() {
     } catch (err: any) { try { flash(JSON.parse(err.message).error, true); } catch { flash(err.message, true); } }
   }
 
+  async function createPublicLeague() {
+    try {
+      const league = await api("/admin/leagues/public", { method: "POST", body: JSON.stringify({}) });
+      await loadAllLeagues();
+      flash(`Public league "${league.name}" created`);
+    } catch (err: any) { try { flash(JSON.parse(err.message).error, true); } catch { flash(err.message, true); } }
+  }
+
   async function deleteAllLeagues() {
     if (!confirm("Delete ALL leagues, memberships, picks, and matchups? This cannot be undone.")) return;
     try {
@@ -499,7 +507,12 @@ export default function AdminPage() {
         {/* ── Leagues ── */}
         {tab === "leagues" && (
           <>
-            <h2>All Leagues ({allLeagues.length})</h2>
+            <div className="row" style={{ marginBottom: 12, alignItems: "center" }}>
+              <h2 style={{ margin: 0 }}>All Leagues ({allLeagues.length})</h2>
+              <button className="secondary" style={{ fontSize: "0.78rem", padding: "7px 14px", flexShrink: 0 }} onClick={createPublicLeague}>
+                + Public League
+              </button>
+            </div>
             {allLeagues.length === 0 && (
               <div className="card">
                 <div className="empty" style={{ padding: "24px 0" }}>

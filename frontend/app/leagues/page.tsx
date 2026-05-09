@@ -22,10 +22,12 @@ function randomLeagueName() {
 export default function LeaguesPage() {
   const router = useRouter();
   const [memberships, setMemberships] = useState<any[]>([]);
+  const [pendingMemberships, setPendingMemberships] = useState<any[]>([]);
   const [form, setForm] = useState({ name: "", weeklyAllowance: "300", maxTeams: "10" });
   const [joinCode, setJoinCode] = useState("");
   const [error, setError] = useState("");
   const [joinError, setJoinError] = useState("");
+  const [joinSuccess, setJoinSuccess] = useState("");
   const [isAdmin, setIsAdmin] = useState(false);
   const [tab, setTab] = useState<"create" | "join">("join");
   const [displayName, setDisplayName] = useState("");
@@ -40,6 +42,7 @@ export default function LeaguesPage() {
 
   async function loadMemberships() {
     try { setMemberships(await api("/memberships")); } catch {}
+    try { setPendingMemberships(await api("/memberships/pending")); } catch {}
   }
 
   async function createLeague(e: React.FormEvent) {
@@ -55,34 +58,40 @@ export default function LeaguesPage() {
         }),
       });
       await api(`/leagues/${league.id}/join`, { method: "POST", body: JSON.stringify({}) });
-      loadMemberships();
-      setForm({ name: randomLeagueName(), weeklyAllowance: "300", maxTeams: "10" });
+      router.push(`/leagues/${league.id}`);
     } catch (err: any) {
       try { setError(JSON.parse(err.message).error); } catch { setError(err.message); }
     }
   }
 
-  async function joinLeague(e: React.FormEvent) {
+  async function joinPublic() {
+    setJoinError("");
+    setJoinSuccess("");
+    try {
+      const result = await api("/memberships/join-public", { method: "POST", body: JSON.stringify({}) });
+      setJoinSuccess(`Joined "${result.league?.name}"!`);
+      loadMemberships();
+    } catch (err: any) {
+      try { setJoinError(JSON.parse(err.message).error); } catch { setJoinError(err.message); }
+    }
+  }
+
+  async function joinPrivate(e: React.FormEvent) {
     e.preventDefault();
     setJoinError("");
+    setJoinSuccess("");
     try {
-      await api("/memberships/join-by-code", { method: "POST", body: JSON.stringify({ code: joinCode }) });
-      loadMemberships();
+      const result = await api("/memberships/join-by-code", { method: "POST", body: JSON.stringify({ code: joinCode }) });
+      setJoinSuccess(`Request sent to "${result.league?.name}" — waiting for commissioner approval.`);
       setJoinCode("");
+      loadMemberships();
     } catch (err: any) {
       try { setJoinError(JSON.parse(err.message).error); } catch { setJoinError(err.message); }
     }
   }
 
   const initials = displayName.slice(0, 2).toUpperCase();
-
   const teamOptions = [4, 6, 8, 10, 12, 14, 16, 18, 20];
-
-  // Preview computed settings for the create form
-  const mt = Number(form.maxTeams) || 10;
-  const ps = mt >= 4 ? Math.pow(2, Math.floor(Math.log2(mt - 1))) : 2;
-  const pw = Math.log2(ps);
-  const ct = mt - ps;
 
   return (
     <>
@@ -110,12 +119,9 @@ export default function LeaguesPage() {
                     <div>
                       <div style={{ fontWeight: 700, fontSize: "1rem", marginBottom: 4 }}>{m.league?.name}</div>
                       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                        <span className="pill" style={{ fontSize: "0.75rem" }}>
-                          ${m.balance.toLocaleString()}
-                        </span>
-                        <span style={{ color: "var(--text-3)", fontSize: "0.75rem" }}>
-                          ${m.league?.weeklyAllowance}/wk
-                        </span>
+                        <span className="pill" style={{ fontSize: "0.75rem" }}>${m.balance.toLocaleString()}</span>
+                        <span style={{ color: "var(--text-3)", fontSize: "0.75rem" }}>${m.league?.weeklyAllowance}/wk</span>
+                        {m.league?.isPublic && <span className="badge badge-green" style={{ fontSize: "0.68rem" }}>Public</span>}
                       </div>
                     </div>
                     <span style={{ color: "var(--accent)", fontSize: "1.1rem" }}>›</span>
@@ -133,11 +139,31 @@ export default function LeaguesPage() {
           </div>
         )}
 
+        {/* Pending requests */}
+        {pendingMemberships.length > 0 && (
+          <>
+            <div style={{ fontSize: "0.75rem", fontWeight: 700, color: "var(--text-3)", letterSpacing: "0.06em", margin: "16px 0 8px" }}>
+              PENDING APPROVAL
+            </div>
+            {pendingMemberships.map((m: any) => (
+              <div key={m.id} className="card" style={{ marginBottom: 8, borderColor: "var(--border)", opacity: 0.7 }}>
+                <div className="row">
+                  <div>
+                    <div style={{ fontWeight: 700, fontSize: "1rem", marginBottom: 4 }}>{m.league?.name}</div>
+                    <span style={{ fontSize: "0.75rem", color: "var(--text-3)" }}>Waiting for commissioner to approve</span>
+                  </div>
+                  <span className="badge" style={{ fontSize: "0.7rem" }}>Pending</span>
+                </div>
+              </div>
+            ))}
+          </>
+        )}
+
         <h2>Get Started</h2>
 
         <div style={{ display: "flex", background: "var(--surface-2)", borderRadius: 8, padding: 3, marginBottom: 12, border: "1px solid var(--border)" }}>
           {(["join", "create"] as const).map((t) => (
-            <button key={t} onClick={() => setTab(t)} style={{
+            <button key={t} onClick={() => { setTab(t); setJoinError(""); setJoinSuccess(""); setError(""); }} style={{
               flex: 1, padding: "8px 0",
               background: tab === t ? "var(--surface)" : "transparent",
               boxShadow: tab === t ? "0 1px 3px rgba(0,0,0,0.1)" : "none",
@@ -154,9 +180,26 @@ export default function LeaguesPage() {
 
         {tab === "join" && (
           <div className="card">
-            <form className="form" onSubmit={joinLeague}>
-              <div>
-                <div className="label">Invite Code</div>
+            {/* Public league */}
+            <div style={{ marginBottom: 20 }}>
+              <div style={{ fontWeight: 700, fontSize: "0.9rem", marginBottom: 4 }}>Public League</div>
+              <div style={{ color: "var(--text-3)", fontSize: "0.8rem", marginBottom: 12 }}>
+                Get automatically placed in an open public league.
+              </div>
+              <button style={{ width: "100%" }} onClick={joinPublic}>
+                Join a Public League
+              </button>
+            </div>
+
+            <div style={{ borderTop: "1px solid var(--border)", margin: "0 -20px", marginBottom: 20 }} />
+
+            {/* Private league */}
+            <div>
+              <div style={{ fontWeight: 700, fontSize: "0.9rem", marginBottom: 4 }}>Private League</div>
+              <div style={{ color: "var(--text-3)", fontSize: "0.8rem", marginBottom: 12 }}>
+                Enter an invite code — your request goes to the commissioner for approval.
+              </div>
+              <form className="form" onSubmit={joinPrivate} style={{ gap: 10 }}>
                 <input
                   placeholder="ABC123"
                   value={joinCode}
@@ -165,10 +208,12 @@ export default function LeaguesPage() {
                   style={{ textTransform: "uppercase", letterSpacing: "0.3em", fontSize: "1.2rem", fontWeight: 700, textAlign: "center" }}
                   required
                 />
-              </div>
-              {joinError && <p className="error">{joinError}</p>}
-              <button type="submit" style={{ width: "100%" }}>Join League</button>
-            </form>
+                <button type="submit" style={{ width: "100%" }}>Request to Join</button>
+              </form>
+            </div>
+
+            {joinError && <p className="error" style={{ marginTop: 12 }}>{joinError}</p>}
+            {joinSuccess && <p style={{ marginTop: 12, color: "var(--win)", fontSize: "0.85rem", fontWeight: 600 }}>{joinSuccess}</p>}
           </div>
         )}
 
@@ -177,50 +222,47 @@ export default function LeaguesPage() {
             <form className="form" onSubmit={createLeague}>
               <div>
                 <div className="label">League Name</div>
+                <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required />
+              </div>
+
+              <div>
+                <div className="label">Teams</div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 2 }}>
+                  {teamOptions.map((n) => (
+                    <button
+                      key={n}
+                      type="button"
+                      onClick={() => setForm({ ...form, maxTeams: String(n) })}
+                      style={{
+                        padding: "6px 12px",
+                        borderRadius: 6,
+                        fontSize: "0.85rem",
+                        fontWeight: Number(form.maxTeams) === n ? 700 : 500,
+                        background: Number(form.maxTeams) === n ? "var(--accent)" : "var(--surface-2)",
+                        color: Number(form.maxTeams) === n ? "#fff" : "var(--text-2)",
+                        border: Number(form.maxTeams) === n ? "1px solid var(--accent)" : "1px solid var(--border)",
+                      }}
+                    >
+                      {n}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <div className="label">Weekly Allowance ($)</div>
                 <input
-                  value={form.name}
-                  onChange={(e) => setForm({ ...form, name: e.target.value })}
+                  type="number"
+                  min="1"
+                  max="999999"
+                  value={form.weeklyAllowance}
+                  onChange={(e) => setForm({ ...form, weeklyAllowance: e.target.value })}
                   required
                 />
               </div>
 
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-                <div>
-                  <div className="label">Teams</div>
-                  <select value={form.maxTeams} onChange={(e) => setForm({ ...form, maxTeams: e.target.value })}>
-                    {teamOptions.map((n) => (
-                      <option key={n} value={n}>{n} teams</option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <div className="label">Weekly Allowance</div>
-                  <input
-                    type="number"
-                    min="25"
-                    step="25"
-                    value={form.weeklyAllowance}
-                    onChange={(e) => setForm({ ...form, weeklyAllowance: e.target.value })}
-                    required
-                  />
-                </div>
-              </div>
-
-              {/* Auto-computed settings preview */}
-              <div style={{ background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 8, padding: "10px 14px" }}>
-                <div style={{ fontSize: "0.72rem", color: "var(--text-3)", fontWeight: 700, marginBottom: 6, letterSpacing: "0.06em" }}>
-                  AUTO SETTINGS (adjustable after creation)
-                </div>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "4px 16px", fontSize: "0.8rem", color: "var(--text-2)" }}>
-                  <span>Playoff teams: <strong style={{ color: "var(--text)" }}>{ps}</strong></span>
-                  <span>Playoff weeks: <strong style={{ color: "var(--text)" }}>{pw}</strong></span>
-                  <span>Consolation teams: <strong style={{ color: "var(--text)" }}>{ct}</strong></span>
-                  <span>Consolation weeks: <strong style={{ color: "var(--text)" }}>2</strong></span>
-                </div>
-              </div>
-
               {error && <p className="error">{error}</p>}
-              <button type="submit" style={{ width: "100%" }}>Create & Join</button>
+              <button type="submit" style={{ width: "100%" }}>Create</button>
             </form>
           </div>
         )}

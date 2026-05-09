@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -23,9 +23,10 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
   const [advanceWeek, setAdvanceWeek] = useState("");
   const [playoffMatchups, setPlayoffMatchups] = useState<any[]>([]);
   const [showSettings, setShowSettings] = useState(false);
-  const [settingsForm, setSettingsForm] = useState({ startWeek: "", regularSeasonWeeks: "", playoffSize: "", consolationWeeks: "" });
+  const [settingsForm, setSettingsForm] = useState({ startWeek: "", regularSeasonWeeks: "", playoffSize: "", consolationWeeks: "", maxPublicPlayers: "" });
   const [settingsError, setSettingsError] = useState("");
   const [settingsSaved, setSettingsSaved] = useState(false);
+  const [pendingMembers, setPendingMembers] = useState<any[]>([]);
 
   useEffect(() => {
     async function load() {
@@ -41,11 +42,17 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
       ]);
       setMembership(memberships.find((m: any) => m.leagueId === leagueId) ?? null);
       setLeague(leagueData);
+
+      if (leagueData.creatorId === id) {
+        try { setPendingMembers(await api(`/leagues/${leagueId}/pending`)); } catch {}
+      }
+
       setSettingsForm({
         startWeek: String(leagueData.startWeek ?? 1),
         regularSeasonWeeks: String(leagueData.regularSeasonWeeks ?? 13),
         playoffSize: String(leagueData.playoffSize ?? 4),
         consolationWeeks: String(leagueData.consolationWeeks ?? 2),
+        maxPublicPlayers: String(leagueData.maxPublicPlayers ?? 0),
       });
 
       try {
@@ -143,6 +150,7 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
           regularSeasonWeeks: Number(settingsForm.regularSeasonWeeks),
           playoffSize: Number(settingsForm.playoffSize),
           consolationWeeks: Number(settingsForm.consolationWeeks),
+          maxPublicPlayers: Number(settingsForm.maxPublicPlayers),
         }),
       });
       setLeague(updated);
@@ -150,6 +158,36 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
       setTimeout(() => setSettingsSaved(false), 2500);
     } catch (err: any) {
       try { setSettingsError(JSON.parse(err.message).error); } catch { setSettingsError(err.message); }
+    }
+  }
+
+  async function acceptMember(memberId: string) {
+    try {
+      await api(`/leagues/${leagueId}/members/${memberId}/accept`, { method: "POST", body: JSON.stringify({}) });
+      setPendingMembers((prev) => prev.filter((m) => m.userId !== memberId));
+      const board = await api(`/leagues/${leagueId}/leaderboard`);
+      setMembers(board);
+    } catch (err: any) {
+      try { alert(JSON.parse(err.message).error); } catch { alert(err.message); }
+    }
+  }
+
+  async function rejectMember(memberId: string) {
+    try {
+      await api(`/leagues/${leagueId}/members/${memberId}`, { method: "DELETE" });
+      setPendingMembers((prev) => prev.filter((m) => m.userId !== memberId));
+    } catch (err: any) {
+      try { alert(JSON.parse(err.message).error); } catch { alert(err.message); }
+    }
+  }
+
+  async function deleteLeague() {
+    if (!confirm(`Delete "${league?.name}"? This cannot be undone.`)) return;
+    try {
+      await api(`/leagues/${leagueId}`, { method: "DELETE" });
+      router.push("/leagues");
+    } catch (err: any) {
+      try { alert(JSON.parse(err.message).error); } catch { alert(err.message); }
     }
   }
 
@@ -361,6 +399,41 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
               </div>
             </div>
 
+            {/* Pending join requests */}
+            {pendingMembers.length > 0 && (
+              <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--border)" }}>
+                <div style={{ fontSize: "0.75rem", fontWeight: 700, color: "var(--text-3)", letterSpacing: "0.06em", marginBottom: 10 }}>
+                  PENDING REQUESTS ({pendingMembers.length})
+                </div>
+                {pendingMembers.map((m: any) => (
+                  <div key={m.userId} className="row" style={{ marginBottom: 10 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <div className="avatar" style={{ width: 28, height: 28, fontSize: "0.65rem" }}>
+                        {m.user.displayName.slice(0, 2).toUpperCase()}
+                      </div>
+                      <span style={{ fontWeight: 600, fontSize: "0.88rem" }}>{m.user.displayName}</span>
+                    </div>
+                    <div style={{ display: "flex", gap: 6 }}>
+                      <button
+                        className="secondary"
+                        style={{ fontSize: "0.75rem", padding: "5px 12px", color: "var(--win)", borderColor: "rgba(34,197,94,0.4)" }}
+                        onClick={() => acceptMember(m.userId)}
+                      >
+                        Accept
+                      </button>
+                      <button
+                        className="ghost"
+                        style={{ fontSize: "0.75rem", padding: "5px 12px", color: "var(--loss)", borderColor: "rgba(183,28,28,0.3)" }}
+                        onClick={() => rejectMember(m.userId)}
+                      >
+                        Reject
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
             {!league.seasonStarted && (
               <>
                 {/* Advanced settings */}
@@ -383,11 +456,10 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
                     const sw = Number(settingsForm.startWeek) || 1;
                     const rsw = Number(settingsForm.regularSeasonWeeks) || 13;
                     const ps = Number(settingsForm.playoffSize) || 4;
-                    const pw = Number.isInteger(Math.log2(ps)) ? Math.log2(ps) : "?";
-                    const endWeek = sw + rsw + (typeof pw === "number" ? pw : 0) - 1;
+                    const pw = ps >= 2 ? Math.ceil(Math.log2(ps)) : 0;
+                    const endWeek = sw + rsw + pw - 1;
                     const overLimit = endWeek > 18;
                     const maxTeams = league.maxTeams ?? 10;
-                    const validPlayoffSizes = [2, 4, 8, 16].filter((n) => n < maxTeams);
 
                     return (
                       <form onSubmit={saveSettings}>
@@ -415,14 +487,14 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
                           </div>
                           <div>
                             <div className="label">Playoff Teams</div>
-                            <select
+                            <input
+                              type="number"
+                              min="2"
+                              max={maxTeams - 1}
                               value={settingsForm.playoffSize}
                               onChange={(e) => setSettingsForm({ ...settingsForm, playoffSize: e.target.value })}
-                            >
-                              {validPlayoffSizes.map((n) => (
-                                <option key={n} value={n}>{n} teams</option>
-                              ))}
-                            </select>
+                              required
+                            />
                           </div>
                           <div>
                             <div className="label">Consolation Weeks</div>
@@ -433,6 +505,20 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
                               onChange={(e) => setSettingsForm({ ...settingsForm, consolationWeeks: e.target.value })}
                               required
                             />
+                          </div>
+                          <div style={{ gridColumn: "span 2" }}>
+                            <div className="label">Public Fill Slots</div>
+                            <input
+                              type="number"
+                              min="0"
+                              max={maxTeams}
+                              placeholder="0 = invite-only"
+                              value={settingsForm.maxPublicPlayers}
+                              onChange={(e) => setSettingsForm({ ...settingsForm, maxPublicPlayers: e.target.value })}
+                            />
+                            <div style={{ fontSize: "0.72rem", color: "var(--text-3)", marginTop: 4 }}>
+                              Allow up to this many random players to fill open slots
+                            </div>
                           </div>
                         </div>
 
@@ -466,6 +552,19 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
                     Start Season →
                   </button>
                 </div>
+
+                {/* Delete league — only when commissioner is sole member */}
+                {members.length <= 1 && (
+                  <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--border)" }}>
+                    <button
+                      className="ghost"
+                      style={{ width: "100%", fontSize: "0.82rem", padding: "9px", color: "var(--loss)", borderColor: "rgba(183,28,28,0.3)" }}
+                      onClick={deleteLeague}
+                    >
+                      Delete League
+                    </button>
+                  </div>
+                )}
               </>
             )}
 
@@ -544,7 +643,7 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
                         {m.userId === userId && <span className="badge" style={{ marginLeft: 6 }}>you</span>}
                       </span>
                     </div>
-                    {m.userId !== userId && (
+                    {m.userId !== userId && !league.seasonStarted && (
                       <button className="ghost" style={{ fontSize: "0.75rem", padding: "4px 10px", color: "var(--loss)", borderColor: "rgba(183,28,28,0.3)" }} onClick={() => removeMember(m.userId)}>
                         Remove
                       </button>

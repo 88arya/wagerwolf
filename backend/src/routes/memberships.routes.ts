@@ -4,6 +4,7 @@ import { requireAuth } from "../middleware/auth";
 
 const router = Router({ mergeParams: true });
 
+// Creator joining their own league after creation — always ACTIVE
 router.post("/join", requireAuth, async (req: any, res: any) => {
   try {
     const { id: leagueId } = req.params;
@@ -13,7 +14,7 @@ router.post("/join", requireAuth, async (req: any, res: any) => {
     if (!league) { res.status(404).json({ error: "League not found" }); return; }
 
     const membership = await prisma.membership.create({
-      data: { userId, leagueId, balance: 0 },
+      data: { userId, leagueId, balance: 0, status: "ACTIVE" },
     });
 
     res.status(201).json(membership);
@@ -26,14 +27,13 @@ router.post("/join", requireAuth, async (req: any, res: any) => {
   }
 });
 
-
 router.get("/leaderboard", requireAuth, async (req: any, res: any) => {
   try {
     const { id: leagueId } = req.params;
 
     const [memberships, matchups] = await Promise.all([
       prisma.membership.findMany({
-        where: { leagueId },
+        where: { leagueId, status: "ACTIVE" },
         include: { user: { select: { id: true, displayName: true } } },
       }) as any,
       prisma.matchup.findMany({
@@ -72,6 +72,45 @@ router.get("/leaderboard", requireAuth, async (req: any, res: any) => {
   }
 });
 
+// Commissioner: list pending join requests
+router.get("/pending", requireAuth, async (req: any, res: any) => {
+  try {
+    const { id: leagueId } = req.params;
+    const league = await prisma.league.findUnique({ where: { id: leagueId } });
+    if (!league) { res.status(404).json({ error: "League not found" }); return; }
+    if (league.creatorId !== req.userId) { res.status(403).json({ error: "Commissioner only" }); return; }
+
+    const pending = await prisma.membership.findMany({
+      where: { leagueId, status: "PENDING" },
+      include: { user: { select: { id: true, displayName: true } } },
+    });
+    res.json(pending);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Commissioner: accept a pending member
+router.post("/members/:memberId/accept", requireAuth, async (req: any, res: any) => {
+  try {
+    const { id: leagueId, memberId } = req.params;
+    const league = await prisma.league.findUnique({ where: { id: leagueId } });
+    if (!league) { res.status(404).json({ error: "League not found" }); return; }
+    if (league.creatorId !== req.userId) { res.status(403).json({ error: "Commissioner only" }); return; }
+
+    const result = await prisma.membership.updateMany({
+      where: { userId: memberId, leagueId, status: "PENDING" },
+      data: { status: "ACTIVE" },
+    });
+    if (result.count === 0) { res.status(404).json({ error: "No pending request found" }); return; }
+
+    res.json({ message: "Member accepted" });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Commissioner: remove or reject a member (works for both ACTIVE and PENDING, before season only)
 router.delete("/members/:memberId", requireAuth, async (req: any, res: any) => {
   try {
     const { id: leagueId, memberId } = req.params;
@@ -79,12 +118,13 @@ router.delete("/members/:memberId", requireAuth, async (req: any, res: any) => {
     const league = await prisma.league.findUnique({ where: { id: leagueId } });
     if (!league) { res.status(404).json({ error: "League not found" }); return; }
     if (league.creatorId !== req.userId) {
-      res.status(403).json({ error: "Only the league creator can remove members" });
-      return;
+      res.status(403).json({ error: "Only the league creator can remove members" }); return;
     }
-    if (memberId === req.userId) {
-      res.status(400).json({ error: "Cannot remove yourself" });
-      return;
+    if (memberId === league.creatorId) {
+      res.status(400).json({ error: "Cannot remove the commissioner" }); return;
+    }
+    if (league.seasonStarted) {
+      res.status(400).json({ error: "Cannot remove members after season has started" }); return;
     }
 
     await prisma.membership.deleteMany({ where: { userId: memberId, leagueId } });
