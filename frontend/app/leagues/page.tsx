@@ -308,14 +308,28 @@ export default function LeaguesPage() {
 
               <div>
                 <div className="label">Weekly Allowance ($)</div>
-                <input
-                  type="number"
-                  min="1"
-                  max="999999"
-                  value={form.weeklyAllowance}
-                  onChange={(e) => setForm({ ...form, weeklyAllowance: e.target.value })}
-                  required
-                />
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <button
+                    type="button"
+                    onClick={() => setForm({ ...form, weeklyAllowance: String(Math.max(25, Number(form.weeklyAllowance) - 25)) })}
+                    style={{ width: 40, height: 40, padding: 0, fontSize: "1.2rem", fontWeight: 700, flexShrink: 0 }}
+                  >−</button>
+                  <input
+                    type="number"
+                    min="25"
+                    max="1000000"
+                    step="25"
+                    value={form.weeklyAllowance}
+                    onChange={(e) => setForm({ ...form, weeklyAllowance: e.target.value })}
+                    style={{ textAlign: "center", fontWeight: 800, fontSize: "1.1rem" }}
+                    required
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setForm({ ...form, weeklyAllowance: String(Number(form.weeklyAllowance) + 25) })}
+                    style={{ width: 40, height: 40, padding: 0, fontSize: "1.2rem", fontWeight: 700, flexShrink: 0 }}
+                  >+</button>
+                </div>
               </div>
 
               {error && <p className="error">{error}</p>}

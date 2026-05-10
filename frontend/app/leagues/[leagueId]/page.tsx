@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { api } from "@/lib/api";
 import BottomNav from "@/components/BottomNav";
+import TeamLogo from "@/components/TeamLogo";
 
 export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]">) {
   const router = useRouter();
@@ -488,44 +489,37 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
         {week && (
           <>
             <div className="section-title" style={{ marginBottom: 10 }}>This Week's Games</div>
-            <div className="card" style={{ marginBottom: 8 }}>
-              {week.games?.length ? week.games.map((game: any) => (
-                <div key={game.id} style={{ marginBottom: 14 }}>
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
-                    <div style={{ fontSize: "0.82rem", fontWeight: 700, color: "var(--text-2)" }}>
-                      {game.homeTeam} <span style={{ fontWeight: 400, color: "var(--text-3)" }}>vs</span> {game.awayTeam}
-                    </div>
-                    {game.status === "FINAL" && (
-                      <span style={{ fontSize: "0.75rem", fontWeight: 700, color: "var(--text-2)" }}>
-                        {game.homeScore}–{game.awayScore}
-                      </span>
-                    )}
-                    {game.status === "CANCELLED" && <span className="badge badge-red">Cancelled</span>}
+            <div className="card" style={{ padding: 0, overflow: "hidden", marginBottom: 8 }}>
+              {week.games?.length ? week.games.map((game: any, idx: number) => (
+                <div
+                  key={game.id}
+                  onClick={() => router.push(`/leagues/${leagueId}/bet?gameId=${game.id}`)}
+                  style={{
+                    display: "flex", alignItems: "center",
+                    padding: "12px 16px",
+                    borderBottom: idx < week.games.length - 1 ? "1px solid var(--border)" : "none",
+                    cursor: "pointer",
+                  }}
+                >
+                  <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 8 }}>
+                    <span style={{ fontWeight: 700, fontSize: "0.88rem", textAlign: "right" }}>{game.awayTeam}</span>
+                    <TeamLogo team={game.awayTeam} size={32} />
                   </div>
-                  {game.props?.map((prop: any) => (
-                    <div key={prop.id} style={{
-                      display: "flex", alignItems: "center", justifyContent: "space-between",
-                      padding: "9px 12px",
-                      background: "var(--surface-2)",
-                      border: "1px solid var(--border)",
-                      borderRadius: 7,
-                      marginBottom: 5,
-                    }}>
-                      <div>
-                        <div style={{ fontWeight: 600, fontSize: "0.88rem" }}>{prop.player?.name}</div>
-                        <div style={{ color: "var(--text-3)", fontSize: "0.72rem", marginTop: 1 }}>
-                          {prop.statType.replaceAll("_", " ")} · O/U {prop.line}
-                        </div>
-                      </div>
-                      {prop.result != null
-                        ? <span className="badge badge-green">{prop.result}</span>
-                        : <span style={{ color: "var(--text-3)", fontSize: "0.75rem", fontWeight: 600 }}>Pending</span>
-                      }
-                    </div>
-                  ))}
+                  <div style={{ width: 32, textAlign: "center", fontWeight: 700, fontSize: "0.8rem", color: "var(--text-3)", flexShrink: 0 }}>
+                    {game.status === "FINAL"
+                      ? <span style={{ fontSize: "0.75rem", fontWeight: 800, color: "var(--text-2)" }}>{game.awayScore}–{game.homeScore}</span>
+                      : game.status === "CANCELLED"
+                        ? <span style={{ fontSize: "0.6rem", color: "var(--loss)", fontWeight: 800 }}>CANC</span>
+                        : "@"
+                    }
+                  </div>
+                  <div style={{ flex: 1, display: "flex", alignItems: "center", gap: 8 }}>
+                    <TeamLogo team={game.homeTeam} size={32} />
+                    <span style={{ fontWeight: 700, fontSize: "0.88rem" }}>{game.homeTeam}</span>
+                  </div>
                 </div>
               )) : (
-                <p style={{ color: "var(--text-3)", fontSize: "0.85rem" }}>No games this week yet.</p>
+                <p style={{ color: "var(--text-3)", fontSize: "0.85rem", padding: "16px" }}>No games this week yet.</p>
               )}
             </div>
           </>
