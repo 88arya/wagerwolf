@@ -15,8 +15,8 @@ function nextSmallestPowerOf2(n: number): number {
 router.post("/", requireAuth, async (req: any, res: any) => {
   try {
     const { name, weeklyAllowance, maxTeams } = req.body;
-    if (!name || !weeklyAllowance || Number(weeklyAllowance) <= 0 || Number(weeklyAllowance) >= 1000000) {
-      res.status(400).json({ error: "Weekly allowance must be between $1 and $999,999" });
+    if (!name || !weeklyAllowance || Number(weeklyAllowance) <= 0 || Number(weeklyAllowance) > 1000000) {
+      res.status(400).json({ error: "Weekly allowance must be between $1 and $1,000,000" });
       return;
     }
 
@@ -118,6 +118,26 @@ router.patch("/:id", requireAuth, async (req: any, res: any) => {
       },
     });
 
+    res.json(updated);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.patch("/:id/limits", requireAuth, async (req: any, res: any) => {
+  try {
+    const league = await prisma.league.findUnique({ where: { id: req.params.id } });
+    if (!league) { res.status(404).json({ error: "League not found" }); return; }
+    if (league.creatorId !== req.userId) { res.status(403).json({ error: "Commissioner only" }); return; }
+
+    const { maxStakePerBet, maxBetsPerWeek } = req.body;
+    const updated = await prisma.league.update({
+      where: { id: req.params.id },
+      data: {
+        maxStakePerBet: maxStakePerBet === "" || maxStakePerBet == null ? null : Number(maxStakePerBet),
+        maxBetsPerWeek: maxBetsPerWeek === "" || maxBetsPerWeek == null ? null : Number(maxBetsPerWeek),
+      },
+    });
     res.json(updated);
   } catch (err: any) {
     res.status(500).json({ error: err.message });

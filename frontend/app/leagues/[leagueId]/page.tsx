@@ -34,6 +34,10 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
   const [settingsError, setSettingsError] = useState("");
   const [settingsSaved, setSettingsSaved] = useState(false);
 
+  // Bet limits
+  const [limitsForm, setLimitsForm] = useState({ maxStakePerBet: "", maxBetsPerWeek: "" });
+  const [limitsSaved, setLimitsSaved] = useState(false);
+
   // Playoff/consolation inputs
   const [playoffWeekInput, setPlayoffWeekInput] = useState("");
   const [advanceRound, setAdvanceRound] = useState("");
@@ -67,6 +71,10 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
         playoffSize: String(leagueData.playoffSize ?? 4),
         consolationWeeks: String(leagueData.consolationWeeks ?? 2),
         maxPublicPlayers: String(leagueData.maxPublicPlayers ?? 0),
+      });
+      setLimitsForm({
+        maxStakePerBet: leagueData.maxStakePerBet != null ? String(leagueData.maxStakePerBet) : "",
+        maxBetsPerWeek: leagueData.maxBetsPerWeek != null ? String(leagueData.maxBetsPerWeek) : "",
       });
 
       try {
@@ -170,6 +178,24 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
       setTimeout(() => setSettingsSaved(false), 2500);
     } catch (err: any) {
       try { setSettingsError(JSON.parse(err.message).error); } catch { setSettingsError(err.message); }
+    }
+  }
+
+  async function saveLimits(e: React.FormEvent) {
+    e.preventDefault();
+    try {
+      const updated = await api(`/leagues/${leagueId}/limits`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          maxStakePerBet: limitsForm.maxStakePerBet === "" ? null : Number(limitsForm.maxStakePerBet),
+          maxBetsPerWeek: limitsForm.maxBetsPerWeek === "" ? null : Number(limitsForm.maxBetsPerWeek),
+        }),
+      });
+      setLeague(updated);
+      setLimitsSaved(true);
+      setTimeout(() => setLimitsSaved(false), 2500);
+    } catch (err: any) {
+      try { alert(JSON.parse(err.message).error); } catch { alert(err.message); }
     }
   }
 
@@ -866,6 +892,43 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
               </div>
             )}
           </>
+        )}
+
+        {/* Bet Limits — always visible to commissioner */}
+        {isCreator && (
+          <div className="card" style={{ marginBottom: 8 }}>
+            <div style={{ fontSize: "0.66rem", fontWeight: 800, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--text-3)", marginBottom: 12 }}>
+              Bet Limits
+            </div>
+            <form onSubmit={saveLimits} style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                <div>
+                  <div className="label">Max Stake / Bet</div>
+                  <input
+                    type="number"
+                    min="1"
+                    placeholder="No limit"
+                    value={limitsForm.maxStakePerBet}
+                    onChange={(e) => setLimitsForm({ ...limitsForm, maxStakePerBet: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <div className="label">Max Bets / Week</div>
+                  <input
+                    type="number"
+                    min="1"
+                    placeholder="No limit"
+                    value={limitsForm.maxBetsPerWeek}
+                    onChange={(e) => setLimitsForm({ ...limitsForm, maxBetsPerWeek: e.target.value })}
+                  />
+                </div>
+              </div>
+              <div style={{ fontSize: "0.72rem", color: "var(--text-3)" }}>Leave blank for no limit</div>
+              <button type="submit" className="secondary" style={{ fontSize: "0.85rem" }}>
+                {limitsSaved ? "✓ Saved" : "Save Limits"}
+              </button>
+            </form>
+          </div>
         )}
 
         {/* Leave league (non-commissioner) */}

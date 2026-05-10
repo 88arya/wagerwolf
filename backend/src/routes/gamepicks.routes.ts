@@ -52,6 +52,20 @@ router.post("/", requireAuth, async (req: any, res: any) => {
       return;
     }
 
+    const league = await prisma.league.findUnique({ where: { id: leagueId }, select: { maxStakePerBet: true, maxBetsPerWeek: true } });
+    if (league?.maxStakePerBet && Number(stake) > league.maxStakePerBet) {
+      res.status(400).json({ error: `Max stake per bet is $${league.maxStakePerBet}` }); return;
+    }
+    if (league?.maxBetsPerWeek) {
+      const [weekPicks, weekGamePicks] = await Promise.all([
+        prisma.pick.count({ where: { userId, leagueId, prop: { game: { weekId: gameLine.game.weekId } } } }),
+        prisma.gamePick.count({ where: { userId, leagueId, gameLine: { game: { weekId: gameLine.game.weekId } } } }),
+      ]);
+      if (weekPicks + weekGamePicks >= league.maxBetsPerWeek) {
+        res.status(400).json({ error: `Maximum ${league.maxBetsPerWeek} bets per week` }); return;
+      }
+    }
+
     const existing = await prisma.gamePick.findUnique({
       where: { userId_leagueId_gameLineId: { userId, leagueId, gameLineId } },
     });
