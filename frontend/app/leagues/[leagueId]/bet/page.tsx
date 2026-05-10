@@ -22,17 +22,11 @@ export default function BetPage({ params }: PageProps<"/leagues/[leagueId]/bet">
   const [leagueWeekLabel, setLeagueWeekLabel] = useState<string | null>(null);
   const [tab, setTab] = useState<"props" | "lines">("props");
 
-  // Prop straight bets
   const [picks, setPicks] = useState<Record<string, { direction: string; stake: string }>>({});
   const [submittedProps, setSubmittedProps] = useState<string[]>([]);
-
-  // Game line straight bets
   const [lineStakes, setLineStakes] = useState<Record<string, string>>({});
   const [submittedLines, setSubmittedLines] = useState<string[]>([]);
-
-  // Slip state (to show "In Slip" indicator)
   const [slipIds, setSlipIds] = useState<Set<string>>(new Set());
-
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -54,12 +48,10 @@ export default function BetPage({ params }: PageProps<"/leagues/[leagueId]/bet">
           setWeekNumber(week.number);
           const sw = leagueData?.startWeek ?? 1;
           const rsw = leagueData?.regularSeasonWeeks ?? 13;
-          const playoffStart = sw + rsw;
-          const isPlayoff = week.number >= playoffStart;
-          setLeagueWeekLabel(
-            isPlayoff
-              ? `Playoff Week ${week.number - playoffStart + 1}`
-              : `League Week ${week.number - sw + 1} of ${rsw}`
+          const isPlayoff = week.number >= sw + rsw;
+          setLeagueWeekLabel(isPlayoff
+            ? `Playoff Week ${week.number - (sw + rsw) + 1}`
+            : `League Week ${week.number - sw + 1} of ${rsw}`
           );
 
           const [existingPicks, existingGamePicks] = await Promise.all([
@@ -70,12 +62,8 @@ export default function BetPage({ params }: PageProps<"/leagues/[leagueId]/bet">
           const allProps: any[] = [];
           const allLines: any[] = [];
           for (const game of week.games ?? []) {
-            for (const prop of game.props ?? []) {
-              allProps.push({ ...prop, game });
-            }
-            for (const line of game.gameLines ?? []) {
-              allLines.push({ ...line, game });
-            }
+            for (const prop of game.props ?? []) allProps.push({ ...prop, game });
+            for (const line of game.gameLines ?? []) allLines.push({ ...line, game });
           }
           setProps(allProps);
           setGameLines(allLines);
@@ -104,7 +92,7 @@ export default function BetPage({ params }: PageProps<"/leagues/[leagueId]/bet">
     setPicks((prev) => ({ ...prev, [propId]: { ...prev[propId], [field]: value } }));
   }
 
-  async function placeBet(propId: string, prop: any) {
+  async function placeBet(propId: string) {
     const pick = picks[propId];
     if (!pick?.direction || !pick?.stake) { setError("Select OVER or UNDER and enter a stake."); return; }
     if (Number(pick.stake) <= 0) { setError("Stake must be greater than 0."); return; }
@@ -139,34 +127,26 @@ export default function BetPage({ params }: PageProps<"/leagues/[leagueId]/bet">
 
   function addPropToSlip(prop: any, direction: "OVER" | "UNDER") {
     const ok = addToSlip({
-      type: "prop",
-      id: prop.id,
-      direction,
+      type: "prop", id: prop.id, direction,
       label: `${prop.player?.name} ${direction} ${prop.line} ${prop.statType.replaceAll("_", " ")}`,
       odds: prop.odds ?? -110,
     });
-    if (!ok) setError("Already in slip");
-    else setError("");
+    if (!ok) setError("Already in slip"); else setError("");
   }
 
   function addLineToSlip(line: any) {
-    const ok = addToSlip({
-      type: "gameline",
-      id: line.id,
-      label: line.label,
-      odds: line.odds,
-    });
-    if (!ok) setError("Already in slip");
-    else setError("");
+    const ok = addToSlip({ type: "gameline", id: line.id, label: line.label, odds: line.odds });
+    if (!ok) setError("Already in slip"); else setError("");
   }
 
   const remaining = props.filter((p) => !submittedProps.includes(p.id)).length;
+  const submittedCount = submittedProps.length + submittedLines.length;
 
   return (
     <>
       <nav className="nav">
         <div className="nav-logo">PLAY<span className="accent">BOOK</span></div>
-        <Link href={`/leagues/${leagueId}`} style={{ fontSize: "0.82rem", color: "var(--text-2)" }}>‹ Home</Link>
+        <Link href={`/leagues/${leagueId}`}>‹ Home</Link>
       </nav>
 
       <div className="page">
@@ -174,57 +154,57 @@ export default function BetPage({ params }: PageProps<"/leagues/[leagueId]/bet">
           <h1>Place Bets</h1>
           {weekNumber && (
             <p className="subtitle">
-              {leagueWeekLabel ?? `Week ${weekNumber}`} · {weekLocked ? "Locked" : `${remaining} prop${remaining !== 1 ? "s" : ""} available`}
+              {leagueWeekLabel ?? `Week ${weekNumber}`}
+              {weekLocked ? " · Locked" : ` · ${remaining} prop${remaining !== 1 ? "s" : ""} remaining`}
             </p>
           )}
         </div>
 
+        {/* Balance + submitted row */}
         {balance !== null && (
-          <div className="card" style={{ marginBottom: 10 }}>
-            <div className="row">
-              <div>
-                <div className="label">Balance</div>
-                <div style={{ fontSize: "1.6rem", fontWeight: 900, letterSpacing: "-0.03em", marginTop: 2 }}>
-                  ${balance.toLocaleString()}
-                </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 12 }}>
+            <div className="card" style={{ margin: 0, textAlign: "center" }}>
+              <div className="label">Balance</div>
+              <div style={{ fontSize: "1.5rem", fontWeight: 900, letterSpacing: "-0.03em", marginTop: 4, fontVariantNumeric: "tabular-nums" }}>
+                ${balance.toLocaleString()}
               </div>
-              <div style={{ textAlign: "right" }}>
-                <div className="label">Submitted</div>
-                <div style={{ fontSize: "1.6rem", fontWeight: 900, letterSpacing: "-0.03em", marginTop: 2, color: "var(--accent)" }}>
-                  {submittedProps.length + submittedLines.length} bets
-                </div>
+            </div>
+            <div className="card" style={{ margin: 0, textAlign: "center" }}>
+              <div className="label">Submitted</div>
+              <div style={{ fontSize: "1.5rem", fontWeight: 900, letterSpacing: "-0.03em", marginTop: 4, color: "var(--accent)" }}>
+                {submittedCount}
               </div>
             </div>
           </div>
         )}
 
         {weekLocked && (
-          <div style={{ background: "var(--loss-bg)", border: "1px solid rgba(183,28,28,0.25)", borderRadius: 8, padding: "12px 16px", marginBottom: 12 }}>
-            <div style={{ color: "var(--loss)", fontWeight: 700, fontSize: "0.88rem" }}>Betting is locked for this week</div>
+          <div style={{
+            background: "var(--loss-bg)", border: "1px solid rgba(220,38,38,0.25)",
+            borderRadius: 8, padding: "12px 16px", marginBottom: 12,
+          }}>
+            <div style={{ color: "var(--loss)", fontWeight: 700, fontSize: "0.88rem" }}>
+              Betting is locked for this week
+            </div>
           </div>
         )}
 
         {error && <p className="error" style={{ marginBottom: 12 }}>{error}</p>}
 
         {/* Tab toggle */}
-        <div style={{ display: "flex", background: "var(--surface-2)", borderRadius: 8, padding: 3, marginBottom: 16, border: "1px solid var(--border)" }}>
+        <div className="segment" style={{ marginBottom: 14 }}>
           {(["props", "lines"] as const).map((t) => (
-            <button key={t} onClick={() => setTab(t)} style={{
-              flex: 1, padding: "8px 0",
-              background: tab === t ? "var(--surface)" : "transparent",
-              boxShadow: tab === t ? "0 1px 3px rgba(0,0,0,0.1)" : "none",
-              border: tab === t ? "1px solid var(--border)" : "1px solid transparent",
-              color: tab === t ? "var(--text)" : "var(--text-2)",
-              borderRadius: 6,
-              fontWeight: tab === t ? 700 : 500, fontSize: "0.82rem",
-              letterSpacing: "0.03em", textTransform: "capitalize",
-            }}>
+            <button
+              key={t}
+              className={`segment-btn${tab === t ? " active" : ""}`}
+              onClick={() => setTab(t)}
+            >
               {t === "props" ? `Props (${props.length})` : `Game Lines (${gameLines.length})`}
             </button>
           ))}
         </div>
 
-        {/* Props tab */}
+        {/* Props */}
         {tab === "props" && (
           <>
             {props.length === 0 && (
@@ -243,34 +223,61 @@ export default function BetPage({ params }: PageProps<"/leagues/[leagueId]/bet">
               const inSlipUnder = slipIds.has(`${prop.id}:UNDER`);
 
               return (
-                <div key={prop.id} className="card" style={{ marginBottom: 8, opacity: done ? 0.7 : 1 }}>
-                  <div className="row" style={{ marginBottom: 4 }}>
+                <div key={prop.id} className="card" style={{ marginBottom: 8, opacity: done ? 0.65 : 1 }}>
+                  <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 6 }}>
                     <div>
-                      <div style={{ fontWeight: 800, fontSize: "1.05rem" }}>{prop.player?.name}</div>
-                      <div style={{ color: "var(--text-3)", fontSize: "0.75rem", marginTop: 2 }}>
-                        {prop.player?.position} · {prop.player?.team} · {prop.game?.homeTeam} vs {prop.game?.awayTeam}
+                      <div style={{ fontWeight: 800, fontSize: "1rem", color: "var(--text)" }}>{prop.player?.name}</div>
+                      <div style={{ color: "var(--text-3)", fontSize: "0.73rem", marginTop: 2 }}>
+                        {prop.player?.position} · {prop.player?.team}
+                        <span style={{ marginLeft: 6, color: "var(--text-3)" }}>
+                          {prop.game?.homeTeam} vs {prop.game?.awayTeam}
+                        </span>
                       </div>
                     </div>
                     <span className="tag">{prop.statType.replaceAll("_", " ")}</span>
                   </div>
 
-                  <div className="prop-line">{prop.line} <span style={{ fontSize: "0.75rem", fontWeight: 500, color: "var(--text-3)", marginLeft: 4 }}>{fmtOdds(prop.odds ?? -110)}</span></div>
+                  <div style={{
+                    textAlign: "center",
+                    fontSize: "2.4rem",
+                    fontWeight: 900,
+                    letterSpacing: "-0.04em",
+                    lineHeight: 1,
+                    padding: "8px 0 6px",
+                    fontVariantNumeric: "tabular-nums",
+                    color: "var(--text)",
+                  }}>
+                    {prop.line}
+                    <span style={{ fontSize: "0.72rem", fontWeight: 500, color: "var(--text-3)", marginLeft: 6 }}>
+                      {fmtOdds(prop.odds ?? -110)}
+                    </span>
+                  </div>
 
                   {done ? (
-                    <div style={{ display: "flex", alignItems: "center", gap: 8, justifyContent: "center", padding: "8px 0", color: "var(--accent)", fontWeight: 700 }}>
+                    <div style={{ textAlign: "center", padding: "8px 0", color: "var(--accent)", fontWeight: 700, fontSize: "0.9rem" }}>
                       ✓ Bet submitted
                     </div>
                   ) : weekLocked ? (
                     <div style={{ textAlign: "center", color: "var(--text-3)", fontSize: "0.85rem", padding: "8px 0" }}>Locked</div>
                   ) : (
                     <>
-                      <div className="row" style={{ marginBottom: 10 }}>
-                        <button className={`over-btn${selected === "OVER" ? " active" : ""}`} onClick={() => setPick(prop.id, "direction", "OVER")}>OVER</button>
-                        <button className={`under-btn${selected === "UNDER" ? " active" : ""}`} onClick={() => setPick(prop.id, "direction", "UNDER")}>UNDER</button>
+                      <div style={{ display: "flex", gap: 8, marginBottom: selected ? 10 : 0 }}>
+                        <button
+                          className={`over-btn${selected === "OVER" ? " active" : ""}`}
+                          onClick={() => setPick(prop.id, "direction", selected === "OVER" ? "" : "OVER")}
+                        >
+                          OVER
+                        </button>
+                        <button
+                          className={`under-btn${selected === "UNDER" ? " active" : ""}`}
+                          onClick={() => setPick(prop.id, "direction", selected === "UNDER" ? "" : "UNDER")}
+                        >
+                          UNDER
+                        </button>
                       </div>
 
                       {selected && (
-                        <div className="row" style={{ marginBottom: 8 }}>
+                        <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
                           <input
                             type="number"
                             placeholder="Stake"
@@ -280,7 +287,7 @@ export default function BetPage({ params }: PageProps<"/leagues/[leagueId]/bet">
                             onChange={(e) => setPick(prop.id, "stake", e.target.value)}
                             style={{ fontSize: "1rem", fontWeight: 700 }}
                           />
-                          <button onClick={() => placeBet(prop.id, prop)} style={{ flexShrink: 0 }}>
+                          <button onClick={() => placeBet(prop.id)} style={{ flexShrink: 0, whiteSpace: "nowrap" }}>
                             Bet {selected}
                           </button>
                         </div>
@@ -288,20 +295,20 @@ export default function BetPage({ params }: PageProps<"/leagues/[leagueId]/bet">
 
                       <div style={{ display: "flex", gap: 6 }}>
                         <button
-                          className="secondary"
-                          style={{ flex: 1, fontSize: "0.75rem", padding: "6px 0", opacity: inSlipOver ? 0.5 : 1 }}
+                          className="ghost"
+                          style={{ flex: 1, fontSize: "0.73rem", padding: "6px 0", color: inSlipOver ? "var(--accent)" : "var(--text-3)" }}
                           onClick={() => addPropToSlip(prop, "OVER")}
                           disabled={inSlipOver}
                         >
-                          {inSlipOver ? "✓ In Slip" : "+ Slip OVER"}
+                          {inSlipOver ? "✓ Over in Slip" : "+ Parlay Over"}
                         </button>
                         <button
-                          className="secondary"
-                          style={{ flex: 1, fontSize: "0.75rem", padding: "6px 0", opacity: inSlipUnder ? 0.5 : 1 }}
+                          className="ghost"
+                          style={{ flex: 1, fontSize: "0.73rem", padding: "6px 0", color: inSlipUnder ? "var(--accent)" : "var(--text-3)" }}
                           onClick={() => addPropToSlip(prop, "UNDER")}
                           disabled={inSlipUnder}
                         >
-                          {inSlipUnder ? "✓ In Slip" : "+ Slip UNDER"}
+                          {inSlipUnder ? "✓ Under in Slip" : "+ Parlay Under"}
                         </button>
                       </div>
                     </>
@@ -312,19 +319,18 @@ export default function BetPage({ params }: PageProps<"/leagues/[leagueId]/bet">
           </>
         )}
 
-        {/* Game Lines tab */}
+        {/* Game Lines */}
         {tab === "lines" && (
           <>
             {gameLines.length === 0 && (
               <div className="card">
                 <div className="empty">
                   <div className="empty-icon">📊</div>
-                  <div className="empty-text">No game lines available this week</div>
+                  <div className="empty-text">No game lines this week</div>
                 </div>
               </div>
             )}
 
-            {/* Group by game */}
             {Array.from(
               gameLines.reduce((map, line) => {
                 const key = line.gameId;
@@ -334,26 +340,29 @@ export default function BetPage({ params }: PageProps<"/leagues/[leagueId]/bet">
               }, new Map<string, any>()).values()
             ).map(({ game, lines }: any) => (
               <div key={game.id} className="card" style={{ marginBottom: 10 }}>
-                <div style={{ fontWeight: 800, fontSize: "0.9rem", marginBottom: 12, color: "var(--text-2)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
-                  {game.homeTeam} vs {game.awayTeam}
+                <div style={{
+                  fontWeight: 800, fontSize: "0.82rem", marginBottom: 12,
+                  color: "var(--text)", letterSpacing: "0.02em",
+                  paddingBottom: 10, borderBottom: "1px solid var(--border)",
+                }}>
+                  {game.homeTeam} <span style={{ fontWeight: 400, color: "var(--text-3)" }}>vs</span> {game.awayTeam}
                 </div>
-                {lines.map((line: any) => {
+                {lines.map((line: any, i: number) => {
                   const done = submittedLines.includes(line.id);
                   const inSlip = slipIds.has(`${line.id}:`);
 
                   return (
                     <div key={line.id} style={{
-                      display: "flex",
-                      alignItems: "center",
+                      display: "flex", alignItems: "center",
                       justifyContent: "space-between",
-                      padding: "10px 0",
-                      borderBottom: "1px solid var(--border)",
+                      padding: i === 0 ? "0 0 10px" : "10px 0",
+                      borderBottom: i < lines.length - 1 ? "1px solid var(--border)" : "none",
                     }}>
                       <div>
                         <div style={{ fontWeight: 700, fontSize: "0.9rem" }}>{line.label}</div>
-                        <div style={{ fontSize: "0.75rem", color: "var(--text-2)", marginTop: 2 }}>
+                        <div style={{ fontSize: "0.74rem", color: "var(--text-3)", marginTop: 2 }}>
                           {fmtOdds(line.odds)}
-                          {line.line != null && <span style={{ color: "var(--text-3)", marginLeft: 8 }}>line {line.line}</span>}
+                          {line.line != null && <span style={{ marginLeft: 8 }}>line {line.line}</span>}
                         </div>
                       </div>
                       {done ? (
@@ -368,14 +377,14 @@ export default function BetPage({ params }: PageProps<"/leagues/[leagueId]/bet">
                             min="1"
                             value={lineStakes[line.id] ?? ""}
                             onChange={(e) => setLineStakes((prev) => ({ ...prev, [line.id]: e.target.value }))}
-                            style={{ width: 80, fontSize: "0.85rem", padding: "6px 8px" }}
+                            style={{ width: 80, fontSize: "0.85rem", padding: "7px 8px" }}
                           />
-                          <button style={{ fontSize: "0.8rem", padding: "6px 10px" }} onClick={() => placeLineBet(line.id)}>
+                          <button style={{ fontSize: "0.82rem", padding: "8px 12px" }} onClick={() => placeLineBet(line.id)}>
                             Bet
                           </button>
                           <button
-                            className="secondary"
-                            style={{ fontSize: "0.75rem", padding: "6px 8px", opacity: inSlip ? 0.5 : 1 }}
+                            className="ghost"
+                            style={{ fontSize: "0.75rem", padding: "8px 10px", color: inSlip ? "var(--accent)" : "var(--text-3)" }}
                             onClick={() => addLineToSlip(line)}
                             disabled={inSlip}
                           >

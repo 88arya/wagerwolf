@@ -107,7 +107,7 @@ export default function HistoryPage({ params }: PageProps<"/leagues/[leagueId]/h
     <>
       <nav className="nav">
         <div className="nav-logo">PLAY<span className="accent">BOOK</span></div>
-        <Link href={`/leagues/${leagueId}`} style={{ fontSize: "0.82rem", color: "var(--text-2)" }}>‹ Home</Link>
+        <Link href={`/leagues/${leagueId}`}>‹ Home</Link>
       </nav>
 
       <div className="page">
@@ -175,21 +175,13 @@ export default function HistoryPage({ params }: PageProps<"/leagues/[leagueId]/h
         {!loading && totalCount > 0 && (
           <>
             {/* Tab toggle */}
-            <div style={{ display: "flex", background: "var(--surface-2)", borderRadius: 8, padding: 3, marginBottom: 16, border: "1px solid var(--border)" }}>
+            <div className="segment" style={{ marginBottom: 16 }}>
               {([
                 ["props", `Props (${picks.length})`],
                 ["lines", `Lines (${gamePicks.length})`],
                 ["parlays", `Parlays (${parlays.length})`],
               ] as const).map(([t, label]) => (
-                <button key={t} onClick={() => setTab(t)} style={{
-                  flex: 1, padding: "8px 0",
-                  background: tab === t ? "var(--surface)" : "transparent",
-                  boxShadow: tab === t ? "0 1px 3px rgba(0,0,0,0.1)" : "none",
-                  border: tab === t ? "1px solid var(--border)" : "1px solid transparent",
-                  color: tab === t ? "var(--text)" : "var(--text-2)",
-                  borderRadius: 6,
-                  fontWeight: tab === t ? 700 : 500, fontSize: "0.78rem",
-                }}>
+                <button key={t} className={`segment-btn${tab === t ? " active" : ""}`} onClick={() => setTab(t)}>
                   {label}
                 </button>
               ))}

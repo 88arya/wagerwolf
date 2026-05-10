@@ -13,8 +13,15 @@ router.post("/join", requireAuth, async (req: any, res: any) => {
     const league = await prisma.league.findUnique({ where: { id: leagueId } });
     if (!league) { res.status(404).json({ error: "League not found" }); return; }
 
+    const maxWeek = league.startWeek + league.regularSeasonWeeks + league.playoffWeeks - 1;
+    const activeWeek = await prisma.week.findFirst({
+      where: { resolved: false, number: { gte: league.startWeek, lte: maxWeek } },
+      orderBy: { number: "asc" },
+    });
+    const initialBalance = activeWeek ? league.weeklyAllowance : 0;
+
     const membership = await prisma.membership.create({
-      data: { userId, leagueId, balance: 0, status: "ACTIVE" },
+      data: { userId, leagueId, balance: initialBalance, status: "ACTIVE" },
     });
 
     res.status(201).json(membership);

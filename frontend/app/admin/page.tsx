@@ -113,12 +113,12 @@ export default function AdminPage() {
     } catch (err: any) { try { flash(JSON.parse(err.message).error, true); } catch { flash(err.message, true); } }
   }
 
-  async function syncGames(weekId: string) {
+  async function syncWeek(weekId: string) {
     try {
-      const res = await api(`/sync/games/${weekId}`, { method: "POST" });
+      const res = await api(`/sync/week/${weekId}`, { method: "POST" });
       await loadWeeks();
       loadGamesForWeek(weekId);
-      flash(`Synced ${res.synced} game${res.synced !== 1 ? "s" : ""} from Odds API`);
+      flash(`Synced ${res.games} games, ${res.lines} lines, ${res.props} props`);
     } catch (err: any) { try { flash(JSON.parse(err.message).error, true); } catch { flash(err.message, true); } }
   }
 
@@ -136,22 +136,6 @@ export default function AdminPage() {
       const res = await api(`/espn/resolve/${weekId}`, { method: "POST" });
       await loadWeeks();
       flash(`Auto-resolved — ${res.propsMatched} props matched, ${res.propsUnmatched} unmatched`);
-    } catch (err: any) { try { flash(JSON.parse(err.message).error, true); } catch { flash(err.message, true); } }
-  }
-
-  async function syncProps(gameId: string) {
-    try {
-      const res = await api(`/sync/props/${gameId}`, { method: "POST" });
-      await loadWeeks();
-      flash(`Synced ${res.synced} prop${res.synced !== 1 ? "s" : ""} from Odds API`);
-    } catch (err: any) { try { flash(JSON.parse(err.message).error, true); } catch { flash(err.message, true); } }
-  }
-
-  async function syncLines(gameId: string) {
-    try {
-      const res = await api(`/sync/lines/${gameId}`, { method: "POST" });
-      await loadWeeks();
-      flash(`Synced ${res.synced} line${res.synced !== 1 ? "s" : ""} from Odds API`);
     } catch (err: any) { try { flash(JSON.parse(err.message).error, true); } catch { flash(err.message, true); } }
   }
 
@@ -379,8 +363,8 @@ export default function AdminPage() {
                       <button className="secondary" style={{ fontSize: "0.75rem", padding: "5px 10px" }} onClick={() => syncGamesESPN(w.id)}>
                         ESPN
                       </button>
-                      <button className="secondary" style={{ fontSize: "0.75rem", padding: "5px 10px" }} onClick={() => syncGames(w.id)}>
-                        Odds API
+                      <button className="secondary" style={{ fontSize: "0.75rem", padding: "5px 10px" }} onClick={() => syncWeek(w.id)}>
+                        Sync Odds
                       </button>
                       {!w.resolved && (
                         <button className="secondary" style={{ fontSize: "0.75rem", padding: "5px 10px" }} onClick={() => toggleLock(w.id)}>
@@ -405,20 +389,6 @@ export default function AdminPage() {
                         <div style={{ fontSize: "0.78rem", fontWeight: 700, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
                           {g.homeTeam} vs {g.awayTeam}
                         </div>
-                        <button
-                          className="secondary"
-                          style={{ fontSize: "0.72rem", padding: "4px 10px" }}
-                          onClick={() => syncLines(g.id)}
-                        >
-                          Sync Lines
-                        </button>
-                        <button
-                          className="secondary"
-                          style={{ fontSize: "0.72rem", padding: "4px 10px" }}
-                          onClick={() => syncProps(g.id)}
-                        >
-                          Sync Props
-                        </button>
                         {g.status !== "CANCELLED" && (
                           <button
                             className="ghost"

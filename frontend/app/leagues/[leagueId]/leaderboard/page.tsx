@@ -38,22 +38,18 @@ export default function LeaderboardPage({ params }: PageProps<"/leagues/[leagueI
     <>
       <nav className="nav">
         <div className="nav-logo">PLAY<span className="accent">BOOK</span></div>
-        <Link href={`/leagues/${leagueId}`} style={{ fontSize: "0.82rem", color: "var(--text-2)" }}>‹ Home</Link>
+        <Link href={`/leagues/${leagueId}`}>‹ Home</Link>
       </nav>
 
       <div className="page">
         <div style={{ marginBottom: 20 }}>
-          <h1>Leaderboard</h1>
+          <h1>Standings</h1>
           {league && (
             <p className="subtitle">{league.name} · {entries.length} player{entries.length !== 1 ? "s" : ""}</p>
           )}
         </div>
 
-        {loading && (
-          <div className="card">
-            <div className="empty"><div className="empty-text">Loading standings…</div></div>
-          </div>
-        )}
+        {loading && <div className="loading" style={{ height: "20vh" }}>Loading…</div>}
 
         {!loading && entries.length === 0 && (
           <div className="card">
@@ -64,55 +60,83 @@ export default function LeaderboardPage({ params }: PageProps<"/leagues/[leagueI
           </div>
         )}
 
-        {entries.map((entry: any, i: number) => {
-          const rank = i + 1;
-          const rankClass = rank <= 3 ? `rank-${rank}` : "";
-          const isMe = entry.userId === myUserId;
-          const initials = (entry.displayName ?? "??").slice(0, 2).toUpperCase();
+        {!loading && entries.length > 0 && (
+          <div className="card" style={{ padding: 0, overflow: "hidden" }}>
+            {/* Header */}
+            <div style={{
+              display: "grid",
+              gridTemplateColumns: "32px 1fr 80px 90px",
+              padding: "9px 16px",
+              background: "var(--navy)",
+              gap: 8,
+            }}>
+              {["#", "Player", "W–L–T", "Balance"].map((h, i) => (
+                <span key={h} style={{
+                  fontSize: "0.63rem", fontWeight: 800, letterSpacing: "0.1em",
+                  textTransform: "uppercase", color: "rgba(255,255,255,0.45)",
+                  textAlign: i >= 2 ? "center" : "left",
+                }}>{h}</span>
+              ))}
+            </div>
 
-          return (
-            <div
-              key={entry.userId}
-              className={`card ${rankClass}`}
-              style={{
-                marginBottom: 6,
-                borderColor: isMe ? "var(--border-2)" : undefined,
-                background: isMe ? "var(--surface-2)" : undefined,
-              }}
-            >
-              <div className="row">
-                <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                  <span className="rank-number" style={{ color: rank > 3 ? "var(--text-3)" : undefined }}>
-                    {rank}
+            {entries.map((entry: any, i: number) => {
+              const rank = i + 1;
+              const isMe = entry.userId === myUserId;
+              const rankColor = rank === 1 ? "var(--gold)" : rank === 2 ? "var(--silver)" : rank === 3 ? "var(--bronze)" : "var(--text-3)";
+              const initials = (entry.displayName ?? "??").slice(0, 2).toUpperCase();
+
+              return (
+                <div
+                  key={entry.userId}
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "32px 1fr 80px 90px",
+                    padding: "12px 16px",
+                    borderBottom: i < entries.length - 1 ? "1px solid var(--border)" : "none",
+                    background: isMe ? "var(--accent-dim)" : rank === 1 ? "rgba(200,150,12,0.04)" : "transparent",
+                    alignItems: "center",
+                    gap: 8,
+                  }}
+                >
+                  <span style={{ fontWeight: 900, fontSize: "0.95rem", color: rankColor, textAlign: "center" }}>
+                    {rank <= 3 ? ["🥇","🥈","🥉"][rank-1] : rank}
                   </span>
-                  <div className="avatar">{initials}</div>
-                  <div>
-                    <div style={{ fontWeight: 700, fontSize: "0.95rem" }}>
-                      {entry.displayName}
-                      {isMe && <span className="badge" style={{ marginLeft: 8 }}>you</span>}
+
+                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <div className="avatar" style={{
+                      width: 34, height: 34, fontSize: "0.72rem",
+                      ...(rank === 1 ? { borderColor: "var(--gold)", color: "var(--gold)", background: "rgba(200,150,12,0.1)" } : {}),
+                      ...(rank === 2 ? { borderColor: "var(--silver)", color: "var(--silver)", background: "rgba(107,122,148,0.1)" } : {}),
+                      ...(rank === 3 ? { borderColor: "var(--bronze)", color: "var(--bronze)", background: "rgba(139,101,82,0.1)" } : {}),
+                    }}>
+                      {initials}
                     </div>
-                    {rank === 1 && (
-                      <div style={{ fontSize: "0.7rem", color: "var(--gold)", fontWeight: 700, marginTop: 2 }}>
-                        LEADING
+                    <div>
+                      <div style={{ fontWeight: isMe ? 800 : 600, fontSize: "0.9rem", color: isMe ? "var(--accent)" : "var(--text)" }}>
+                        {entry.displayName}
+                        {isMe && <span style={{ fontSize: "0.68rem", color: "var(--accent)", marginLeft: 6, fontWeight: 700 }}>YOU</span>}
                       </div>
-                    )}
+                      {rank === 1 && (
+                        <div style={{ fontSize: "0.65rem", color: "var(--gold)", fontWeight: 700, letterSpacing: "0.08em" }}>LEADING</div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div style={{ textAlign: "center", fontSize: "0.82rem", fontWeight: 600, color: "var(--text-2)" }}>
+                    <span style={{ color: "var(--win)" }}>{entry.wins}</span>
+                    <span style={{ color: "var(--text-3)" }}>–</span>
+                    <span style={{ color: "var(--loss)" }}>{entry.losses}</span>
+                    {entry.ties > 0 && <span style={{ color: "var(--text-3)" }}>–{entry.ties}</span>}
+                  </div>
+
+                  <div style={{ textAlign: "right", fontWeight: 800, fontSize: "0.92rem", fontVariantNumeric: "tabular-nums", color: "var(--text)" }}>
+                    ${entry.balance.toLocaleString()}
                   </div>
                 </div>
-                <div style={{ textAlign: "right" }}>
-                  {(entry.wins > 0 || entry.losses > 0 || entry.ties > 0) && (
-                    <div style={{ fontSize: "0.78rem", color: "var(--text-2)", marginBottom: 2 }}>
-                      <span style={{ color: "var(--win)" }}>{entry.wins}W</span>
-                      {" · "}
-                      <span style={{ color: "var(--loss)" }}>{entry.losses}L</span>
-                      {entry.ties > 0 && <span style={{ color: "var(--text-3)" }}> · {entry.ties}T</span>}
-                    </div>
-                  )}
-                  <div className="leaderboard-balance">${entry.balance.toLocaleString()}</div>
-                </div>
-              </div>
-            </div>
-          );
-        })}
+              );
+            })}
+          </div>
+        )}
       </div>
 
       <BottomNav leagueId={leagueId} />

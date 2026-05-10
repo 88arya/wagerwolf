@@ -1,32 +1,21 @@
-const BASE = "https://api.the-odds-api.com/v4";
+const BASE = "https://api.sportsgameodds.com/v2";
 
-const PROP_MARKETS = [
-  "player_pass_yds",
-  "player_pass_tds",
-  "player_rush_yds",
-  "player_reception_yds",
-  "player_receptions",
-].join(",");
-
-const LINE_MARKETS = "h2h,spreads,totals";
+const PROP_STAT_IDS = new Set([
+  "passing_yards",
+  "passing_touchdowns",
+  "rushing_yards",
+  "receiving_yards",
+  "receptions",
+]);
 
 function key(): string {
-  const k = process.env.ODDS_API_KEY;
-  if (!k) throw new Error("ODDS_API_KEY is not configured");
+  const k = process.env.SPORTSGAMEODDS_API_KEY;
+  if (!k) throw new Error("SPORTSGAMEODDS_API_KEY is not configured");
   return k;
 }
 
-// Convert decimal odds from API to American
-function toAmerican(decimal: number): number {
-  if (decimal >= 2) return Math.round((decimal - 1) * 100);
-  return Math.round(-100 / (decimal - 1));
-}
-
-export interface OddsEvent {
-  id: string;
-  commence_time: string;
-  home_team: string;
-  away_team: string;
+function authHeaders() {
+  return { "x-api-key": key() };
 }
 
 export interface RawProp {
@@ -42,86 +31,126 @@ export interface RawGameLine {
   line: number | null;
 }
 
-export async function getNFLEvents(): Promise<OddsEvent[]> {
-  const res = await fetch(
-    `${BASE}/sports/americanfootball_nfl/events?apiKey=${key()}`
-  );
-  if (!res.ok) throw new Error(`Odds API ${res.status}: ${await res.text()}`);
-  return res.json();
+export interface NFLGameData {
+  eventId: string;
+  commenceTime: string;
+  homeTeam: string;
+  awayTeam: string;
+  lines: RawGameLine[];
+  props: RawProp[];
 }
 
-export async function getPlayerProps(eventId: string): Promise<RawProp[]> {
-  const res = await fetch(
-    `${BASE}/sports/americanfootball_nfl/events/${eventId}/odds` +
-      `?apiKey=${key()}&regions=us&markets=${PROP_MARKETS}&oddsFormat=decimal&bookmakers=draftkings`
-  );
-  if (!res.ok) throw new Error(`Odds API ${res.status}: ${await res.text()}`);
-  const data = await res.json();
+// oddID format: {statID}-{playerEntityID}-{periodID}-{betTypeID}-{sideID}
+function parsePropOddId(oddId: string): { statId: string; playerEntityId: string; sideId: string } | null {
+  const periods = ["game", "1h", "2h", "1q", "2q", "3q", "4q"];
+  for (const period of periods) {
+    const sep = `-${period}-`;
+    const idx = oddId.indexOf(sep);
+    if (idx === -1) continue;
+    const beforePeriod = oddId.substring(0, idx);
+    const afterPeriod = oddId.substring(idx + sep.length);
+    const firstDash = beforePeriod.indexOf("-");
+    if (firstDash === -1) continue;
+    const statId = beforePeriod.substring(0, firstDash);
+    const playerEntityId = beforePeriod.substring(firstDash + 1);
+    const parts = afterPeriod.split("-");
+    const sideId = parts[parts.length - 1];
+    return { statId, playerEntityId, sideId };
+  }
+  return null;
+}
 
+function extractGameLines(odds: Record<string, any>, homeTeam: string, awayTeam: string): RawGameLine[] {
+  const lines: RawGameLine[] = [];
+
+  function dk(oddKey: string) {
+    return odds[oddKey]?.byBookmaker?.draftkings;
+  }
+
+  const mlHome = dk("points-home-game-ml-home");
+  if (mlHome?.available && mlHome.odds) {
+    lines.push({ market: "MONEYLINE_HOME", label: `${homeTeam} ML`, odds: parseInt(mlHome.odds, 10), line: null });
+  }
+
+  const mlAway = dk("points-away-game-ml-away");
+  if (mlAway?.available && mlAway.odds) {
+    lines.push({ market: "MONEYLINE_AWAY", label: `${awayTeam} ML`, odds: parseInt(mlAway.odds, 10), line: null });
+  }
+
+  const spHome = dk("points-home-game-sp-home");
+  if (spHome?.available && spHome.spread && spHome.odds) {
+    const val = parseFloat(spHome.spread);
+    lines.push({ market: "SPREAD_HOME", label: `${homeTeam} ${val > 0 ? "+" : ""}${val}`, odds: parseInt(spHome.odds, 10), line: val });
+  }
+
+  const spAway = dk("points-away-game-sp-away");
+  if (spAway?.available && spAway.spread && spAway.odds) {
+    const val = parseFloat(spAway.spread);
+    lines.push({ market: "SPREAD_AWAY", label: `${awayTeam} ${val > 0 ? "+" : ""}${val}`, odds: parseInt(spAway.odds, 10), line: val });
+  }
+
+  const ouOver = dk("points-all-game-ou-over");
+  if (ouOver?.available && ouOver.overUnder && ouOver.odds) {
+    lines.push({ market: "TOTAL_OVER", label: `Over ${ouOver.overUnder}`, odds: parseInt(ouOver.odds, 10), line: parseFloat(ouOver.overUnder) });
+  }
+
+  const ouUnder = dk("points-all-game-ou-under");
+  if (ouUnder?.available && ouUnder.overUnder && ouUnder.odds) {
+    lines.push({ market: "TOTAL_UNDER", label: `Under ${ouUnder.overUnder}`, odds: parseInt(ouUnder.odds, 10), line: parseFloat(ouUnder.overUnder) });
+  }
+
+  return lines;
+}
+
+function extractPlayerProps(odds: Record<string, any>, players: Record<string, any>): RawProp[] {
   const props: RawProp[] = [];
-  const bookmaker = data.bookmakers?.[0];
-  if (!bookmaker) return props;
+  const seen = new Set<string>();
 
-  for (const market of bookmaker.markets ?? []) {
-    const seen = new Map<string, number>();
-    for (const outcome of market.outcomes ?? []) {
-      if (outcome.name === "Over" && outcome.point != null) {
-        seen.set(outcome.description, outcome.point);
-      }
-    }
-    for (const [playerName, line] of seen) {
-      props.push({ playerName, market: market.key, line });
-    }
+  for (const [oddId, oddData] of Object.entries(odds)) {
+    const parsed = parsePropOddId(oddId);
+    if (!parsed) continue;
+    const { statId, playerEntityId, sideId } = parsed;
+    if (!PROP_STAT_IDS.has(statId)) continue;
+    if (sideId !== "over") continue;
+
+    const dk = (oddData as any).byBookmaker?.draftkings;
+    if (!dk?.available || !dk?.overUnder) continue;
+
+    const dedupeKey = `${statId}-${playerEntityId}`;
+    if (seen.has(dedupeKey)) continue;
+    seen.add(dedupeKey);
+
+    const playerName = players[playerEntityId]?.name
+      ?? playerEntityId.replace(/_\d+$/, "").replace(/_/g, " ");
+
+    props.push({ playerName, market: statId, line: parseFloat(dk.overUnder) });
   }
 
   return props;
 }
 
-export async function getGameLines(eventId: string, homeTeam: string, awayTeam: string): Promise<RawGameLine[]> {
+// Single call — fetches all NFL games with lines and props in one request
+export async function getNFLWeekData(): Promise<NFLGameData[]> {
   const res = await fetch(
-    `${BASE}/sports/americanfootball_nfl/events/${eventId}/odds` +
-      `?apiKey=${key()}&regions=us&markets=${LINE_MARKETS}&oddsFormat=decimal&bookmakers=draftkings`
+    `${BASE}/events?leagueID=NFL&finalized=false&oddsAvailable=true&limit=50`,
+    { headers: authHeaders() }
   );
-  if (!res.ok) throw new Error(`Odds API ${res.status}: ${await res.text()}`);
-  const data = await res.json();
+  if (!res.ok) throw new Error(`SportsGameOdds API ${res.status}: ${await res.text()}`);
+  const { data: events } = await res.json();
 
-  const lines: RawGameLine[] = [];
-  const bookmaker = data.bookmakers?.[0];
-  if (!bookmaker) return lines;
+  return (events ?? []).map((e: any) => {
+    const odds: Record<string, any> = e.odds ?? {};
+    const players: Record<string, any> = e.players ?? {};
+    const homeTeam = e.teams?.home?.names?.long ?? "";
+    const awayTeam = e.teams?.away?.names?.long ?? "";
 
-  for (const market of bookmaker.markets ?? []) {
-    if (market.key === "h2h") {
-      for (const outcome of market.outcomes ?? []) {
-        const isHome = outcome.name === homeTeam;
-        lines.push({
-          market: isHome ? "MONEYLINE_HOME" : "MONEYLINE_AWAY",
-          label: `${outcome.name} ML`,
-          odds: toAmerican(outcome.price),
-          line: null,
-        });
-      }
-    } else if (market.key === "spreads") {
-      for (const outcome of market.outcomes ?? []) {
-        const isHome = outcome.name === homeTeam;
-        lines.push({
-          market: isHome ? "SPREAD_HOME" : "SPREAD_AWAY",
-          label: `${outcome.name} ${outcome.point > 0 ? "+" : ""}${outcome.point}`,
-          odds: toAmerican(outcome.price),
-          line: outcome.point,
-        });
-      }
-    } else if (market.key === "totals") {
-      for (const outcome of market.outcomes ?? []) {
-        const isOver = outcome.name === "Over";
-        lines.push({
-          market: isOver ? "TOTAL_OVER" : "TOTAL_UNDER",
-          label: `${outcome.name} ${outcome.point}`,
-          odds: toAmerican(outcome.price),
-          line: outcome.point,
-        });
-      }
-    }
-  }
-
-  return lines;
+    return {
+      eventId: e.eventID,
+      commenceTime: e.status?.startsAt ?? "",
+      homeTeam,
+      awayTeam,
+      lines: extractGameLines(odds, homeTeam, awayTeam),
+      props: extractPlayerProps(odds, players),
+    };
+  });
 }

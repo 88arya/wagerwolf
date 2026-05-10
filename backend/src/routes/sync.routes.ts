@@ -2,140 +2,87 @@ import { Router } from "express";
 import { StatType } from "@prisma/client";
 import { prisma } from "../db/prisma";
 import { requireAuth, requireAdmin } from "../middleware/auth";
-import { getNFLEvents, getPlayerProps, getGameLines } from "../services/oddsApi";
+import { getNFLWeekData } from "../services/oddsApi";
 
 const router = Router();
 
 const MARKET_TO_STAT: Record<string, StatType> = {
-  player_pass_yds: StatType.PASSING_YARDS,
-  player_pass_tds: StatType.TOUCHDOWNS,
-  player_rush_yds: StatType.RUSHING_YARDS,
-  player_reception_yds: StatType.RECEIVING_YARDS,
-  player_receptions: StatType.RECEPTIONS,
+  passing_yards: StatType.PASSING_YARDS,
+  passing_touchdowns: StatType.TOUCHDOWNS,
+  rushing_yards: StatType.RUSHING_YARDS,
+  receiving_yards: StatType.RECEIVING_YARDS,
+  receptions: StatType.RECEPTIONS,
 };
 
 const MARKET_TO_POSITION: Record<string, string> = {
-  player_pass_yds: "QB",
-  player_pass_tds: "QB",
-  player_rush_yds: "RB",
-  player_reception_yds: "WR",
-  player_receptions: "WR",
+  passing_yards: "QB",
+  passing_touchdowns: "QB",
+  rushing_yards: "RB",
+  receiving_yards: "WR",
+  receptions: "WR",
 };
 
-// Pull all NFL games within a week's date range from The Odds API
-router.post("/games/:weekId", requireAuth, requireAdmin, async (req: any, res: any) => {
+// Sync all games, lines, and props for a week in one API call
+router.post("/week/:weekId", requireAuth, requireAdmin, async (req: any, res: any) => {
   try {
     const week = await prisma.week.findUnique({ where: { id: req.params.weekId } });
     if (!week) { res.status(404).json({ error: "Week not found" }); return; }
 
-    const events = await getNFLEvents();
+    const allData = await getNFLWeekData();
     const start = new Date(week.startDate);
     const end = new Date(week.endDate);
 
-    const inRange = events.filter((e) => {
-      const d = new Date(e.commence_time);
+    const inRange = allData.filter(({ commenceTime }) => {
+      const d = new Date(commenceTime);
       return d >= start && d <= end;
     });
 
-    const games = [];
-    for (const event of inRange) {
+    let gamesSynced = 0, linesSynced = 0, propsSynced = 0;
+
+    for (const { eventId, commenceTime, homeTeam, awayTeam, lines, props } of inRange) {
       const game = await prisma.game.upsert({
-        where: { externalId: event.id },
-        update: {},
-        create: {
-          weekId: week.id,
-          homeTeam: event.home_team,
-          awayTeam: event.away_team,
-          gameDate: new Date(event.commence_time),
-          externalId: event.id,
-        },
+        where: { externalId: eventId },
+        update: { homeTeam, awayTeam, gameDate: new Date(commenceTime) },
+        create: { weekId: week.id, homeTeam, awayTeam, gameDate: new Date(commenceTime), externalId: eventId },
       });
-      games.push(game);
-    }
+      gamesSynced++;
 
-    res.json({ synced: games.length, games });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// Pull player props for a specific game from The Odds API
-router.post("/props/:gameId", requireAuth, requireAdmin, async (req: any, res: any) => {
-  try {
-    const game = await prisma.game.findUnique({ where: { id: req.params.gameId } });
-    if (!game) { res.status(404).json({ error: "Game not found" }); return; }
-    if (!game.externalId) {
-      res.status(400).json({ error: "Game was not synced from The Odds API — no external ID" });
-      return;
-    }
-
-    const rawProps = await getPlayerProps(game.externalId);
-    const created = [];
-
-    for (const raw of rawProps) {
-      const statType = MARKET_TO_STAT[raw.market];
-      if (!statType) continue;
-
-      // Find or create player by name
-      let player = await prisma.player.findFirst({ where: { name: raw.playerName } });
-      if (!player) {
-        player = await prisma.player.create({
-          data: {
-            name: raw.playerName,
-            team: "",
-            position: MARKET_TO_POSITION[raw.market] ?? "FLEX",
-          },
+      for (const raw of lines) {
+        await prisma.gameLine.upsert({
+          where: { gameId_market: { gameId: game.id, market: raw.market } },
+          update: { label: raw.label, odds: raw.odds, line: raw.line },
+          create: { gameId: game.id, market: raw.market, label: raw.label, odds: raw.odds, line: raw.line },
         });
+        linesSynced++;
       }
 
-      // Skip if this prop already exists
-      const exists = await prisma.prop.findFirst({
-        where: { gameId: game.id, playerId: player.id, statType },
-      });
-      if (exists) continue;
+      for (const raw of props) {
+        const statType = MARKET_TO_STAT[raw.market];
+        if (!statType) continue;
 
-      const prop = await prisma.prop.create({
-        data: { gameId: game.id, playerId: player.id, statType, line: raw.line },
-        include: { player: true },
-      });
-      created.push(prop);
+        let player = await prisma.player.findFirst({ where: { name: raw.playerName } });
+        if (!player) {
+          player = await prisma.player.create({
+            data: { name: raw.playerName, team: "", position: MARKET_TO_POSITION[raw.market] ?? "FLEX" },
+          });
+        }
+
+        const existing = await prisma.prop.findFirst({
+          where: { gameId: game.id, playerId: player.id, statType },
+        });
+
+        if (existing) {
+          await prisma.prop.update({ where: { id: existing.id }, data: { line: raw.line } });
+        } else {
+          await prisma.prop.create({
+            data: { gameId: game.id, playerId: player.id, statType, line: raw.line },
+          });
+        }
+        propsSynced++;
+      }
     }
 
-    res.json({ synced: created.length, props: created });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// Pull moneyline, spread, and totals for a specific game from The Odds API
-router.post("/lines/:gameId", requireAuth, requireAdmin, async (req: any, res: any) => {
-  try {
-    const game = await prisma.game.findUnique({ where: { id: req.params.gameId } });
-    if (!game) { res.status(404).json({ error: "Game not found" }); return; }
-    if (!game.externalId) {
-      res.status(400).json({ error: "Game was not synced from The Odds API — no external ID" });
-      return;
-    }
-
-    const rawLines = await getGameLines(game.externalId, game.homeTeam, game.awayTeam);
-    const created = [];
-
-    for (const raw of rawLines) {
-      const line = await prisma.gameLine.upsert({
-        where: { gameId_market: { gameId: game.id, market: raw.market } },
-        update: { label: raw.label, odds: raw.odds, line: raw.line },
-        create: {
-          gameId: game.id,
-          market: raw.market,
-          label: raw.label,
-          odds: raw.odds,
-          line: raw.line,
-        },
-      });
-      created.push(line);
-    }
-
-    res.json({ synced: created.length, lines: created });
+    res.json({ games: gamesSynced, lines: linesSynced, props: propsSynced });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }

@@ -139,13 +139,13 @@ export default function BetSlip({ leagueId }: { leagueId: string }) {
         <button
           onClick={() => setOpen(true)}
           style={{
-            background: "var(--accent)",
+            background: "var(--navy)",
             color: "#fff",
             borderRadius: 24,
             padding: "10px 18px",
             fontWeight: 800,
             fontSize: "0.88rem",
-            boxShadow: "0 4px 16px rgba(204,0,0,0.3)",
+            boxShadow: "0 4px 16px rgba(0,26,87,0.35)",
             border: "none",
             display: "flex",
             alignItems: "center",

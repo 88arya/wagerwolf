@@ -98,81 +98,114 @@ export default function LeaguesPage() {
       <nav className="nav">
         <div className="nav-logo">PLAY<span className="accent">BOOK</span></div>
         {isAdmin && <Link href="/admin">Admin</Link>}
-        <div className="avatar" style={{ width: 30, height: 30, fontSize: "0.72rem", marginLeft: 4 }}>{initials}</div>
-        <button className="nav-link" onClick={() => { localStorage.clear(); router.push("/"); }}>Sign out</button>
+        <div style={{
+          width: 32, height: 32, borderRadius: "50%",
+          background: "rgba(200,150,12,0.2)",
+          border: "1.5px solid rgba(200,150,12,0.4)",
+          color: "var(--gold)",
+          fontSize: "0.72rem", fontWeight: 800,
+          display: "flex", alignItems: "center", justifyContent: "center",
+          marginLeft: 4,
+        }}>{initials}</div>
+        <button className="nav-link" onClick={() => { localStorage.clear(); router.push("/"); }}>
+          Sign out
+        </button>
       </nav>
 
       <div className="page">
-        <div style={{ marginBottom: 24 }}>
+        {/* Header */}
+        <div style={{ marginBottom: 24, paddingTop: 4 }}>
           <h1>My Leagues</h1>
-          <p className="subtitle">Compete with friends on NFL props</p>
+          <p className="subtitle">Your NFL prop betting competitions</p>
         </div>
 
-        {memberships.length > 0 ? (
-          <>
+        {/* Active leagues */}
+        {memberships.length > 0 && (
+          <div style={{ marginBottom: 20 }}>
             {memberships.map((m: any) => (
               <Link key={m.id} href={`/leagues/${m.leagueId}`}>
-                <div className="card" style={{ cursor: "pointer", marginBottom: 8, transition: "border-color 0.15s" }}
-                  onMouseEnter={(e) => (e.currentTarget.style.borderColor = "var(--border-2)")}
-                  onMouseLeave={(e) => (e.currentTarget.style.borderColor = "var(--border)")}>
+                <div className="card" style={{
+                  cursor: "pointer",
+                  marginBottom: 8,
+                  transition: "border-color 0.15s, box-shadow 0.15s",
+                  borderLeft: "4px solid var(--accent)",
+                }}
+                  onMouseEnter={(e) => { e.currentTarget.style.borderColor = "var(--accent)"; e.currentTarget.style.boxShadow = "var(--shadow-md)"; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.borderColor = "var(--border)"; e.currentTarget.style.borderLeftColor = "var(--accent)"; e.currentTarget.style.boxShadow = "var(--shadow-sm)"; }}>
                   <div className="row">
                     <div>
-                      <div style={{ fontWeight: 700, fontSize: "1rem", marginBottom: 4 }}>{m.league?.name}</div>
+                      <div style={{ fontWeight: 700, fontSize: "1rem", marginBottom: 6, color: "var(--text)" }}>
+                        {m.league?.name}
+                      </div>
                       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                        <span className="pill" style={{ fontSize: "0.75rem" }}>${m.balance.toLocaleString()}</span>
-                        <span style={{ color: "var(--text-3)", fontSize: "0.75rem" }}>${m.league?.weeklyAllowance}/wk</span>
-                        {m.league?.isPublic && <span className="badge badge-green" style={{ fontSize: "0.68rem" }}>Public</span>}
+                        <span style={{
+                          background: "var(--accent-dim)",
+                          color: "var(--accent)",
+                          borderRadius: 20,
+                          padding: "2px 10px",
+                          fontSize: "0.78rem",
+                          fontWeight: 800,
+                          letterSpacing: "0.01em",
+                        }}>
+                          ${m.balance.toLocaleString()}
+                        </span>
+                        <span style={{ color: "var(--text-3)", fontSize: "0.75rem" }}>
+                          ${m.league?.weeklyAllowance}/wk
+                        </span>
+                        {m.league?.isPublic && (
+                          <span className="badge badge-blue">Public</span>
+                        )}
                       </div>
                     </div>
-                    <span style={{ color: "var(--accent)", fontSize: "1.1rem" }}>›</span>
+                    <span style={{ color: "var(--accent)", fontSize: "1.2rem", fontWeight: 300 }}>›</span>
                   </div>
                 </div>
               </Link>
             ))}
-          </>
-        ) : (
-          <div className="card" style={{ marginBottom: 8 }}>
-            <div className="empty">
-              <div className="empty-icon">🏈</div>
-              <div className="empty-text">No leagues yet. Create or join one below.</div>
+          </div>
+        )}
+
+        {memberships.length === 0 && (
+          <div className="card" style={{ marginBottom: 20, textAlign: "center", padding: "32px 20px" }}>
+            <div style={{ fontSize: "2.4rem", marginBottom: 12 }}>🏈</div>
+            <div style={{ fontWeight: 700, fontSize: "0.95rem", color: "var(--text)", marginBottom: 6 }}>
+              No leagues yet
+            </div>
+            <div style={{ color: "var(--text-3)", fontSize: "0.82rem" }}>
+              Create a new league or join one below
             </div>
           </div>
         )}
 
-        {/* Pending requests */}
+        {/* Pending */}
         {pendingMemberships.length > 0 && (
-          <>
-            <div style={{ fontSize: "0.75rem", fontWeight: 700, color: "var(--text-3)", letterSpacing: "0.06em", margin: "16px 0 8px" }}>
-              PENDING APPROVAL
-            </div>
+          <div style={{ marginBottom: 20 }}>
+            <div className="section-title" style={{ marginBottom: 8 }}>Pending Approval</div>
             {pendingMemberships.map((m: any) => (
-              <div key={m.id} className="card" style={{ marginBottom: 8, borderColor: "var(--border)", opacity: 0.7 }}>
+              <div key={m.id} className="card" style={{ marginBottom: 6, opacity: 0.75, borderStyle: "dashed" }}>
                 <div className="row">
                   <div>
-                    <div style={{ fontWeight: 700, fontSize: "1rem", marginBottom: 4 }}>{m.league?.name}</div>
-                    <span style={{ fontSize: "0.75rem", color: "var(--text-3)" }}>Waiting for commissioner to approve</span>
+                    <div style={{ fontWeight: 700, fontSize: "0.95rem", marginBottom: 3 }}>{m.league?.name}</div>
+                    <span style={{ fontSize: "0.75rem", color: "var(--text-3)" }}>Waiting for commissioner</span>
                   </div>
-                  <span className="badge" style={{ fontSize: "0.7rem" }}>Pending</span>
+                  <span className="badge badge-yellow">Pending</span>
                 </div>
               </div>
             ))}
-          </>
+          </div>
         )}
 
-        <h2>Get Started</h2>
+        {/* Get started */}
+        <div className="section-title" style={{ marginBottom: 10 }}>Get Started</div>
 
-        <div style={{ display: "flex", background: "var(--surface-2)", borderRadius: 8, padding: 3, marginBottom: 12, border: "1px solid var(--border)" }}>
+        {/* Segment control */}
+        <div className="segment" style={{ marginBottom: 14 }}>
           {(["join", "create"] as const).map((t) => (
-            <button key={t} onClick={() => { setTab(t); setJoinError(""); setJoinSuccess(""); setError(""); }} style={{
-              flex: 1, padding: "8px 0",
-              background: tab === t ? "var(--surface)" : "transparent",
-              boxShadow: tab === t ? "0 1px 3px rgba(0,0,0,0.1)" : "none",
-              border: tab === t ? "1px solid var(--border)" : "1px solid transparent",
-              color: tab === t ? "var(--text)" : "var(--text-2)",
-              borderRadius: 6,
-              fontWeight: tab === t ? 700 : 500, fontSize: "0.85rem",
-              letterSpacing: "0.01em",
-            }}>
+            <button
+              key={t}
+              className={`segment-btn${tab === t ? " active" : ""}`}
+              onClick={() => { setTab(t); setJoinError(""); setJoinSuccess(""); setError(""); }}
+            >
               {t === "join" ? "Join League" : "Create League"}
             </button>
           ))}
@@ -180,24 +213,24 @@ export default function LeaguesPage() {
 
         {tab === "join" && (
           <div className="card">
-            {/* Public league */}
+            {/* Public */}
             <div style={{ marginBottom: 20 }}>
-              <div style={{ fontWeight: 700, fontSize: "0.9rem", marginBottom: 4 }}>Public League</div>
+              <div style={{ fontWeight: 700, fontSize: "0.92rem", marginBottom: 4 }}>Join a Public League</div>
               <div style={{ color: "var(--text-3)", fontSize: "0.8rem", marginBottom: 12 }}>
-                Get automatically placed in an open public league.
+                Get placed in an open public league instantly.
               </div>
               <button style={{ width: "100%" }} onClick={joinPublic}>
-                Join a Public League
+                Find a Public League
               </button>
             </div>
 
-            <div style={{ borderTop: "1px solid var(--border)", margin: "0 -20px", marginBottom: 20 }} />
+            <div style={{ borderTop: "1px solid var(--border)", margin: "0 -16px 20px", padding: 0 }} />
 
-            {/* Private league */}
+            {/* Private */}
             <div>
-              <div style={{ fontWeight: 700, fontSize: "0.9rem", marginBottom: 4 }}>Private League</div>
+              <div style={{ fontWeight: 700, fontSize: "0.92rem", marginBottom: 4 }}>Join with Invite Code</div>
               <div style={{ color: "var(--text-3)", fontSize: "0.8rem", marginBottom: 12 }}>
-                Enter an invite code — your request goes to the commissioner for approval.
+                Enter a 6-character code — commissioner will approve your request.
               </div>
               <form className="form" onSubmit={joinPrivate} style={{ gap: 10 }}>
                 <input
@@ -205,7 +238,14 @@ export default function LeaguesPage() {
                   value={joinCode}
                   onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
                   maxLength={6}
-                  style={{ textTransform: "uppercase", letterSpacing: "0.3em", fontSize: "1.2rem", fontWeight: 700, textAlign: "center" }}
+                  style={{
+                    textTransform: "uppercase",
+                    letterSpacing: "0.35em",
+                    fontSize: "1.4rem",
+                    fontWeight: 900,
+                    textAlign: "center",
+                    color: "var(--accent)",
+                  }}
                   required
                 />
                 <button type="submit" style={{ width: "100%" }}>Request to Join</button>
@@ -213,7 +253,20 @@ export default function LeaguesPage() {
             </div>
 
             {joinError && <p className="error" style={{ marginTop: 12 }}>{joinError}</p>}
-            {joinSuccess && <p style={{ marginTop: 12, color: "var(--win)", fontSize: "0.85rem", fontWeight: 600 }}>{joinSuccess}</p>}
+            {joinSuccess && (
+              <div style={{
+                marginTop: 12,
+                background: "var(--win-bg)",
+                border: "1px solid rgba(22,163,74,0.3)",
+                borderRadius: 8,
+                padding: "10px 14px",
+                color: "var(--win)",
+                fontSize: "0.85rem",
+                fontWeight: 600,
+              }}>
+                {joinSuccess}
+              </div>
+            )}
           </div>
         )}
 
@@ -226,26 +279,30 @@ export default function LeaguesPage() {
               </div>
 
               <div>
-                <div className="label">Teams</div>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 2 }}>
-                  {teamOptions.map((n) => (
-                    <button
-                      key={n}
-                      type="button"
-                      onClick={() => setForm({ ...form, maxTeams: String(n) })}
-                      style={{
-                        padding: "6px 12px",
-                        borderRadius: 6,
-                        fontSize: "0.85rem",
-                        fontWeight: Number(form.maxTeams) === n ? 700 : 500,
-                        background: Number(form.maxTeams) === n ? "var(--accent)" : "var(--surface-2)",
-                        color: Number(form.maxTeams) === n ? "#fff" : "var(--text-2)",
-                        border: Number(form.maxTeams) === n ? "1px solid var(--accent)" : "1px solid var(--border)",
-                      }}
-                    >
-                      {n}
-                    </button>
-                  ))}
+                <div className="label">Number of Teams</div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 4 }}>
+                  {teamOptions.map((n) => {
+                    const active = Number(form.maxTeams) === n;
+                    return (
+                      <button
+                        key={n}
+                        type="button"
+                        onClick={() => setForm({ ...form, maxTeams: String(n) })}
+                        style={{
+                          padding: "7px 14px",
+                          borderRadius: 7,
+                          fontSize: "0.88rem",
+                          fontWeight: active ? 800 : 500,
+                          background: active ? "var(--accent)" : "var(--surface-2)",
+                          color: active ? "#fff" : "var(--text-2)",
+                          border: active ? "1.5px solid var(--accent)" : "1.5px solid var(--border)",
+                          transition: "all 0.12s",
+                        }}
+                      >
+                        {n}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
 
@@ -262,7 +319,9 @@ export default function LeaguesPage() {
               </div>
 
               {error && <p className="error">{error}</p>}
-              <button type="submit" style={{ width: "100%" }}>Create</button>
+              <button type="submit" style={{ width: "100%", padding: "14px" }}>
+                Create League
+              </button>
             </form>
           </div>
         )}
