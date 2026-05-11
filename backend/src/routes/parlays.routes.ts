@@ -38,6 +38,18 @@ router.post("/", requireAuth, async (req: any, res: any) => {
       return;
     }
 
+    const league = await prisma.league.findUnique({
+      where: { id: leagueId },
+      select: { maxStakePerBet: true, maxBetsPerWeek: true, maxParlayLegs: true },
+    });
+
+    if (league?.maxParlayLegs && legs.length > league.maxParlayLegs) {
+      res.status(400).json({ error: `Maximum ${league.maxParlayLegs} legs per parlay` }); return;
+    }
+    if (league?.maxStakePerBet && Number(stake) > league.maxStakePerBet) {
+      res.status(400).json({ error: `Max stake per bet is $${league.maxStakePerBet}` }); return;
+    }
+
     const membership = await prisma.membership.findUnique({
       where: { userId_leagueId: { userId, leagueId } },
     });
@@ -52,6 +64,7 @@ router.post("/", requireAuth, async (req: any, res: any) => {
     const seenPropIds = new Set<string>();
     const seenGameLineIds = new Set<string>();
     const seenGameMarkets = new Map<string, Set<string>>();
+    let firstWeekId: string | null = null;
 
     for (const leg of legs) {
       if (!leg.propId && !leg.gameLineId) {
@@ -84,6 +97,7 @@ router.post("/", requireAuth, async (req: any, res: any) => {
           return;
         }
         seenPropIds.add(`${leg.propId}:${leg.direction}`);
+        if (!firstWeekId) firstWeekId = prop.game.week.id;
 
         resolvedLegs.push({ propId: leg.propId, direction: leg.direction, odds: prop.odds });
       } else if (leg.gameLineId) {
@@ -116,8 +130,23 @@ router.post("/", requireAuth, async (req: any, res: any) => {
         gameMarkets.add(gameLine.market);
         seenGameMarkets.set(gameLine.gameId, gameMarkets);
         seenGameLineIds.add(leg.gameLineId);
+        if (!firstWeekId) firstWeekId = gameLine.game.week.id;
 
         resolvedLegs.push({ gameLineId: leg.gameLineId, odds: gameLine.odds });
+      }
+    }
+
+    if (league?.maxBetsPerWeek && firstWeekId) {
+      const weekId = firstWeekId;
+      const [weekPicks, weekGamePicks, weekParlays] = await Promise.all([
+        prisma.pick.count({ where: { userId, leagueId, prop: { game: { weekId } } } }),
+        prisma.gamePick.count({ where: { userId, leagueId, gameLine: { game: { weekId } } } }),
+        prisma.parlay.count({
+          where: { userId, leagueId, legs: { some: { OR: [{ prop: { game: { weekId } } }, { gameLine: { game: { weekId } } }] } } },
+        }),
+      ]);
+      if (weekPicks + weekGamePicks + weekParlays >= league.maxBetsPerWeek) {
+        res.status(400).json({ error: `Maximum ${league.maxBetsPerWeek} bets per week` }); return;
       }
     }
 

@@ -68,6 +68,7 @@ model League {
   maxPublicPlayers   Int         @default(0)
   maxStakePerBet     Int?
   maxBetsPerWeek     Int?
+  maxParlayLegs      Int?        @default(10)
   creator            User        @relation("LeagueCreator", fields: [creatorId], references: [id])
   createdAt          DateTime    @default(now())
   memberships        Membership[]

@@ -130,12 +130,13 @@ router.patch("/:id/limits", requireAuth, async (req: any, res: any) => {
     if (!league) { res.status(404).json({ error: "League not found" }); return; }
     if (league.creatorId !== req.userId) { res.status(403).json({ error: "Commissioner only" }); return; }
 
-    const { maxStakePerBet, maxBetsPerWeek } = req.body;
+    const { maxStakePerBet, maxBetsPerWeek, maxParlayLegs } = req.body;
     const updated = await prisma.league.update({
       where: { id: req.params.id },
       data: {
         maxStakePerBet: maxStakePerBet === "" || maxStakePerBet == null ? null : Number(maxStakePerBet),
         maxBetsPerWeek: maxBetsPerWeek === "" || maxBetsPerWeek == null ? null : Number(maxBetsPerWeek),
+        maxParlayLegs: maxParlayLegs === "" || maxParlayLegs == null ? null : Number(maxParlayLegs),
       },
     });
     res.json(updated);
