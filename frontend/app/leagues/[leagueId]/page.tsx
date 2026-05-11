@@ -22,21 +22,9 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
   // Commissioner state
   const [pendingMembers, setPendingMembers] = useState<any[]>([]);
   const [showMembers, setShowMembers] = useState(false);
-  const [showSettings, setShowSettings] = useState(false);
   const [showPlayoffs, setShowPlayoffs] = useState(false);
   const [showConsolation, setShowConsolation] = useState(false);
   const [copied, setCopied] = useState(false);
-
-  // Settings form
-  const [settingsForm, setSettingsForm] = useState({
-    startWeek: "", regularSeasonWeeks: "", playoffSize: "", consolationWeeks: "", maxPublicPlayers: "",
-  });
-  const [settingsError, setSettingsError] = useState("");
-  const [settingsSaved, setSettingsSaved] = useState(false);
-
-  // Bet limits
-  const [limitsForm, setLimitsForm] = useState({ maxStakePerBet: "", maxBetsPerWeek: "" });
-  const [limitsSaved, setLimitsSaved] = useState(false);
 
   // Playoff/consolation inputs
   const [playoffWeekInput, setPlayoffWeekInput] = useState("");
@@ -64,18 +52,6 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
       if (leagueData.creatorId === id) {
         try { setPendingMembers(await api(`/leagues/${leagueId}/pending`)); } catch {}
       }
-
-      setSettingsForm({
-        startWeek: String(leagueData.startWeek ?? 1),
-        regularSeasonWeeks: String(leagueData.regularSeasonWeeks ?? 13),
-        playoffSize: String(leagueData.playoffSize ?? 4),
-        consolationWeeks: String(leagueData.consolationWeeks ?? 2),
-        maxPublicPlayers: String(leagueData.maxPublicPlayers ?? 0),
-      });
-      setLimitsForm({
-        maxStakePerBet: leagueData.maxStakePerBet != null ? String(leagueData.maxStakePerBet) : "",
-        maxBetsPerWeek: leagueData.maxBetsPerWeek != null ? String(leagueData.maxBetsPerWeek) : "",
-      });
 
       try {
         const [weeks, board] = await Promise.all([
@@ -153,47 +129,6 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
     try {
       await api(`/leagues/${leagueId}/season/start`, { method: "POST" });
       setLeague(await api(`/leagues/${leagueId}`));
-    } catch (err: any) {
-      try { alert(JSON.parse(err.message).error); } catch { alert(err.message); }
-    }
-  }
-
-  async function saveSettings(e: React.FormEvent) {
-    e.preventDefault();
-    setSettingsError("");
-    setSettingsSaved(false);
-    try {
-      const updated = await api(`/leagues/${leagueId}`, {
-        method: "PATCH",
-        body: JSON.stringify({
-          startWeek: Number(settingsForm.startWeek),
-          regularSeasonWeeks: Number(settingsForm.regularSeasonWeeks),
-          playoffSize: Number(settingsForm.playoffSize),
-          consolationWeeks: Number(settingsForm.consolationWeeks),
-          maxPublicPlayers: Number(settingsForm.maxPublicPlayers),
-        }),
-      });
-      setLeague(updated);
-      setSettingsSaved(true);
-      setTimeout(() => setSettingsSaved(false), 2500);
-    } catch (err: any) {
-      try { setSettingsError(JSON.parse(err.message).error); } catch { setSettingsError(err.message); }
-    }
-  }
-
-  async function saveLimits(e: React.FormEvent) {
-    e.preventDefault();
-    try {
-      const updated = await api(`/leagues/${leagueId}/limits`, {
-        method: "PATCH",
-        body: JSON.stringify({
-          maxStakePerBet: limitsForm.maxStakePerBet === "" ? null : Number(limitsForm.maxStakePerBet),
-          maxBetsPerWeek: limitsForm.maxBetsPerWeek === "" ? null : Number(limitsForm.maxBetsPerWeek),
-        }),
-      });
-      setLeague(updated);
-      setLimitsSaved(true);
-      setTimeout(() => setLimitsSaved(false), 2500);
     } catch (err: any) {
       try { alert(JSON.parse(err.message).error); } catch { alert(err.message); }
     }
@@ -667,79 +602,25 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
               )}
             </div>
 
+            {/* League settings link — always visible to commissioner */}
+            <Link href={`/leagues/${leagueId}/settings`} style={{ display: "block", marginBottom: 8 }}>
+              <div className="card" style={{
+                display: "flex", alignItems: "center", justifyContent: "space-between",
+                padding: "14px 16px", cursor: "pointer",
+              }}>
+                <div>
+                  <div style={{ fontWeight: 700, fontSize: "0.9rem", marginBottom: 2 }}>League Settings</div>
+                  <div style={{ fontSize: "0.75rem", color: "var(--text-3)" }}>
+                    Season structure · Betting rules
+                  </div>
+                </div>
+                <span style={{ color: "var(--text-3)", fontSize: "1rem" }}>›</span>
+              </div>
+            </Link>
+
             {/* Pre-season controls */}
             {!league.seasonStarted && (
               <>
-                {/* League settings */}
-                <div className="card" style={{ marginBottom: 8, padding: 0, overflow: "hidden" }}>
-                  <button
-                    onClick={() => setShowSettings(!showSettings)}
-                    style={{
-                      width: "100%", background: "transparent", color: "var(--text)",
-                      border: "none", borderRadius: 0,
-                      padding: "14px 16px",
-                      display: "flex", alignItems: "center", justifyContent: "space-between",
-                      fontWeight: 700, fontSize: "0.9rem",
-                    }}
-                  >
-                    <span>League Settings</span>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                      <span style={{ fontSize: "0.75rem", color: "var(--text-3)", fontWeight: 500 }}>
-                        Wk {league.startWeek} · {league.regularSeasonWeeks}reg · {league.playoffSize} playoff
-                      </span>
-                      <span style={{ color: "var(--text-3)", fontSize: "0.82rem", fontWeight: 400 }}>{showSettings ? "▲" : "▼"}</span>
-                    </div>
-                  </button>
-
-                  {showSettings && (() => {
-                    const sw = Number(settingsForm.startWeek) || 1;
-                    const rsw = Number(settingsForm.regularSeasonWeeks) || 13;
-                    const ps = Number(settingsForm.playoffSize) || 4;
-                    const pw = ps >= 2 ? Math.ceil(Math.log2(ps)) : 0;
-                    const endWeek = sw + rsw + pw - 1;
-                    const overLimit = endWeek > 18;
-                    const maxTeams = league.maxTeams ?? 10;
-                    return (
-                      <div style={{ padding: "0 16px 16px", borderTop: "1px solid var(--border)" }}>
-                        <form onSubmit={saveSettings} style={{ paddingTop: 14 }}>
-                          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
-                            <div>
-                              <div className="label">Start Week</div>
-                              <input type="number" min="1" max="17" value={settingsForm.startWeek} onChange={(e) => setSettingsForm({ ...settingsForm, startWeek: e.target.value })} required />
-                            </div>
-                            <div>
-                              <div className="label">Reg Season Weeks</div>
-                              <input type="number" min="1" value={settingsForm.regularSeasonWeeks} onChange={(e) => setSettingsForm({ ...settingsForm, regularSeasonWeeks: e.target.value })} required />
-                            </div>
-                            <div>
-                              <div className="label">Playoff Teams</div>
-                              <input type="number" min="2" max={maxTeams - 1} value={settingsForm.playoffSize} onChange={(e) => setSettingsForm({ ...settingsForm, playoffSize: e.target.value })} required />
-                            </div>
-                            <div>
-                              <div className="label">Consolation Weeks</div>
-                              <input type="number" min="1" value={settingsForm.consolationWeeks} onChange={(e) => setSettingsForm({ ...settingsForm, consolationWeeks: e.target.value })} required />
-                            </div>
-                            <div style={{ gridColumn: "span 2" }}>
-                              <div className="label">Public Fill Slots</div>
-                              <input type="number" min="0" max={maxTeams} placeholder="0 = invite-only" value={settingsForm.maxPublicPlayers} onChange={(e) => setSettingsForm({ ...settingsForm, maxPublicPlayers: e.target.value })} />
-                              <div style={{ fontSize: "0.72rem", color: "var(--text-3)", marginTop: 4 }}>Allow random players to fill open slots</div>
-                            </div>
-                          </div>
-                          <div style={{ fontSize: "0.75rem", color: overLimit ? "var(--loss)" : "var(--text-3)", marginBottom: 10 }}>
-                            {overLimit
-                              ? `⚠ Season ends week ${endWeek}, exceeds week 18`
-                              : `Ends NFL week ${endWeek} · ${maxTeams - ps} consolation teams · ${pw} playoff weeks`}
-                          </div>
-                          {settingsError && <p className="error" style={{ marginBottom: 8 }}>{settingsError}</p>}
-                          <button type="submit" className="secondary" style={{ width: "100%", fontSize: "0.85rem" }}>
-                            {settingsSaved ? "✓ Saved" : "Save Settings"}
-                          </button>
-                        </form>
-                      </div>
-                    );
-                  })()}
-                </div>
-
                 {/* Start season */}
                 <div className="card" style={{ marginBottom: 8 }}>
                   <div style={{ color: "var(--text-2)", fontSize: "0.82rem", marginBottom: 10 }}>
@@ -892,43 +773,6 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
               </div>
             )}
           </>
-        )}
-
-        {/* Bet Limits — always visible to commissioner */}
-        {isCreator && (
-          <div className="card" style={{ marginBottom: 8 }}>
-            <div style={{ fontSize: "0.66rem", fontWeight: 800, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--text-3)", marginBottom: 12 }}>
-              Bet Limits
-            </div>
-            <form onSubmit={saveLimits} style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-                <div>
-                  <div className="label">Max Stake / Bet</div>
-                  <input
-                    type="number"
-                    min="1"
-                    placeholder="No limit"
-                    value={limitsForm.maxStakePerBet}
-                    onChange={(e) => setLimitsForm({ ...limitsForm, maxStakePerBet: e.target.value })}
-                  />
-                </div>
-                <div>
-                  <div className="label">Max Bets / Week</div>
-                  <input
-                    type="number"
-                    min="1"
-                    placeholder="No limit"
-                    value={limitsForm.maxBetsPerWeek}
-                    onChange={(e) => setLimitsForm({ ...limitsForm, maxBetsPerWeek: e.target.value })}
-                  />
-                </div>
-              </div>
-              <div style={{ fontSize: "0.72rem", color: "var(--text-3)" }}>Leave blank for no limit</div>
-              <button type="submit" className="secondary" style={{ fontSize: "0.85rem" }}>
-                {limitsSaved ? "✓ Saved" : "Save Limits"}
-              </button>
-            </form>
-          </div>
         )}
 
         {/* Leave league (non-commissioner) */}
