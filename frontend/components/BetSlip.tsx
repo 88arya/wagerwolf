@@ -12,6 +12,7 @@ export interface SlipLeg {
   market?: string;   // game line market (SPREAD_HOME, TOTAL_OVER, etc.)
   line?: number;     // base line value; undefined = no rotation (moneylines)
   statType?: string; // prop stat type for step size
+  altLine?: number;  // pre-selected line rotation from prop block
 }
 
 const SLIP_KEY = "betslip_legs";
@@ -23,14 +24,14 @@ export function getBetSlip(): SlipLeg[] {
 
 export function addToSlip(leg: SlipLeg): boolean {
   const legs = getBetSlip();
-  if (legs.some((l) => l.id === leg.id && l.direction === leg.direction)) return false;
+  if (legs.some((l) => l.id === leg.id && l.direction === leg.direction && l.altLine === leg.altLine)) return false;
   localStorage.setItem(SLIP_KEY, JSON.stringify([...legs, leg]));
   window.dispatchEvent(new Event("betslip-update"));
   return true;
 }
 
-export function removeFromSlip(id: string, direction?: string): void {
-  const legs = getBetSlip().filter((l) => !(l.id === id && l.direction === direction));
+export function removeFromSlip(id: string, direction?: string, altLine?: number): void {
+  const legs = getBetSlip().filter((l) => !(l.id === id && l.direction === direction && l.altLine === altLine));
   localStorage.setItem(SLIP_KEY, JSON.stringify(legs));
   window.dispatchEvent(new Event("betslip-update"));
 }
@@ -115,7 +116,7 @@ export default function BetSlip({ leagueId }: { leagueId: string }) {
 
   function getCurrentLine(leg: SlipLeg): number | undefined {
     if (leg.line == null) return undefined;
-    return legLines[legKey(leg)] ?? leg.line;
+    return legLines[legKey(leg)] ?? leg.altLine ?? leg.line;
   }
 
   function shiftLine(leg: SlipLeg, dir: 1 | -1) {
@@ -322,7 +323,7 @@ export default function BetSlip({ leagueId }: { leagueId: string }) {
                     </div>
                   </div>
                   <button
-                    onClick={() => removeFromSlip(leg.id, leg.direction)}
+                    onClick={() => removeFromSlip(leg.id, leg.direction, leg.altLine)}
                     style={{ background: "transparent", color: "var(--text-3)", fontSize: "1rem", padding: "0 4px", border: "none", cursor: "pointer", flexShrink: 0 }}
                   >
                     ×

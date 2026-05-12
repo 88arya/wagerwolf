@@ -145,10 +145,11 @@ model Game {
 }
 
 model Player {
-  id       String @id @default(cuid())
+  id       String  @id @default(cuid())
   name     String
   team     String
   position String
+  imageUrl String?
   props    Prop[]
 }
 
