@@ -9,6 +9,9 @@ export interface SlipLeg {
   direction?: "OVER" | "UNDER";
   label: string;
   odds: number;
+  market?: string;   // game line market (SPREAD_HOME, TOTAL_OVER, etc.)
+  line?: number;     // base line value; undefined = no rotation (moneylines)
+  statType?: string; // prop stat type for step size
 }
 
 const SLIP_KEY = "betslip_legs";
@@ -62,10 +65,36 @@ function legKey(leg: SlipLeg): string {
   return `${leg.id}:${leg.direction ?? ""}`;
 }
 
+function canRotate(leg: SlipLeg): boolean {
+  if (leg.line == null) return false;
+  if (leg.type === "gameline") return !leg.market?.startsWith("MONEYLINE");
+  return true;
+}
+
+function getStep(leg: SlipLeg): number {
+  if (leg.type === "gameline") return 0.5;
+  if (leg.statType === "PASSING_YARDS" || leg.statType === "RUSHING_YARDS" || leg.statType === "RECEIVING_YARDS") return 5;
+  return 0.5;
+}
+
+function getAdjustedOdds(leg: SlipLeg, currentLine: number): number {
+  if (leg.line == null) return leg.odds;
+  const step = getStep(leg);
+  const steps = (currentLine - leg.line) / step;
+  let favSteps: number;
+  if (leg.type === "gameline") {
+    favSteps = leg.market === "TOTAL_OVER" ? -steps : steps;
+  } else {
+    favSteps = leg.direction === "OVER" ? -steps : steps;
+  }
+  return Math.max(-500, Math.min(500, leg.odds - Math.round(favSteps * 15)));
+}
+
 export default function BetSlip({ leagueId }: { leagueId: string }) {
   const [legs, setLegs] = useState<SlipLeg[]>([]);
   const [open, setOpen] = useState(false);
   const [legStakes, setLegStakes] = useState<Record<string, string>>({});
+  const [legLines, setLegLines] = useState<Record<string, number>>({});
   const [parlayStake, setParlayStake] = useState("");
   const [placingLeg, setPlacingLeg] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -84,7 +113,25 @@ export default function BetSlip({ leagueId }: { leagueId: string }) {
     if (legs.length > 0) setOpen(true);
   }, [legs.length]);
 
-  const totalOdds = parlayOdds(legs.map((l) => l.odds));
+  function getCurrentLine(leg: SlipLeg): number | undefined {
+    if (leg.line == null) return undefined;
+    return legLines[legKey(leg)] ?? leg.line;
+  }
+
+  function shiftLine(leg: SlipLeg, dir: 1 | -1) {
+    const key = legKey(leg);
+    const current = getCurrentLine(leg) ?? leg.line!;
+    const next = Math.round((current + dir * getStep(leg)) * 100) / 100;
+    setLegLines((prev) => ({ ...prev, [key]: next }));
+  }
+
+  function effectiveOdds(leg: SlipLeg): number {
+    const current = getCurrentLine(leg);
+    if (current == null || current === leg.line) return leg.odds;
+    return getAdjustedOdds(leg, current);
+  }
+
+  const totalOdds = parlayOdds(legs.map(effectiveOdds));
   const parlayStakeNum = Number(parlayStake);
   const parlayPayout = parlayStakeNum > 0 && legs.length >= 2 ? calcPayout(parlayStakeNum, totalOdds) : 0;
 
@@ -94,19 +141,30 @@ export default function BetSlip({ leagueId }: { leagueId: string }) {
     if (!stakeStr || Number(stakeStr) <= 0) { setError("Enter a stake"); return; }
     setPlacingLeg(key);
     setError("");
+
+    const currentLine = getCurrentLine(leg);
+    const altLine = (currentLine != null && leg.line != null && currentLine !== leg.line) ? currentLine : undefined;
+
     try {
       if (leg.type === "prop") {
         await api("/picks", {
           method: "POST",
-          body: JSON.stringify({ leagueId, propId: leg.id, direction: leg.direction, stake: Number(stakeStr) }),
+          body: JSON.stringify({
+            leagueId, propId: leg.id, direction: leg.direction, stake: Number(stakeStr),
+            ...(altLine != null ? { altLine } : {}),
+          }),
         });
       } else {
         await api("/gamepicks", {
           method: "POST",
-          body: JSON.stringify({ leagueId, gameLineId: leg.id, stake: Number(stakeStr) }),
+          body: JSON.stringify({
+            leagueId, gameLineId: leg.id, stake: Number(stakeStr),
+            ...(altLine != null ? { altLine } : {}),
+          }),
         });
       }
       removeFromSlip(leg.id, leg.direction);
+      setLegLines((prev) => { const n = { ...prev }; delete n[key]; return n; });
       window.dispatchEvent(new Event("bet-placed"));
     } catch (err: any) {
       try { setError(JSON.parse(err.message).error); } catch { setError(err.message); }
@@ -126,16 +184,22 @@ export default function BetSlip({ leagueId }: { leagueId: string }) {
         body: JSON.stringify({
           leagueId,
           stake: parlayStakeNum,
-          legs: legs.map((l) => ({
-            propId: l.type === "prop" ? l.id : undefined,
-            gameLineId: l.type === "gameline" ? l.id : undefined,
-            direction: l.direction,
-          })),
+          legs: legs.map((l) => {
+            const currentLine = getCurrentLine(l);
+            const altLine = (currentLine != null && l.line != null && currentLine !== l.line) ? currentLine : undefined;
+            return {
+              propId: l.type === "prop" ? l.id : undefined,
+              gameLineId: l.type === "gameline" ? l.id : undefined,
+              direction: l.direction,
+              ...(altLine != null ? { altLine } : {}),
+            };
+          }),
         }),
       });
       setMsg(`Parlay placed! To win $${(parlayPayout - parlayStakeNum).toLocaleString()}`);
       setParlayStake("");
       clearSlip();
+      setLegLines({});
       setOpen(false);
       window.dispatchEvent(new Event("bet-placed"));
       setTimeout(() => setMsg(""), 4000);
@@ -213,7 +277,7 @@ export default function BetSlip({ leagueId }: { leagueId: string }) {
             </div>
             <div style={{ display: "flex", gap: 8 }}>
               <button
-                onClick={() => { clearSlip(); setOpen(false); }}
+                onClick={() => { clearSlip(); setLegLines({}); setOpen(false); }}
                 style={{ background: "rgba(255,255,255,0.1)", color: "rgba(255,255,255,0.7)", fontSize: "0.75rem", padding: "4px 10px", border: "none", borderRadius: 6, cursor: "pointer" }}
               >
                 Clear all
@@ -237,14 +301,25 @@ export default function BetSlip({ leagueId }: { leagueId: string }) {
           {legs.map((leg) => {
             const key = legKey(leg);
             const stakeNum = Number(legStakes[key] ?? 0);
-            const payout = stakeNum > 0 ? calcPayout(stakeNum, leg.odds) : 0;
+            const curLine = getCurrentLine(leg);
+            const adjOdds = effectiveOdds(leg);
+            const lineChanged = curLine != null && leg.line != null && curLine !== leg.line;
+            const payout = stakeNum > 0 ? calcPayout(stakeNum, adjOdds) : 0;
             const isPlacing = placingLeg === key;
+            const rotatable = canRotate(leg);
             return (
               <div key={key} style={{ padding: "12px 16px", borderBottom: "1px solid var(--border)" }}>
-                <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 8 }}>
+                <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: rotatable ? 6 : 8 }}>
                   <div style={{ flex: 1, minWidth: 0, paddingRight: 8 }}>
                     <div style={{ fontWeight: 700, fontSize: "0.85rem", lineHeight: 1.3 }}>{leg.label}</div>
-                    <div style={{ fontSize: "0.75rem", color: "var(--accent)", fontWeight: 700, marginTop: 2 }}>{fmtOdds(leg.odds)}</div>
+                    <div style={{ fontSize: "0.75rem", fontWeight: 700, marginTop: 2, color: lineChanged ? "var(--accent)" : "var(--accent)" }}>
+                      {fmtOdds(adjOdds)}
+                      {lineChanged && (
+                        <span style={{ color: "var(--text-3)", fontWeight: 400, marginLeft: 6, textDecoration: "line-through", fontSize: "0.68rem" }}>
+                          {fmtOdds(leg.odds)}
+                        </span>
+                      )}
+                    </div>
                   </div>
                   <button
                     onClick={() => removeFromSlip(leg.id, leg.direction)}
@@ -253,6 +328,42 @@ export default function BetSlip({ leagueId }: { leagueId: string }) {
                     ×
                   </button>
                 </div>
+
+                {/* Line rotation */}
+                {rotatable && (
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                    <button
+                      onClick={() => shiftLine(leg, -1)}
+                      style={{
+                        width: 26, height: 26, borderRadius: 6, border: "1px solid var(--border)",
+                        background: "var(--surface-2)", color: "var(--text-2)",
+                        fontSize: "1rem", fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center",
+                        cursor: "pointer", flexShrink: 0,
+                      }}
+                    >−</button>
+                    <span style={{
+                      fontSize: "0.88rem", fontWeight: 800, minWidth: 48, textAlign: "center",
+                      color: lineChanged ? "var(--accent)" : "var(--text-2)",
+                    }}>
+                      {curLine}
+                    </span>
+                    <button
+                      onClick={() => shiftLine(leg, 1)}
+                      style={{
+                        width: 26, height: 26, borderRadius: 6, border: "1px solid var(--border)",
+                        background: "var(--surface-2)", color: "var(--text-2)",
+                        fontSize: "1rem", fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center",
+                        cursor: "pointer", flexShrink: 0,
+                      }}
+                    >+</button>
+                    {lineChanged && (
+                      <span style={{ fontSize: "0.68rem", color: "var(--text-3)", marginLeft: 2 }}>
+                        was {leg.line}
+                      </span>
+                    )}
+                  </div>
+                )}
+
                 <div style={{ display: "flex", gap: 6 }}>
                   <input
                     type="number"

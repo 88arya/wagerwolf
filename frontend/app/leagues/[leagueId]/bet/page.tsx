@@ -142,7 +142,11 @@ export default function BetPage({ params }: PageProps<"/leagues/[leagueId]/bet">
       const oppLine = (gameForLine?.gameLines ?? []).find((l: any) => l.market === oppMarket);
       if (oppLine && slipIds.has(`${oppLine.id}:`)) removeFromSlip(oppLine.id, undefined);
     }
-    addToSlip({ type: "gameline", id: line.id, label: line.label, odds: line.odds });
+    addToSlip({
+      type: "gameline", id: line.id, label: line.label, odds: line.odds,
+      market: line.market,
+      line: line.line ?? undefined,
+    });
   }
 
   function togglePropInSlip(prop: any, direction: "OVER" | "UNDER") {
@@ -155,6 +159,8 @@ export default function BetPage({ params }: PageProps<"/leagues/[leagueId]/bet">
       type: "prop", id: prop.id, direction,
       label: `${prop.player?.name} ${direction} ${prop.line} ${prop.statType.replaceAll("_", " ")}`,
       odds: prop.odds ?? -110,
+      line: prop.line,
+      statType: prop.statType,
     });
   }
 
@@ -266,41 +272,42 @@ export default function BetPage({ params }: PageProps<"/leagues/[leagueId]/bet">
                     </div>
                     <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                       {catLines.map((line: any) => {
-                        const done = submittedLines.includes(line.id);
+                        const placed = submittedLines.includes(line.id);
                         const inSlip = slipIds.has(`${line.id}:`);
                         return (
                           <button
                             key={line.id}
                             type="button"
-                            disabled={weekLocked || done}
-                            onClick={() => !done && !weekLocked && toggleLineinSlip(line)}
+                            disabled={weekLocked}
+                            onClick={() => !weekLocked && toggleLineinSlip(line)}
                             style={{
                               display: "flex", alignItems: "center", justifyContent: "space-between",
-                              padding: "12px 14px", borderRadius: 10, cursor: done || weekLocked ? "default" : "pointer",
-                              background: done ? "var(--win-bg)" : inSlip ? "var(--accent-dim)" : "var(--surface)",
-                              border: done ? "1.5px solid rgba(22,163,74,0.35)" : inSlip ? "1.5px solid var(--accent)" : "1.5px solid var(--border)",
+                              padding: "12px 14px", borderRadius: 10, cursor: weekLocked ? "default" : "pointer",
+                              background: inSlip ? "var(--accent-dim)" : "var(--surface)",
+                              border: inSlip ? "1.5px solid var(--accent)" : "1.5px solid var(--border)",
                               textAlign: "left", width: "100%",
                             }}
                           >
                             <div>
-                              <div style={{ fontWeight: 700, fontSize: "0.92rem", color: done ? "var(--win)" : "var(--text)" }}>{line.label}</div>
+                              <div style={{ fontWeight: 700, fontSize: "0.92rem", color: "var(--text)" }}>
+                                {line.label}
+                                {placed && <span style={{ marginLeft: 8, fontSize: "0.68rem", color: "var(--win)", fontWeight: 700 }}>✓ bet</span>}
+                              </div>
                               {line.line != null && (
                                 <div style={{ fontSize: "0.72rem", color: "var(--text-3)", marginTop: 2 }}>line {line.line}</div>
                               )}
                             </div>
                             <div style={{ textAlign: "right" }}>
-                              {done
-                                ? <span style={{ fontSize: "0.82rem", fontWeight: 700, color: "var(--win)" }}>✓ Placed</span>
-                                : weekLocked
-                                  ? <span style={{ fontSize: "0.78rem", color: "var(--text-3)" }}>Locked</span>
-                                  : (
-                                    <div>
-                                      <div style={{ fontSize: "1rem", fontWeight: 900, color: inSlip ? "var(--accent)" : "var(--text-2)", fontVariantNumeric: "tabular-nums" }}>
-                                        {fmtOdds(line.odds)}
-                                      </div>
-                                      {inSlip && <div style={{ fontSize: "0.68rem", color: "var(--accent)", fontWeight: 700, marginTop: 1 }}>Added ✓</div>}
+                              {weekLocked
+                                ? <span style={{ fontSize: "0.78rem", color: "var(--text-3)" }}>Locked</span>
+                                : (
+                                  <div>
+                                    <div style={{ fontSize: "1rem", fontWeight: 900, color: inSlip ? "var(--accent)" : "var(--text-2)", fontVariantNumeric: "tabular-nums" }}>
+                                      {fmtOdds(line.odds)}
                                     </div>
-                                  )
+                                    {inSlip && <div style={{ fontSize: "0.68rem", color: "var(--accent)", fontWeight: 700, marginTop: 1 }}>Added ✓</div>}
+                                  </div>
+                                )
                               }
                             </div>
                           </button>
@@ -352,14 +359,17 @@ export default function BetPage({ params }: PageProps<"/leagues/[leagueId]/bet">
               )}
 
               {filteredProps.map((prop: any) => {
-                const done = submittedProps.includes(prop.id);
+                const placed = submittedProps.includes(prop.id);
                 const inSlipOver = slipIds.has(`${prop.id}:OVER`);
                 const inSlipUnder = slipIds.has(`${prop.id}:UNDER`);
                 return (
-                  <div key={prop.id} className="card" style={{ marginBottom: 8, opacity: done ? 0.65 : 1 }}>
+                  <div key={prop.id} className="card" style={{ marginBottom: 8 }}>
                     <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 6 }}>
                       <div>
-                        <div style={{ fontWeight: 800, fontSize: "1rem" }}>{prop.player?.name}</div>
+                        <div style={{ fontWeight: 800, fontSize: "1rem" }}>
+                          {prop.player?.name}
+                          {placed && <span style={{ marginLeft: 8, fontSize: "0.68rem", color: "var(--win)", fontWeight: 700 }}>✓ bet</span>}
+                        </div>
                         <div style={{ color: "var(--text-3)", fontSize: "0.73rem", marginTop: 2 }}>
                           {prop.player?.position} · {prop.player?.team}
                         </div>
@@ -378,11 +388,7 @@ export default function BetPage({ params }: PageProps<"/leagues/[leagueId]/bet">
                       </span>
                     </div>
 
-                    {done ? (
-                      <div style={{ textAlign: "center", padding: "8px 0", color: "var(--accent)", fontWeight: 700, fontSize: "0.9rem" }}>
-                        ✓ Bet placed
-                      </div>
-                    ) : weekLocked ? (
+                    {weekLocked ? (
                       <div style={{ textAlign: "center", color: "var(--text-3)", fontSize: "0.85rem", padding: "8px 0" }}>Locked</div>
                     ) : (
                       <div style={{ display: "flex", gap: 8 }}>

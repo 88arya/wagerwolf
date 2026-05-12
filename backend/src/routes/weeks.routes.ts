@@ -156,9 +156,10 @@ router.post("/:id/resolve", requireAuth, requireAdmin, async (req: any, res: any
       const { result } = pick.prop;
       if (result === null) continue;
 
+      const effectiveLine = pick.altLine ?? pick.prop.line;
       const won =
-        (pick.direction === "OVER" && result > pick.prop.line) ||
-        (pick.direction === "UNDER" && result < pick.prop.line);
+        (pick.direction === "OVER" && result > effectiveLine) ||
+        (pick.direction === "UNDER" && result < effectiveLine);
 
       const profit = won ? calcProfit(Number(pick.stake), pick.odds) : 0;
 
@@ -173,15 +174,28 @@ router.post("/:id/resolve", requireAuth, requireAdmin, async (req: any, res: any
       ]);
     }
 
-    // Resolve game picks for game lines that now have a result
+    // Resolve game picks for game lines that now have a result (or alt line + scores)
     const gamePicks = await prisma.gamePick.findMany({
       where: { outcome: "PENDING", gameLine: { game: { weekId } } },
-      include: { gameLine: true },
+      include: { gameLine: { include: { game: true } } },
     }) as any[];
 
     for (const gp of gamePicks) {
-      if (gp.gameLine.result == null) continue;
-      const won = gp.gameLine.result === true;
+      let won: boolean;
+      if (gp.altLine != null) {
+        const { homeScore, awayScore } = gp.gameLine.game;
+        if (homeScore == null || awayScore == null) continue;
+        switch (gp.gameLine.market) {
+          case "SPREAD_HOME": won = (homeScore + gp.altLine) > awayScore; break;
+          case "SPREAD_AWAY": won = (awayScore + gp.altLine) > homeScore; break;
+          case "TOTAL_OVER":  won = (homeScore + awayScore) > gp.altLine; break;
+          case "TOTAL_UNDER": won = (homeScore + awayScore) < gp.altLine; break;
+          default: if (gp.gameLine.result == null) continue; won = gp.gameLine.result; break;
+        }
+      } else {
+        if (gp.gameLine.result == null) continue;
+        won = gp.gameLine.result === true;
+      }
       const profit = won ? calcProfit(Number(gp.stake), gp.odds) : 0;
 
       await prisma.$transaction([
@@ -198,7 +212,7 @@ router.post("/:id/resolve", requireAuth, requireAdmin, async (req: any, res: any
     // Resolve parlay legs and parlays
     const parlays = await prisma.parlay.findMany({
       where: { outcome: "PENDING" },
-      include: { legs: { include: { prop: true, gameLine: true } } },
+      include: { legs: { include: { prop: true, gameLine: { include: { game: true } } } } },
     }) as any[];
 
     for (const parlay of parlays) {
@@ -210,11 +224,24 @@ router.post("/:id/resolve", requireAuth, requireAdmin, async (req: any, res: any
 
         let legResult: boolean | null = null;
         if (leg.prop && leg.prop.result != null) {
+          const effectiveLine = leg.altLine ?? leg.prop.line;
           legResult =
-            (leg.direction === "OVER" && leg.prop.result > leg.prop.line) ||
-            (leg.direction === "UNDER" && leg.prop.result < leg.prop.line);
-        } else if (leg.gameLine && leg.gameLine.result != null) {
-          legResult = leg.gameLine.result === true;
+            (leg.direction === "OVER" && leg.prop.result > effectiveLine) ||
+            (leg.direction === "UNDER" && leg.prop.result < effectiveLine);
+        } else if (leg.gameLine) {
+          if (leg.altLine != null) {
+            const { homeScore, awayScore } = leg.gameLine.game ?? {};
+            if (homeScore == null || awayScore == null) { allSettled = false; continue; }
+            switch (leg.gameLine.market) {
+              case "SPREAD_HOME": legResult = (homeScore + leg.altLine) > awayScore; break;
+              case "SPREAD_AWAY": legResult = (awayScore + leg.altLine) > homeScore; break;
+              case "TOTAL_OVER":  legResult = (homeScore + awayScore) > leg.altLine; break;
+              case "TOTAL_UNDER": legResult = (homeScore + awayScore) < leg.altLine; break;
+              default: if (leg.gameLine.result != null) legResult = leg.gameLine.result; break;
+            }
+          } else if (leg.gameLine.result != null) {
+            legResult = leg.gameLine.result === true;
+          }
         }
 
         if (legResult == null) { allSettled = false; continue; }

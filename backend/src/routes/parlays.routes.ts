@@ -14,10 +14,29 @@ const OPPOSITE: Record<string, string> = {
   TOTAL_UNDER: "TOTAL_OVER",
 };
 
+const STAT_STEP: Record<string, number> = {
+  PASSING_YARDS: 5, RUSHING_YARDS: 5, RECEIVING_YARDS: 5,
+  TOUCHDOWNS: 0.5, RECEPTIONS: 0.5,
+};
+
+function calcPropAltOdds(baseOdds: number, baseLine: number, altLine: number, statType: string, direction: string): number {
+  const step = STAT_STEP[statType] ?? 0.5;
+  const steps = (altLine - baseLine) / step;
+  const favSteps = direction === "OVER" ? -steps : steps;
+  return Math.max(-500, Math.min(500, baseOdds - Math.round(favSteps * 15)));
+}
+
+function calcGameLineAltOdds(baseOdds: number, baseLine: number, altLine: number, market: string): number {
+  const steps = (altLine - baseLine) / 0.5;
+  const favSteps = market === "TOTAL_OVER" ? -steps : steps;
+  return Math.max(-500, Math.min(500, baseOdds - Math.round(favSteps * 15)));
+}
+
 interface LegInput {
   propId?: string;
   gameLineId?: string;
   direction?: "OVER" | "UNDER";
+  altLine?: number;
 }
 
 router.post("/", requireAuth, async (req: any, res: any) => {
@@ -60,7 +79,7 @@ router.post("/", requireAuth, async (req: any, res: any) => {
     }
 
     // Validate each leg and collect odds
-    const resolvedLegs: Array<{ propId?: string; gameLineId?: string; direction?: string; odds: number }> = [];
+    const resolvedLegs: Array<{ propId?: string; gameLineId?: string; direction?: string; odds: number; altLine?: number }> = [];
     const seenPropIds = new Set<string>();
     const seenGameLineIds = new Set<string>();
     const seenGameMarkets = new Map<string, Set<string>>();
@@ -99,7 +118,10 @@ router.post("/", requireAuth, async (req: any, res: any) => {
         seenPropIds.add(`${leg.propId}:${leg.direction}`);
         if (!firstWeekId) firstWeekId = prop.game.week.id;
 
-        resolvedLegs.push({ propId: leg.propId, direction: leg.direction, odds: prop.odds });
+        const propOdds = (leg.altLine != null && prop.line != null)
+          ? calcPropAltOdds(prop.odds, prop.line, leg.altLine, prop.statType, leg.direction!)
+          : prop.odds;
+        resolvedLegs.push({ propId: leg.propId, direction: leg.direction, odds: propOdds, altLine: leg.altLine });
       } else if (leg.gameLineId) {
         const gameLine = await prisma.gameLine.findUnique({
           where: { id: leg.gameLineId },
@@ -132,7 +154,13 @@ router.post("/", requireAuth, async (req: any, res: any) => {
         seenGameLineIds.add(leg.gameLineId);
         if (!firstWeekId) firstWeekId = gameLine.game.week.id;
 
-        resolvedLegs.push({ gameLineId: leg.gameLineId, odds: gameLine.odds });
+        if (leg.altLine != null && gameLine.market.startsWith("MONEYLINE")) {
+          res.status(400).json({ error: "Cannot rotate line on moneylines" }); return;
+        }
+        const glOdds = (leg.altLine != null && gameLine.line != null)
+          ? calcGameLineAltOdds(gameLine.odds, gameLine.line, leg.altLine, gameLine.market)
+          : gameLine.odds;
+        resolvedLegs.push({ gameLineId: leg.gameLineId, odds: glOdds, altLine: leg.altLine });
       }
     }
 
@@ -167,6 +195,7 @@ router.post("/", requireAuth, async (req: any, res: any) => {
               gameLineId: l.gameLineId ?? null,
               direction: l.direction as any ?? null,
               odds: l.odds,
+              altLine: l.altLine ?? null,
             })),
           },
         },

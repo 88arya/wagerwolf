@@ -14,9 +14,15 @@ const OPPOSITE: Record<string, string> = {
   TOTAL_UNDER: "TOTAL_OVER",
 };
 
+function calcGameLineAltOdds(baseOdds: number, baseLine: number, altLine: number, market: string): number {
+  const steps = (altLine - baseLine) / 0.5;
+  const favSteps = market === "TOTAL_OVER" ? -steps : steps;
+  return Math.max(-500, Math.min(500, baseOdds - Math.round(favSteps * 15)));
+}
+
 router.post("/", requireAuth, async (req: any, res: any) => {
   try {
-    const { leagueId, gameLineId, stake } = req.body;
+    const { leagueId, gameLineId, stake, altLine } = req.body;
     const userId = req.userId;
 
     if (!leagueId || !gameLineId || stake == null) {
@@ -66,10 +72,10 @@ router.post("/", requireAuth, async (req: any, res: any) => {
       }
     }
 
-    const existing = await prisma.gamePick.findUnique({
-      where: { userId_leagueId_gameLineId: { userId, leagueId, gameLineId } },
-    });
-    if (existing) { res.status(409).json({ error: "Already placed a bet on this line" }); return; }
+    // Alt line only valid for spread/total markets
+    if (altLine != null && gameLine.market.startsWith("MONEYLINE")) {
+      res.status(400).json({ error: "Cannot rotate line on moneylines" }); return;
+    }
 
     // Anti-arbitrage: check for opposite market on same game
     const oppositeMarket = OPPOSITE[gameLine.market];
@@ -78,8 +84,8 @@ router.post("/", requireAuth, async (req: any, res: any) => {
         where: { gameId_market: { gameId: gameLine.gameId, market: oppositeMarket } },
       });
       if (opposingLine) {
-        const oppositePick = await prisma.gamePick.findUnique({
-          where: { userId_leagueId_gameLineId: { userId, leagueId, gameLineId: opposingLine.id } },
+        const oppositePick = await prisma.gamePick.findFirst({
+          where: { userId, leagueId, gameLineId: opposingLine.id, outcome: "PENDING" },
         });
         if (oppositePick) {
           res.status(409).json({ error: `Cannot bet both ${gameLine.market} and ${oppositeMarket} on the same game` });
@@ -88,9 +94,17 @@ router.post("/", requireAuth, async (req: any, res: any) => {
       }
     }
 
+    const effectiveOdds = (altLine != null && gameLine.line != null)
+      ? calcGameLineAltOdds(gameLine.odds, gameLine.line, Number(altLine), gameLine.market)
+      : gameLine.odds;
+
     const [gamePick] = await prisma.$transaction([
       prisma.gamePick.create({
-        data: { userId, leagueId, gameLineId, stake: Number(stake), odds: gameLine.odds },
+        data: {
+          userId, leagueId, gameLineId, stake: Number(stake),
+          odds: effectiveOdds,
+          altLine: altLine != null ? Number(altLine) : null,
+        },
       }),
       prisma.membership.update({
         where: { userId_leagueId: { userId, leagueId } },
@@ -159,11 +173,25 @@ router.post("/:id/cashout", requireAuth, async (req: any, res: any) => {
 export async function settleGamePick(gamePickId: string) {
   const gp = await prisma.gamePick.findUnique({
     where: { id: gamePickId },
-    include: { gameLine: true },
+    include: { gameLine: { include: { game: true } } },
   }) as any;
-  if (!gp || gp.outcome !== "PENDING" || gp.gameLine.result == null) return;
+  if (!gp || gp.outcome !== "PENDING") return;
 
-  const won = gp.gameLine.result === true;
+  let won: boolean;
+  if (gp.altLine != null) {
+    const { homeScore, awayScore } = gp.gameLine.game;
+    if (homeScore == null || awayScore == null) return;
+    switch (gp.gameLine.market) {
+      case "SPREAD_HOME": won = (homeScore + gp.altLine) > awayScore; break;
+      case "SPREAD_AWAY": won = (awayScore + gp.altLine) > homeScore; break;
+      case "TOTAL_OVER":  won = (homeScore + awayScore) > gp.altLine; break;
+      case "TOTAL_UNDER": won = (homeScore + awayScore) < gp.altLine; break;
+      default: if (gp.gameLine.result == null) return; won = gp.gameLine.result; break;
+    }
+  } else {
+    if (gp.gameLine.result == null) return;
+    won = gp.gameLine.result === true;
+  }
   const profit = won ? calcProfit(gp.stake, gp.odds) : 0;
 
   await prisma.$transaction([

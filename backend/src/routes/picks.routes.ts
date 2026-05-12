@@ -5,9 +5,21 @@ import { calcProfit } from "../lib/payout";
 
 const router = Router();
 
+const STAT_STEP: Record<string, number> = {
+  PASSING_YARDS: 5, RUSHING_YARDS: 5, RECEIVING_YARDS: 5,
+  TOUCHDOWNS: 0.5, RECEPTIONS: 0.5,
+};
+
+function calcPropAltOdds(baseOdds: number, baseLine: number, altLine: number, statType: string, direction: string): number {
+  const step = STAT_STEP[statType] ?? 0.5;
+  const steps = (altLine - baseLine) / step;
+  const favSteps = direction === "OVER" ? -steps : steps;
+  return Math.max(-500, Math.min(500, baseOdds - Math.round(favSteps * 15)));
+}
+
 router.post("/", requireAuth, async (req: any, res: any) => {
   try {
-    const { leagueId, propId, direction, stake } = req.body;
+    const { leagueId, propId, direction, stake, altLine } = req.body;
     const userId = req.userId;
 
     if (!leagueId || !propId || !direction || stake == null) {
@@ -57,20 +69,17 @@ router.post("/", requireAuth, async (req: any, res: any) => {
       }
     }
 
-    const existing = await prisma.pick.findUnique({
-      where: { userId_leagueId_propId: { userId, leagueId, propId } },
-    });
-    if (existing) { res.status(409).json({ error: "Already placed a bet on this prop" }); return; }
-
-    // Anti-arbitrage: cannot bet opposite side of same prop
-    const opposite = await prisma.pick.findFirst({
-      where: { userId, leagueId, propId, direction: direction === "OVER" ? "UNDER" : "OVER" },
-    });
-    if (opposite) { res.status(409).json({ error: "Cannot bet both sides of the same prop" }); return; }
+    const effectiveOdds = (altLine != null && prop.line != null)
+      ? calcPropAltOdds(prop.odds, prop.line, Number(altLine), prop.statType, direction)
+      : prop.odds;
 
     const [pick] = await prisma.$transaction([
       prisma.pick.create({
-        data: { userId, leagueId, propId, direction, stake: Number(stake), odds: prop.odds },
+        data: {
+          userId, leagueId, propId, direction, stake: Number(stake),
+          odds: effectiveOdds,
+          altLine: altLine != null ? Number(altLine) : null,
+        },
       }),
       prisma.membership.update({
         where: { userId_leagueId: { userId, leagueId } },
