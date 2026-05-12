@@ -1,5 +1,34 @@
 const SITE = "https://site.api.espn.com/apis/site/v2/sports/football/nfl";
 
+const NFL_TEAM_ABBRS = [
+  "ARI","ATL","BAL","BUF","CAR","CHI","CIN","CLE",
+  "DAL","DEN","DET","GB","HOU","IND","JAX","KC",
+  "LAC","LAR","LV","MIA","MIN","NE","NO","NYG",
+  "NYJ","PHI","PIT","SF","SEA","TB","TEN","WSH",
+];
+
+export async function buildEspnRosterMap(): Promise<Map<string, string>> {
+  const map = new Map<string, string>();
+  for (const abbr of NFL_TEAM_ABBRS) {
+    try {
+      const res = await fetch(`${SITE}/teams/${abbr}/roster`);
+      if (!res.ok) continue;
+      const data = await res.json();
+      for (const group of data.athletes ?? []) {
+        for (const athlete of group.items ?? []) {
+          if (athlete.id && athlete.displayName) {
+            map.set(
+              (athlete.displayName as string).toLowerCase(),
+              `https://a.espncdn.com/i/headshots/nfl/players/full/${athlete.id}.png`
+            );
+          }
+        }
+      }
+    } catch { /* skip on error */ }
+  }
+  return map;
+}
+
 export interface ESPNGame {
   espnId: string;
   homeTeam: string;

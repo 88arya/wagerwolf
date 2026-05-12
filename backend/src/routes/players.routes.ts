@@ -1,39 +1,9 @@
 import { Router } from "express";
 import { prisma } from "../db/prisma";
 import { requireAuth, requireAdmin } from "../middleware/auth";
+import { buildEspnRosterMap } from "../services/espnApi";
 
 const router = Router();
-
-const NFL_TEAM_ABBRS = [
-  "ARI","ATL","BAL","BUF","CAR","CHI","CIN","CLE",
-  "DAL","DEN","DET","GB","HOU","IND","JAX","KC",
-  "LAC","LAR","LV","MIA","MIN","NE","NO","NYG",
-  "NYJ","PHI","PIT","SF","SEA","TB","TEN","WSH",
-];
-
-async function buildEspnNameMap(): Promise<Map<string, string>> {
-  const map = new Map<string, string>();
-  for (const abbr of NFL_TEAM_ABBRS) {
-    try {
-      const res = await fetch(
-        `https://site.api.espn.com/apis/site/v2/sports/football/nfl/teams/${abbr}/roster`
-      );
-      if (!res.ok) continue;
-      const data = await res.json();
-      for (const group of data.athletes ?? []) {
-        for (const athlete of group.items ?? []) {
-          if (athlete.id && athlete.displayName) {
-            map.set(
-              (athlete.displayName as string).toLowerCase(),
-              `https://a.espncdn.com/i/headshots/nfl/players/full/${athlete.id}.png`
-            );
-          }
-        }
-      }
-    } catch { /* skip team on error */ }
-  }
-  return map;
-}
 
 router.post("/", requireAuth, requireAdmin, async (req: any, res: any) => {
   try {
@@ -64,7 +34,7 @@ router.post("/sync-images", requireAuth, requireAdmin, async (req: any, res: any
     const players = await prisma.player.findMany({ where: { imageUrl: null } });
     if (players.length === 0) { res.json({ synced: 0, total: 0 }); return; }
 
-    const nameMap = await buildEspnNameMap();
+    const nameMap = await buildEspnRosterMap();
     let synced = 0;
     for (const player of players) {
       const imageUrl = nameMap.get(player.name.toLowerCase());
