@@ -4,20 +4,35 @@ import { requireAuth, requireAdmin } from "../middleware/auth";
 
 const router = Router();
 
-async function fetchEspnImageUrl(playerName: string): Promise<string | null> {
-  try {
-    const encoded = encodeURIComponent(playerName);
-    const res = await fetch(
-      `https://site.web.api.espn.com/apis/common/v3/sports/football/nfl/athletes?search=${encoded}&limit=5`
-    );
-    if (!res.ok) return null;
-    const data = await res.json();
-    const id = data?.items?.[0]?.id;
-    if (!id) return null;
-    return `https://a.espncdn.com/i/headshots/nfl/players/full/${id}.png`;
-  } catch {
-    return null;
+const NFL_TEAM_ABBRS = [
+  "ARI","ATL","BAL","BUF","CAR","CHI","CIN","CLE",
+  "DAL","DEN","DET","GB","HOU","IND","JAX","KC",
+  "LAC","LAR","LV","MIA","MIN","NE","NO","NYG",
+  "NYJ","PHI","PIT","SF","SEA","TB","TEN","WSH",
+];
+
+async function buildEspnNameMap(): Promise<Map<string, string>> {
+  const map = new Map<string, string>();
+  for (const abbr of NFL_TEAM_ABBRS) {
+    try {
+      const res = await fetch(
+        `https://site.api.espn.com/apis/site/v2/sports/football/nfl/teams/${abbr}/roster`
+      );
+      if (!res.ok) continue;
+      const data = await res.json();
+      for (const group of data.athletes ?? []) {
+        for (const athlete of group.items ?? []) {
+          if (athlete.id && athlete.displayName) {
+            map.set(
+              (athlete.displayName as string).toLowerCase(),
+              `https://a.espncdn.com/i/headshots/nfl/players/full/${athlete.id}.png`
+            );
+          }
+        }
+      }
+    } catch { /* skip team on error */ }
   }
+  return map;
 }
 
 router.post("/", requireAuth, requireAdmin, async (req: any, res: any) => {
@@ -43,13 +58,16 @@ router.get("/", requireAuth, async (req: any, res: any) => {
   }
 });
 
-// Fetch and cache ESPN headshots for all players missing an image
+// Fetch ESPN headshots for all players missing an image by scanning all 32 team rosters
 router.post("/sync-images", requireAuth, requireAdmin, async (req: any, res: any) => {
   try {
     const players = await prisma.player.findMany({ where: { imageUrl: null } });
+    if (players.length === 0) { res.json({ synced: 0, total: 0 }); return; }
+
+    const nameMap = await buildEspnNameMap();
     let synced = 0;
     for (const player of players) {
-      const imageUrl = await fetchEspnImageUrl(player.name);
+      const imageUrl = nameMap.get(player.name.toLowerCase());
       if (imageUrl) {
         await prisma.player.update({ where: { id: player.id }, data: { imageUrl } });
         synced++;
