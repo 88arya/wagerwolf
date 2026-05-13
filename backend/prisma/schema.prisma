@@ -46,6 +46,8 @@ model User {
   leagues      League[]    @relation("LeagueCreator")
   homeMatchups Matchup[]   @relation("HomeMatchups")
   awayMatchups Matchup[]   @relation("AwayMatchups")
+  messages     LeagueMessage[]
+  resetTokens  PasswordResetToken[]
 }
 
 model League {
@@ -69,6 +71,7 @@ model League {
   maxStakePerBet     Int?
   maxBetsPerWeek     Int?
   maxParlayLegs      Int?        @default(10)
+  feedVisibility     String      @default("AFTER_KICKOFF")
   creator            User        @relation("LeagueCreator", fields: [creatorId], references: [id])
   createdAt          DateTime    @default(now())
   memberships        Membership[]
@@ -76,6 +79,7 @@ model League {
   gamePicks          GamePick[]
   parlays            Parlay[]
   matchups           Matchup[]
+  messages           LeagueMessage[]
 }
 
 model Matchup {
@@ -248,4 +252,24 @@ model ParlayLeg {
   parlay   Parlay    @relation(fields: [parlayId], references: [id])
   prop     Prop?     @relation(fields: [propId], references: [id])
   gameLine GameLine? @relation(fields: [gameLineId], references: [id])
+}
+
+model LeagueMessage {
+  id        String   @id @default(cuid())
+  leagueId  String
+  userId    String
+  body      String
+  createdAt DateTime @default(now())
+  league    League   @relation(fields: [leagueId], references: [id])
+  user      User     @relation(fields: [userId], references: [id])
+}
+
+model PasswordResetToken {
+  id        String   @id @default(cuid())
+  userId    String
+  token     String   @unique
+  expiresAt DateTime
+  used      Boolean  @default(false)
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id])
 }

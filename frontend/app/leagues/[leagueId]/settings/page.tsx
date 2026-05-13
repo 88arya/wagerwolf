@@ -17,7 +17,7 @@ export default function SettingsPage({ params }: PageProps<"/leagues/[leagueId]/
   const [settingsError, setSettingsError] = useState("");
   const [settingsSaved, setSettingsSaved] = useState(false);
 
-  const [limitsForm, setLimitsForm] = useState({ maxStakePerBet: "", maxBetsPerWeek: "", maxParlayLegs: "" });
+  const [limitsForm, setLimitsForm] = useState({ maxStakePerBet: "", maxBetsPerWeek: "", maxParlayLegs: "", feedVisibility: "AFTER_KICKOFF" });
   const [limitsError, setLimitsError] = useState("");
   const [limitsSaved, setLimitsSaved] = useState(false);
 
@@ -43,6 +43,7 @@ export default function SettingsPage({ params }: PageProps<"/leagues/[leagueId]/
         maxStakePerBet: leagueData.maxStakePerBet != null ? String(leagueData.maxStakePerBet) : "",
         maxBetsPerWeek: leagueData.maxBetsPerWeek != null ? String(leagueData.maxBetsPerWeek) : "",
         maxParlayLegs: leagueData.maxParlayLegs != null ? String(leagueData.maxParlayLegs) : "",
+        feedVisibility: leagueData.feedVisibility ?? "AFTER_KICKOFF",
       });
     }
     load();
@@ -82,6 +83,7 @@ export default function SettingsPage({ params }: PageProps<"/leagues/[leagueId]/
           maxStakePerBet: limitsForm.maxStakePerBet === "" ? null : Number(limitsForm.maxStakePerBet),
           maxBetsPerWeek: limitsForm.maxBetsPerWeek === "" ? null : Number(limitsForm.maxBetsPerWeek),
           maxParlayLegs: limitsForm.maxParlayLegs === "" ? null : Number(limitsForm.maxParlayLegs),
+          feedVisibility: limitsForm.feedVisibility,
         }),
       });
       setLeague(updated);
@@ -221,6 +223,34 @@ export default function SettingsPage({ params }: PageProps<"/leagues/[leagueId]/
                   value={limitsForm.maxParlayLegs}
                   onChange={(e) => setLimitsForm({ ...limitsForm, maxParlayLegs: e.target.value })}
                 />
+              </div>
+            </div>
+            <div>
+              <div className="label" style={{ marginBottom: 8 }}>Bet Feed Visibility</div>
+              <div style={{ display: "flex", gap: 8 }}>
+                {[
+                  { value: "AFTER_KICKOFF", label: "After kickoff" },
+                  { value: "AFTER_RESOLVE", label: "After week resolves" },
+                ].map(({ value, label }) => {
+                  const active = limitsForm.feedVisibility === value;
+                  return (
+                    <button
+                      key={value}
+                      type="button"
+                      onClick={() => setLimitsForm({ ...limitsForm, feedVisibility: value })}
+                      style={{
+                        flex: 1, padding: "9px 10px", borderRadius: 8, fontSize: "0.82rem",
+                        fontWeight: active ? 800 : 500,
+                        background: active ? "var(--accent)" : "var(--surface-2)",
+                        color: active ? "#080C14" : "var(--text-2)",
+                        border: active ? "1.5px solid var(--accent)" : "1.5px solid var(--border)",
+                      }}
+                    >{label}</button>
+                  );
+                })}
+              </div>
+              <div style={{ fontSize: "0.7rem", color: "var(--text-3)", marginTop: 6 }}>
+                When members can see each other's bets
               </div>
             </div>
             <div style={{ fontSize: "0.72rem", color: "var(--text-3)" }}>

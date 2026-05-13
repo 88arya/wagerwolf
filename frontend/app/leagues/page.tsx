@@ -98,15 +98,17 @@ export default function LeaguesPage() {
       <nav className="nav">
         <div className="nav-logo">PLAY<span className="accent">BOOK</span></div>
         {isAdmin && <Link href="/admin">Admin</Link>}
-        <div style={{
-          width: 32, height: 32, borderRadius: "50%",
-          background: "rgba(200,150,12,0.2)",
-          border: "1.5px solid rgba(200,150,12,0.4)",
-          color: "var(--gold)",
-          fontSize: "0.72rem", fontWeight: 800,
-          display: "flex", alignItems: "center", justifyContent: "center",
-          marginLeft: 4,
-        }}>{initials}</div>
+        <Link href="/settings" style={{ textDecoration: "none" }}>
+          <div style={{
+            width: 32, height: 32, borderRadius: "50%",
+            background: "rgba(200,150,12,0.2)",
+            border: "1.5px solid rgba(200,150,12,0.4)",
+            color: "var(--gold)",
+            fontSize: "0.72rem", fontWeight: 800,
+            display: "flex", alignItems: "center", justifyContent: "center",
+            marginLeft: 4, cursor: "pointer",
+          }}>{initials}</div>
+        </Link>
         <button className="nav-link" onClick={() => { localStorage.clear(); router.push("/"); }}>
           Sign out
         </button>

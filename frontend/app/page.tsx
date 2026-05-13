@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { api } from "@/lib/api";
 
 export default function AuthPage() {
@@ -133,6 +134,13 @@ export default function AuthPage() {
               <button type="submit" disabled={loading} style={{ marginTop: 4, width: "100%", padding: "14px", fontSize: "0.95rem" }}>
                 {loading ? "…" : mode === "register" ? "Create Account" : "Log In"}
               </button>
+              {mode === "login" && (
+                <div style={{ textAlign: "center", marginTop: 8 }}>
+                  <Link href="/forgot-password" style={{ fontSize: "0.78rem", color: "var(--text-3)" }}>
+                    Forgot password?
+                  </Link>
+                </div>
+              )}
             </form>
           </div>
         </div>

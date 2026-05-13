@@ -168,4 +168,391 @@ router.post("/leave", requireAuth, async (req: any, res: any) => {
   }
 });
 
+// ── Bet Feed ──────────────────────────────────────────────────────────────────
+// Returns all visible bets for the current week across all members.
+// Visibility: AFTER_KICKOFF = only games that have kicked off; AFTER_RESOLVE = only resolved weeks.
+router.get("/feed", requireAuth, async (req: any, res: any) => {
+  try {
+    const { id: leagueId } = req.params;
+    const weekNumber = req.query.weekNumber ? Number(req.query.weekNumber) : undefined;
+
+    const [league, membership] = await Promise.all([
+      prisma.league.findUnique({ where: { id: leagueId } }),
+      prisma.membership.findFirst({ where: { leagueId, userId: req.userId, status: "ACTIVE" } }),
+    ]);
+    if (!league) { res.status(404).json({ error: "League not found" }); return; }
+    if (!membership) { res.status(403).json({ error: "Not a member" }); return; }
+
+    const weekFilter = weekNumber
+      ? { week: { number: weekNumber } }
+      : { week: { resolved: false } };
+
+    const now = new Date();
+
+    if (league.feedVisibility === "AFTER_RESOLVE") {
+      // Only show if week is resolved
+      const week = await prisma.week.findFirst({
+        where: weekNumber ? { number: weekNumber } : { resolved: false },
+        orderBy: { number: "asc" },
+      });
+      if (!week?.resolved) { res.json([]); return; }
+    }
+
+    const [picks, gamePicks, parlays] = await Promise.all([
+      prisma.pick.findMany({
+        where: {
+          leagueId,
+          prop: { game: { ...weekFilter, ...(league.feedVisibility === "AFTER_KICKOFF" ? { gameDate: { lt: now } } : {}) } },
+        },
+        include: {
+          user: { select: { id: true, displayName: true } },
+          prop: {
+            include: {
+              player: { select: { id: true, name: true, position: true, team: true } },
+              game: { select: { id: true, homeTeam: true, awayTeam: true, gameDate: true, status: true } },
+            },
+          },
+        },
+        orderBy: { createdAt: "desc" },
+      }),
+      prisma.gamePick.findMany({
+        where: {
+          leagueId,
+          gameLine: { game: { ...weekFilter, ...(league.feedVisibility === "AFTER_KICKOFF" ? { gameDate: { lt: now } } : {}) } },
+        },
+        include: {
+          user: { select: { id: true, displayName: true } },
+          gameLine: {
+            include: {
+              game: { select: { id: true, homeTeam: true, awayTeam: true, gameDate: true, status: true } },
+            },
+          },
+        },
+        orderBy: { createdAt: "desc" },
+      }),
+      prisma.parlay.findMany({
+        where: {
+          leagueId,
+          ...(league.feedVisibility === "AFTER_KICKOFF" ? {} : {}),
+        },
+        include: {
+          user: { select: { id: true, displayName: true } },
+          legs: {
+            include: {
+              prop: { include: { game: { select: { gameDate: true, status: true, homeTeam: true, awayTeam: true } }, player: { select: { name: true } } } },
+              gameLine: { include: { game: { select: { gameDate: true, status: true, homeTeam: true, awayTeam: true } } } },
+            },
+          },
+        },
+        orderBy: { createdAt: "desc" },
+      }),
+    ]);
+
+    // Filter parlays: show only if at least one leg's game has kicked off
+    const visibleParlays = league.feedVisibility === "AFTER_KICKOFF"
+      ? parlays.filter((p) => p.legs.some((l) => {
+          const gameDate = l.prop?.game?.gameDate ?? l.gameLine?.game?.gameDate;
+          return gameDate && new Date(gameDate) < now;
+        }))
+      : parlays;
+
+    const feed = [
+      ...picks.map((p) => ({ type: "pick" as const, createdAt: p.createdAt, userId: p.user.id, displayName: p.user.displayName, pick: p })),
+      ...gamePicks.map((p) => ({ type: "gamepick" as const, createdAt: p.createdAt, userId: p.user.id, displayName: p.user.displayName, pick: p })),
+      ...visibleParlays.map((p) => ({ type: "parlay" as const, createdAt: p.createdAt, userId: p.user.id, displayName: p.user.displayName, pick: p })),
+    ].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+    res.json(feed);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── Chat ──────────────────────────────────────────────────────────────────────
+router.get("/messages", requireAuth, async (req: any, res: any) => {
+  try {
+    const { id: leagueId } = req.params;
+    const membership = await prisma.membership.findFirst({ where: { leagueId, userId: req.userId, status: "ACTIVE" } });
+    if (!membership) { res.status(403).json({ error: "Not a member" }); return; }
+
+    const messages = await prisma.leagueMessage.findMany({
+      where: { leagueId },
+      include: { user: { select: { id: true, displayName: true } } },
+      orderBy: { createdAt: "desc" },
+      take: 50,
+    });
+
+    res.json(messages.reverse());
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post("/messages", requireAuth, async (req: any, res: any) => {
+  try {
+    const { id: leagueId } = req.params;
+    const { body } = req.body;
+    if (!body?.trim()) { res.status(400).json({ error: "Message cannot be empty" }); return; }
+    if (body.trim().length > 500) { res.status(400).json({ error: "Message too long (500 chars max)" }); return; }
+
+    const membership = await prisma.membership.findFirst({ where: { leagueId, userId: req.userId, status: "ACTIVE" } });
+    if (!membership) { res.status(403).json({ error: "Not a member" }); return; }
+
+    const message = await prisma.leagueMessage.create({
+      data: { leagueId, userId: req.userId, body: body.trim() },
+      include: { user: { select: { id: true, displayName: true } } },
+    });
+
+    res.status(201).json(message);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.delete("/messages/:msgId", requireAuth, async (req: any, res: any) => {
+  try {
+    const { id: leagueId, msgId } = req.params;
+    const [msg, league] = await Promise.all([
+      prisma.leagueMessage.findUnique({ where: { id: msgId } }),
+      prisma.league.findUnique({ where: { id: leagueId } }),
+    ]);
+    if (!msg || msg.leagueId !== leagueId) { res.status(404).json({ error: "Message not found" }); return; }
+
+    const isAuthor = msg.userId === req.userId;
+    const isCommissioner = league?.creatorId === req.userId;
+    if (!isAuthor && !isCommissioner) { res.status(403).json({ error: "Cannot delete this message" }); return; }
+
+    await prisma.leagueMessage.delete({ where: { id: msgId } });
+    res.json({ message: "Deleted" });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── Member Stats ──────────────────────────────────────────────────────────────
+router.get("/members/:targetUserId/stats", requireAuth, async (req: any, res: any) => {
+  try {
+    const { id: leagueId, targetUserId } = req.params;
+
+    const [membership, targetMembership, leaderboard] = await Promise.all([
+      prisma.membership.findFirst({ where: { leagueId, userId: req.userId, status: "ACTIVE" } }),
+      prisma.membership.findFirst({
+        where: { leagueId, userId: targetUserId, status: "ACTIVE" },
+        include: { user: { select: { id: true, displayName: true } } },
+      }),
+      prisma.membership.findMany({
+        where: { leagueId, status: "ACTIVE" },
+        include: { user: { select: { id: true } } },
+      }),
+    ]);
+    if (!membership) { res.status(403).json({ error: "Not a member" }); return; }
+    if (!targetMembership) { res.status(404).json({ error: "Member not found" }); return; }
+
+    const [picks, gamePicks, parlays, matchups] = await Promise.all([
+      prisma.pick.findMany({
+        where: { leagueId, userId: targetUserId },
+        include: { prop: { include: { player: { select: { name: true } }, game: { select: { gameDate: true } } } } },
+        orderBy: { createdAt: "desc" },
+      }),
+      prisma.gamePick.findMany({
+        where: { leagueId, userId: targetUserId },
+        include: { gameLine: { include: { game: { select: { gameDate: true } } } } },
+        orderBy: { createdAt: "desc" },
+      }),
+      prisma.parlay.findMany({
+        where: { leagueId, userId: targetUserId },
+        include: { legs: true },
+        orderBy: { createdAt: "desc" },
+      }),
+      prisma.matchup.findMany({
+        where: { leagueId, OR: [{ homeUserId: targetUserId }, { awayUserId: targetUserId }] },
+      }),
+    ]);
+
+    function calcProfit(stake: number, odds: number, outcome: string): number {
+      if (outcome === "WIN") return odds > 0 ? Math.round(stake * (odds / 100)) : Math.round(stake * (100 / Math.abs(odds)));
+      if (outcome === "LOSS") return -stake;
+      return 0;
+    }
+
+    const settledPicks = [...picks, ...gamePicks].filter((p) => p.outcome !== "PENDING");
+    const allSettled = settledPicks.map((p) => ({ outcome: p.outcome, profit: calcProfit(p.stake, p.odds, p.outcome) }));
+
+    let totalStaked = 0, totalProfit = 0, wonCount = 0, lostCount = 0;
+    for (const p of [...picks, ...gamePicks, ...parlays]) {
+      totalStaked += p.stake;
+      if (p.outcome === "WIN") wonCount++;
+      if (p.outcome === "LOSS") lostCount++;
+      totalProfit += calcProfit(p.stake, (p as any).odds ?? (p as any).totalOdds ?? -110, p.outcome);
+    }
+
+    // Streak: look at settled picks in order
+    let streak = 0;
+    for (const s of allSettled) {
+      if (streak === 0) { streak = s.outcome === "WIN" ? 1 : -1; continue; }
+      if (s.outcome === "WIN" && streak > 0) streak++;
+      else if (s.outcome === "LOSS" && streak < 0) streak--;
+      else break;
+    }
+
+    // Best/worst prop stat types
+    const statProfits: Record<string, number> = {};
+    for (const p of picks) {
+      if (p.outcome === "PENDING") continue;
+      const st = p.prop.statType;
+      statProfits[st] = (statProfits[st] ?? 0) + calcProfit(p.stake, p.odds, p.outcome);
+    }
+    const statEntries = Object.entries(statProfits).sort((a, b) => b[1] - a[1]);
+
+    // Matchup record
+    let wins = 0, losses = 0, ties = 0;
+    for (const m of matchups) {
+      if (!m.winnerId && !m.isTie) continue;
+      if (m.isTie) { ties++; continue; }
+      if (m.winnerId === targetUserId) wins++; else losses++;
+    }
+
+    // Rank
+    const sorted = leaderboard
+      .map((m) => m.userId)
+      .sort(); // rough sort; real rank needs full leaderboard — just count members with higher balance
+    const rank = leaderboard.filter((m) => m.balance > targetMembership.balance).length + 1;
+
+    res.json({
+      userId: targetUserId,
+      displayName: (targetMembership as any).user.displayName,
+      balance: targetMembership.balance,
+      rank,
+      wins,
+      losses,
+      ties,
+      totalPicks: picks.length + gamePicks.length + parlays.length,
+      wonPicks: wonCount,
+      lostPicks: lostCount,
+      pendingPicks: picks.length + gamePicks.length + parlays.length - wonCount - lostCount,
+      totalStaked,
+      totalProfit,
+      roi: totalStaked > 0 ? Math.round((totalProfit / totalStaked) * 1000) / 10 : 0,
+      streak,
+      bestStatType: statEntries[0] ? { statType: statEntries[0][0], profit: statEntries[0][1] } : null,
+      worstStatType: statEntries.length > 1 ? { statType: statEntries[statEntries.length - 1][0], profit: statEntries[statEntries.length - 1][1] } : null,
+      recentPicks: picks.slice(0, 10).map((p) => ({
+        id: p.id,
+        playerName: p.prop.player.name,
+        statType: p.prop.statType,
+        direction: p.direction,
+        line: p.prop.line,
+        altLine: p.altLine,
+        stake: p.stake,
+        odds: p.odds,
+        outcome: p.outcome,
+        createdAt: p.createdAt,
+      })),
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── Weekly Recap ──────────────────────────────────────────────────────────────
+router.get("/recap", requireAuth, async (req: any, res: any) => {
+  try {
+    const { id: leagueId } = req.params;
+    const weekNumber = req.query.weekNumber ? Number(req.query.weekNumber) : undefined;
+
+    const membership = await prisma.membership.findFirst({ where: { leagueId, userId: req.userId, status: "ACTIVE" } });
+    if (!membership) { res.status(403).json({ error: "Not a member" }); return; }
+
+    const week = await prisma.week.findFirst({
+      where: weekNumber ? { number: weekNumber } : { resolved: true },
+      orderBy: weekNumber ? undefined : { number: "desc" },
+      include: { games: { select: { id: true } } },
+    });
+    if (!week?.resolved) { res.json(null); return; }
+
+    const gameIds = week.games.map((g) => g.id);
+
+    const [picks, gamePicks, parlays, matchups] = await Promise.all([
+      prisma.pick.findMany({
+        where: { leagueId, userId: req.userId, prop: { gameId: { in: gameIds } } },
+        include: { prop: { include: { player: { select: { name: true } } } } },
+      }),
+      prisma.gamePick.findMany({
+        where: { leagueId, userId: req.userId, gameLine: { gameId: { in: gameIds } } },
+        include: { gameLine: true },
+      }),
+      prisma.parlay.findMany({
+        where: { leagueId, userId: req.userId },
+        include: { legs: { include: { prop: { include: { game: true } }, gameLine: { include: { game: true } } } } },
+      }),
+      prisma.matchup.findMany({
+        where: { leagueId, weekNumber: week.number, OR: [{ homeUserId: req.userId }, { awayUserId: req.userId }] },
+        include: {
+          homeUser: { select: { displayName: true } },
+          awayUser: { select: { displayName: true } },
+        },
+      }),
+    ]);
+
+    // Filter parlays to ones with at least one leg in this week's games
+    const weekParlays = parlays.filter((p) =>
+      p.legs.some((l) => gameIds.includes(l.prop?.game?.id ?? "") || gameIds.includes(l.gameLine?.game?.id ?? ""))
+    );
+
+    function calcProfit(stake: number, odds: number, outcome: string): number {
+      if (outcome === "WIN") return odds > 0 ? Math.round(stake * (odds / 100)) : Math.round(stake * (100 / Math.abs(odds)));
+      if (outcome === "LOSS") return -stake;
+      return 0;
+    }
+
+    const allBets = [
+      ...picks.map((p) => ({
+        label: `${p.prop.player.name} ${p.direction} ${p.altLine ?? p.prop.line} ${p.prop.statType.replaceAll("_", " ")}`,
+        stake: p.stake, odds: p.odds, outcome: p.outcome,
+        profit: calcProfit(p.stake, p.odds, p.outcome),
+      })),
+      ...gamePicks.map((p) => ({
+        label: p.gameLine.label,
+        stake: p.stake, odds: p.odds, outcome: p.outcome,
+        profit: calcProfit(p.stake, p.odds, p.outcome),
+      })),
+      ...weekParlays.map((p) => ({
+        label: `${p.legs.length}-leg parlay`,
+        stake: p.stake, odds: p.totalOdds, outcome: p.outcome,
+        profit: p.outcome === "WIN" ? p.payout - p.stake : p.outcome === "LOSS" ? -p.stake : 0,
+      })),
+    ];
+
+    const won = allBets.filter((b) => b.outcome === "WIN").length;
+    const lost = allBets.filter((b) => b.outcome === "LOSS").length;
+    const pending = allBets.filter((b) => b.outcome === "PENDING").length;
+    const totalProfit = allBets.reduce((s, b) => s + b.profit, 0);
+
+    const settled = allBets.filter((b) => b.outcome !== "PENDING");
+    const bestBet = settled.sort((a, b) => b.profit - a.profit)[0] ?? null;
+    const worstBet = settled.sort((a, b) => a.profit - b.profit)[0] ?? null;
+
+    const matchup = matchups[0] ?? null;
+
+    res.json({
+      weekNumber: week.number,
+      totalBets: allBets.length,
+      won, lost, pending,
+      totalProfit,
+      bestBet: bestBet ? { label: bestBet.label, profit: bestBet.profit } : null,
+      worstBet: worstBet && worstBet.profit < 0 ? { label: worstBet.label, profit: worstBet.profit } : null,
+      matchup: matchup ? {
+        won: matchup.winnerId === req.userId,
+        lost: !!matchup.winnerId && matchup.winnerId !== req.userId,
+        tie: matchup.isTie,
+        opponentName: matchup.homeUserId === req.userId ? matchup.awayUser?.displayName : matchup.homeUser?.displayName,
+        myProfit: matchup.homeUserId === req.userId ? matchup.homeProfit : matchup.awayProfit,
+        oppProfit: matchup.homeUserId === req.userId ? matchup.awayProfit : matchup.homeProfit,
+      } : null,
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 export default router;

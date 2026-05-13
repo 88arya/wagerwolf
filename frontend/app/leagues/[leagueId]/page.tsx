@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { api } from "@/lib/api";
@@ -18,6 +18,13 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
   const [matchup, setMatchup] = useState<any>(null);
   const [playoffMatchups, setPlayoffMatchups] = useState<any[]>([]);
   const [consolationMatchups, setConsolationMatchups] = useState<any[]>([]);
+  const [recap, setRecap] = useState<any>(null);
+  const [feed, setFeed] = useState<any[]>([]);
+  const [messages, setMessages] = useState<any[]>([]);
+  const [activityTab, setActivityTab] = useState<"feed" | "chat">("feed");
+  const [chatInput, setChatInput] = useState("");
+  const [chatSending, setChatSending] = useState(false);
+  const chatBottomRef = useRef<HTMLDivElement>(null);
 
   // Commissioner state
   const [pendingMembers, setPendingMembers] = useState<any[]>([]);
@@ -70,7 +77,14 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
         const allMatchups = await api(`/leagues/${leagueId}/matchups`);
         setPlayoffMatchups(allMatchups.filter((m: any) => m.isPlayoff));
         setConsolationMatchups(allMatchups.filter((m: any) => m.isConsolation));
+
+        if (currentWeek?.resolved) {
+          try { setRecap(await api(`/leagues/${leagueId}/recap?weekNumber=${currentWeek.number}`)); } catch {}
+        }
       } catch {}
+
+      try { setFeed(await api(`/leagues/${leagueId}/feed`)); } catch {}
+      try { setMessages(await api(`/leagues/${leagueId}/messages`)); } catch {}
     }
     load();
   }, []);
@@ -207,6 +221,37 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
     navigator.clipboard.writeText(league.inviteCode);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  }
+
+  async function sendMessage(e: React.FormEvent) {
+    e.preventDefault();
+    if (!chatInput.trim() || chatSending) return;
+    setChatSending(true);
+    try {
+      const msg = await api(`/leagues/${leagueId}/messages`, { method: "POST", body: JSON.stringify({ body: chatInput.trim() }) });
+      setMessages((prev) => [...prev, msg]);
+      setChatInput("");
+      setTimeout(() => chatBottomRef.current?.scrollIntoView({ behavior: "smooth" }), 50);
+    } catch {}
+    setChatSending(false);
+  }
+
+  async function deleteMessage(msgId: string) {
+    try {
+      await api(`/leagues/${leagueId}/messages/${msgId}`, { method: "DELETE" });
+      setMessages((prev) => prev.filter((m) => m.id !== msgId));
+    } catch {}
+  }
+
+  function fmtFeedOdds(n: number) { return n > 0 ? `+${n}` : `${n}`; }
+  function fmtTime(dateStr: string) {
+    const d = new Date(dateStr);
+    const now = new Date();
+    const diff = now.getTime() - d.getTime();
+    if (diff < 60_000) return "just now";
+    if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}m ago`;
+    if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h ago`;
+    return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
   }
 
   const isCreator = league?.creatorId === userId;
@@ -414,34 +459,36 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
             const rank = m.rank;
             const rankColor = rank === 1 ? "var(--gold)" : rank === 2 ? "var(--silver)" : rank === 3 ? "var(--bronze)" : "var(--text-3)";
             return (
-              <div
-                key={m.userId}
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "28px 1fr 72px 88px",
-                  padding: "11px 16px",
-                  borderBottom: idx < members.length - 1 ? "1px solid var(--border)" : "none",
-                  background: isMe ? "var(--accent-dim)" : "transparent",
-                  alignItems: "center",
-                }}
-              >
-                <span style={{ fontWeight: 900, fontSize: "0.88rem", color: rankColor }}>{rank}</span>
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <div className="avatar" style={{ width: 28, height: 28, fontSize: "0.64rem", flexShrink: 0, ...(rank === 1 ? { borderColor: "var(--gold)", color: "var(--gold)", background: "rgba(200,150,12,0.1)" } : {}) }}>
-                    {m.displayName.slice(0, 2).toUpperCase()}
+              <Link key={m.userId} href={`/leagues/${leagueId}/members/${m.userId}`} style={{ textDecoration: "none", display: "block" }}>
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "28px 1fr 72px 88px",
+                    padding: "11px 16px",
+                    borderBottom: idx < members.length - 1 ? "1px solid var(--border)" : "none",
+                    background: isMe ? "var(--accent-dim)" : "transparent",
+                    alignItems: "center",
+                    cursor: "pointer",
+                  }}
+                >
+                  <span style={{ fontWeight: 900, fontSize: "0.88rem", color: rankColor }}>{rank}</span>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <div className="avatar" style={{ width: 28, height: 28, fontSize: "0.64rem", flexShrink: 0, ...(rank === 1 ? { borderColor: "var(--gold)", color: "var(--gold)", background: "rgba(200,150,12,0.1)" } : {}) }}>
+                      {m.displayName.slice(0, 2).toUpperCase()}
+                    </div>
+                    <span style={{ fontWeight: isMe ? 800 : 500, fontSize: "0.88rem", color: isMe ? "var(--accent)" : "var(--text)" }}>
+                      {m.displayName}
+                      {isMe && <span style={{ color: "var(--accent)", fontSize: "0.7rem", marginLeft: 6, fontWeight: 700 }}>YOU</span>}
+                    </span>
                   </div>
-                  <span style={{ fontWeight: isMe ? 800 : 500, fontSize: "0.88rem", color: isMe ? "var(--accent)" : "var(--text)" }}>
-                    {m.displayName}
-                    {isMe && <span style={{ color: "var(--accent)", fontSize: "0.7rem", marginLeft: 6, fontWeight: 700 }}>YOU</span>}
+                  <span style={{ textAlign: "center", fontSize: "0.82rem", fontWeight: 600, color: "var(--text-2)" }}>
+                    {m.wins}–{m.losses}{m.ties > 0 ? `–${m.ties}` : ""}
+                  </span>
+                  <span style={{ textAlign: "right", fontSize: "0.85rem", fontWeight: 800, color: "var(--text)", fontVariantNumeric: "tabular-nums" }}>
+                    ${m.balance.toLocaleString()}
                   </span>
                 </div>
-                <span style={{ textAlign: "center", fontSize: "0.82rem", fontWeight: 600, color: "var(--text-2)" }}>
-                  {m.wins}–{m.losses}{m.ties > 0 ? `–${m.ties}` : ""}
-                </span>
-                <span style={{ textAlign: "right", fontSize: "0.85rem", fontWeight: 800, color: "var(--text)", fontVariantNumeric: "tabular-nums" }}>
-                  ${m.balance.toLocaleString()}
-                </span>
-              </div>
+              </Link>
             );
           })}
         </div>
@@ -493,6 +540,178 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
               Place Bets →
             </button>
           </Link>
+        )}
+
+        {/* Weekly Recap */}
+        {recap && (
+          <>
+            <div className="section-title" style={{ marginBottom: 10 }}>Last Week's Recap</div>
+            <div className="card" style={{ marginBottom: 8 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12, marginBottom: 14 }}>
+                {[
+                  { label: "Won", value: recap.won, color: "var(--win)" },
+                  { label: "Lost", value: recap.lost, color: "var(--loss)" },
+                  { label: "Profit", value: recap.totalProfit >= 0 ? `+$${recap.totalProfit}` : `-$${Math.abs(recap.totalProfit)}`, color: recap.totalProfit >= 0 ? "var(--win)" : "var(--loss)" },
+                ].map(({ label, value, color }) => (
+                  <div key={label} style={{ textAlign: "center" }}>
+                    <div className="label" style={{ marginBottom: 4 }}>{label}</div>
+                    <div style={{ fontWeight: 900, fontSize: "1.1rem", color, fontVariantNumeric: "tabular-nums" }}>{value}</div>
+                  </div>
+                ))}
+              </div>
+              {recap.matchup && (
+                <div style={{
+                  background: recap.matchup.won ? "var(--win-bg)" : recap.matchup.tie ? "var(--surface-2)" : "var(--loss-bg)",
+                  border: `1px solid ${recap.matchup.won ? "rgba(34,197,94,0.3)" : recap.matchup.tie ? "var(--border)" : "rgba(239,68,68,0.3)"}`,
+                  borderRadius: 8, padding: "10px 14px", marginBottom: 10,
+                  display: "flex", alignItems: "center", justifyContent: "space-between",
+                }}>
+                  <span style={{ fontSize: "0.82rem", fontWeight: 700, color: recap.matchup.won ? "var(--win)" : recap.matchup.tie ? "var(--text-2)" : "var(--loss)" }}>
+                    {recap.matchup.won ? "Won matchup" : recap.matchup.tie ? "Tied matchup" : "Lost matchup"}
+                  </span>
+                  <span style={{ fontSize: "0.75rem", color: "var(--text-3)" }}>vs {recap.matchup.opponentName}</span>
+                </div>
+              )}
+              {recap.bestBet && (
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                  <div>
+                    <div style={{ fontSize: "0.62rem", fontWeight: 700, color: "var(--win)", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 2 }}>Best Bet</div>
+                    <div style={{ fontSize: "0.8rem", color: "var(--text-2)", maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{recap.bestBet.label}</div>
+                  </div>
+                  <span style={{ fontWeight: 800, color: "var(--win)", fontSize: "0.9rem", fontVariantNumeric: "tabular-nums" }}>+${recap.bestBet.profit}</span>
+                </div>
+              )}
+              {recap.worstBet && (
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <div>
+                    <div style={{ fontSize: "0.62rem", fontWeight: 700, color: "var(--loss)", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 2 }}>Worst Bet</div>
+                    <div style={{ fontSize: "0.8rem", color: "var(--text-2)", maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{recap.worstBet.label}</div>
+                  </div>
+                  <span style={{ fontWeight: 800, color: "var(--loss)", fontSize: "0.9rem", fontVariantNumeric: "tabular-nums" }}>${recap.worstBet.profit}</span>
+                </div>
+              )}
+            </div>
+          </>
+        )}
+
+        {/* Activity: Feed + Chat */}
+        <div className="section-title" style={{ marginBottom: 10 }}>Activity</div>
+        <div className="segment" style={{ marginBottom: 10 }}>
+          {(["feed", "chat"] as const).map((t) => (
+            <button key={t} className={`segment-btn${activityTab === t ? " active" : ""}`} onClick={() => setActivityTab(t)}>
+              {t === "feed" ? `Feed${feed.length > 0 ? ` (${feed.length})` : ""}` : `Chat${messages.length > 0 ? ` (${messages.length})` : ""}`}
+            </button>
+          ))}
+        </div>
+
+        {activityTab === "feed" && (
+          <div className="card" style={{ marginBottom: 8, padding: 0, overflow: "hidden" }}>
+            {feed.length === 0 ? (
+              <div className="empty" style={{ padding: "24px 0" }}>
+                <div className="empty-icon">📊</div>
+                <div className="empty-text">No visible bets yet. Bets appear after games kick off.</div>
+              </div>
+            ) : (
+              feed.slice(0, 30).map((item: any, idx: number) => {
+                const outcomeColor = item.pick.outcome === "WIN" ? "var(--win)" : item.pick.outcome === "LOSS" ? "var(--loss)" : "var(--text-3)";
+                let label = "";
+                if (item.type === "pick") {
+                  const p = item.pick;
+                  label = `${p.direction} ${p.altLine ?? p.prop?.line} ${p.prop?.statType?.replaceAll("_", " ")} — ${p.prop?.player?.name}`;
+                } else if (item.type === "gamepick") {
+                  label = item.pick.gameLine?.label ?? "Game pick";
+                } else {
+                  label = `${item.pick.legs?.length ?? "?"}-leg parlay`;
+                }
+                return (
+                  <div key={item.pick.id} style={{
+                    padding: "12px 16px",
+                    borderBottom: idx < Math.min(feed.length, 30) - 1 ? "1px solid var(--border)" : "none",
+                    display: "flex", alignItems: "flex-start", gap: 10,
+                  }}>
+                    <div className="avatar" style={{ width: 30, height: 30, fontSize: "0.64rem", flexShrink: 0 }}>
+                      {item.displayName.slice(0, 2).toUpperCase()}
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 3 }}>
+                        <span style={{ fontWeight: 700, fontSize: "0.82rem", color: item.userId === userId ? "var(--accent)" : "var(--text)" }}>
+                          {item.displayName}
+                        </span>
+                        <span style={{ fontSize: "0.68rem", color: "var(--text-3)", flexShrink: 0, marginLeft: 8 }}>{fmtTime(item.createdAt)}</span>
+                      </div>
+                      <div style={{ fontSize: "0.78rem", color: "var(--text-2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{label}</div>
+                      <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
+                        <span style={{ fontSize: "0.68rem", color: "var(--text-3)" }}>${item.pick.stake?.toLocaleString()}</span>
+                        <span style={{ fontSize: "0.68rem", color: "var(--text-3)" }}>{fmtFeedOdds(item.pick.odds ?? item.pick.totalOdds ?? -110)}</span>
+                        {item.pick.outcome !== "PENDING" && (
+                          <span style={{ fontSize: "0.68rem", fontWeight: 800, color: outcomeColor }}>
+                            {item.pick.outcome}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        )}
+
+        {activityTab === "chat" && (
+          <div className="card" style={{ marginBottom: 8, padding: 0, overflow: "hidden" }}>
+            <div style={{ maxHeight: 320, overflowY: "auto", padding: "12px 0" }}>
+              {messages.length === 0 ? (
+                <div className="empty" style={{ padding: "24px 0" }}>
+                  <div className="empty-icon">💬</div>
+                  <div className="empty-text">No messages yet. Say something!</div>
+                </div>
+              ) : (
+                messages.map((msg: any) => {
+                  const isMe = msg.userId === userId;
+                  const isCommissioner = league?.creatorId === userId;
+                  return (
+                    <div key={msg.id} style={{ padding: "8px 16px", display: "flex", alignItems: "flex-start", gap: 10 }}>
+                      <div className="avatar" style={{ width: 28, height: 28, fontSize: "0.6rem", flexShrink: 0 }}>
+                        {msg.user.displayName.slice(0, 2).toUpperCase()}
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2 }}>
+                          <span style={{ fontWeight: 700, fontSize: "0.78rem", color: isMe ? "var(--accent)" : "var(--text)" }}>
+                            {msg.user.displayName}
+                          </span>
+                          <span style={{ fontSize: "0.64rem", color: "var(--text-3)" }}>{fmtTime(msg.createdAt)}</span>
+                          {(isMe || isCommissioner) && (
+                            <button
+                              onClick={() => deleteMessage(msg.id)}
+                              style={{ background: "none", border: "none", color: "var(--text-3)", fontSize: "0.65rem", padding: "0 4px", cursor: "pointer", marginLeft: "auto", flexShrink: 0 }}
+                            >✕</button>
+                          )}
+                        </div>
+                        <div style={{ fontSize: "0.82rem", color: "var(--text-2)", wordBreak: "break-word", lineHeight: 1.4 }}>
+                          {msg.body}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+              <div ref={chatBottomRef} />
+            </div>
+            <div style={{ borderTop: "1px solid var(--border)", padding: "10px 12px" }}>
+              <form onSubmit={sendMessage} style={{ display: "flex", gap: 8 }}>
+                <input
+                  value={chatInput}
+                  onChange={(e) => setChatInput(e.target.value)}
+                  placeholder="Say something…"
+                  maxLength={500}
+                  style={{ flex: 1, fontSize: "0.85rem", padding: "9px 12px" }}
+                />
+                <button type="submit" disabled={chatSending || !chatInput.trim()} style={{ padding: "9px 16px", fontSize: "0.85rem", flexShrink: 0 }}>
+                  Send
+                </button>
+              </form>
+            </div>
+          </div>
         )}
 
         {/* Commissioner Panel */}
