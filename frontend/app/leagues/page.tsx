@@ -294,7 +294,7 @@ export default function LeaguesPage() {
                           fontSize: "0.88rem",
                           fontWeight: active ? 800 : 500,
                           background: active ? "var(--accent)" : "var(--surface-2)",
-                          color: active ? "#fff" : "var(--text-2)",
+                          color: active ? "#080C14" : "var(--text-2)",
                           border: active ? "1.5px solid var(--accent)" : "1.5px solid var(--border)",
                           transition: "all 0.12s",
                         }}

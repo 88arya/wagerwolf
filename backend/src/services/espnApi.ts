@@ -1,32 +1,40 @@
 const SITE = "https://site.api.espn.com/apis/site/v2/sports/football/nfl";
 
-const NFL_TEAM_ABBRS = [
-  "ARI","ATL","BAL","BUF","CAR","CHI","CIN","CLE",
-  "DAL","DEN","DET","GB","HOU","IND","JAX","KC",
-  "LAC","LAR","LV","MIA","MIN","NE","NO","NYG",
-  "NYJ","PHI","PIT","SF","SEA","TB","TEN","WSH",
-];
+export function espnImageUrl(espnId: string): string {
+  return `https://a.espncdn.com/i/headshots/nfl/players/full/${espnId}.png`;
+}
 
-export async function buildEspnRosterMap(): Promise<Map<string, string>> {
-  const map = new Map<string, string>();
-  for (const abbr of NFL_TEAM_ABBRS) {
-    try {
-      const res = await fetch(`${SITE}/teams/${abbr}/roster`);
-      if (!res.ok) continue;
-      const data = await res.json();
-      for (const group of data.athletes ?? []) {
-        for (const athlete of group.items ?? []) {
-          if (athlete.id && athlete.displayName) {
-            map.set(
-              (athlete.displayName as string).toLowerCase(),
-              `https://a.espncdn.com/i/headshots/nfl/players/full/${athlete.id}.png`
-            );
-          }
+// Search ESPN by player name to get their permanent athlete ID
+export async function searchEspnPlayerId(name: string): Promise<string | null> {
+  try {
+    const url = `https://site.web.api.espn.com/apis/search/v2?query=${encodeURIComponent(name)}&sport=football&limit=10`;
+    const res = await fetch(url, {
+      headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36" },
+    });
+    if (!res.ok) { console.error(`ESPN search ${res.status} for "${name}"`); return null; }
+    const data = await res.json();
+    const nameLower = name.toLowerCase();
+    for (const result of data.results ?? []) {
+      for (const content of result.contents ?? []) {
+        // contents[] items ARE the athlete objects directly (not content.data[])
+        if (content.displayName?.toLowerCase() === nameLower) {
+          // UID format: "s:20~l:28~a:3116406" — numeric part after "a:" is the ESPN athlete ID
+          const fromUid = (content.uid as string | undefined)
+            ?.split("~").find((p: string) => p.startsWith("a:"))?.slice(2);
+          if (fromUid) return fromUid;
+          // fallback: extract ID from the headshot URL
+          const imageHref = content.image?.default as string | undefined;
+          const fromImage = imageHref?.match(/\/(\d+)\.png/)?.[1];
+          if (fromImage) return fromImage;
         }
       }
-    } catch { /* skip on error */ }
+    }
+    console.error(`ESPN search: no match found for "${name}"`);
+    return null;
+  } catch (e) {
+    console.error(`ESPN search error for "${name}":`, e);
+    return null;
   }
-  return map;
 }
 
 export interface ESPNGame {

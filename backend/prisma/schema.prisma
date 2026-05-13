@@ -149,6 +149,7 @@ model Player {
   name     String
   team     String
   position String
+  espnId   String? @unique
   imageUrl String?
   props    Prop[]
 }

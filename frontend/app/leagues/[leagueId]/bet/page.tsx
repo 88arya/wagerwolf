@@ -7,6 +7,7 @@ import { api } from "@/lib/api";
 import BottomNav from "@/components/BottomNav";
 import BetSlip, { addToSlip, removeFromSlip, getBetSlip } from "@/components/BetSlip";
 import TeamLogo from "@/components/TeamLogo";
+import PlayerAvatar from "@/components/PlayerAvatar";
 
 function fmtOdds(american: number): string {
   return american > 0 ? `+${american}` : `${american}`;
@@ -399,23 +400,7 @@ export default function BetPage({ params }: PageProps<"/leagues/[leagueId]/bet">
                   <div key={prop.id} className="card" style={{ marginBottom: 8, padding: "12px 14px" }}>
                     {/* Player header */}
                     <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
-                      {prop.player?.imageUrl ? (
-                        <img
-                          src={prop.player.imageUrl}
-                          alt={prop.player.name}
-                          style={{ width: 48, height: 48, borderRadius: "50%", objectFit: "cover", flexShrink: 0, background: "var(--surface-2)" }}
-                          onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
-                        />
-                      ) : (
-                        <div style={{
-                          width: 48, height: 48, borderRadius: "50%", flexShrink: 0,
-                          background: "var(--surface-2)", border: "1px solid var(--border)",
-                          display: "flex", alignItems: "center", justifyContent: "center",
-                          fontSize: "1.1rem", fontWeight: 800, color: "var(--text-3)",
-                        }}>
-                          {prop.player?.name?.[0] ?? "?"}
-                        </div>
-                      )}
+                      <PlayerAvatar playerId={prop.player?.id} espnId={prop.player?.espnId} imageUrl={prop.player?.imageUrl} name={prop.player?.name} />
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ fontWeight: 800, fontSize: "0.95rem", display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
                           {prop.player?.name}
@@ -492,6 +477,25 @@ export default function BetPage({ params }: PageProps<"/leagues/[leagueId]/bet">
   }
 
   // ── Games list view ───────────────────────────────────────────────
+  function fmtDateHeader(dateStr: string) {
+    const d = new Date(dateStr);
+    return d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" }).toUpperCase();
+  }
+
+  function fmtKickoff(dateStr: string) {
+    const d = new Date(dateStr);
+    return d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+  }
+
+  // Group games by date
+  const gamesByDate: { date: string; games: any[] }[] = [];
+  for (const game of games) {
+    const dateKey = new Date(game.gameDate).toDateString();
+    const group = gamesByDate.find((g) => g.date === dateKey);
+    if (group) group.games.push(game);
+    else gamesByDate.push({ date: dateKey, games: [game] });
+  }
+
   return (
     <>
       <nav className="nav">
@@ -500,15 +504,12 @@ export default function BetPage({ params }: PageProps<"/leagues/[leagueId]/bet">
       </nav>
 
       <div className="page" style={{ paddingBottom: 160 }}>
-        <div style={{ marginBottom: 16 }}>
-          <h1>Bet</h1>
-          {weekNumber && (
-            <p className="subtitle">
-              {leagueWeekLabel ?? `Week ${weekNumber}`}
-              {weekLocked ? " · Locked" : ""}
-            </p>
-          )}
-        </div>
+        {weekNumber && (
+          <p className="subtitle" style={{ marginBottom: 12 }}>
+            {leagueWeekLabel ?? `Week ${weekNumber}`}
+            {weekLocked ? " · Locked" : ""}
+          </p>
+        )}
 
         {statsBar}
         {lockedBanner}
@@ -519,116 +520,121 @@ export default function BetPage({ params }: PageProps<"/leagues/[leagueId]/bet">
           </div>
         )}
 
-        {games.map((game: any) => {
-          const lines: any[] = game.gameLines ?? [];
-          const propsCount = game.props?.length ?? 0;
-          const placedForGame =
-            submittedProps.filter((id) => (game.props ?? []).some((p: any) => p.id === id)).length +
-            submittedLines.filter((id) => lines.some((l) => l.id === id)).length;
-
-          const mlAway = lines.find((l) => l.market === "MONEYLINE_AWAY");
-          const mlHome = lines.find((l) => l.market === "MONEYLINE_HOME");
-          const spAway = lines.find((l) => l.market === "SPREAD_AWAY");
-          const spHome = lines.find((l) => l.market === "SPREAD_HOME");
-          const totOver = lines.find((l) => l.market === "TOTAL_OVER");
-          const totUnder = lines.find((l) => l.market === "TOTAL_UNDER");
-          const hasQuickLines = mlAway || mlHome || spAway || spHome || totOver || totUnder;
-
-          function shortName(full: string) { return full.split(" ").slice(-1)[0]; }
-
-          function OddsChip({ line, label }: { line: any; label: string }) {
-            if (!line) return null;
-            const done = submittedLines.includes(line.id);
-            const inSlip = slipIds.has(`${line.id}:`);
-            return (
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  if (!weekLocked && !done) toggleLineinSlip(line);
-                }}
-                disabled={weekLocked || done}
-                style={{
-                  flex: 1, padding: "7px 4px", borderRadius: 8, fontSize: "0.73rem", fontWeight: 700,
-                  background: done ? "var(--win-bg)" : inSlip ? "var(--accent-dim)" : "var(--surface-2)",
-                  color: done ? "var(--win)" : inSlip ? "var(--accent)" : "var(--text-2)",
-                  border: done ? "1px solid rgba(22,163,74,0.3)" : inSlip ? "1.5px solid var(--accent)" : "1px solid var(--border)",
-                  cursor: weekLocked || done ? "default" : "pointer",
-                  display: "flex", flexDirection: "column", alignItems: "center", gap: 1, lineHeight: 1.3,
-                }}
-              >
-                <span style={{ fontSize: "0.65rem", color: done ? "var(--win)" : "var(--text-3)", fontWeight: 500 }}>{label}</span>
-                <span>{done ? "✓" : fmtOdds(line.odds)}</span>
-                {line.line != null && <span style={{ fontSize: "0.6rem", color: "var(--text-3)", fontWeight: 400 }}>{line.line}</span>}
-              </button>
-            );
-          }
-
-          return (
-            <div
-              key={game.id}
-              className="card"
-              onClick={() => { setSelectedGame(game); setBetTab("lines"); }}
-              style={{ marginBottom: 8, cursor: "pointer", userSelect: "none", padding: "14px 14px 0" }}
-            >
-              <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
-                <div style={{ flex: 1, display: "flex", alignItems: "center", gap: 10 }}>
-                  <TeamLogo team={game.awayTeam} size={40} />
-                  <div>
-                    <div style={{ fontWeight: 700, fontSize: "0.88rem" }}>{game.awayTeam}</div>
-                    <div style={{ fontSize: "0.65rem", color: "var(--text-3)", textTransform: "uppercase", letterSpacing: "0.05em" }}>Away</div>
-                  </div>
-                </div>
-                <div style={{ fontWeight: 900, fontSize: "0.95rem", color: "var(--text-3)", flexShrink: 0 }}>@</div>
-                <div style={{ flex: 1, display: "flex", alignItems: "center", gap: 10, justifyContent: "flex-end", flexDirection: "row-reverse" }}>
-                  <TeamLogo team={game.homeTeam} size={40} />
-                  <div style={{ textAlign: "right" }}>
-                    <div style={{ fontWeight: 700, fontSize: "0.88rem" }}>{game.homeTeam}</div>
-                    <div style={{ fontSize: "0.65rem", color: "var(--text-3)", textTransform: "uppercase", letterSpacing: "0.05em" }}>Home</div>
-                  </div>
-                </div>
-              </div>
-
-              {hasQuickLines && (
-                <div style={{ display: "flex", flexDirection: "column", gap: 5, marginBottom: 12 }} onClick={(e) => e.stopPropagation()}>
-                  {(mlAway || mlHome) && (
-                    <div style={{ display: "flex", gap: 5 }}>
-                      <OddsChip line={mlAway} label={shortName(game.awayTeam) + " ML"} />
-                      <OddsChip line={mlHome} label={shortName(game.homeTeam) + " ML"} />
-                    </div>
-                  )}
-                  {(spAway || spHome) && (
-                    <div style={{ display: "flex", gap: 5 }}>
-                      <OddsChip line={spAway} label={shortName(game.awayTeam) + " SP"} />
-                      <OddsChip line={spHome} label={shortName(game.homeTeam) + " SP"} />
-                    </div>
-                  )}
-                  {(totOver || totUnder) && (
-                    <div style={{ display: "flex", gap: 5 }}>
-                      <OddsChip line={totOver} label={"O " + (totOver?.line ?? "")} />
-                      <OddsChip line={totUnder} label={"U " + (totUnder?.line ?? "")} />
-                    </div>
-                  )}
-                </div>
-              )}
-
-              <div style={{
-                display: "flex", justifyContent: "space-between", alignItems: "center",
-                padding: "10px 0 14px", borderTop: "1px solid var(--border)",
-              }}>
-                <div style={{ fontSize: "0.72rem", color: "var(--text-3)" }}>{fmtGameTime(game.gameDate)}</div>
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  {placedForGame > 0 && (
-                    <span style={{ fontSize: "0.7rem", color: "var(--win)", fontWeight: 700 }}>{placedForGame} placed</span>
-                  )}
-                  {propsCount > 0 && (
-                    <span style={{ fontSize: "0.72rem", color: "var(--accent)", fontWeight: 600 }}>{propsCount} props →</span>
-                  )}
-                </div>
-              </div>
+        {gamesByDate.map(({ date, games: dayGames }) => (
+          <div key={date}>
+            {/* Date header */}
+            <div style={{ fontSize: "0.78rem", fontWeight: 800, color: "var(--text-2)", letterSpacing: "0.06em", margin: "16px 0 8px" }}>
+              {fmtDateHeader(dayGames[0].gameDate)}
             </div>
-          );
-        })}
+
+            {dayGames.map((game: any) => {
+              const lines: any[] = game.gameLines ?? [];
+              const propsCount = game.props?.length ?? 0;
+              const placedForGame =
+                submittedProps.filter((id) => (game.props ?? []).some((p: any) => p.id === id)).length +
+                submittedLines.filter((id) => lines.some((l) => l.id === id)).length;
+
+              const mlAway  = lines.find((l) => l.market === "MONEYLINE_AWAY");
+              const mlHome  = lines.find((l) => l.market === "MONEYLINE_HOME");
+              const spAway  = lines.find((l) => l.market === "SPREAD_AWAY");
+              const spHome  = lines.find((l) => l.market === "SPREAD_HOME");
+              const totOver = lines.find((l) => l.market === "TOTAL_OVER");
+              const totUnder = lines.find((l) => l.market === "TOTAL_UNDER");
+
+              function OddsBlock({ line, topLabel }: { line: any; topLabel?: string }) {
+                const BLOCK: React.CSSProperties = {
+                  width: 70, height: 52, borderRadius: 8, flexShrink: 0,
+                  display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 2,
+                  cursor: "pointer", transition: "all 0.12s",
+                };
+                if (!line) return <div style={{ ...BLOCK, background: "transparent", border: "1px solid var(--border)", cursor: "default", opacity: 0.3 }} />;
+                const done  = submittedLines.includes(line.id);
+                const inSlip = slipIds.has(`${line.id}:`);
+                return (
+                  <button
+                    type="button"
+                    disabled={weekLocked || done}
+                    onClick={(e) => { e.stopPropagation(); if (!weekLocked && !done) toggleLineinSlip(line); }}
+                    style={{
+                      ...BLOCK,
+                      background: done ? "var(--win-bg)" : inSlip ? "var(--accent-dim)" : "var(--surface-2)",
+                      border: done ? "1.5px solid rgba(34,197,94,0.35)" : inSlip ? "1.5px solid var(--accent)" : "1px solid var(--border)",
+                    }}
+                  >
+                    {topLabel && (
+                      <div style={{ fontSize: "0.78rem", fontWeight: 700, color: done ? "var(--win)" : "var(--text)", fontVariantNumeric: "tabular-nums", lineHeight: 1 }}>
+                        {topLabel}
+                      </div>
+                    )}
+                    <div style={{ fontSize: "0.82rem", fontWeight: 800, color: done ? "var(--win)" : inSlip ? "var(--accent)" : "var(--accent)", fontVariantNumeric: "tabular-nums", lineHeight: 1 }}>
+                      {done ? "✓" : fmtOdds(line.odds)}
+                    </div>
+                  </button>
+                );
+              }
+
+              return (
+                <div key={game.id} className="card" style={{ marginBottom: 8, padding: 0, overflow: "hidden", cursor: "pointer", userSelect: "none" }}
+                  onClick={() => { setSelectedGame(game); setBetTab("lines"); }}>
+
+                  {/* Column headers */}
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 70px 70px 70px", gap: 4, padding: "10px 12px 4px" }}>
+                    <div />
+                    {["Spread", "Total", "ML"].map((h) => (
+                      <div key={h} style={{ textAlign: "center", fontSize: "0.62rem", fontWeight: 700, color: "var(--text-3)", letterSpacing: "0.06em", textTransform: "uppercase" }}>{h}</div>
+                    ))}
+                  </div>
+
+                  {/* Away row */}
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 70px 70px 70px", gap: 4, alignItems: "center", padding: "6px 12px" }}
+                    onClick={(e) => e.stopPropagation()}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }} onClick={() => { setSelectedGame(game); setBetTab("lines"); }}>
+                      <TeamLogo team={game.awayTeam} size={30} />
+                      <span style={{ fontWeight: 700, fontSize: "0.88rem", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{game.awayTeam}</span>
+                    </div>
+                    <OddsBlock line={spAway} topLabel={spAway?.line != null ? String(spAway.line > 0 ? `+${spAway.line}` : spAway.line) : undefined} />
+                    <OddsBlock line={totOver} topLabel={totOver?.line != null ? `O ${totOver.line}` : undefined} />
+                    <OddsBlock line={mlAway} />
+                  </div>
+
+                  {/* AT separator */}
+                  <div style={{ padding: "0 12px 0 54px" }}>
+                    <div style={{ fontSize: "0.62rem", color: "var(--text-3)", fontWeight: 600, letterSpacing: "0.04em" }}>AT</div>
+                  </div>
+
+                  {/* Home row */}
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 70px 70px 70px", gap: 4, alignItems: "center", padding: "6px 12px" }}
+                    onClick={(e) => e.stopPropagation()}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }} onClick={() => { setSelectedGame(game); setBetTab("lines"); }}>
+                      <TeamLogo team={game.homeTeam} size={30} />
+                      <span style={{ fontWeight: 700, fontSize: "0.88rem", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{game.homeTeam}</span>
+                    </div>
+                    <OddsBlock line={spHome} topLabel={spHome?.line != null ? String(spHome.line > 0 ? `+${spHome.line}` : spHome.line) : undefined} />
+                    <OddsBlock line={totUnder} topLabel={totUnder?.line != null ? `U ${totUnder.line}` : undefined} />
+                    <OddsBlock line={mlHome} />
+                  </div>
+
+                  {/* Footer */}
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 12px 10px", borderTop: "1px solid var(--border)", marginTop: 6 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <span style={{ fontSize: "0.72rem", color: "var(--text-3)" }}>{fmtKickoff(game.gameDate)}</span>
+                      {placedForGame > 0 && (
+                        <span style={{ fontSize: "0.7rem", color: "var(--win)", fontWeight: 700 }}>· {placedForGame} placed</span>
+                      )}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); setSelectedGame(game); setBetTab("props"); }}
+                      style={{ background: "none", border: "none", color: "var(--accent)", fontSize: "0.8rem", fontWeight: 700, padding: 0, cursor: "pointer" }}
+                    >
+                      {propsCount > 0 ? `${propsCount} Props ›` : "More Bets ›"}
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ))}
       </div>
 
       <BetSlip leagueId={leagueId} />

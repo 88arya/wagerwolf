@@ -3,7 +3,6 @@ import { StatType } from "@prisma/client";
 import { prisma } from "../db/prisma";
 import { requireAuth, requireAdmin } from "../middleware/auth";
 import { getNFLWeekData } from "../services/oddsApi";
-import { buildEspnRosterMap } from "../services/espnApi";
 
 const router = Router();
 
@@ -40,8 +39,6 @@ router.post("/week/:weekId", requireAuth, requireAdmin, async (req: any, res: an
 
     let gamesSynced = 0, linesSynced = 0, propsSynced = 0;
 
-    const espnRoster = await buildEspnRosterMap();
-
     for (const { eventId, commenceTime, homeTeam, awayTeam, lines, props } of inRange) {
       const game = await prisma.game.upsert({
         where: { externalId: eventId },
@@ -65,13 +62,9 @@ router.post("/week/:weekId", requireAuth, requireAdmin, async (req: any, res: an
 
         let player = await prisma.player.findFirst({ where: { name: raw.playerName } });
         if (!player) {
-          const imageUrl = espnRoster.get(raw.playerName.toLowerCase()) ?? null;
           player = await prisma.player.create({
-            data: { name: raw.playerName, team: "", position: MARKET_TO_POSITION[raw.market] ?? "FLEX", imageUrl },
+            data: { name: raw.playerName, team: "", position: MARKET_TO_POSITION[raw.market] ?? "FLEX" },
           });
-        } else if (!player.imageUrl) {
-          const imageUrl = espnRoster.get(raw.playerName.toLowerCase());
-          if (imageUrl) await prisma.player.update({ where: { id: player.id }, data: { imageUrl } });
         }
 
         const existing = await prisma.prop.findFirst({

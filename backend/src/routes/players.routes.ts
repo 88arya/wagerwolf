@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { prisma } from "../db/prisma";
 import { requireAuth, requireAdmin } from "../middleware/auth";
-import { buildEspnRosterMap } from "../services/espnApi";
+import { searchEspnPlayerId, espnImageUrl } from "../services/espnApi";
 
 const router = Router();
 
@@ -28,22 +28,24 @@ router.get("/", requireAuth, async (req: any, res: any) => {
   }
 });
 
-// Fetch ESPN headshots for all players missing an image by scanning all 32 team rosters
-router.post("/sync-images", requireAuth, requireAdmin, async (req: any, res: any) => {
+// Lazy image resolution: espnId in DB → ESPN search by name → store for next time
+router.get("/:id/image", requireAuth, async (req: any, res: any) => {
   try {
-    const players = await prisma.player.findMany({ where: { imageUrl: null } });
-    if (players.length === 0) { res.json({ synced: 0, total: 0 }); return; }
+    const player = await prisma.player.findUnique({ where: { id: req.params.id } });
+    if (!player) { res.status(404).json({ error: "Not found" }); return; }
 
-    const nameMap = await buildEspnRosterMap();
-    let synced = 0;
-    for (const player of players) {
-      const imageUrl = nameMap.get(player.name.toLowerCase());
-      if (imageUrl) {
-        await prisma.player.update({ where: { id: player.id }, data: { imageUrl } });
-        synced++;
-      }
+    if (player.espnId) {
+      res.json({ imageUrl: espnImageUrl(player.espnId) });
+      return;
     }
-    res.json({ synced, total: players.length });
+
+    const espnId = await searchEspnPlayerId(player.name);
+    if (espnId) {
+      await prisma.player.update({ where: { id: player.id }, data: { espnId, imageUrl: espnImageUrl(espnId) } });
+      res.json({ imageUrl: espnImageUrl(espnId) });
+    } else {
+      res.json({ imageUrl: null });
+    }
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
