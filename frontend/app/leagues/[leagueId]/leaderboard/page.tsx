@@ -47,7 +47,9 @@ export default function LeaderboardPage({ params }: PageProps<"/leagues/[leagueI
     load();
   }, []);
 
+  const isCreator = league?.creatorId === myUserId;
   const hasWeekProfits = Object.keys(weekProfits).length > 0;
+  const RANK_MEDALS = ["🥇", "🥈", "🥉"];
 
   return (
     <>
@@ -57,7 +59,7 @@ export default function LeaderboardPage({ params }: PageProps<"/leagues/[leagueI
       </nav>
 
       <div className="page">
-        <div style={{ marginBottom: 20 }}>
+        <div style={{ marginBottom: 16 }}>
           <h1>Standings</h1>
           {league && (
             <p className="subtitle">{league.name} · {entries.length} player{entries.length !== 1 ? "s" : ""}</p>
@@ -80,15 +82,16 @@ export default function LeaderboardPage({ params }: PageProps<"/leagues/[leagueI
             {/* Header */}
             <div style={{
               display: "grid",
-              gridTemplateColumns: hasWeekProfits ? "32px 1fr 70px 72px 80px" : "32px 1fr 80px 90px",
-              padding: "9px 16px",
-              background: "var(--navy)",
+              gridTemplateColumns: hasWeekProfits ? "30px 1fr 64px 68px 78px" : "30px 1fr 72px 84px",
+              padding: "8px 14px",
+              background: "var(--surface-2)",
+              borderBottom: "1px solid var(--border)",
               gap: 8,
             }}>
-              {["#", "Player", "W–L", hasWeekProfits ? "Wk P&L" : null, "Balance"].filter(Boolean).map((h, i) => (
+              {["#", "Player", "W–L", ...(hasWeekProfits ? ["Wk P&L"] : []), "Balance"].map((h, i) => (
                 <span key={String(h)} style={{
-                  fontSize: "0.63rem", fontWeight: 800, letterSpacing: "0.1em",
-                  textTransform: "uppercase", color: "rgba(255,255,255,0.45)",
+                  fontSize: "0.6rem", fontWeight: 800, letterSpacing: "0.1em",
+                  textTransform: "uppercase", color: "var(--text-3)",
                   textAlign: i >= 2 ? "center" : "left",
                 }}>{h}</span>
               ))}
@@ -102,71 +105,90 @@ export default function LeaderboardPage({ params }: PageProps<"/leagues/[leagueI
               const wkProfit = weekProfits[entry.userId];
 
               return (
-                <div
+                <Link
                   key={entry.userId}
-                  style={{
+                  href={`/leagues/${leagueId}/members/${entry.userId}`}
+                  style={{ display: "block", textDecoration: "none" }}
+                >
+                  <div style={{
                     display: "grid",
-                    gridTemplateColumns: hasWeekProfits ? "32px 1fr 70px 72px 80px" : "32px 1fr 80px 90px",
-                    padding: "12px 16px",
+                    gridTemplateColumns: hasWeekProfits ? "30px 1fr 64px 68px 78px" : "30px 1fr 72px 84px",
+                    padding: "11px 14px",
                     borderBottom: i < entries.length - 1 ? "1px solid var(--border)" : "none",
-                    background: isMe ? "var(--accent-dim)" : rank === 1 ? "rgba(200,150,12,0.04)" : "transparent",
+                    background: isMe ? "var(--accent-dim)" : rank === 1 ? "rgba(245,158,11,0.03)" : "transparent",
                     alignItems: "center",
                     gap: 8,
-                  }}
-                >
-                  <span style={{ fontWeight: 900, fontSize: "0.95rem", color: rankColor, textAlign: "center" }}>
-                    {rank <= 3 ? ["🥇","🥈","🥉"][rank-1] : rank}
-                  </span>
-
-                  <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
-                    <div className="avatar" style={{
-                      width: 34, height: 34, fontSize: "0.72rem", flexShrink: 0,
-                      ...(rank === 1 ? { borderColor: "var(--gold)", color: "var(--gold)", background: "rgba(200,150,12,0.1)" } : {}),
-                      ...(rank === 2 ? { borderColor: "var(--silver)", color: "var(--silver)", background: "rgba(107,122,148,0.1)" } : {}),
-                      ...(rank === 3 ? { borderColor: "var(--bronze)", color: "var(--bronze)", background: "rgba(139,101,82,0.1)" } : {}),
-                    }}>
-                      {initials}
-                    </div>
-                    <div style={{ minWidth: 0 }}>
-                      <div style={{ fontWeight: isMe ? 800 : 600, fontSize: "0.88rem", color: isMe ? "var(--accent)" : "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                        {entry.displayName}
-                        {isMe && <span style={{ fontSize: "0.65rem", color: "var(--accent)", marginLeft: 6, fontWeight: 700 }}>YOU</span>}
-                      </div>
-                      {rank === 1 && (
-                        <div style={{ fontSize: "0.62rem", color: "var(--gold)", fontWeight: 700, letterSpacing: "0.08em" }}>LEADING</div>
+                    cursor: "pointer",
+                    transition: "background 0.1s",
+                  }}>
+                    {/* Rank */}
+                    <div style={{ textAlign: "center" }}>
+                      {rank <= 3 ? (
+                        <span style={{ fontSize: "0.95rem" }}>{RANK_MEDALS[rank - 1]}</span>
+                      ) : (
+                        <span style={{ fontWeight: 900, fontSize: "0.88rem", color: rankColor }}>{rank}</span>
                       )}
                     </div>
-                  </div>
 
-                  <div style={{ textAlign: "center", fontSize: "0.8rem", fontWeight: 600, color: "var(--text-2)" }}>
-                    <span style={{ color: "var(--win)" }}>{entry.wins}</span>
-                    <span style={{ color: "var(--text-3)" }}>–</span>
-                    <span style={{ color: "var(--loss)" }}>{entry.losses}</span>
-                    {entry.ties > 0 && <span style={{ color: "var(--text-3)" }}>–{entry.ties}</span>}
-                  </div>
-
-                  {hasWeekProfits && (
-                    <div style={{ textAlign: "center", fontWeight: 700, fontSize: "0.82rem", fontVariantNumeric: "tabular-nums" }}>
-                      {wkProfit == null
-                        ? <span style={{ color: "var(--text-3)" }}>—</span>
-                        : <span style={{ color: wkProfit >= 0 ? "var(--win)" : "var(--loss)" }}>
-                            {wkProfit >= 0 ? "+" : ""}${Math.abs(wkProfit).toLocaleString()}
-                          </span>
-                      }
+                    {/* Player */}
+                    <div style={{ display: "flex", alignItems: "center", gap: 9, minWidth: 0 }}>
+                      <div className="avatar" style={{
+                        width: 32, height: 32, fontSize: "0.68rem", flexShrink: 0,
+                        ...(rank === 1 ? { borderColor: "var(--gold)", color: "var(--gold)", background: "rgba(245,158,11,0.1)" } : {}),
+                        ...(rank === 2 ? { borderColor: "var(--silver)", color: "var(--silver)", background: "rgba(148,163,184,0.08)" } : {}),
+                        ...(rank === 3 ? { borderColor: "var(--bronze)", color: "var(--bronze)", background: "rgba(205,127,50,0.08)" } : {}),
+                      }}>
+                        {initials}
+                      </div>
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{
+                          fontWeight: isMe ? 800 : 600,
+                          fontSize: "0.85rem",
+                          color: isMe ? "var(--accent)" : "var(--text)",
+                          overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                        }}>
+                          {entry.displayName}
+                          {isMe && <span style={{ fontSize: "0.6rem", color: "var(--accent)", marginLeft: 6, fontWeight: 700 }}>YOU</span>}
+                        </div>
+                        {rank === 1 && (
+                          <div style={{ fontSize: "0.58rem", color: "var(--gold)", fontWeight: 700, letterSpacing: "0.08em" }}>LEADING</div>
+                        )}
+                      </div>
                     </div>
-                  )}
 
-                  <div style={{ textAlign: "right", fontWeight: 800, fontSize: "0.9rem", fontVariantNumeric: "tabular-nums", color: "var(--text)" }}>
-                    ${entry.balance.toLocaleString()}
+                    {/* W-L */}
+                    <div style={{ textAlign: "center", fontSize: "0.78rem", fontWeight: 600 }}>
+                      <span style={{ color: "var(--win)" }}>{entry.wins}</span>
+                      <span style={{ color: "var(--text-3)" }}>–</span>
+                      <span style={{ color: "var(--loss)" }}>{entry.losses}</span>
+                      {entry.ties > 0 && <span style={{ color: "var(--text-3)" }}>–{entry.ties}</span>}
+                    </div>
+
+                    {/* Weekly P&L */}
+                    {hasWeekProfits && (
+                      <div style={{ textAlign: "center", fontWeight: 700, fontSize: "0.8rem", fontVariantNumeric: "tabular-nums" }}>
+                        {wkProfit == null
+                          ? <span style={{ color: "var(--text-3)" }}>—</span>
+                          : <span style={{ color: wkProfit >= 0 ? "var(--win)" : "var(--loss)" }}>
+                              {wkProfit >= 0 ? "+" : ""}${Math.abs(wkProfit).toLocaleString()}
+                            </span>
+                        }
+                      </div>
+                    )}
+
+                    {/* Balance */}
+                    <div style={{ textAlign: "right", fontWeight: 800, fontSize: "0.88rem", fontVariantNumeric: "tabular-nums", color: "var(--text)" }}>
+                      ${entry.balance.toLocaleString()}
+                    </div>
                   </div>
-                </div>
+                </Link>
               );
             })}
           </div>
         )}
       </div>
 
-      <BottomNav leagueId={leagueId} />
+      <BottomNav leagueId={leagueId} isCreator={isCreator} />
     </>
   );
 }
