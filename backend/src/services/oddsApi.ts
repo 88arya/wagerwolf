@@ -3,9 +3,26 @@ const BASE = "https://api.sportsgameodds.com/v2";
 const PROP_STAT_IDS = new Set([
   "passing_yards",
   "passing_touchdowns",
+  "passing_completions",
+  "passing_attempts",
+  "passing_interceptions",
+  "passing_longest",
   "rushing_yards",
+  "rushing_touchdowns",
+  "rushing_attempts",
+  "rushing_longest",
   "receiving_yards",
+  "receiving_touchdowns",
+  "receiving_longest",
+  "receiving_targets",
   "receptions",
+  "sacks",
+  "tackles_assists",
+  "interceptions",
+  "field_goals_made",
+  "field_goal_longest",
+  "kicking_points",
+  "extra_points_made",
 ]);
 
 function key(): string {

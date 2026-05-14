@@ -46,8 +46,14 @@ export interface ESPNGame {
 
 export interface PlayerGameStats {
   passingYards: number;
+  passingTouchdowns: number;
+  passingCompletions: number;
+  passingAttempts: number;
   rushingYards: number;
+  rushingTouchdowns: number;
+  rushingAttempts: number;
   receivingYards: number;
+  receivingTouchdowns: number;
   receptions: number;
   touchdowns: number;
   team: string;
@@ -107,18 +113,28 @@ export async function getGameStats(espnId: string): Promise<Map<string, PlayerGa
         const get = (key: string) => parseFloat(vals[idx(key)] ?? "0") || 0;
 
         if (!stats.has(name)) {
-          stats.set(name, { passingYards: 0, rushingYards: 0, receivingYards: 0, receptions: 0, touchdowns: 0, team });
+          stats.set(name, {
+            passingYards: 0, passingTouchdowns: 0, passingCompletions: 0, passingAttempts: 0,
+            rushingYards: 0, rushingTouchdowns: 0, rushingAttempts: 0,
+            receivingYards: 0, receivingTouchdowns: 0, receptions: 0, touchdowns: 0, team,
+          });
         }
         const s = stats.get(name)!;
 
         if (catName === "passing") {
           s.passingYards += get("passingYards");
+          s.passingTouchdowns += get("passingTouchdowns");
+          s.passingCompletions += get("completions");
+          s.passingAttempts += get("attempts");
           s.touchdowns += get("passingTouchdowns");
         } else if (catName === "rushing") {
           s.rushingYards += get("rushingYards");
+          s.rushingTouchdowns += get("rushingTouchdowns");
+          s.rushingAttempts += get("carries");
           s.touchdowns += get("rushingTouchdowns");
         } else if (catName === "receiving") {
           s.receivingYards += get("receivingYards");
+          s.receivingTouchdowns += get("receivingTouchdowns");
           s.receptions += get("receptions");
           s.touchdowns += get("receivingTouchdowns");
         }

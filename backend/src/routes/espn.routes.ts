@@ -7,11 +7,17 @@ import { calcProfit } from "../lib/payout";
 
 const router = Router();
 
-const STAT_FIELD: Record<StatType, string> = {
+const STAT_FIELD: Partial<Record<StatType, string>> = {
   PASSING_YARDS: "passingYards",
+  PASSING_TOUCHDOWNS: "passingTouchdowns",
+  PASSING_COMPLETIONS: "passingCompletions",
+  PASSING_ATTEMPTS: "passingAttempts",
   RUSHING_YARDS: "rushingYards",
+  RUSHING_TOUCHDOWNS: "rushingTouchdowns",
+  RUSHING_ATTEMPTS: "rushingAttempts",
   RECEIVING_YARDS: "receivingYards",
   RECEPTIONS: "receptions",
+  RECEIVING_TOUCHDOWNS: "receivingTouchdowns",
   TOUCHDOWNS: "touchdowns",
 };
 

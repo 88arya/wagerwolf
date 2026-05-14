@@ -37,12 +37,11 @@ export default function BetPage({ params }: PageProps<"/leagues/[leagueId]/bet">
   const [weekNumber, setWeekNumber] = useState<number | null>(null);
   const [leagueWeekLabel, setLeagueWeekLabel] = useState<string | null>(null);
   const [selectedGame, setSelectedGame] = useState<any | null>(null);
-  const [betTab, setBetTab] = useState<"lines" | "props">("lines");
+  const [betSection, setBetSection] = useState<string>("lines");
   const [submittedProps, setSubmittedProps] = useState<string[]>([]);
   const [submittedLines, setSubmittedLines] = useState<string[]>([]);
   const [slipIds, setSlipIds] = useState<Set<string>>(new Set());
   const [slipLegs, setSlipLegs] = useState<any[]>([]);
-  const [propStatFilter, setPropStatFilter] = useState("");
 
   async function loadSubmitted(lid: string, weekGames: any[]) {
     try {
@@ -101,7 +100,7 @@ export default function BetPage({ params }: PageProps<"/leagues/[leagueId]/bet">
           const gid = searchParams.get("gameId");
           if (gid) {
             const target = weekGames.find((g: any) => g.id === gid);
-            if (target) { setSelectedGame(target); setBetTab("lines"); }
+            if (target) setSelectedGame(target);
           }
         }
       } catch {}
@@ -138,7 +137,6 @@ export default function BetPage({ params }: PageProps<"/leagues/[leagueId]/bet">
   function toggleLineinSlip(line: any) {
     const inSlip = slipIds.has(`${line.id}:`);
     if (inSlip) { removeFromSlip(line.id, undefined); return; }
-    // Remove the opposing side (same game, opposite market) if it's in the slip
     const oppMarket = OPPOSITE_MARKET[line.market];
     if (oppMarket) {
       const gameForLine = games.find((g: any) => (g.gameLines ?? []).some((l: any) => l.id === line.id));
@@ -155,7 +153,12 @@ export default function BetPage({ params }: PageProps<"/leagues/[leagueId]/bet">
   const PROP_OFFSETS = [-2, -1, 0, 1, 2];
 
   function propStep(statType: string): number {
-    if (statType === "PASSING_YARDS" || statType === "RUSHING_YARDS" || statType === "RECEIVING_YARDS") return 5;
+    const yardTypes = [
+      "PASSING_YARDS", "RUSHING_YARDS", "RECEIVING_YARDS",
+      "PASSING_LONGEST", "RUSHING_LONGEST", "RECEIVING_LONGEST", "FIELD_GOAL_LONGEST",
+    ];
+    if (yardTypes.includes(statType)) return 5;
+    if (statType === "KICKING_POINTS") return 1;
     return 0.5;
   }
 
@@ -173,20 +176,15 @@ export default function BetPage({ params }: PageProps<"/leagues/[leagueId]/bet">
   function toggleBlockInSlip(prop: any, direction: "OVER" | "UNDER", blockLine: number) {
     const existingLeg = slipLegs.find((l: any) => l.id === prop.id && l.direction === direction);
     const existingBlockLine = existingLeg?.altLine ?? existingLeg?.line ?? null;
-
-    // Clicking the same block → deselect
     if (existingLeg && Math.abs((existingBlockLine ?? 0) - blockLine) < 0.001) {
       removeFromSlip(prop.id, direction, existingLeg.altLine);
       return;
     }
-
-    // Replace any existing leg for this direction
     if (existingLeg) removeFromSlip(prop.id, direction, existingLeg.altLine);
-
     const isDefault = Math.abs(blockLine - prop.line) < 0.001;
     addToSlip({
       type: "prop", id: prop.id, direction,
-      label: `${prop.player?.name} ${direction} ${blockLine} ${prop.statType.replaceAll("_", " ")}`,
+      label: `${prop.player?.name} ${direction} ${blockLine} ${(prop.statType as string).split("_").join(" ")}`,
       odds: prop.odds ?? -110,
       line: prop.line,
       statType: prop.statType,
@@ -194,7 +192,84 @@ export default function BetPage({ params }: PageProps<"/leagues/[leagueId]/bet">
     });
   }
 
-  const totalBets = submittedProps.length + submittedLines.length;
+  function renderPropCard(prop: any) {
+    const placed = submittedProps.includes(prop.id);
+    const step = propStep(prop.statType);
+    const overLeg = slipLegs.find((l: any) => l.id === prop.id && l.direction === "OVER");
+    const underLeg = slipLegs.find((l: any) => l.id === prop.id && l.direction === "UNDER");
+
+    return (
+      <div key={prop.id} className="card" style={{ marginBottom: 8, padding: "12px 14px" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
+          <PlayerAvatar playerId={prop.player?.id} espnId={prop.player?.espnId} imageUrl={prop.player?.imageUrl} name={prop.player?.name} />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontWeight: 800, fontSize: "0.95rem", display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+              {prop.player?.name}
+              {placed && <span style={{ fontSize: "0.68rem", color: "var(--win)", fontWeight: 700 }}>✓ bet</span>}
+            </div>
+            <div style={{ fontSize: "0.72rem", color: "var(--text-3)", marginTop: 2 }}>
+              {prop.player?.position} · {prop.player?.team}
+            </div>
+          </div>
+        </div>
+
+        {weekLocked ? (
+          <div style={{ textAlign: "center", color: "var(--text-3)", fontSize: "0.85rem" }}>Locked</div>
+        ) : (
+          <div style={{ overflowX: "auto" }}>
+            {/* Line headers */}
+            <div style={{ display: "grid", gridTemplateColumns: "42px repeat(5, 1fr)", gap: 3, marginBottom: 4 }}>
+              <div />
+              {PROP_OFFSETS.map((offset) => {
+                const blockLine = propBlockLine(prop.line, offset, step);
+                const isDefault = offset === 0;
+                return (
+                  <div key={offset} style={{ textAlign: "center", fontSize: "0.78rem", fontWeight: isDefault ? 800 : 500, color: isDefault ? "var(--text)" : "var(--text-3)", fontVariantNumeric: "tabular-nums" }}>
+                    {blockLine}
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* OVER row */}
+            {(["OVER", "UNDER"] as const).map((direction) => {
+              const activeLeg = direction === "OVER" ? overLeg : underLeg;
+              const activeBlockLine = activeLeg ? (activeLeg.altLine ?? activeLeg.line) : null;
+              return (
+                <div key={direction} style={{ display: "grid", gridTemplateColumns: "42px repeat(5, 1fr)", gap: 3, marginBottom: direction === "OVER" ? 3 : 0 }}>
+                  <div style={{ display: "flex", alignItems: "center", fontSize: "0.63rem", fontWeight: 800, letterSpacing: "0.06em", color: direction === "OVER" ? "var(--accent)" : "var(--text-3)" }}>
+                    {direction}
+                  </div>
+                  {PROP_OFFSETS.map((offset) => {
+                    const blockLine = propBlockLine(prop.line, offset, step);
+                    const blockOdds = propBlockOdds(prop.odds ?? -110, prop.line, blockLine, prop.statType, direction);
+                    const isActive = activeBlockLine != null && Math.abs(activeBlockLine - blockLine) < 0.001;
+                    const isDefault = offset === 0;
+                    return (
+                      <button
+                        key={offset}
+                        type="button"
+                        onClick={() => toggleBlockInSlip(prop, direction, blockLine)}
+                        style={{
+                          padding: "7px 2px", borderRadius: 4, textAlign: "center", cursor: "pointer",
+                          background: isActive ? "var(--accent-dim)" : isDefault ? "var(--surface-2)" : "var(--surface)",
+                          border: isActive ? "1.5px solid var(--accent)" : "1px solid var(--border)",
+                          fontSize: "0.78rem", fontWeight: 800, fontVariantNumeric: "tabular-nums",
+                          color: isActive ? "var(--accent)" : "var(--text-2)",
+                        }}
+                      >
+                        {fmtOdds(blockOdds)}
+                      </button>
+                    );
+                  })}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    );
+  }
 
   const statsBar = balance !== null && (
     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 12 }}>
@@ -207,20 +282,37 @@ export default function BetPage({ params }: PageProps<"/leagues/[leagueId]/bet">
       <div className="card" style={{ margin: 0, textAlign: "center", padding: "10px 0" }}>
         <div className="label">Bets Placed</div>
         <div style={{ fontSize: "1.4rem", fontWeight: 900, letterSpacing: "-0.03em", marginTop: 4, color: "var(--accent)" }}>
-          {totalBets}
+          {submittedProps.length + submittedLines.length}
         </div>
       </div>
     </div>
   );
 
   const lockedBanner = weekLocked && (
-    <div style={{
-      background: "var(--loss-bg)", border: "1px solid rgba(220,38,38,0.25)",
-      borderRadius: 8, padding: "10px 14px", marginBottom: 12,
-    }}>
+    <div style={{ background: "var(--loss-bg)", border: "1px solid rgba(220,38,38,0.25)", borderRadius: 8, padding: "10px 14px", marginBottom: 12 }}>
       <div style={{ color: "var(--loss)", fontWeight: 700, fontSize: "0.85rem" }}>Betting is locked for this week</div>
     </div>
   );
+
+  function fmtStatType(s: string): string {
+    return (s as string).split("_").map((w) => w[0] + w.slice(1).toLowerCase()).join(" ");
+  }
+
+  function renderPropSection(props: any[]) {
+    const groups: Record<string, any[]> = {};
+    for (const p of props) {
+      if (!groups[p.statType]) groups[p.statType] = [];
+      groups[p.statType].push(p);
+    }
+    return Object.entries(groups).map(([statType, groupProps]) => (
+      <div key={statType} style={{ marginBottom: 16 }}>
+        <div style={{ fontSize: "0.7rem", fontWeight: 700, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: "0.09em", marginBottom: 8 }}>
+          {fmtStatType(statType)}
+        </div>
+        {groupProps.map(renderPropCard)}
+      </div>
+    ));
+  }
 
   // ── Selected game view ────────────────────────────────────────────
   if (selectedGame) {
@@ -228,9 +320,30 @@ export default function BetPage({ params }: PageProps<"/leagues/[leagueId]/bet">
     const gameLinesList = selectedGame.gameLines ?? [];
     const linesByCategory = ["Moneyline", "Spread", "Total"] as const;
 
-    const filteredProps = gameProps.filter((p: any) =>
-      !propStatFilter || p.statType === propStatFilter
+    const DEFENSE_TYPES = new Set(["SACKS", "TACKLES_ASSISTS", "DEFENSIVE_INTERCEPTIONS"]);
+    const KICKING_TYPES = new Set(["FIELD_GOALS_MADE", "FIELD_GOAL_LONGEST", "KICKING_POINTS", "EXTRA_POINTS_MADE"]);
+
+    const qbProps = gameProps.filter((p: any) => p.player?.position === "QB");
+    const rushingProps = gameProps.filter((p: any) =>
+      (p.statType as string).includes("RUSHING") && p.player?.position !== "QB"
     );
+    const receivingProps = gameProps.filter((p: any) =>
+      ((p.statType as string).includes("RECEIVING") || p.statType === "RECEPTIONS" || p.statType === "RECEIVING_TARGETS") &&
+      p.player?.position !== "QB"
+    );
+    const defenseProps = gameProps.filter((p: any) => DEFENSE_TYPES.has(p.statType));
+    const kickingProps = gameProps.filter((p: any) => KICKING_TYPES.has(p.statType));
+
+    const tabs = [
+      { key: "lines", label: "Game Lines" },
+      ...(qbProps.length > 0 ? [{ key: "qb", label: "QB Props" }] : []),
+      ...(rushingProps.length > 0 ? [{ key: "rushing", label: "Rushing Props" }] : []),
+      ...(receivingProps.length > 0 ? [{ key: "receiving", label: "Receiving Props" }] : []),
+      ...(defenseProps.length > 0 ? [{ key: "defense", label: "Defense" }] : []),
+      ...(kickingProps.length > 0 ? [{ key: "kicking", label: "Kicking" }] : []),
+    ];
+
+    const activeSection = tabs.some((t) => t.key === betSection) ? betSection : "lines";
 
     return (
       <>
@@ -273,17 +386,32 @@ export default function BetPage({ params }: PageProps<"/leagues/[leagueId]/bet">
           {statsBar}
           {lockedBanner}
 
-          <div className="segment" style={{ marginBottom: 14 }}>
-            <button className={`segment-btn${betTab === "lines" ? " active" : ""}`} onClick={() => setBetTab("lines")}>
-              Lines ({gameLinesList.length})
-            </button>
-            <button className={`segment-btn${betTab === "props" ? " active" : ""}`} onClick={() => setBetTab("props")}>
-              Props ({gameProps.length})
-            </button>
+          {/* Horizontal tab bar */}
+          <div style={{ display: "flex", overflowX: "auto", borderBottom: "1.5px solid var(--border)", marginBottom: 16, gap: 0 }}>
+            {tabs.map(({ key, label }) => {
+              const active = activeSection === key;
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => setBetSection(key)}
+                  style={{
+                    flexShrink: 0, padding: "10px 16px",
+                    fontSize: "0.82rem", fontWeight: active ? 800 : 500,
+                    background: "transparent", border: "none",
+                    borderBottom: active ? "2.5px solid var(--accent)" : "2.5px solid transparent",
+                    color: active ? "var(--accent)" : "var(--text-2)",
+                    cursor: "pointer", marginBottom: -1.5, whiteSpace: "nowrap",
+                  }}
+                >
+                  {label}
+                </button>
+              );
+            })}
           </div>
 
-          {/* ── Lines tab ── */}
-          {betTab === "lines" && (
+          {/* Game Lines */}
+          {activeSection === "lines" && (
             <>
               {gameLinesList.length === 0 && (
                 <div className="card">
@@ -310,7 +438,7 @@ export default function BetPage({ params }: PageProps<"/leagues/[leagueId]/bet">
                             onClick={() => !weekLocked && toggleLineinSlip(line)}
                             style={{
                               display: "flex", alignItems: "center", justifyContent: "space-between",
-                              padding: "12px 14px", borderRadius: 10, cursor: weekLocked ? "default" : "pointer",
+                              padding: "12px 14px", borderRadius: 6, cursor: weekLocked ? "default" : "pointer",
                               background: inSlip ? "var(--accent-dim)" : "var(--surface)",
                               border: inSlip ? "1.5px solid var(--accent)" : "1.5px solid var(--border)",
                               textAlign: "left", width: "100%",
@@ -348,125 +476,16 @@ export default function BetPage({ params }: PageProps<"/leagues/[leagueId]/bet">
             </>
           )}
 
-          {/* ── Props tab ── */}
-          {betTab === "props" && (
-            <>
-              {/* Stat type filter tabs */}
-              {gameProps.length > 0 && (
-                <div style={{ display: "flex", gap: 0, marginBottom: 14, overflowX: "auto", borderBottom: "1.5px solid var(--border)" }}>
-                  {[
-                    { key: "", label: "All" },
-                    { key: "PASSING_YARDS", label: "Passing" },
-                    { key: "RUSHING_YARDS", label: "Rushing" },
-                    { key: "RECEIVING_YARDS", label: "Receiving" },
-                    { key: "TOUCHDOWNS", label: "TDs" },
-                    { key: "RECEPTIONS", label: "Receptions" },
-                  ].map(({ key, label }) => {
-                    const active = propStatFilter === key;
-                    return (
-                      <button
-                        key={key}
-                        type="button"
-                        onClick={() => setPropStatFilter(key)}
-                        style={{
-                          flexShrink: 0, padding: "9px 14px", fontSize: "0.82rem",
-                          fontWeight: active ? 800 : 500, background: "transparent", border: "none",
-                          borderBottom: active ? "2.5px solid var(--accent)" : "2.5px solid transparent",
-                          color: active ? "var(--accent)" : "var(--text-2)",
-                          cursor: "pointer", marginBottom: -1.5,
-                        }}
-                      >{label}</button>
-                    );
-                  })}
-                </div>
-              )}
+          {activeSection === "qb" && renderPropSection(qbProps)}
+          {activeSection === "rushing" && renderPropSection(rushingProps)}
+          {activeSection === "receiving" && renderPropSection(receivingProps)}
+          {activeSection === "defense" && renderPropSection(defenseProps)}
+          {activeSection === "kicking" && renderPropSection(kickingProps)}
 
-              {filteredProps.length === 0 && (
-                <div className="card">
-                  <div className="empty">
-                    <div className="empty-icon">🎯</div>
-                    <div className="empty-text">{gameProps.length === 0 ? "No props for this game" : "No matching props"}</div>
-                  </div>
-                </div>
-              )}
-
-              {filteredProps.map((prop: any) => {
-                const placed = submittedProps.includes(prop.id);
-                const step = propStep(prop.statType);
-                const overLeg = slipLegs.find((l: any) => l.id === prop.id && l.direction === "OVER");
-                const underLeg = slipLegs.find((l: any) => l.id === prop.id && l.direction === "UNDER");
-
-                return (
-                  <div key={prop.id} className="card" style={{ marginBottom: 8, padding: "12px 14px" }}>
-                    {/* Player header */}
-                    <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
-                      <PlayerAvatar playerId={prop.player?.id} espnId={prop.player?.espnId} imageUrl={prop.player?.imageUrl} name={prop.player?.name} />
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontWeight: 800, fontSize: "0.95rem", display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-                          {prop.player?.name}
-                          {placed && <span style={{ fontSize: "0.68rem", color: "var(--win)", fontWeight: 700 }}>✓ bet</span>}
-                        </div>
-                        <div style={{ fontSize: "0.72rem", color: "var(--text-3)", marginTop: 2 }}>
-                          {prop.player?.position} · {prop.player?.team}
-                        </div>
-                      </div>
-                      <span className="tag" style={{ flexShrink: 0 }}>{prop.statType.replaceAll("_", " ")}</span>
-                    </div>
-
-                    {weekLocked ? (
-                      <div style={{ textAlign: "center", color: "var(--text-3)", fontSize: "0.85rem" }}>Locked</div>
-                    ) : (
-                      <>
-                        {(["OVER", "UNDER"] as const).map((direction) => {
-                          const activeLeg = direction === "OVER" ? overLeg : underLeg;
-                          const activeBlockLine = activeLeg ? (activeLeg.altLine ?? activeLeg.line) : null;
-
-                          return (
-                            <div key={direction} style={{ marginBottom: direction === "OVER" ? 8 : 0 }}>
-                              <div style={{
-                                fontSize: "0.65rem", fontWeight: 700, letterSpacing: "0.08em",
-                                color: direction === "OVER" ? "var(--accent)" : "var(--text-3)",
-                                marginBottom: 5,
-                              }}>{direction}</div>
-                              <div style={{ display: "flex", gap: 5, overflowX: "auto" }}>
-                                {PROP_OFFSETS.map((offset) => {
-                                  const blockLine = propBlockLine(prop.line, offset, step);
-                                  const blockOdds = propBlockOdds(prop.odds ?? -110, prop.line, blockLine, prop.statType, direction);
-                                  const isActive = activeBlockLine != null && Math.abs(activeBlockLine - blockLine) < 0.001;
-                                  const isDefault = offset === 0;
-                                  return (
-                                    <button
-                                      key={offset}
-                                      type="button"
-                                      onClick={() => toggleBlockInSlip(prop, direction, blockLine)}
-                                      style={{
-                                        flex: "0 0 62px", padding: "8px 4px", borderRadius: 8,
-                                        textAlign: "center", cursor: "pointer",
-                                        background: isActive ? "var(--accent-dim)" : isDefault ? "var(--surface-2)" : "var(--surface)",
-                                        border: isActive ? "1.5px solid var(--accent)" : isDefault ? "1.5px solid var(--border)" : "1px solid var(--border)",
-                                      }}
-                                    >
-                                      <div style={{
-                                        fontSize: "0.9rem", fontWeight: 800, fontVariantNumeric: "tabular-nums",
-                                        color: isActive ? "var(--accent)" : "var(--text)",
-                                      }}>{blockLine}</div>
-                                      <div style={{
-                                        fontSize: "0.72rem", fontWeight: 700, marginTop: 3,
-                                        color: isActive ? "var(--accent)" : "var(--text-2)",
-                                      }}>{fmtOdds(blockOdds)}</div>
-                                    </button>
-                                  );
-                                })}
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </>
-                    )}
-                  </div>
-                );
-              })}
-            </>
+          {gameLinesList.length === 0 && gameProps.length === 0 && (
+            <div className="card">
+              <div className="empty"><div className="empty-icon">🏈</div><div className="empty-text">No bets available for this game</div></div>
+            </div>
           )}
         </div>
 
@@ -482,12 +501,6 @@ export default function BetPage({ params }: PageProps<"/leagues/[leagueId]/bet">
     return d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" }).toUpperCase();
   }
 
-  function fmtKickoff(dateStr: string) {
-    const d = new Date(dateStr);
-    return d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
-  }
-
-  // Group games by date
   const gamesByDate: { date: string; games: any[] }[] = [];
   for (const game of games) {
     const dateKey = new Date(game.gameDate).toDateString();
@@ -522,17 +535,15 @@ export default function BetPage({ params }: PageProps<"/leagues/[leagueId]/bet">
 
         {gamesByDate.map(({ date, games: dayGames }) => (
           <div key={date}>
-            {/* Date header */}
             <div style={{ fontSize: "0.78rem", fontWeight: 800, color: "var(--text-2)", letterSpacing: "0.06em", margin: "16px 0 8px" }}>
               {fmtDateHeader(dayGames[0].gameDate)}
             </div>
 
             {dayGames.map((game: any) => {
               const lines: any[] = game.gameLines ?? [];
-              const propsCount = game.props?.length ?? 0;
-              const placedForGame =
-                submittedProps.filter((id) => (game.props ?? []).some((p: any) => p.id === id)).length +
-                submittedLines.filter((id) => lines.some((l) => l.id === id)).length;
+              const now = new Date();
+              const isLive = game.status === "IN_PROGRESS" ||
+                (game.status !== "FINAL" && game.status !== "CANCELLED" && game.gameDate && new Date(game.gameDate) <= now);
 
               const mlAway  = lines.find((l) => l.market === "MONEYLINE_AWAY");
               const mlHome  = lines.find((l) => l.market === "MONEYLINE_HOME");
@@ -543,7 +554,7 @@ export default function BetPage({ params }: PageProps<"/leagues/[leagueId]/bet">
 
               function OddsBlock({ line, topLabel }: { line: any; topLabel?: string }) {
                 const BLOCK: React.CSSProperties = {
-                  width: 70, height: 52, borderRadius: 8, flexShrink: 0,
+                  width: 70, height: 52, borderRadius: 4, flexShrink: 0,
                   display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 2,
                   cursor: "pointer", transition: "all 0.12s",
                 };
@@ -575,9 +586,8 @@ export default function BetPage({ params }: PageProps<"/leagues/[leagueId]/bet">
 
               return (
                 <div key={game.id} className="card" style={{ marginBottom: 8, padding: 0, overflow: "hidden", cursor: "pointer", userSelect: "none" }}
-                  onClick={() => { setSelectedGame(game); setBetTab("lines"); }}>
+                  onClick={() => setSelectedGame(game)}>
 
-                  {/* Column headers */}
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 70px 70px 70px", gap: 4, padding: "10px 12px 4px" }}>
                     <div />
                     {["Spread", "Total", "ML"].map((h) => (
@@ -585,10 +595,9 @@ export default function BetPage({ params }: PageProps<"/leagues/[leagueId]/bet">
                     ))}
                   </div>
 
-                  {/* Away row */}
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 70px 70px 70px", gap: 4, alignItems: "center", padding: "6px 12px" }}
                     onClick={(e) => e.stopPropagation()}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }} onClick={() => { setSelectedGame(game); setBetTab("lines"); }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }} onClick={() => setSelectedGame(game)}>
                       <TeamLogo team={game.awayTeam} size={30} />
                       <span style={{ fontWeight: 700, fontSize: "0.88rem", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{game.awayTeam}</span>
                     </div>
@@ -597,15 +606,13 @@ export default function BetPage({ params }: PageProps<"/leagues/[leagueId]/bet">
                     <OddsBlock line={mlAway} />
                   </div>
 
-                  {/* AT separator */}
                   <div style={{ padding: "0 12px 0 54px" }}>
                     <div style={{ fontSize: "0.62rem", color: "var(--text-3)", fontWeight: 600, letterSpacing: "0.04em" }}>AT</div>
                   </div>
 
-                  {/* Home row */}
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 70px 70px 70px", gap: 4, alignItems: "center", padding: "6px 12px" }}
                     onClick={(e) => e.stopPropagation()}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }} onClick={() => { setSelectedGame(game); setBetTab("lines"); }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }} onClick={() => setSelectedGame(game)}>
                       <TeamLogo team={game.homeTeam} size={30} />
                       <span style={{ fontWeight: 700, fontSize: "0.88rem", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{game.homeTeam}</span>
                     </div>
@@ -614,20 +621,24 @@ export default function BetPage({ params }: PageProps<"/leagues/[leagueId]/bet">
                     <OddsBlock line={mlHome} />
                   </div>
 
-                  {/* Footer */}
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 12px 10px", borderTop: "1px solid var(--border)", marginTop: 6 }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                      <span style={{ fontSize: "0.72rem", color: "var(--text-3)" }}>{fmtKickoff(game.gameDate)}</span>
-                      {placedForGame > 0 && (
-                        <span style={{ fontSize: "0.7rem", color: "var(--win)", fontWeight: 700 }}>· {placedForGame} placed</span>
+                    <div>
+                      {isLive ? (
+                        <span style={{ fontSize: "0.68rem", color: "var(--win)", fontWeight: 800, letterSpacing: "0.06em" }}>LIVE</span>
+                      ) : game.status === "FINAL" ? (
+                        <span style={{ fontSize: "0.68rem", color: "var(--text-3)", fontWeight: 700 }}>FINAL</span>
+                      ) : game.status === "CANCELLED" ? (
+                        <span style={{ fontSize: "0.68rem", color: "var(--loss)", fontWeight: 700 }}>CANCELLED</span>
+                      ) : (
+                        <span style={{ fontSize: "0.72rem", color: "var(--text-3)" }}>{fmtGameTime(game.gameDate)}</span>
                       )}
                     </div>
                     <button
                       type="button"
-                      onClick={(e) => { e.stopPropagation(); setSelectedGame(game); setBetTab("props"); }}
-                      style={{ background: "none", border: "none", color: "var(--accent)", fontSize: "0.8rem", fontWeight: 700, padding: 0, cursor: "pointer" }}
+                      onClick={(e) => { e.stopPropagation(); setSelectedGame(game); }}
+                      style={{ background: "none", border: "none", color: "var(--accent)", fontSize: "1rem", fontWeight: 700, padding: 0, cursor: "pointer" }}
                     >
-                      {propsCount > 0 ? `${propsCount} Props ›` : "More Bets ›"}
+                      ›
                     </button>
                   </div>
                 </div>

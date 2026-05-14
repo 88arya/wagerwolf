@@ -5,7 +5,14 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { api } from "@/lib/api";
 
-const STAT_TYPES = ["PASSING_YARDS", "RUSHING_YARDS", "RECEIVING_YARDS", "TOUCHDOWNS", "RECEPTIONS"];
+const STAT_TYPES = [
+  "PASSING_YARDS", "PASSING_TOUCHDOWNS", "PASSING_COMPLETIONS", "PASSING_ATTEMPTS", "PASSING_INTERCEPTIONS", "PASSING_LONGEST",
+  "RUSHING_YARDS", "RUSHING_TOUCHDOWNS", "RUSHING_ATTEMPTS", "RUSHING_LONGEST",
+  "RECEIVING_YARDS", "RECEIVING_TOUCHDOWNS", "RECEIVING_LONGEST", "RECEIVING_TARGETS", "RECEPTIONS",
+  "SACKS", "TACKLES_ASSISTS", "DEFENSIVE_INTERCEPTIONS",
+  "FIELD_GOALS_MADE", "FIELD_GOAL_LONGEST", "KICKING_POINTS", "EXTRA_POINTS_MADE",
+  "TOUCHDOWNS",
+];
 
 export default function AdminPage() {
   const router = useRouter();
@@ -119,6 +126,15 @@ export default function AdminPage() {
       await loadWeeks();
       loadGamesForWeek(weekId);
       flash(`Synced ${res.games} games, ${res.lines} lines, ${res.props} props`);
+    } catch (err: any) { try { flash(JSON.parse(err.message).error, true); } catch { flash(err.message, true); } }
+  }
+
+  async function fakeSyncWeek(weekId: string) {
+    try {
+      const res = await api(`/sync/week/${weekId}/fake`, { method: "POST" });
+      await loadWeeks();
+      loadGamesForWeek(weekId);
+      flash(`Fake sync done — ${res.lines} lines, ${res.props} props`);
     } catch (err: any) { try { flash(JSON.parse(err.message).error, true); } catch { flash(err.message, true); } }
   }
 
@@ -365,6 +381,9 @@ export default function AdminPage() {
                       </button>
                       <button className="secondary" style={{ fontSize: "0.75rem", padding: "5px 10px" }} onClick={() => syncWeek(w.id)}>
                         Sync Odds
+                      </button>
+                      <button className="secondary" style={{ fontSize: "0.75rem", padding: "5px 10px" }} onClick={() => fakeSyncWeek(w.id)}>
+                        Fake Sync
                       </button>
                       {!w.resolved && (
                         <button className="secondary" style={{ fontSize: "0.75rem", padding: "5px 10px" }} onClick={() => toggleLock(w.id)}>
