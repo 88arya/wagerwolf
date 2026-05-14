@@ -43,29 +43,30 @@ export default function SettingsPage() {
     <>
       <nav className="nav">
         <div className="nav-logo">PLAY<span className="accent">BOOK</span></div>
-        <Link href="/leagues" style={{ fontSize: "0.82rem" }}>‹ Leagues</Link>
+        <Link href="/leagues">‹ Leagues</Link>
       </nav>
 
       <div className="page">
-        <div style={{ marginBottom: 24 }}>
+        <div style={{ marginBottom: 20 }}>
           <h1>Settings</h1>
           <p className="subtitle">Manage your account</p>
         </div>
 
-        {/* Avatar preview */}
-        <div style={{ display: "flex", justifyContent: "center", marginBottom: 24 }}>
+        {/* Avatar */}
+        <div style={{ display: "flex", justifyContent: "center", marginBottom: 22 }}>
           <div style={{
-            width: 72, height: 72, borderRadius: "50%",
-            background: "var(--accent-dim)", border: "2px solid var(--accent)",
+            width: 68, height: 68, borderRadius: "50%",
+            background: "var(--accent-dim)",
+            border: "2.5px solid rgba(56,189,248,0.3)",
             display: "flex", alignItems: "center", justifyContent: "center",
-            fontSize: "1.5rem", fontWeight: 900, color: "var(--accent)",
+            fontSize: "1.4rem", fontWeight: 900, color: "var(--accent)",
           }}>
             {initials || "??"}
           </div>
         </div>
 
-        <div className="card" style={{ marginBottom: 12 }}>
-          <div style={{ fontSize: "0.66rem", fontWeight: 800, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--text-3)", marginBottom: 14 }}>
+        <div className="card" style={{ marginBottom: 10 }}>
+          <div style={{ fontSize: "0.6rem", fontWeight: 800, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--text-3)", marginBottom: 12 }}>
             Display Name
           </div>
           <form className="form" onSubmit={save}>
@@ -78,11 +79,11 @@ export default function SettingsPage() {
             {error && <p className="error">{error}</p>}
             {success && (
               <div style={{
-                background: "var(--win-bg)", border: "1px solid rgba(34,197,94,0.3)",
+                background: "var(--win-bg)", border: "1px solid var(--win-border)",
                 borderRadius: 8, padding: "10px 14px", color: "var(--win)",
-                fontSize: "0.85rem", fontWeight: 600,
+                fontSize: "0.82rem", fontWeight: 600,
               }}>
-                Display name updated
+                ✓ Display name updated
               </div>
             )}
             <button type="submit" disabled={saving || input.trim() === displayName} style={{ width: "100%" }}>
@@ -91,10 +92,10 @@ export default function SettingsPage() {
           </form>
         </div>
 
-        <div style={{ marginTop: 32, paddingTop: 16, borderTop: "1px solid var(--border)" }}>
+        <div style={{ marginTop: 28, paddingTop: 14, borderTop: "1px solid var(--border)" }}>
           <button
             className="ghost"
-            style={{ width: "100%", fontSize: "0.85rem", padding: "12px", color: "var(--loss)", borderColor: "rgba(220,38,38,0.3)" }}
+            style={{ width: "100%", fontSize: "0.85rem", padding: "12px", color: "var(--loss)", borderColor: "var(--loss-border)" }}
             onClick={() => { localStorage.clear(); router.push("/"); }}
           >
             Sign Out
