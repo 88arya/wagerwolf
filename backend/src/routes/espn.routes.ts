@@ -4,6 +4,7 @@ import { prisma } from "../db/prisma";
 import { requireAuth, requireAdmin } from "../middleware/auth";
 import { getNFLWeekGames, getGameStats } from "../services/espnApi";
 import { calcProfit } from "../lib/payout";
+import { seedFakePropsForWeek } from "../services/fakeSync";
 
 const router = Router();
 
@@ -45,7 +46,8 @@ router.post("/games/:weekId", requireAuth, requireAdmin, async (req: any, res: a
       created.push(game);
     }
 
-    res.json({ synced: created.length, games: created });
+    const { lines, props } = await seedFakePropsForWeek(req.params.weekId);
+    res.json({ synced: created.length, games: created, lines, props });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
@@ -186,6 +188,7 @@ router.post("/resolve/:weekId", requireAuth, requireAdmin, async (req: any, res:
         if (!playerStats) { propUnmatched++; continue; }
 
         const statKey = STAT_FIELD[prop.statType as StatType];
+        if (!statKey) { propUnmatched++; continue; }
         const result = (playerStats as any)[statKey] ?? null;
         if (result == null) { propUnmatched++; continue; }
 

@@ -44,6 +44,7 @@ export default function PlayerAvatar({ playerId, espnId, imageUrl: initialUrl, n
       <img
         src={imageUrl}
         alt={name ?? ""}
+        referrerPolicy="no-referrer"
         style={{ ...circle, objectFit: "cover", background: "var(--surface-2)" }}
         onError={() => setFailed(true)}
       />

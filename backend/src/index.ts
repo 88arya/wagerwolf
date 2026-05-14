@@ -18,6 +18,7 @@ import gamelineRoutes from "./routes/gamelines.routes";
 import gamePickRoutes from "./routes/gamepicks.routes";
 import parlayRoutes from "./routes/parlays.routes";
 import adminRoutes from "./routes/admin.routes";
+import { runStartupSeed } from "./services/startupSeed";
 
 dotenv.config();
 
@@ -50,6 +51,7 @@ app.get("/", (req, res) => {
 
 const PORT = process.env.PORT || 5000;
 
-app.listen(PORT, () => {
+app.listen(PORT, async () => {
   console.log(`Server running on port ${PORT}`);
+  await runStartupSeed();
 });

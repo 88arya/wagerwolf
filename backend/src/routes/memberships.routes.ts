@@ -507,7 +507,7 @@ router.get("/recap", requireAuth, async (req: any, res: any) => {
 
     const allBets = [
       ...picks.map((p) => ({
-        label: `${p.prop.player.name} ${p.direction} ${p.altLine ?? p.prop.line} ${p.prop.statType.replaceAll("_", " ")}`,
+        label: `${p.prop.player.name} ${p.direction} ${p.altLine ?? p.prop.line} ${p.prop.statType.split("_").join(" ")}`,
         stake: p.stake, odds: p.odds, outcome: p.outcome,
         profit: calcProfit(p.stake, p.odds, p.outcome),
       })),
