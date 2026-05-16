@@ -56,7 +56,7 @@ export default function AuthPage() {
             fontSize: "2.6rem",
             fontWeight: 900,
             letterSpacing: "0.08em",
-            color: "#FFFFFF",
+            color: "var(--text)",
             lineHeight: 1,
             marginBottom: 10,
             textTransform: "uppercase",

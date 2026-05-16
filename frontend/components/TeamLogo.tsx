@@ -39,7 +39,7 @@ export default function TeamLogo({ team, size = 40 }: Props) {
       alt={team}
       width={size}
       height={size}
-      style={{ objectFit: "contain", flexShrink: 0 }}
+      style={{ objectFit: "contain", flexShrink: 0, background: "var(--surface-3)", borderRadius: 6, padding: 2 }}
     />
   );
 }

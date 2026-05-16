@@ -28,7 +28,7 @@ export default function ForgotPasswordPage() {
     <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", background: "var(--navy)", padding: "20px" }}>
       <div style={{ width: "100%", maxWidth: 400 }}>
         <div style={{ textAlign: "center", marginBottom: 32 }}>
-          <div style={{ fontSize: "2rem", fontWeight: 900, letterSpacing: "0.06em", color: "#fff", marginBottom: 8 }}>
+          <div style={{ fontSize: "2rem", fontWeight: 900, letterSpacing: "0.06em", color: "var(--text)", marginBottom: 8 }}>
             PLAY<span style={{ color: "var(--gold)" }}>BOOK</span>
           </div>
         </div>

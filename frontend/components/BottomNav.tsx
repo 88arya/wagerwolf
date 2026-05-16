@@ -20,25 +20,6 @@ function TicketIcon({ active }: { active: boolean }) {
   );
 }
 
-function ClockIcon({ active }: { active: boolean }) {
-  return (
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={active ? 2.2 : 1.8} strokeLinecap="round" strokeLinejoin="round">
-      <circle cx="12" cy="12" r="10" />
-      <polyline points="12 6 12 12 16 14" />
-    </svg>
-  );
-}
-
-function TrophyIcon({ active }: { active: boolean }) {
-  return (
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={active ? 2.2 : 1.8} strokeLinecap="round" strokeLinejoin="round">
-      <polyline points="8 21 12 21 16 21" />
-      <line x1="12" y1="17" x2="12" y2="21" />
-      <path d="M7 4H3v3a9 9 0 004 7.5M17 4h4v3a9 9 0 01-4 7.5" />
-      <path d="M7 4h10v3a5 5 0 01-10 0V4z" />
-    </svg>
-  );
-}
 
 function GearIcon({ active }: { active: boolean }) {
   return (
@@ -52,8 +33,6 @@ function GearIcon({ active }: { active: boolean }) {
 const BASE_TABS = [
   { label: "Home",    Icon: HomeIcon,    path: "" },
   { label: "Bet",     Icon: TicketIcon,  path: "/bet" },
-  { label: "History", Icon: ClockIcon,   path: "/history" },
-  { label: "Ranks",   Icon: TrophyIcon,  path: "/leaderboard" },
 ];
 
 const COMMISSIONER_TAB = { label: "Manage", Icon: GearIcon, path: "/settings" };

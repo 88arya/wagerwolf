@@ -83,13 +83,29 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
   const weekStatus = week?.resolved ? "Final" : week?.locked ? "Locked" : week ? "Live" : null;
   const weekStatusColor = week?.resolved ? "var(--text-3)" : week?.locked ? "var(--loss)" : "var(--win)";
 
+  const weekPropIds = new Set((week?.games ?? []).flatMap((g: any) => (g.props ?? []).map((p: any) => p.id)));
+  const weekLineIds = new Set((week?.games ?? []).flatMap((g: any) => (g.gameLines ?? []).map((l: any) => l.id)));
+  const weekBetCount = myPicks.filter((p: any) => weekPropIds.has(p.propId)).length +
+    myGamePicks.filter((p: any) => weekLineIds.has(p.gameLineId)).length;
+
   if (!league) return <div className="loading">Loading…</div>;
 
   return (
     <>
       <nav className="nav">
         <div className="nav-logo">PLAY<span className="accent">BOOK</span></div>
-        <Link href="/leagues" style={{ fontSize: "0.78rem" }}>‹ Leagues</Link>
+        {membership && (
+          <div style={{ display: "flex", alignItems: "center", gap: 14, marginLeft: "auto" }}>
+            <div style={{ textAlign: "right" }}>
+              <div style={{ fontSize: "0.58rem", color: "var(--text-3)", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.09em" }}>Balance</div>
+              <div style={{ fontSize: "0.88rem", fontWeight: 900, fontVariantNumeric: "tabular-nums", color: "var(--text)" }}>${(membership.balance ?? 0).toLocaleString()}</div>
+            </div>
+            <div style={{ textAlign: "right" }}>
+              <div style={{ fontSize: "0.58rem", color: "var(--text-3)", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.09em" }}>Bets</div>
+              <div style={{ fontSize: "0.88rem", fontWeight: 900, color: "var(--accent)" }}>{weekBetCount}</div>
+            </div>
+          </div>
+        )}
       </nav>
 
       <div className="page">

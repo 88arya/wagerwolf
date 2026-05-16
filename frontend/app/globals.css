@@ -1,47 +1,47 @@
 :root {
   /* ── Backgrounds ── */
-  --bg:           #0d0d0d;
-  --surface:      #181818;
-  --surface-2:    #202020;
-  --surface-3:    #282828;
-  --surface-4:    #323232;
+  --bg:           #F5F7FA;
+  --surface:      #FFFFFF;
+  --surface-2:    #F0F2F5;
+  --surface-3:    #E8ECF0;
+  --surface-4:    #DDE2E8;
 
   /* ── Borders ── */
-  --border:       #262626;
-  --border-2:     #333333;
-  --border-3:     #424242;
+  --border:       #E2E8F0;
+  --border-2:     #CBD5E1;
+  --border-3:     #94A3B8;
 
-  /* ── Accent: Light Blue (DK green replacement) ── */
-  --accent:       #38BDF8;
-  --accent-hover: #0EA5E9;
-  --accent-muted: #0284C7;
-  --accent-dim:   rgba(56, 189, 248, 0.10);
-  --accent-glow:  rgba(56, 189, 248, 0.22);
+  /* ── Accent: Royal Blue ── */
+  --accent:       #2563EB;
+  --accent-hover: #1D4ED8;
+  --accent-muted: #3B82F6;
+  --accent-dim:   rgba(37, 99, 235, 0.08);
+  --accent-glow:  rgba(37, 99, 235, 0.15);
 
   /* ── Header ── */
-  --navy:         #111111;
-  --navy-2:       #141414;
+  --navy:         #FFFFFF;
+  --navy-2:       #F5F7FA;
 
   /* ── Status ── */
-  --win:          #22C55E;
-  --win-bg:       rgba(34, 197, 94, 0.10);
-  --win-border:   rgba(34, 197, 94, 0.25);
-  --loss:         #EF4444;
-  --loss-bg:      rgba(239, 68, 68, 0.10);
-  --loss-border:  rgba(239, 68, 68, 0.25);
-  --pending:      #F59E0B;
-  --pending-bg:   rgba(245, 158, 11, 0.10);
+  --win:          #16A34A;
+  --win-bg:       rgba(22, 163, 74, 0.08);
+  --win-border:   rgba(22, 163, 74, 0.22);
+  --loss:         #DC2626;
+  --loss-bg:      rgba(220, 38, 38, 0.08);
+  --loss-border:  rgba(220, 38, 38, 0.22);
+  --pending:      #D97706;
+  --pending-bg:   rgba(217, 119, 6, 0.08);
 
   /* ── Ranks ── */
-  --gold:         #F59E0B;
-  --silver:       #94A3B8;
-  --bronze:       #CD7F32;
+  --gold:         #D97706;
+  --silver:       #64748B;
+  --bronze:       #B45309;
 
   /* ── Text ── */
-  --text:         #F0F0F0;
-  --text-2:       #9A9A9A;
-  --text-3:       #565656;
-  --text-4:       #363636;
+  --text:         #0F172A;
+  --text-2:       #475569;
+  --text-3:       #94A3B8;
+  --text-4:       #CBD5E1;
 
   /* ── Shape ── */
   --radius:       8px;
@@ -50,10 +50,10 @@
   --radius-xl:    20px;
 
   /* ── Shadows ── */
-  --shadow-sm:    0 1px 3px rgba(0,0,0,0.6);
-  --shadow-md:    0 4px 16px rgba(0,0,0,0.65);
-  --shadow-lg:    0 8px 32px rgba(0,0,0,0.75);
-  --shadow-up:    0 -6px 32px rgba(0,0,0,0.7);
+  --shadow-sm:    0 1px 3px rgba(0,0,0,0.08);
+  --shadow-md:    0 4px 16px rgba(0,0,0,0.10);
+  --shadow-lg:    0 8px 32px rgba(0,0,0,0.12);
+  --shadow-up:    0 -4px 16px rgba(0,0,0,0.08);
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -99,7 +99,7 @@ button {
   background: var(--accent);
   border: none;
   border-radius: var(--radius-sm);
-  color: #0a1628;
+  color: #FFFFFF;
   cursor: pointer;
   font-weight: 700;
   font-size: 0.88rem;
@@ -146,7 +146,7 @@ button.ghost:hover { border-color: var(--border-3); color: var(--text); backgrou
   font-size: 1.05rem;
   font-weight: 900;
   letter-spacing: 0.06em;
-  color: #FFFFFF;
+  color: var(--text);
   margin-right: auto;
   display: flex;
   align-items: center;
@@ -169,7 +169,7 @@ button.ghost:hover { border-color: var(--border-3); color: var(--text); backgrou
 }
 .nav a:hover, .nav button.nav-link:hover {
   color: var(--text-2);
-  background: rgba(255,255,255,0.05);
+  background: rgba(0,0,0,0.05);
 }
 
 /* ── Bottom Nav ── */
@@ -178,7 +178,7 @@ button.ghost:hover { border-color: var(--border-3); color: var(--text); backgrou
   bottom: 0;
   left: 0;
   right: 0;
-  background: #111111;
+  background: var(--surface);
   border-top: 1px solid var(--border);
   box-shadow: var(--shadow-up);
   display: flex;
@@ -536,7 +536,7 @@ hr { border: none; border-top: 1px solid var(--border); margin: 14px 0; }
   font-weight: 700;
   box-shadow: var(--shadow-sm);
 }
-.segment-btn:hover:not(.active) { color: var(--text-2); background: rgba(255,255,255,0.03); }
+.segment-btn:hover:not(.active) { color: var(--text-2); background: rgba(0,0,0,0.04); }
 
 /* ── Underline tab bar (DK/ESPN style) ── */
 .tab-bar {
@@ -592,8 +592,8 @@ hr { border: none; border-top: 1px solid var(--border); margin: 14px 0; }
 
 /* ── League hero banner ── */
 .league-banner {
-  background: linear-gradient(135deg, var(--surface-2) 0%, var(--surface) 100%);
-  border: 1px solid var(--border-2);
+  background: linear-gradient(135deg, #1E3A8A 0%, #2563EB 100%);
+  border: 1px solid rgba(37, 99, 235, 0.2);
   border-radius: var(--radius-lg);
   padding: 18px 16px;
   color: #fff;
@@ -607,7 +607,7 @@ hr { border: none; border-top: 1px solid var(--border); margin: 14px 0; }
   top: -40px; right: -40px;
   width: 160px; height: 160px;
   border-radius: 50%;
-  background: var(--accent-glow);
+  background: rgba(255, 255, 255, 0.10);
   pointer-events: none;
 }
 

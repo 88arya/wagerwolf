@@ -545,7 +545,7 @@ export default function LeagueSettingsPage({ params }: PageProps<"/leagues/[leag
                         flex: 1, padding: "9px 10px", borderRadius: 6, fontSize: "0.8rem",
                         fontWeight: active ? 800 : 500,
                         background: active ? "var(--accent)" : "var(--surface-2)",
-                        color: active ? "#0a1628" : "var(--text-2)",
+                        color: active ? "#FFFFFF" : "var(--text-2)",
                         border: active ? "1.5px solid var(--accent)" : "1.5px solid var(--border-2)",
                         transition: "all 0.12s",
                       }}

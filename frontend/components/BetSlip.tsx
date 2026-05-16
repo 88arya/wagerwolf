@@ -13,6 +13,7 @@ export interface SlipLeg {
   line?: number;
   statType?: string;
   altLine?: number;
+  gameId?: string;
 }
 
 const SLIP_KEY = "betslip_legs";
@@ -184,9 +185,35 @@ export default function BetSlip({ leagueId }: { leagueId: string }) {
     }
   }
 
+  const CROSS_CONFLICTS: Record<string, string> = {
+    MONEYLINE_HOME: "SPREAD_AWAY",
+    MONEYLINE_AWAY: "SPREAD_HOME",
+    SPREAD_HOME: "MONEYLINE_AWAY",
+    SPREAD_AWAY: "MONEYLINE_HOME",
+  };
+
+  function conflictingLeg(leg: SlipLeg): SlipLeg | null {
+    if (!leg.gameId || !leg.market) return null;
+    const sameGame = legs.filter((l) => l.gameId === leg.gameId && l.id !== leg.id);
+    for (const other of sameGame) {
+      if (!other.market) continue;
+      const isSameMarketOpposite = other.market === ({ MONEYLINE_HOME: "MONEYLINE_AWAY", MONEYLINE_AWAY: "MONEYLINE_HOME", SPREAD_HOME: "SPREAD_AWAY", SPREAD_AWAY: "SPREAD_HOME", TOTAL_OVER: "TOTAL_UNDER", TOTAL_UNDER: "TOTAL_OVER" })[leg.market];
+      const isCrossConflict = other.market === CROSS_CONFLICTS[leg.market];
+      if (isSameMarketOpposite || isCrossConflict) return other;
+    }
+    return null;
+  }
+
   async function submitParlay() {
     if (legs.length < 2) { setError("Add at least 2 legs"); return; }
     if (!parlayStakeNum || parlayStakeNum <= 0) { setError("Enter a parlay stake"); return; }
+    for (const leg of legs) {
+      const conflict = conflictingLeg(leg);
+      if (conflict) {
+        setError(`Conflicting legs: can't parlay ${leg.market?.replace("_", " ")} with ${conflict.market?.replace("_", " ")} for the same game`);
+        return;
+      }
+    }
     setSubmitting(true);
     setError("");
     try {
@@ -257,7 +284,7 @@ export default function BetSlip({ leagueId }: { leagueId: string }) {
             width: "100%",
             pointerEvents: "auto",
             background: "var(--accent)",
-            color: "#0a1628",
+            color: "#FFFFFF",
             border: "none",
             borderRadius: 0,
             padding: "13px 20px",
@@ -268,8 +295,8 @@ export default function BetSlip({ leagueId }: { leagueId: string }) {
         >
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <span style={{
-              background: "#0a1628",
-              color: "var(--accent)",
+              background: "rgba(0,0,0,0.2)",
+              color: "#FFFFFF",
               borderRadius: "50%",
               width: 22,
               height: 22,
@@ -314,12 +341,12 @@ export default function BetSlip({ leagueId }: { leagueId: string }) {
             borderBottom: "1px solid var(--border)",
           }}>
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <span style={{ fontWeight: 800, fontSize: "0.95rem", color: "#fff", letterSpacing: "0.01em" }}>
+              <span style={{ fontWeight: 800, fontSize: "0.95rem", color: "var(--text)", letterSpacing: "0.01em" }}>
                 Bet Slip
               </span>
               <span style={{
                 background: "var(--accent)",
-                color: "#0a1628",
+                color: "#FFFFFF",
                 borderRadius: "50%",
                 width: 20,
                 height: 20,
@@ -336,8 +363,8 @@ export default function BetSlip({ leagueId }: { leagueId: string }) {
               <button
                 onClick={() => { clearSlip(); setLegLines({}); setError(""); }}
                 style={{
-                  background: "rgba(255,255,255,0.08)",
-                  color: "rgba(255,255,255,0.6)",
+                  background: "rgba(0,0,0,0.06)",
+                  color: "var(--text-2)",
                   fontSize: "0.72rem",
                   padding: "5px 10px",
                   border: "none",
@@ -351,8 +378,8 @@ export default function BetSlip({ leagueId }: { leagueId: string }) {
               <button
                 onClick={() => setOpen(false)}
                 style={{
-                  background: "rgba(255,255,255,0.08)",
-                  color: "rgba(255,255,255,0.6)",
+                  background: "rgba(0,0,0,0.06)",
+                  color: "var(--text-2)",
                   padding: "5px 8px",
                   border: "none",
                   borderRadius: 5,

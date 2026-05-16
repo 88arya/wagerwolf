@@ -99,8 +99,8 @@ export default function LeaguesPage() {
         <Link href="/settings" style={{ textDecoration: "none" }}>
           <div style={{
             width: 30, height: 30, borderRadius: "50%",
-            background: "rgba(56,189,248,0.12)",
-            border: "1.5px solid rgba(56,189,248,0.3)",
+            background: "var(--accent-dim)",
+            border: "1.5px solid rgba(37,99,235,0.25)",
             color: "var(--accent)",
             fontSize: "0.68rem", fontWeight: 800,
             display: "flex", alignItems: "center", justifyContent: "center",
@@ -296,7 +296,7 @@ export default function LeaguesPage() {
                           fontSize: "0.85rem",
                           fontWeight: active ? 800 : 500,
                           background: active ? "var(--accent)" : "var(--surface-2)",
-                          color: active ? "#0a1628" : "var(--text-2)",
+                          color: active ? "#FFFFFF" : "var(--text-2)",
                           border: active ? "1.5px solid var(--accent)" : "1.5px solid var(--border-2)",
                           transition: "all 0.12s",
                         }}

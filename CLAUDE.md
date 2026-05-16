@@ -56,6 +56,8 @@ cd frontend && npm run dev    # port 3000
 | `/forgot-password`, `/reset-password` | Password reset flow |
 | `/admin` | Admin panel: weeks, games, props, players, sync, resolve |
 
+> **Note:** History (`/history`) and Leaderboard (`/leaderboard`) pages still exist as routes but are removed from the bottom nav. Bottom nav shows: Home, Bet, and (commissioner only) Manage.
+
 ### Backend routes
 
 | Mount | File | Purpose |
@@ -147,6 +149,7 @@ Real players from ESPN (with ESPN headshots) + fake prop lines. No live odds API
 - Betting: props (22 stat types), game lines (ML/spread/total), parlays
 - Bet limits (max stake, max bets/week, max parlay legs)
 - Parlay slip (DraftKings-style, conflict detection, compound odds)
+- Parlay conflict guardrails: blocks same-market opposite sides AND cross-market conflicts (ML_HOME + SPREAD_AWAY) at both click time and submission time; `SlipLeg` carries `gameId` for game-scoped conflict detection
 - Feed (members see each other's bets after kickoff, `feedVisibility` setting)
 - Member profile page with stats
 - Weekly recap (shown on league home when week resolved)
@@ -155,6 +158,8 @@ Real players from ESPN (with ESPN headshots) + fake prop lines. No live odds API
 - Auto-resolve via ESPN
 - Display name / avatar settings
 - Chat (LeagueMessage)
+- Light mode UI (no dark mode; accent is royal blue `#2563EB`; league banner uses blue gradient to keep white text legible)
+- Bet page nav shows Balance + Bets this week as stat boxes (no back button); week boxes show League Week N of X and NFL Week N of 18
 
 ### Missing — deployment blockers
 1. **Deployment** — not hosted anywhere; needs Vercel (frontend) + Railway/Render (backend) + prod Postgres URL
