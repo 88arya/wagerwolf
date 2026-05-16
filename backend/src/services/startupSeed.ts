@@ -22,10 +22,10 @@ export async function runStartupSeed() {
     const base = new Date(now);
     base.setHours(0, 0, 0, 0);
 
-    // Find all unresolved weeks and seed any that are missing new stat types
+    // Find all unresolved weeks and seed any that are missing new stat types or alt lines
     const unresolvedWeeks = await prisma.week.findMany({
       where: { resolved: false },
-      include: { games: { include: { props: true } } },
+      include: { games: { include: { props: true, gameLines: true } } },
     });
 
     // If no weeks exist at all, create one
@@ -56,8 +56,11 @@ export async function runStartupSeed() {
       const hasNewProps = week.games.some((g) =>
         g.props.some((p) => NEW_STAT_TYPES.has(p.statType as string))
       );
+      const hasAltLines = week.games.some((g) =>
+        g.gameLines.some((l) => (l.market as string).startsWith("ALT_"))
+      );
 
-      if (!hasNewProps) {
+      if (!hasNewProps || !hasAltLines) {
         // Add games if the week has none
         if (week.games.length === 0) {
           for (const g of FAKE_GAMES) {

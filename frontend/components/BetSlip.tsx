@@ -24,7 +24,12 @@ export function getBetSlip(): SlipLeg[] {
 }
 
 export function addToSlip(leg: SlipLeg): boolean {
-  const legs = getBetSlip();
+  let legs = getBetSlip();
+  // Defensive: remove opposite direction for same prop (can't have OVER + UNDER)
+  if (leg.type === "prop" && leg.direction) {
+    const opposite = leg.direction === "OVER" ? "UNDER" : "OVER";
+    legs = legs.filter((l) => !(l.id === leg.id && l.direction === opposite));
+  }
   if (legs.some((l) => l.id === leg.id && l.direction === leg.direction && l.altLine === leg.altLine)) return false;
   localStorage.setItem(SLIP_KEY, JSON.stringify([...legs, leg]));
   window.dispatchEvent(new Event("betslip-update"));
@@ -207,6 +212,18 @@ export default function BetSlip({ leagueId }: { leagueId: string }) {
   async function submitParlay() {
     if (legs.length < 2) { setError("Add at least 2 legs"); return; }
     if (!parlayStakeNum || parlayStakeNum <= 0) { setError("Enter a parlay stake"); return; }
+    // Block OVER + UNDER on the same prop
+    const propDirections = new Map<string, string>();
+    for (const leg of legs) {
+      if (leg.type === "prop" && leg.direction) {
+        const existing = propDirections.get(leg.id);
+        if (existing && existing !== leg.direction) {
+          setError("Can't parlay OVER and UNDER on the same prop");
+          return;
+        }
+        propDirections.set(leg.id, leg.direction);
+      }
+    }
     for (const leg of legs) {
       const conflict = conflictingLeg(leg);
       if (conflict) {
@@ -251,7 +268,7 @@ export default function BetSlip({ leagueId }: { leagueId: string }) {
   if (legs.length === 0 && !msg) return null;
 
   return (
-    <div style={{ position: "fixed", bottom: 56, left: 0, right: 0, zIndex: 500, pointerEvents: "none" }}>
+    <div style={{ position: "fixed", bottom: 56, right: 12, width: 368, maxWidth: "calc(100vw - 24px)", zIndex: 500, pointerEvents: "none" }}>
       {/* Success toast */}
       {msg && (
         <div style={{
@@ -286,7 +303,7 @@ export default function BetSlip({ leagueId }: { leagueId: string }) {
             background: "var(--accent)",
             color: "#FFFFFF",
             border: "none",
-            borderRadius: 0,
+            borderRadius: "10px 10px 0 0",
             padding: "13px 20px",
             cursor: "pointer",
             fontWeight: 800,
@@ -317,12 +334,12 @@ export default function BetSlip({ leagueId }: { leagueId: string }) {
         <div style={{
           pointerEvents: "auto",
           background: "var(--surface)",
-          borderRadius: "14px 14px 0 0",
-          maxHeight: "75vh",
-          overflowY: "auto",
-          boxShadow: "var(--shadow-up)",
+          borderRadius: 12,
+          maxHeight: "80vh",
+          overflow: "hidden",
           display: "flex",
           flexDirection: "column",
+          boxShadow: "var(--shadow-up)",
           border: "1px solid var(--border-2)",
           borderBottom: "none",
         }}>
@@ -333,10 +350,7 @@ export default function BetSlip({ leagueId }: { leagueId: string }) {
             justifyContent: "space-between",
             padding: "14px 16px 12px",
             background: "var(--navy)",
-            borderRadius: "14px 14px 0 0",
-            position: "sticky",
-            top: 0,
-            zIndex: 1,
+            borderRadius: "12px 12px 0 0",
             flexShrink: 0,
             borderBottom: "1px solid var(--border)",
           }}>
@@ -408,7 +422,7 @@ export default function BetSlip({ leagueId }: { leagueId: string }) {
           )}
 
           {/* Individual legs */}
-          <div style={{ flex: 1, overflowY: "auto" }}>
+          <div style={{ flex: 1, overflowY: "auto", minHeight: 0, WebkitOverflowScrolling: "touch" } as React.CSSProperties}>
             {legs.map((leg) => {
               const key = legKey(leg);
               const stakeNum = Number(legStakes[key] ?? 0);

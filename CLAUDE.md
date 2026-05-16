@@ -160,11 +160,15 @@ Real players from ESPN (with ESPN headshots) + fake prop lines. No live odds API
 - Chat (LeagueMessage)
 - Light mode UI (no dark mode; accent is royal blue `#2563EB`; league banner uses blue gradient to keep white text legible)
 - Bet page nav shows Balance + Bets this week as stat boxes (no back button); week boxes show League Week N of X and NFL Week N of 18
+- Bet page prop UI: one card per market (stat type), players as rows inside; 3 scrollable alt-line boxes per player with ‹/› arrows; hover splits box into U/O buttons; selected box shows direction+line and clicking it removes from slip (no re-split on hover); OVER+UNDER on same prop is blocked at addToSlip, toggleBlockInSlip, and submitParlay
+- `PlayerAvatar` renders as square box (borderRadius 6, surface-3 bg) with 1.5× zoomed image; team logo badge bottom-right corner
+- Bet page game lines section in selected-game view matches the same 3-col 2-row OddsBlock grid as the game cards on the list view
+- `backend/scripts/seedWeek1.ts` — one-off seed for week 1 (BUF@MIA, LAR@SF, GB@DET) with fake props/lines; run with `npx tsx scripts/seedWeek1.ts` from `backend/`
 
 ### Missing — deployment blockers
 1. **Deployment** — not hosted anywhere; needs Vercel (frontend) + Railway/Render (backend) + prod Postgres URL
 2. **Automated crons** — odds sync, auto-resolve, week locking are all manual admin clicks
-3. **NFL 2025 weeks** — DB has no weeks pre-generated; need all 18 with correct 2025 dates
+3. **NFL 2025 weeks** — DB has weeks 1 seeded (BUF/MIA, LAR/SF, GB/DET); need all 18 with correct 2025 dates
 4. **Live game status** — no polling during game hours; scores only appear after resolve runs
 
 ### Missing — ship with season

@@ -35,6 +35,27 @@ const NFL_TEAMS: Array<{ names: string[]; abbr: string }> = [
 
 const LOGO_BASE = "https://a.espncdn.com/i/teamlogos/nfl/500";
 
+export function getTeamFullName(teamName: string): string {
+  if (!teamName) return teamName;
+  const lower = teamName.toLowerCase().trim();
+  const team = NFL_TEAMS.find((t) =>
+    t.names.some((n) => lower === n || lower.endsWith(n) || lower.startsWith(n))
+  );
+  if (!team) return teamName;
+  return team.names[0].replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+export function getTeamDisplayName(teamName: string): string {
+  if (!teamName) return teamName;
+  const lower = teamName.toLowerCase().trim();
+  const team = NFL_TEAMS.find((t) =>
+    t.names.some((n) => lower === n || lower.endsWith(n) || lower.startsWith(n))
+  );
+  if (!team) return teamName.toUpperCase();
+  const nickname = team.names[1];
+  return `${teamName.toUpperCase()} ${nickname.charAt(0).toUpperCase()}${nickname.slice(1)}`;
+}
+
 export function getTeamLogoUrl(teamName: string): string | null {
   if (!teamName) return null;
   const lower = teamName.toLowerCase().trim();

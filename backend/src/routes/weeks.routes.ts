@@ -182,14 +182,22 @@ router.post("/:id/resolve", requireAuth, requireAdmin, async (req: any, res: any
 
     for (const gp of gamePicks) {
       let won: boolean;
-      if (gp.altLine != null) {
+      const mkt: string = gp.gameLine.market;
+      const baseMarket = mkt.startsWith("ALT_SPREAD_HOME") ? "SPREAD_HOME"
+        : mkt.startsWith("ALT_SPREAD_AWAY") ? "SPREAD_AWAY"
+        : mkt.startsWith("ALT_TOTAL_OVER")  ? "TOTAL_OVER"
+        : mkt.startsWith("ALT_TOTAL_UNDER") ? "TOTAL_UNDER"
+        : mkt;
+      const isAlt = mkt.startsWith("ALT_");
+      if (gp.altLine != null || isAlt) {
         const { homeScore, awayScore } = gp.gameLine.game;
         if (homeScore == null || awayScore == null) continue;
-        switch (gp.gameLine.market) {
-          case "SPREAD_HOME": won = (homeScore + gp.altLine) > awayScore; break;
-          case "SPREAD_AWAY": won = (awayScore + gp.altLine) > homeScore; break;
-          case "TOTAL_OVER":  won = (homeScore + awayScore) > gp.altLine; break;
-          case "TOTAL_UNDER": won = (homeScore + awayScore) < gp.altLine; break;
+        const effectiveLine = gp.altLine ?? gp.gameLine.line;
+        switch (baseMarket) {
+          case "SPREAD_HOME": won = (homeScore + effectiveLine) > awayScore; break;
+          case "SPREAD_AWAY": won = (awayScore + effectiveLine) > homeScore; break;
+          case "TOTAL_OVER":  won = (homeScore + awayScore) > effectiveLine; break;
+          case "TOTAL_UNDER": won = (homeScore + awayScore) < effectiveLine; break;
           default: if (gp.gameLine.result == null) continue; won = gp.gameLine.result; break;
         }
       } else {
@@ -229,14 +237,22 @@ router.post("/:id/resolve", requireAuth, requireAdmin, async (req: any, res: any
             (leg.direction === "OVER" && leg.prop.result > effectiveLine) ||
             (leg.direction === "UNDER" && leg.prop.result < effectiveLine);
         } else if (leg.gameLine) {
-          if (leg.altLine != null) {
+          const lmkt: string = leg.gameLine.market;
+          const lBase = lmkt.startsWith("ALT_SPREAD_HOME") ? "SPREAD_HOME"
+            : lmkt.startsWith("ALT_SPREAD_AWAY") ? "SPREAD_AWAY"
+            : lmkt.startsWith("ALT_TOTAL_OVER")  ? "TOTAL_OVER"
+            : lmkt.startsWith("ALT_TOTAL_UNDER") ? "TOTAL_UNDER"
+            : lmkt;
+          const lIsAlt = lmkt.startsWith("ALT_");
+          if (leg.altLine != null || lIsAlt) {
             const { homeScore, awayScore } = leg.gameLine.game ?? {};
             if (homeScore == null || awayScore == null) { allSettled = false; continue; }
-            switch (leg.gameLine.market) {
-              case "SPREAD_HOME": legResult = (homeScore + leg.altLine) > awayScore; break;
-              case "SPREAD_AWAY": legResult = (awayScore + leg.altLine) > homeScore; break;
-              case "TOTAL_OVER":  legResult = (homeScore + awayScore) > leg.altLine; break;
-              case "TOTAL_UNDER": legResult = (homeScore + awayScore) < leg.altLine; break;
+            const effectiveLine = leg.altLine ?? leg.gameLine.line;
+            switch (lBase) {
+              case "SPREAD_HOME": legResult = (homeScore + effectiveLine) > awayScore; break;
+              case "SPREAD_AWAY": legResult = (awayScore + effectiveLine) > homeScore; break;
+              case "TOTAL_OVER":  legResult = (homeScore + awayScore) > effectiveLine; break;
+              case "TOTAL_UNDER": legResult = (homeScore + awayScore) < effectiveLine; break;
               default: if (leg.gameLine.result != null) legResult = leg.gameLine.result; break;
             }
           } else if (leg.gameLine.result != null) {

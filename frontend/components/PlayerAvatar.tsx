@@ -37,28 +37,29 @@ export default function PlayerAvatar({ playerId, espnId, imageUrl: initialUrl, n
     }
   }, [imageUrl, failed, playerId]);
 
-  const circle: React.CSSProperties = { width: size, height: size, borderRadius: "50%", flexShrink: 0 };
+  const box: React.CSSProperties = { width: size, height: size, borderRadius: 6, flexShrink: 0, background: "var(--surface-3)" };
 
   if (imageUrl && !failed) {
     return (
-      <img
-        src={imageUrl}
-        alt={name ?? ""}
-        referrerPolicy="no-referrer"
-        style={{ ...circle, objectFit: "cover", background: "var(--surface-2)" }}
-        onError={() => setFailed(true)}
-      />
+      <div style={{ ...box, overflow: "hidden" }}>
+        <img
+          src={imageUrl}
+          alt={name ?? ""}
+          referrerPolicy="no-referrer"
+          style={{ width: "100%", height: "100%", objectFit: "contain", transform: "scale(1.5)", transformOrigin: "center" }}
+          onError={() => setFailed(true)}
+        />
+      </div>
     );
   }
 
   return (
     <div style={{
-      ...circle,
-      background: "var(--surface-2)", border: "1px solid var(--border)",
+      ...box,
       display: "flex", alignItems: "center", justifyContent: "center",
-      fontSize: size * 0.23, fontWeight: 800, color: "var(--text-3)",
+      fontSize: size * 0.32, fontWeight: 800, color: "var(--text-3)",
     }}>
-      {name?.[0] ?? "?"}
+      {name?.[0]?.toUpperCase() ?? "?"}
     </div>
   );
 }

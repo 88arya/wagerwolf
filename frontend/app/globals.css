@@ -554,12 +554,13 @@ hr { border: none; border-top: 1px solid var(--border); margin: 14px 0; }
   font-weight: 600;
   background: transparent;
   border: none;
+  border-radius: 0;
   border-bottom: 2px solid transparent;
   color: var(--text-3);
   cursor: pointer;
   margin-bottom: -1px;
   white-space: nowrap;
-  transition: all 0.15s;
+  transition: border-bottom-color 0.15s, color 0.15s;
   letter-spacing: 0.01em;
 }
 .tab-btn.active {
@@ -567,7 +568,8 @@ hr { border: none; border-top: 1px solid var(--border); margin: 14px 0; }
   color: var(--accent);
   font-weight: 700;
 }
-.tab-btn:hover:not(.active) { color: var(--text-2); }
+.tab-btn:hover { background: transparent; }
+.tab-btn:hover:not(.active) { border-bottom-color: var(--border-2); }
 
 /* ── Divider line with label ── */
 .section-divider {

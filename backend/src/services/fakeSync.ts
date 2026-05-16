@@ -233,6 +233,39 @@ function fakeVariant(base: number): number {
   return Math.round((base * (1 + (Math.random() * 2 - 1) * 0.12)) * 2) / 2;
 }
 
+function altSpreadOdds(altLine: number, mainLine: number): number {
+  const diff = altLine - mainLine;
+  return Math.max(-350, Math.min(280, Math.round(-110 - diff * 35)));
+}
+
+function altTotalOdds(altTotal: number, mainTotal: number, direction: "OVER" | "UNDER"): number {
+  const diff = altTotal - mainTotal;
+  const favSteps = direction === "OVER" ? -diff : diff;
+  return Math.max(-350, Math.min(280, Math.round(-110 - favSteps * 28)));
+}
+
+function fakeAltGameLines(
+  homeTeam: string,
+  awayTeam: string,
+  mainHomeSpread: number,
+  mainTotal: number,
+): Array<{ market: string; label: string; odds: number; line: number }> {
+  const fmt = (n: number) => `${n > 0 ? "+" : ""}${n}`;
+  const altLines: Array<{ market: string; label: string; odds: number; line: number }> = [];
+  for (const offset of [-4.5, -3.0, -1.5, 1.5, 3.0, 4.5]) {
+    const homeAlt = Math.round((mainHomeSpread + offset) * 2) / 2;
+    const awayAlt = -homeAlt;
+    altLines.push({ market: `ALT_SPREAD_HOME_${homeAlt}`, label: `${homeTeam} ${fmt(homeAlt)}`, odds: altSpreadOdds(homeAlt, mainHomeSpread), line: homeAlt });
+    altLines.push({ market: `ALT_SPREAD_AWAY_${awayAlt}`, label: `${awayTeam} ${fmt(awayAlt)}`, odds: altSpreadOdds(awayAlt, -mainHomeSpread), line: awayAlt });
+  }
+  for (const offset of [-9, -6, -3, 3, 6, 9]) {
+    const altTotal = Math.round((mainTotal + offset) * 2) / 2;
+    altLines.push({ market: `ALT_TOTAL_OVER_${altTotal}`, label: `Over ${altTotal}`, odds: altTotalOdds(altTotal, mainTotal, "OVER"), line: altTotal });
+    altLines.push({ market: `ALT_TOTAL_UNDER_${altTotal}`, label: `Under ${altTotal}`, odds: altTotalOdds(altTotal, mainTotal, "UNDER"), line: altTotal });
+  }
+  return altLines;
+}
+
 export function fakeLinesForGame(homeTeam: string, awayTeam: string) {
   const total = 42 + Math.floor(Math.random() * 13);
   const homeSpread = parseFloat((-(Math.random() * 10 - 1)).toFixed(1));
@@ -264,6 +297,20 @@ export async function seedFakePropsForWeek(weekId: string): Promise<{ lines: num
         create: { gameId: game.id, market: gl.market, label: gl.label, odds: gl.odds, line: gl.line },
       });
       linesSynced++;
+    }
+
+    const mainHomeSpread = gameLineData.find((l) => l.market === "SPREAD_HOME");
+    const mainTotalOver  = gameLineData.find((l) => l.market === "TOTAL_OVER");
+    if (mainHomeSpread?.line != null && mainTotalOver?.line != null) {
+      const altGameLines = fakeAltGameLines(game.homeTeam, game.awayTeam, mainHomeSpread.line, mainTotalOver.line);
+      for (const al of altGameLines) {
+        await prisma.gameLine.upsert({
+          where: { gameId_market: { gameId: game.id, market: al.market } },
+          update: { label: al.label, odds: al.odds, line: al.line },
+          create: { gameId: game.id, market: al.market, label: al.label, odds: al.odds, line: al.line },
+        });
+        linesSynced++;
+      }
     }
 
     const teamNames = [game.homeTeam, game.awayTeam];
