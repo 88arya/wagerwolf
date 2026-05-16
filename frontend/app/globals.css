@@ -142,6 +142,7 @@ button.ghost:hover { border-color: var(--border-3); color: var(--text); backgrou
   height: 52px;
   flex-shrink: 0;
   z-index: 200;
+  position: relative;
 }
 
 .nav-logo {

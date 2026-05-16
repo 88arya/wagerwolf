@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
-import BottomNav from "@/components/BottomNav";
+import LeagueNav from "@/components/LeagueNav";
 
 export default function LeagueSettingsPage({ params }: PageProps<"/leagues/[leagueId]/settings">) {
   const router = useRouter();
@@ -258,10 +258,7 @@ export default function LeagueSettingsPage({ params }: PageProps<"/leagues/[leag
 
   return (
     <>
-      <nav className="nav">
-        <div className="nav-logo">PLAY<span className="accent">BOOK</span></div>
-        <span style={{ fontSize: "0.72rem", color: "var(--text-3)", fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase" }}>Commissioner</span>
-      </nav>
+      <LeagueNav leagueId={leagueId} />
 
       <div className="page" style={{ paddingBottom: 100 }}>
         <div style={{ marginBottom: 18 }}>
@@ -569,7 +566,6 @@ export default function LeagueSettingsPage({ params }: PageProps<"/leagues/[leag
         </div>
       </div>
 
-      <BottomNav leagueId={leagueId} isCreator={true} />
     </>
   );
 }

@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import TeamLogo from "@/components/TeamLogo";
 import { api } from "@/lib/api";
-import BottomNav from "@/components/BottomNav";
+import LeagueNav from "@/components/LeagueNav";
 
 export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]">) {
   const router = useRouter();
@@ -75,17 +75,7 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
 
   return (
     <>
-      <nav className="nav">
-        <div className="nav-logo">PLAY<span className="accent">BOOK</span></div>
-        {membership && (
-          <div style={{ display: "flex", alignItems: "center", gap: 14, marginLeft: "auto" }}>
-            <div style={{ textAlign: "right" }}>
-              <div style={{ fontSize: "0.58rem", color: "var(--text-3)", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.09em" }}>Balance</div>
-              <div style={{ fontSize: "0.88rem", fontWeight: 900, fontVariantNumeric: "tabular-nums", color: "var(--text)" }}>${(membership.balance ?? 0).toLocaleString()}</div>
-            </div>
-          </div>
-        )}
-      </nav>
+      <LeagueNav leagueId={leagueId} />
 
       <div className="page">
 
@@ -290,7 +280,6 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
         )}
       </div>
 
-      <BottomNav leagueId={leagueId} isCreator={isCreator} />
     </>
   );
 }

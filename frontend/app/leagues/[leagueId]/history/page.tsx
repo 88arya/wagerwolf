@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { api } from "@/lib/api";
-import BottomNav from "@/components/BottomNav";
+import LeagueNav from "@/components/LeagueNav";
 
 function calcProfit(stake: number, odds: number): number {
   if (odds > 0) return Math.round((stake * odds) / 100);
@@ -125,10 +125,7 @@ export default function HistoryPage({ params }: PageProps<"/leagues/[leagueId]/h
 
   return (
     <>
-      <nav className="nav">
-        <div className="nav-logo">PLAY<span className="accent">BOOK</span></div>
-        <Link href={`/leagues/${leagueId}`}>‹ Home</Link>
-      </nav>
+      <LeagueNav leagueId={leagueId} />
 
       <div className="page">
         <div style={{ marginBottom: 16 }}>
@@ -378,7 +375,6 @@ export default function HistoryPage({ params }: PageProps<"/leagues/[leagueId]/h
         )}
       </div>
 
-      <BottomNav leagueId={leagueId} isCreator={league?.creatorId === userId} />
     </>
   );
 }

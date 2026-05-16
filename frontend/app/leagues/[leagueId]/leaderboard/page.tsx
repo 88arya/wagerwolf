@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { api } from "@/lib/api";
-import BottomNav from "@/components/BottomNav";
+import LeagueNav from "@/components/LeagueNav";
 
 export default function LeaderboardPage({ params }: PageProps<"/leagues/[leagueId]/leaderboard">) {
   const router = useRouter();
@@ -53,10 +53,7 @@ export default function LeaderboardPage({ params }: PageProps<"/leagues/[leagueI
 
   return (
     <>
-      <nav className="nav">
-        <div className="nav-logo">PLAY<span className="accent">BOOK</span></div>
-        <Link href={`/leagues/${leagueId}`}>‹ Home</Link>
-      </nav>
+      <LeagueNav leagueId={leagueId} />
 
       <div className="page">
         <div style={{ marginBottom: 16 }}>
@@ -88,7 +85,7 @@ export default function LeaderboardPage({ params }: PageProps<"/leagues/[leagueI
               borderBottom: "1px solid var(--border)",
               gap: 8,
             }}>
-              {["#", "Player", "W–L", ...(hasWeekProfits ? ["Wk P&L"] : []), "Balance"].map((h, i) => (
+              {["#", "Player", "W–L–T", ...(hasWeekProfits ? ["Wk P&L"] : []), "Balance"].map((h, i) => (
                 <span key={String(h)} style={{
                   fontSize: "0.6rem", fontWeight: 800, letterSpacing: "0.1em",
                   textTransform: "uppercase", color: "var(--text-3)",
@@ -156,12 +153,12 @@ export default function LeaderboardPage({ params }: PageProps<"/leagues/[leagueI
                       </div>
                     </div>
 
-                    {/* W-L */}
+                    {/* W-L-T */}
                     <div style={{ textAlign: "center", fontSize: "0.78rem", fontWeight: 600 }}>
                       <span style={{ color: "var(--win)" }}>{entry.wins}</span>
                       <span style={{ color: "var(--text-3)" }}>–</span>
                       <span style={{ color: "var(--loss)" }}>{entry.losses}</span>
-                      {entry.ties > 0 && <span style={{ color: "var(--text-3)" }}>–{entry.ties}</span>}
+                      <span style={{ color: "var(--text-3)" }}>–{entry.ties}</span>
                     </div>
 
                     {/* Weekly P&L */}
@@ -188,7 +185,6 @@ export default function LeaderboardPage({ params }: PageProps<"/leagues/[leagueI
         )}
       </div>
 
-      <BottomNav leagueId={leagueId} isCreator={isCreator} />
     </>
   );
 }

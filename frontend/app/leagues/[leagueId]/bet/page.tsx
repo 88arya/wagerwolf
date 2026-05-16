@@ -3,11 +3,23 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { api } from "@/lib/api";
-import BottomNav from "@/components/BottomNav";
+import LeagueNav from "@/components/LeagueNav";
 import BetSlip, { addToSlip, removeFromSlip, getBetSlip } from "@/components/BetSlip";
 import TeamLogo from "@/components/TeamLogo";
 import { getTeamSelectedColor, getTeamDisplayName, getTeamFullName, getTeamLogoUrl } from "@/lib/teamLogos";
 import PlayerAvatar from "@/components/PlayerAvatar";
+
+function fmtCountdown(dateStr: string): string {
+  if (!dateStr) return "";
+  const diffMs = new Date(dateStr).getTime() - Date.now();
+  if (diffMs <= 0) return "Live";
+  const totalHrs = Math.floor(diffMs / 3600000);
+  const days = Math.floor(totalHrs / 24);
+  const hrs = totalHrs % 24;
+  if (days > 0) return `Starts in: ${days}d ${hrs}h`;
+  if (hrs > 0) return `Starts in: ${hrs}h`;
+  return "Soon";
+}
 
 function fmtOdds(american: number): string {
   return american > 0 ? `+${american}` : `${american}`;
@@ -540,21 +552,7 @@ export default function BetPage({ params }: PageProps<"/leagues/[leagueId]/bet">
 
     return (
       <>
-        <nav className="nav">
-          <div className="nav-logo">PLAY<span className="accent">BOOK</span></div>
-          {balance !== null && (
-            <div style={{ display: "flex", alignItems: "center", gap: 6, marginLeft: "auto" }}>
-              <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "var(--radius)", padding: "4px 10px", textAlign: "center", boxShadow: "var(--shadow-sm)" }}>
-                <div style={{ fontSize: "0.55rem", color: "var(--text-3)", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.09em" }}>Balance</div>
-                <div style={{ fontSize: "0.85rem", fontWeight: 900, fontVariantNumeric: "tabular-nums", color: "var(--text)" }}>${balance.toLocaleString()}</div>
-              </div>
-              <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "var(--radius)", padding: "4px 10px", textAlign: "center", boxShadow: "var(--shadow-sm)" }}>
-                <div style={{ fontSize: "0.55rem", color: "var(--text-3)", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.09em" }}>Bets</div>
-                <div style={{ fontSize: "0.85rem", fontWeight: 900, color: "var(--text)" }}>{submittedPickCount + submittedLineCount}</div>
-              </div>
-            </div>
-          )}
-        </nav>
+        <LeagueNav leagueId={leagueId} />
 
         <div className="page" style={{ paddingBottom: 160 }}>
           <button
@@ -584,11 +582,7 @@ export default function BetPage({ params }: PageProps<"/leagues/[leagueId]/bet">
                   </div>
                   <div style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)", pointerEvents: "none" }}>
                     <div style={{ background: "rgba(255,255,255,0.92)", borderRadius: 8, padding: "6px 12px", display: "flex", flexDirection: "column", alignItems: "center", gap: 3 }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                        <div style={{ width: 28, height: 1, background: "linear-gradient(to right, transparent, rgba(0,0,0,0.2))" }} />
-                        <div style={{ fontSize: "0.55rem", fontWeight: 800, color: "rgba(0,0,0,0.5)", letterSpacing: "0.14em" }}>AT</div>
-                        <div style={{ width: 28, height: 1, background: "linear-gradient(to left, transparent, rgba(0,0,0,0.2))" }} />
-                      </div>
+                      <div style={{ fontSize: "0.55rem", fontWeight: 800, color: "rgba(0,0,0,0.5)", letterSpacing: "0.08em" }}>{fmtCountdown(selectedGame.gameDate)}</div>
                       <div style={{ fontSize: "0.55rem", color: "rgba(0,0,0,0.4)", textAlign: "center", whiteSpace: "nowrap", lineHeight: 1.4 }}>{fmtGameTime(selectedGame.gameDate)}</div>
                     </div>
                   </div>
@@ -839,7 +833,6 @@ export default function BetPage({ params }: PageProps<"/leagues/[leagueId]/bet">
         </div>
 
         <BetSlip leagueId={leagueId} />
-        <BottomNav leagueId={leagueId} isCreator={isCreator} />
       </>
     );
   }
@@ -860,21 +853,7 @@ export default function BetPage({ params }: PageProps<"/leagues/[leagueId]/bet">
 
   return (
     <>
-      <nav className="nav">
-        <div className="nav-logo">PLAY<span className="accent">BOOK</span></div>
-        {balance !== null && (
-          <div style={{ display: "flex", alignItems: "center", gap: 6, marginLeft: "auto" }}>
-            <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "var(--radius)", padding: "4px 10px", textAlign: "center", boxShadow: "var(--shadow-sm)" }}>
-              <div style={{ fontSize: "0.55rem", color: "var(--text-3)", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.09em" }}>Balance</div>
-              <div style={{ fontSize: "0.85rem", fontWeight: 900, fontVariantNumeric: "tabular-nums", color: "var(--text)" }}>${balance.toLocaleString()}</div>
-            </div>
-            <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "var(--radius)", padding: "4px 10px", textAlign: "center", boxShadow: "var(--shadow-sm)" }}>
-              <div style={{ fontSize: "0.55rem", color: "var(--text-3)", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.09em" }}>Bets</div>
-              <div style={{ fontSize: "0.85rem", fontWeight: 900, color: "var(--text)" }}>{submittedPickCount + submittedLineCount}</div>
-            </div>
-          </div>
-        )}
-      </nav>
+      <LeagueNav leagueId={leagueId} />
 
       <div className="page" style={{ paddingBottom: 160 }}>
         {weekNumber && (
@@ -998,7 +977,6 @@ export default function BetPage({ params }: PageProps<"/leagues/[leagueId]/bet">
                         <TeamLogo team={game.awayTeam} size={26} />
                         <span style={{ fontWeight: 700, fontSize: "0.85rem", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{getTeamDisplayName(game.awayTeam)}</span>
                       </div>
-                      {/* AT row — same height as BOX_GAP so it visually matches vertical gap */}
                       <div style={{ height: BOX_GAP, display: "flex", alignItems: "center", gap: 5, paddingLeft: 34, overflow: "visible" }}>
                         <span style={{ fontSize: "0.45rem", color: "var(--text-3)", letterSpacing: "0.12em", flexShrink: 0, lineHeight: 1 }}>AT</span>
                         <div style={{ flex: 1, height: 1, background: "linear-gradient(to right, var(--border), transparent)" }} />
@@ -1037,7 +1015,6 @@ export default function BetPage({ params }: PageProps<"/leagues/[leagueId]/bet">
       </div>
 
       <BetSlip leagueId={leagueId} />
-      <BottomNav leagueId={leagueId} isCreator={isCreator} />
     </>
   );
 }

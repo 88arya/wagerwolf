@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { api } from "@/lib/api";
-import BottomNav from "@/components/BottomNav";
+import LeagueNav from "@/components/LeagueNav";
 
 function fmtOdds(n: number) { return n > 0 ? `+${n}` : `${n}`; }
 function fmtStatType(s: string) { return s.split("_").map((w: string) => w[0] + w.slice(1).toLowerCase()).join(" "); }
@@ -58,10 +58,7 @@ export default function MemberProfilePage({ params }: PageProps<"/leagues/[leagu
 
   return (
     <>
-      <nav className="nav">
-        <div className="nav-logo">PLAY<span className="accent">BOOK</span></div>
-        <Link href={`/leagues/${leagueId}`} style={{ fontSize: "0.78rem" }}>‹ Home</Link>
-      </nav>
+      <LeagueNav leagueId={leagueId} />
 
       <div className="page" style={{ paddingBottom: 100 }}>
         {/* Profile header */}
@@ -98,7 +95,7 @@ export default function MemberProfilePage({ params }: PageProps<"/leagues/[leagu
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, marginBottom: 10 }}>
           {[
             { label: "Balance", value: `$${stats.balance.toLocaleString()}`, color: "var(--accent)" },
-            { label: "Record", value: `${stats.wins}–${stats.losses}${stats.ties > 0 ? `–${stats.ties}` : ""}`, color: "var(--text)" },
+            { label: "Record", value: `${stats.wins}–${stats.losses}–${stats.ties}`, color: "var(--text)" },
             { label: "Win Rate", value: (stats.wonPicks + stats.lostPicks) > 0 ? `${Math.round(stats.wonPicks / (stats.wonPicks + stats.lostPicks) * 100)}%` : "—", color: "var(--text)" },
             { label: "ROI", value: stats.totalStaked > 0 ? `${stats.roi > 0 ? "+" : ""}${stats.roi}%` : "—", color: roiColor },
             { label: "Total Bets", value: String(stats.totalPicks), color: "var(--text)" },
@@ -191,7 +188,6 @@ export default function MemberProfilePage({ params }: PageProps<"/leagues/[leagu
         )}
       </div>
 
-      <BottomNav leagueId={leagueId} isCreator={isCreator} />
     </>
   );
 }

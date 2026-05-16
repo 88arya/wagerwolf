@@ -68,9 +68,10 @@ router.get("/leaderboard", requireAuth, async (req: any, res: any) => {
         userId: m.user.id,
         displayName: m.user.displayName,
         balance: m.balance,
+        joinedAt: m.createdAt,
         ...records[m.user.id],
       }))
-      .sort((a: any, b: any) => b.wins - a.wins || b.balance - a.balance)
+      .sort((a: any, b: any) => b.wins - a.wins || b.ties - a.ties || b.balance - a.balance)
       .map((entry: any, i: number) => ({ rank: i + 1, ...entry }));
 
     res.json(leaderboard);

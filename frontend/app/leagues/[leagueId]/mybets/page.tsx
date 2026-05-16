@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
-import BottomNav from "@/components/BottomNav";
+import LeagueNav from "@/components/LeagueNav";
 
 function calcProfit(stake: number, odds: number): number {
   if (odds > 0) return Math.round((stake * odds) / 100);
@@ -117,9 +117,7 @@ export default function MyBetsPage({ params }: PageProps<"/leagues/[leagueId]/my
 
   return (
     <>
-      <nav className="nav">
-        <div className="nav-logo">PLAY<span className="accent">BOOK</span></div>
-      </nav>
+      <LeagueNav leagueId={leagueId} />
 
       <div className="page" style={{ paddingBottom: 90 }}>
         <div style={{ marginBottom: 12 }}>
@@ -318,7 +316,6 @@ export default function MyBetsPage({ params }: PageProps<"/leagues/[leagueId]/my
         )}
       </div>
 
-      <BottomNav leagueId={leagueId} isCreator={isCreator} />
     </>
   );
 }

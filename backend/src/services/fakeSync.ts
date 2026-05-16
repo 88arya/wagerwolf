@@ -64,6 +64,8 @@ export const FAKE_PLAYERS: Array<{ name: string; team: string; position: string 
   { name: "Zamir White", team: "LV", position: "RB" },
   { name: "Javonte Williams", team: "DEN", position: "RB" },
   { name: "D'Andre Swift", team: "CHI", position: "RB" },
+  { name: "Rico Dowdle", team: "DAL", position: "RB" },
+  { name: "Tyrone Tracy Jr.", team: "NYG", position: "RB" },
   // WRs
   { name: "Tyreek Hill", team: "MIA", position: "WR" },
   { name: "CeeDee Lamb", team: "DAL", position: "WR" },
