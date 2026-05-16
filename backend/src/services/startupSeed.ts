@@ -1,5 +1,5 @@
 import { prisma } from "../db/prisma";
-import { seedFakePropsForWeek } from "./fakeSync";
+import { seedFakePropsForWeek, FAKE_PLAYERS } from "./fakeSync";
 
 const FAKE_GAMES: Array<{ homeTeam: string; awayTeam: string; offsetDays: number; hour: number }> = [
   { homeTeam: "KC",  awayTeam: "BUF", offsetDays: 3, hour: 13 },
@@ -60,7 +60,16 @@ export async function runStartupSeed() {
         g.gameLines.some((l) => (l.market as string).startsWith("ALT_"))
       );
 
-      if (!hasNewProps || !hasAltLines) {
+      // Check if any team in the week has a FAKE_PLAYER with no prop yet
+      const teamsInWeek = new Set(week.games.flatMap((g) => [g.homeTeam, g.awayTeam]));
+      const playersWithProps = await prisma.player.findMany({
+        where: { props: { some: { gameId: { in: week.games.map((g) => g.id) } } } },
+        select: { name: true },
+      });
+      const namesWithProps = new Set(playersWithProps.map((p) => p.name));
+      const missingPlayer = FAKE_PLAYERS.some((fp) => teamsInWeek.has(fp.team) && !namesWithProps.has(fp.name));
+
+      if (!hasNewProps || !hasAltLines || missingPlayer) {
         // Add games if the week has none
         if (week.games.length === 0) {
           for (const g of FAKE_GAMES) {

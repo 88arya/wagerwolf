@@ -1,7 +1,7 @@
 import { StatType } from "@prisma/client";
 import { prisma } from "../db/prisma";
 
-const FAKE_PLAYERS: Array<{ name: string; team: string; position: string }> = [
+export const FAKE_PLAYERS: Array<{ name: string; team: string; position: string }> = [
   // QBs
   { name: "Patrick Mahomes", team: "KC", position: "QB" },
   { name: "Josh Allen", team: "BUF", position: "QB" },
@@ -33,6 +33,7 @@ const FAKE_PLAYERS: Array<{ name: string; team: string; position: string }> = [
   { name: "Kyler Murray", team: "ARI", position: "QB" },
   { name: "Bryce Young", team: "CAR", position: "QB" },
   { name: "Aidan O'Connell", team: "LV", position: "QB" },
+  { name: "Jared Goff", team: "DET", position: "QB" },
   // RBs
   { name: "Christian McCaffrey", team: "SF", position: "RB" },
   { name: "Derrick Henry", team: "BAL", position: "RB" },

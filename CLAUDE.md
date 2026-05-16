@@ -187,3 +187,5 @@ Real players from ESPN (with ESPN headshots) + fake prop lines. No live odds API
 Max 8 words, no punctuation, no fluff. Group only similar changes together.
 
 Examples: `fix espn image referrer policy`, `expand stat types fake sync all markets`
+
+**Never add `Co-Authored-By: Claude` or any self-attribution to commit messages.**
