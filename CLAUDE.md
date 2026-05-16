@@ -163,7 +163,9 @@ Real players from ESPN (with ESPN headshots) + fake prop lines. No live odds API
 - Bet page prop UI: one card per market (stat type), players as rows inside; 3 scrollable alt-line boxes per player with ‹/› arrows; hover splits box into U/O buttons; selected box shows direction+line and clicking it removes from slip (no re-split on hover); OVER+UNDER on same prop is blocked at addToSlip, toggleBlockInSlip, and submitParlay
 - `PlayerAvatar` renders as square box (borderRadius 6, surface-3 bg) with 1.5× zoomed image; team logo badge bottom-right corner
 - Bet page game lines section in selected-game view matches the same 3-col 2-row OddsBlock grid as the game cards on the list view
+- Bet page tab bar (Game Lines / Passing / Rushing / etc.) has ‹/› arrow buttons for left-right scroll; overflow hidden on the inner div, arrows call `scrollBy`
 - `backend/scripts/seedWeek1.ts` — one-off seed for week 1 (BUF@MIA, LAR@SF, GB@DET) with fake props/lines; run with `npx tsx scripts/seedWeek1.ts` from `backend/`
+- `startupSeed.ts` re-seeds a week if it has no alt game lines (market starts with `ALT_`), not just if new stat types are missing
 
 ### Missing — deployment blockers
 1. **Deployment** — not hosted anywhere; needs Vercel (frontend) + Railway/Render (backend) + prod Postgres URL

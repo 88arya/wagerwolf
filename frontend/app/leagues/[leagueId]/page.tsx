@@ -3,9 +3,9 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import TeamLogo from "@/components/TeamLogo";
 import { api } from "@/lib/api";
 import BottomNav from "@/components/BottomNav";
-import TeamLogo from "@/components/TeamLogo";
 
 export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]">) {
   const router = useRouter();
@@ -15,9 +15,6 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
   const [league, setLeague] = useState<any>(null);
   const [week, setWeek] = useState<any>(null);
   const [members, setMembers] = useState<any[]>([]);
-  const [myPicks, setMyPicks] = useState<any[]>([]);
-  const [myGamePicks, setMyGamePicks] = useState<any[]>([]);
-  const [expandedGameId, setExpandedGameId] = useState<string | null>(null);
 
   useEffect(() => {
     async function load() {
@@ -44,14 +41,6 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
         setMembers(board);
       } catch {}
 
-      try {
-        const [picks, gamePicks] = await Promise.all([
-          api(`/picks?leagueId=${leagueId}`),
-          api(`/gamepicks?leagueId=${leagueId}`),
-        ]);
-        setMyPicks(picks);
-        setMyGamePicks(gamePicks);
-      } catch {}
     }
     load();
   }, []);
@@ -65,8 +54,6 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
       try { alert(JSON.parse(err.message).error); } catch { alert(err.message); }
     }
   }
-
-  function fmtOdds(n: number) { return n > 0 ? `+${n}` : `${n}`; }
 
   const isCreator = league?.creatorId === userId;
   const myRecord = members.find((m) => m.userId === userId);
@@ -83,10 +70,6 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
   const weekStatus = week?.resolved ? "Final" : week?.locked ? "Locked" : week ? "Live" : null;
   const weekStatusColor = week?.resolved ? "var(--text-3)" : week?.locked ? "var(--loss)" : "var(--win)";
 
-  const weekPropIds = new Set((week?.games ?? []).flatMap((g: any) => (g.props ?? []).map((p: any) => p.id)));
-  const weekLineIds = new Set((week?.games ?? []).flatMap((g: any) => (g.gameLines ?? []).map((l: any) => l.id)));
-  const weekBetCount = myPicks.filter((p: any) => weekPropIds.has(p.propId)).length +
-    myGamePicks.filter((p: any) => weekLineIds.has(p.gameLineId)).length;
 
   if (!league) return <div className="loading">Loading…</div>;
 
@@ -99,10 +82,6 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
             <div style={{ textAlign: "right" }}>
               <div style={{ fontSize: "0.58rem", color: "var(--text-3)", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.09em" }}>Balance</div>
               <div style={{ fontSize: "0.88rem", fontWeight: 900, fontVariantNumeric: "tabular-nums", color: "var(--text)" }}>${(membership.balance ?? 0).toLocaleString()}</div>
-            </div>
-            <div style={{ textAlign: "right" }}>
-              <div style={{ fontSize: "0.58rem", color: "var(--text-3)", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.09em" }}>Bets</div>
-              <div style={{ fontSize: "0.88rem", fontWeight: 900, color: "var(--accent)" }}>{weekBetCount}</div>
             </div>
           </div>
         )}
@@ -264,95 +243,33 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
             <div className="section-title" style={{ marginBottom: 8 }}>This Week&apos;s Games</div>
             <div className="card" style={{ padding: 0, overflow: "hidden", marginBottom: 10 }}>
               {week.games?.length ? week.games.map((game: any, idx: number) => {
-                const isExpanded = expandedGameId === game.id;
-                const gameProps = game.props ?? [];
-                const gameLinesList = game.gameLines ?? [];
-                const picksForGame = myPicks.filter((p: any) => gameProps.some((prop: any) => prop.id === p.propId));
-                const gamePicksForGame = myGamePicks.filter((p: any) => gameLinesList.some((l: any) => l.id === p.gameLineId));
-                const hasBets = picksForGame.length + gamePicksForGame.length > 0;
                 const now = new Date();
                 const isLive = game.status === "IN_PROGRESS" ||
                   (game.status !== "FINAL" && game.status !== "CANCELLED" && game.gameDate && new Date(game.gameDate) <= now);
-
                 return (
-                  <div key={game.id}>
-                    <div
-                      onClick={() => setExpandedGameId(isExpanded ? null : game.id)}
-                      style={{
-                        display: "flex", alignItems: "center",
-                        padding: "11px 14px",
-                        borderBottom: "1px solid var(--border)",
-                        cursor: "pointer",
-                        background: isExpanded ? "var(--surface-2)" : "transparent",
-                      }}
-                    >
-                      <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 8 }}>
-                        <span style={{ fontWeight: 700, fontSize: "0.85rem", textAlign: "right" }}>{game.awayTeam}</span>
-                        <TeamLogo team={game.awayTeam} size={30} />
-                      </div>
-                      <div style={{ width: 44, textAlign: "center", fontWeight: 700, fontSize: "0.78rem", color: "var(--text-3)", flexShrink: 0 }}>
-                        {game.status === "FINAL"
-                          ? <span style={{ fontSize: "0.72rem", fontWeight: 800, color: "var(--text-2)" }}>{game.awayScore}–{game.homeScore}</span>
-                          : isLive
-                            ? <span style={{ fontSize: "0.6rem", color: "var(--win)", fontWeight: 800, letterSpacing: "0.04em" }}>LIVE</span>
-                            : game.status === "CANCELLED"
-                              ? <span style={{ fontSize: "0.58rem", color: "var(--loss)", fontWeight: 800 }}>CANC</span>
-                              : <span style={{ fontSize: "0.72rem" }}>@</span>
-                        }
-                      </div>
-                      <div style={{ flex: 1, display: "flex", alignItems: "center", gap: 8 }}>
-                        <TeamLogo team={game.homeTeam} size={30} />
-                        <span style={{ fontWeight: 700, fontSize: "0.85rem" }}>{game.homeTeam}</span>
-                      </div>
-                      <div style={{ marginLeft: 10, display: "flex", alignItems: "center", gap: 6 }}>
-                        {hasBets && <span style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--accent)", display: "inline-block" }} />}
-                        <span style={{ color: "var(--text-3)", fontSize: "0.65rem" }}>{isExpanded ? "▲" : "▼"}</span>
-                      </div>
+                  <div key={game.id} style={{
+                    display: "flex", alignItems: "center",
+                    padding: "11px 14px",
+                    borderBottom: idx < week.games.length - 1 ? "1px solid var(--border)" : "none",
+                  }}>
+                    <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 8 }}>
+                      <span style={{ fontWeight: 700, fontSize: "0.85rem", textAlign: "right" }}>{game.awayTeam}</span>
+                      <TeamLogo team={game.awayTeam} size={30} />
                     </div>
-
-                    {isExpanded && (
-                      <div style={{ padding: "10px 14px", background: "var(--surface-2)", borderBottom: "1px solid var(--border)" }}>
-                        {picksForGame.length === 0 && gamePicksForGame.length === 0 ? (
-                          <div style={{ fontSize: "0.78rem", color: "var(--text-3)", textAlign: "center", padding: "4px 0" }}>
-                            No bets placed for this game
-                          </div>
-                        ) : (
-                          <>
-                            {gamePicksForGame.map((p: any) => {
-                              const line = gameLinesList.find((l: any) => l.id === p.gameLineId);
-                              return (
-                                <div key={p.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 0", borderBottom: "1px solid var(--border)" }}>
-                                  <span style={{ fontSize: "0.78rem", color: "var(--text-2)" }}>{line?.label ?? "Game bet"}</span>
-                                  <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                                    <span style={{ fontSize: "0.72rem", color: "var(--text-3)" }}>{fmtOdds(p.odds)}</span>
-                                    {p.outcome && p.outcome !== "PENDING" && (
-                                      <span style={{ fontSize: "0.65rem", fontWeight: 800, color: p.outcome === "WIN" ? "var(--win)" : "var(--loss)" }}>{p.outcome}</span>
-                                    )}
-                                  </div>
-                                </div>
-                              );
-                            })}
-                            {picksForGame.map((p: any) => {
-                              const prop = gameProps.find((pr: any) => pr.id === p.propId);
-                              const line = p.altLine ?? prop?.line;
-                              return (
-                                <div key={p.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 0", borderBottom: "1px solid var(--border)" }}>
-                                  <span style={{ fontSize: "0.78rem", color: "var(--text-2)" }}>
-                                    {prop?.player?.name} {p.direction} {line} {prop?.statType?.split("_").join(" ")}
-                                  </span>
-                                  <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                                    <span style={{ fontSize: "0.72rem", color: "var(--text-3)" }}>{fmtOdds(p.odds)}</span>
-                                    {p.outcome && p.outcome !== "PENDING" && (
-                                      <span style={{ fontSize: "0.65rem", fontWeight: 800, color: p.outcome === "WIN" ? "var(--win)" : "var(--loss)" }}>{p.outcome}</span>
-                                    )}
-                                  </div>
-                                </div>
-                              );
-                            })}
-                          </>
-                        )}
-                      </div>
-                    )}
+                    <div style={{ width: 44, textAlign: "center", fontWeight: 700, fontSize: "0.78rem", color: "var(--text-3)", flexShrink: 0 }}>
+                      {game.status === "FINAL"
+                        ? <span style={{ fontSize: "0.72rem", fontWeight: 800, color: "var(--text-2)" }}>{game.awayScore}–{game.homeScore}</span>
+                        : isLive
+                          ? <span style={{ fontSize: "0.6rem", color: "var(--win)", fontWeight: 800, letterSpacing: "0.04em" }}>LIVE</span>
+                          : game.status === "CANCELLED"
+                            ? <span style={{ fontSize: "0.58rem", color: "var(--loss)", fontWeight: 800 }}>CANC</span>
+                            : <span style={{ fontSize: "0.72rem" }}>@</span>
+                      }
+                    </div>
+                    <div style={{ flex: 1, display: "flex", alignItems: "center", gap: 8 }}>
+                      <TeamLogo team={game.homeTeam} size={30} />
+                      <span style={{ fontWeight: 700, fontSize: "0.85rem" }}>{game.homeTeam}</span>
+                    </div>
                   </div>
                 );
               }) : (

@@ -460,8 +460,8 @@ export default function BetPage({ params }: PageProps<"/leagues/[leagueId]/bet">
       ...(qbProps.length > 0 ? [{ key: "qb", label: "Passing Props" }] : []),
       ...(rushingProps.length > 0 ? [{ key: "rushing", label: "Rushing Props" }] : []),
       ...(receivingProps.length > 0 ? [{ key: "receiving", label: "Receiving Props" }] : []),
-      ...(defenseProps.length > 0 ? [{ key: "defense", label: "Defense" }] : []),
-      ...(kickingProps.length > 0 ? [{ key: "kicking", label: "Kicking" }] : []),
+      ...(defenseProps.length > 0 ? [{ key: "defense", label: "Defensive Props" }] : []),
+      ...(kickingProps.length > 0 ? [{ key: "kicking", label: "Kicking Props" }] : []),
     ];
 
     const activeSection = tabs.some((t) => t.key === betSection) ? betSection : "lines";
@@ -522,18 +522,28 @@ export default function BetPage({ params }: PageProps<"/leagues/[leagueId]/bet">
           {lockedBanner}
 
           {/* Tab bar */}
-          <div className="tab-bar" style={{ marginBottom: 14 }}>
-            {tabs.map(({ key, label }) => (
-              <button
-                key={key}
-                type="button"
-                className={`tab-btn${activeSection === key ? " active" : ""}`}
-                onClick={() => setBetSection(key)}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
+          {(() => {
+            const tabScrollRef = { current: null as HTMLDivElement | null };
+            const scroll = (dir: -1 | 1) => tabScrollRef.current?.scrollBy({ left: dir * 120, behavior: "smooth" });
+            const activeIdx = tabs.findIndex((t) => t.key === activeSection);
+            return (
+              <div style={{ marginBottom: 14, display: "flex", alignItems: "center", gap: 2 }}>
+                <button type="button" onClick={() => scroll(-1)}
+                  style={{ flexShrink: 0, width: 24, height: 36, background: "none", border: "none", padding: 0, cursor: "pointer", color: "var(--text-2)", fontSize: "1rem", display: "flex", alignItems: "center", justifyContent: "center" }}>‹</button>
+                <div ref={(el) => { tabScrollRef.current = el; }} className="tab-bar" style={{ flex: 1, flexWrap: "nowrap", overflow: "hidden" }}>
+                  {tabs.map(({ key, label }) => (
+                    <button key={key} type="button"
+                      className={`tab-btn${activeSection === key ? " active" : ""}`}
+                      onClick={() => setBetSection(key)}>
+                      {label}
+                    </button>
+                  ))}
+                </div>
+                <button type="button" onClick={() => scroll(1)}
+                  style={{ flexShrink: 0, width: 24, height: 36, background: "none", border: "none", padding: 0, cursor: "pointer", color: "var(--text-2)", fontSize: "1rem", display: "flex", alignItems: "center", justifyContent: "center" }}>›</button>
+              </div>
+            );
+          })()}
 
           {/* Game Lines */}
           {activeSection === "lines" && (() => {
@@ -597,7 +607,7 @@ export default function BetPage({ params }: PageProps<"/leagues/[leagueId]/bet">
               {altSpreadRows.length > 0 && (
                 <div className="card" style={{ marginBottom: 8, border: "none", padding: 0 }}>
                   <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", padding: "10px 12px 3px" }}>
-                    <div style={{ fontSize: "0.75rem", fontWeight: 700, color: "var(--text)" }}>Alt Spreads</div>
+                    <div style={{ fontSize: "0.75rem", fontWeight: 700, color: "var(--text)" }}>Alternate Spreads</div>
                     <div style={{ display: "flex", gap: SL_BOX_GAP }}>
                       {([selectedGame.homeTeam, selectedGame.awayTeam] as string[]).map((t) => (
                         <div key={t} style={{ width: SL_BOX_W, textAlign: "center", fontSize: "0.48rem", color: "var(--text-2)", letterSpacing: "0.07em", textTransform: "uppercase" }}>{t}</div>
@@ -623,7 +633,7 @@ export default function BetPage({ params }: PageProps<"/leagues/[leagueId]/bet">
               {altTotalRows.length > 0 && (
                 <div className="card" style={{ marginBottom: 8, border: "none", padding: 0 }}>
                   <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", padding: "10px 12px 3px" }}>
-                    <div style={{ fontSize: "0.75rem", fontWeight: 700, color: "var(--text)" }}>Alt Totals</div>
+                    <div style={{ fontSize: "0.75rem", fontWeight: 700, color: "var(--text)" }}>Alternate Totals</div>
                     <div style={{ display: "flex", gap: SL_BOX_GAP }}>
                       {(["Over", "Under"] as const).map((h) => (
                         <div key={h} style={{ width: SL_BOX_W, textAlign: "center", fontSize: "0.48rem", color: "var(--text-2)", letterSpacing: "0.07em", textTransform: "uppercase" }}>{h}</div>

@@ -13,7 +13,7 @@ const FAKE_PLAYERS: Array<{ name: string; team: string; position: string }> = [
   { name: "Tua Tagovailoa", team: "MIA", position: "QB" },
   { name: "C.J. Stroud", team: "HOU", position: "QB" },
   { name: "Brock Purdy", team: "SF", position: "QB" },
-  { name: "Jayden Daniels", team: "WAS", position: "QB" },
+  { name: "Jayden Daniels", team: "WSH", position: "QB" },
   { name: "Bo Nix", team: "DEN", position: "QB" },
   { name: "Jordan Love", team: "GB", position: "QB" },
   { name: "Sam Darnold", team: "MIN", position: "QB" },
@@ -166,7 +166,7 @@ const FAKE_PLAYERS: Array<{ name: string; team: string; position: string }> = [
   { name: "Anders Carlson", team: "GB", position: "K" },
   { name: "Cade York", team: "NO", position: "K" },
   { name: "Joshua Karty", team: "LAR", position: "K" },
-  { name: "Tyler Sievert", team: "WAS", position: "K" },
+  { name: "Tyler Sievert", team: "WSH", position: "K" },
 ];
 
 const QB_PROPS: Array<{ statType: StatType; line: number; odds: number }> = [

@@ -42,24 +42,59 @@ router.get("/", requireAuth, async (req: any, res: any) => {
 
     if (current === "true") {
       if (leagueId) {
-        // Return the first unresolved week within this league's active range
         const league = await prisma.league.findUnique({ where: { id: String(leagueId) } });
         if (!league) { res.status(404).json({ error: "League not found" }); return; }
         const maxWeek = league.startWeek + league.regularSeasonWeeks + league.playoffWeeks - 1;
-        const week = await prisma.week.findFirst({
-          where: { resolved: false, number: { gte: league.startWeek, lte: maxWeek } },
+        const rangeFilter = { resolved: false, number: { gte: league.startWeek, lte: maxWeek } };
+        const include = { games: { include: { props: { include: { player: true } }, gameLines: true } } };
+        const now = new Date();
+
+        // 1. Current week — today falls within startDate..endDate
+        let week = await prisma.week.findFirst({
+          where: { ...rangeFilter, startDate: { lte: now }, endDate: { gte: now } },
           orderBy: { number: "asc" },
-          include: { games: { include: { props: { include: { player: true } }, gameLines: true } } },
+          include,
         });
+        // 2. Nearest future week
+        if (!week) {
+          week = await prisma.week.findFirst({
+            where: { ...rangeFilter, startDate: { gt: now } },
+            orderBy: { startDate: "asc" },
+            include,
+          });
+        }
+        // 3. Fallback: first unresolved in range
+        if (!week) {
+          week = await prisma.week.findFirst({
+            where: rangeFilter,
+            orderBy: { number: "asc" },
+            include,
+          });
+        }
         res.json(week ? [week] : []);
         return;
       }
 
-      const week = await prisma.week.findFirst({
-        where: { resolved: false },
+      const now = new Date();
+      let week = await prisma.week.findFirst({
+        where: { resolved: false, startDate: { lte: now }, endDate: { gte: now } },
         orderBy: { number: "asc" },
         include: { games: { include: { props: { include: { player: true } }, gameLines: true } } },
       });
+      if (!week) {
+        week = await prisma.week.findFirst({
+          where: { resolved: false, startDate: { gt: now } },
+          orderBy: { startDate: "asc" },
+          include: { games: { include: { props: { include: { player: true } }, gameLines: true } } },
+        });
+      }
+      if (!week) {
+        week = await prisma.week.findFirst({
+          where: { resolved: false },
+          orderBy: { number: "asc" },
+          include: { games: { include: { props: { include: { player: true } }, gameLines: true } } },
+        });
+      }
       res.json(week ? [week] : []);
       return;
     }

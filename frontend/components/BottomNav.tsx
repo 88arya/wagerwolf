@@ -21,6 +21,17 @@ function TicketIcon({ active }: { active: boolean }) {
 }
 
 
+function ReceiptIcon({ active }: { active: boolean }) {
+  return (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={active ? 2.2 : 1.8} strokeLinecap="round" strokeLinejoin="round">
+      <path d="M14 2H6a2 2 0 00-2 2v16l3-2 2 2 2-2 2 2 2-2 3 2V4a2 2 0 00-2-2z" />
+      <line x1="16" y1="8" x2="8" y2="8" />
+      <line x1="16" y1="12" x2="8" y2="12" />
+      <line x1="12" y1="16" x2="8" y2="16" />
+    </svg>
+  );
+}
+
 function GearIcon({ active }: { active: boolean }) {
   return (
     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={active ? 2.2 : 1.8} strokeLinecap="round" strokeLinejoin="round">
@@ -31,8 +42,9 @@ function GearIcon({ active }: { active: boolean }) {
 }
 
 const BASE_TABS = [
-  { label: "Home",    Icon: HomeIcon,    path: "" },
-  { label: "Bet",     Icon: TicketIcon,  path: "/bet" },
+  { label: "Home",     Icon: HomeIcon,     path: "" },
+  { label: "Bet",      Icon: TicketIcon,   path: "/bet" },
+  { label: "My Bets",  Icon: ReceiptIcon,  path: "/mybets" },
 ];
 
 const COMMISSIONER_TAB = { label: "Manage", Icon: GearIcon, path: "/settings" };

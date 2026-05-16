@@ -55,6 +55,11 @@ router.post("/", requireAuth, async (req: any, res: any) => {
       return;
     }
 
+    // Rule 2: cannot bet opposite direction while a pending pick exists on same prop
+    const oppositeDir = direction === "OVER" ? "UNDER" : "OVER";
+    const pendingOpposite = await prisma.pick.findFirst({ where: { userId, leagueId, propId, direction: oppositeDir, outcome: "PENDING" } });
+    if (pendingOpposite) { res.status(409).json({ error: "You have an active bet on the opposite side — cash out first" }); return; }
+
     const league = await prisma.league.findUnique({ where: { id: leagueId }, select: { maxStakePerBet: true, maxBetsPerWeek: true } });
     if (league?.maxStakePerBet && Number(stake) > league.maxStakePerBet) {
       res.status(400).json({ error: `Max stake per bet is $${league.maxStakePerBet}` }); return;

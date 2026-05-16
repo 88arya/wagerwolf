@@ -34,10 +34,7 @@ router.post("/", requireAuth, async (req: any, res: any) => {
       where: { resolved: false },
       orderBy: { number: "asc" },
     });
-    let sw = 1;
-    if (firstUnresolved) {
-      sw = firstUnresolved.number === 1 ? 2 : firstUnresolved.number;
-    }
+    const sw = firstUnresolved ? firstUnresolved.number : 1;
 
     const rsw = Math.max(1, 18 - sw - pw + 1);
 

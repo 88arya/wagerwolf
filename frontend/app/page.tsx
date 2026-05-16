@@ -34,7 +34,9 @@ export default function AuthPage() {
 
   return (
     <div style={{
-      minHeight: "100vh",
+      flex: 1,
+      minHeight: 0,
+      overflowY: "auto",
       display: "flex",
       flexDirection: "column",
       background: "var(--bg)",
