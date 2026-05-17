@@ -145,7 +145,6 @@ export default function AuthPage() {
                 <div className="label">Email</div>
                 <input
                   type="email"
-                  placeholder="you@example.com"
                   value={form.email}
                   onChange={(e) => setForm({ ...form, email: e.target.value })}
                   required
