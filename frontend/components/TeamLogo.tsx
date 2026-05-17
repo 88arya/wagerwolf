@@ -5,9 +5,10 @@ import { getTeamLogoUrl } from "@/lib/teamLogos";
 interface Props {
   team: string;
   size?: number;
+  plain?: boolean;
 }
 
-export default function TeamLogo({ team, size = 40 }: Props) {
+export default function TeamLogo({ team, size = 40, plain = false }: Props) {
   const url = getTeamLogoUrl(team);
 
   if (!url) {
@@ -39,7 +40,7 @@ export default function TeamLogo({ team, size = 40 }: Props) {
       alt={team}
       width={size}
       height={size}
-      style={{ objectFit: "contain", flexShrink: 0, background: "var(--surface-3)", borderRadius: 6, padding: 2 }}
+      style={{ objectFit: "contain", flexShrink: 0, ...(plain ? {} : { background: "var(--surface-3)", borderRadius: 6, padding: 2 }) }}
     />
   );
 }
