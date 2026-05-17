@@ -82,7 +82,8 @@ cd frontend && npm run dev    # port 3000
 ### Key services
 
 - `backend/src/services/fakeSync.ts` — generates fake prop lines for real players; `seedFakePropsForWeek(weekId)` is the main export
-- `backend/src/services/startupSeed.ts` — runs on startup via `app.listen`; seeds all unresolved weeks that are missing new stat types
+- `backend/src/services/startupSeed.ts` — runs on startup via `app.listen`; seeds all unresolved weeks that are missing new stat types; also backfills duplicate helmet colors per league
+- `backend/src/services/helmetColor.ts` — `pickHelmetColor(leagueId)` queries taken colors in a league and returns a random unused one from `HELMET_COLORS` (31 options); called on every membership create path
 - `backend/src/services/espnApi.ts` — ESPN box score + game schedule fetching
 - `backend/src/services/oddsApi.ts` — SportsGameOdds API integration
 
@@ -158,7 +159,7 @@ Real players from ESPN (with ESPN headshots) + fake prop lines. No live odds API
 - Auto-resolve via ESPN
 - Display name / avatar settings
 - Chat (LeagueMessage)
-- Light mode UI (no dark mode; accent is royal blue `#2563EB`; league banner uses blue gradient to keep white text legible)
+- Light mode UI (no dark mode; accent is royal blue `#2563EB`)
 - Bet page nav shows Balance + Bets this week as stat boxes (no back button); week boxes show League Week N of X and NFL Week N of 18
 - Bet page prop UI: one card per market (stat type), players as rows inside; 3 scrollable alt-line boxes per player with ‹/› arrows; hover splits box into U/O buttons; selected box shows direction+line and clicking it removes from slip (no re-split on hover); OVER+UNDER on same prop is blocked at addToSlip, toggleBlockInSlip, and submitParlay
 - `PlayerAvatar` renders as square box (borderRadius 6, surface-3 bg) with 1.5× zoomed image; team logo badge bottom-right corner
@@ -166,6 +167,14 @@ Real players from ESPN (with ESPN headshots) + fake prop lines. No live odds API
 - Bet page tab bar (Game Lines / Passing / Rushing / etc.) has ‹/› arrow buttons for left-right scroll; overflow hidden on the inner div, arrows call `scrollBy`
 - `backend/scripts/seedWeek1.ts` — one-off seed for week 1 (BUF@MIA, LAR@SF, GB@DET) with fake props/lines; run with `npx tsx scripts/seedWeek1.ts` from `backend/`
 - `startupSeed.ts` re-seeds a week if it has no alt game lines (market starts with `ALT_`), not just if new stat types are missing
+- League home banner: accent strip at top, league name left, teams/allowance right; no blue gradient
+- League home standings/power rankings: `HelmetAvatar` (football helmet SVG, 31 color options) as member avatars; W / L / T / GB as separate columns; GB per standard formula; rows padded to `maxTeams` blank slots; click your own helmet to open color picker modal
+- League home matchups: padded to `maxTeams / 2` slots with blank rows
+- Ghost matchups: ghost side scores at league mean `weeklyWinnings` for unresolved weeks
+- `maxTeams` must be even on league creation (enforced in `leagues.routes.ts`)
+- `Membership.helmetColor` — unique per league; `pickHelmetColor` assigns on every join; `PATCH /leagues/:id/my-helmet` for manual change; startup seed backfills any duplicates; 409 if color already taken
+- Commissioner settings gear: floating button fixed bottom-right (above nav bar), not in banner
+- NFL games strip on league home: background `#f4f6f9`; gradient fade overlays on left/right edges
 
 ### Missing — deployment blockers
 1. **Deployment** — not hosted anywhere; needs Vercel (frontend) + Railway/Render (backend) + prod Postgres URL
@@ -180,9 +189,18 @@ Real players from ESPN (with ESPN headshots) + fake prop lines. No live odds API
 - Email/push notifications
 - Round robins
 
+### Probable next steps
+- Member profile pages: show helmet avatar with correct color per league
+- League home chat: show helmet avatars next to messages
+- Leaderboard/history pages: add helmet avatars
+- Commissioner can view/kick pending members from league home
+- Public league discovery / browse page
+
 ---
 
 ## Commit style
+
+Never commit without explicit instructions to do so.
 
 Max 8 words, no punctuation, no fluff. Group only similar changes together.
 
