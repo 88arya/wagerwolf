@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { prisma } from "../db/prisma";
 import { requireAuth } from "../middleware/auth";
+import { getNearestTuesdayNoon } from "../services/scheduleMatchups";
 
 const router = Router();
 
@@ -21,8 +22,8 @@ router.post("/", requireAuth, async (req: any, res: any) => {
     }
 
     const mt = Number(maxTeams ?? 10);
-    if (mt < 4 || mt > 20 || mt % 2 !== 0) {
-      res.status(400).json({ error: "Number of teams must be an even number between 4 and 20" });
+    if (mt < 2 || mt > 20) {
+      res.status(400).json({ error: "Number of teams must be between 2 and 20" });
       return;
     }
 
@@ -43,6 +44,8 @@ router.post("/", requireAuth, async (req: any, res: any) => {
       inviteCode = generateInviteCode();
     }
 
+    const autoStartAt = getNearestTuesdayNoon(new Date());
+
     const league = await prisma.league.create({
       data: {
         name,
@@ -57,6 +60,7 @@ router.post("/", requireAuth, async (req: any, res: any) => {
         playoffSize: ps,
         consolationTeams,
         consolationWeeks: 2,
+        autoStartAt,
       },
     });
 

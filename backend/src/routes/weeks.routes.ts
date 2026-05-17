@@ -330,18 +330,50 @@ router.post("/:id/resolve", requireAuth, requireAdmin, async (req: any, res: any
       where: { weekNumber: week.number, winnerId: null, isTie: false },
     }) as any[];
 
-    for (const matchup of matchups) {
-      const [homeMem, awayMem] = await Promise.all([
-        prisma.membership.findUnique({
-          where: { userId_leagueId: { userId: matchup.homeUserId, leagueId: matchup.leagueId } },
-        }),
-        prisma.membership.findUnique({
-          where: { userId_leagueId: { userId: matchup.awayUserId, leagueId: matchup.leagueId } },
-        }),
-      ]);
+    // Compute league avg weeklyWinnings for ghost matchups (avg across all real members per league)
+    const leagueAvgCache: Record<string, number> = {};
+    async function getLeagueAvg(leagueId: string): Promise<number> {
+      if (leagueAvgCache[leagueId] !== undefined) return leagueAvgCache[leagueId];
+      const league = await prisma.league.findUnique({ where: { id: leagueId } });
+      if (!league?.hasGhost) { leagueAvgCache[leagueId] = 0; return 0; }
+      const ghost = await prisma.user.findUnique({ where: { email: "ghost@system.internal" } });
+      const mems = await prisma.membership.findMany({
+        where: { leagueId, status: "ACTIVE", ...(ghost ? { userId: { not: ghost.id } } : {}) },
+        select: { weeklyWinnings: true },
+      });
+      const avg = mems.length ? Math.round(mems.reduce((s, m) => s + m.weeklyWinnings, 0) / mems.length) : 0;
+      leagueAvgCache[leagueId] = avg;
+      return avg;
+    }
 
-      const homeProfit = homeMem?.weeklyWinnings ?? 0;
-      const awayProfit = awayMem?.weeklyWinnings ?? 0;
+    for (const matchup of matchups) {
+      let homeProfit: number;
+      let awayProfit: number;
+
+      if (matchup.isGhostMatchup) {
+        const ghostAvg = await getLeagueAvg(matchup.leagueId);
+        const ghost = await prisma.user.findUnique({ where: { email: "ghost@system.internal" } });
+        const isGhostHome = ghost && matchup.homeUserId === ghost.id;
+        const realUserId = isGhostHome ? matchup.awayUserId : matchup.homeUserId;
+        const realMem = await prisma.membership.findUnique({
+          where: { userId_leagueId: { userId: realUserId, leagueId: matchup.leagueId } },
+        });
+        const realProfit = realMem?.weeklyWinnings ?? 0;
+        homeProfit = isGhostHome ? ghostAvg : realProfit;
+        awayProfit = isGhostHome ? realProfit : ghostAvg;
+      } else {
+        const [homeMem, awayMem] = await Promise.all([
+          prisma.membership.findUnique({
+            where: { userId_leagueId: { userId: matchup.homeUserId, leagueId: matchup.leagueId } },
+          }),
+          prisma.membership.findUnique({
+            where: { userId_leagueId: { userId: matchup.awayUserId, leagueId: matchup.leagueId } },
+          }),
+        ]);
+        homeProfit = homeMem?.weeklyWinnings ?? 0;
+        awayProfit = awayMem?.weeklyWinnings ?? 0;
+      }
+
       const isTie = homeProfit === awayProfit;
       const winnerId = isTie ? null : homeProfit > awayProfit ? matchup.homeUserId : matchup.awayUserId;
       await prisma.matchup.update({

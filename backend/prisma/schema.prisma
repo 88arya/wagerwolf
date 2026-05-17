@@ -85,6 +85,8 @@ model League {
   playoffSize        Int         @default(4)
   consolationTeams   Int         @default(6)
   consolationWeeks   Int         @default(2)
+  hasGhost           Boolean     @default(false)
+  autoStartAt        DateTime?
   maxPublicPlayers   Int         @default(0)
   maxStakePerBet     Int?
   maxBetsPerWeek     Int?
@@ -101,20 +103,21 @@ model League {
 }
 
 model Matchup {
-  id           String   @id @default(cuid())
-  leagueId     String
-  weekNumber   Int
-  homeUserId   String
-  awayUserId   String
-  homeProfit   Int?
-  awayProfit   Int?
-  winnerId     String?
-  isTie        Boolean  @default(false)
-  isBye          Boolean  @default(false)
-  isPlayoff      Boolean  @default(false)
-  isConsolation  Boolean  @default(false)
-  playoffRound Int?
-  createdAt    DateTime @default(now())
+  id              String   @id @default(cuid())
+  leagueId        String
+  weekNumber      Int
+  homeUserId      String
+  awayUserId      String
+  homeProfit      Int?
+  awayProfit      Int?
+  winnerId        String?
+  isTie           Boolean  @default(false)
+  isBye           Boolean  @default(false)
+  isPlayoff       Boolean  @default(false)
+  isConsolation   Boolean  @default(false)
+  isGhostMatchup  Boolean  @default(false)
+  playoffRound    Int?
+  createdAt       DateTime @default(now())
 
   league   League @relation(fields: [leagueId], references: [id])
   homeUser User   @relation("HomeMatchups", fields: [homeUserId], references: [id])

@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { prisma } from "../db/prisma";
 import { requireAuth } from "../middleware/auth";
+import { scheduleMatchups } from "../services/scheduleMatchups";
 
 const router = Router({ mergeParams: true });
 
@@ -105,6 +106,9 @@ router.post("/members/:memberId/accept", requireAuth, async (req: any, res: any)
     const league = await prisma.league.findUnique({ where: { id: leagueId } });
     if (!league) { res.status(404).json({ error: "League not found" }); return; }
     if (league.creatorId !== req.userId) { res.status(403).json({ error: "Commissioner only" }); return; }
+    if (league.seasonStarted) {
+      res.status(400).json({ error: "League has already started — cannot accept new members" }); return;
+    }
 
     const maxWeek = league.startWeek + league.regularSeasonWeeks + league.playoffWeeks - 1;
     const activeWeek = await prisma.week.findFirst({
@@ -118,6 +122,8 @@ router.post("/members/:memberId/accept", requireAuth, async (req: any, res: any)
       data: { status: "ACTIVE", balance: initialBalance },
     });
     if (result.count === 0) { res.status(404).json({ error: "No pending request found" }); return; }
+
+    await scheduleMatchups(leagueId);
 
     res.json({ message: "Member accepted" });
   } catch (err: any) {

@@ -78,23 +78,44 @@ router.post("/:leagueId/season/start", requireAuth, async (req: any, res: any) =
 
     const members = league.memberships;
     if (members.length < 2) { res.status(400).json({ error: "Need at least 2 members to start" }); return; }
-    if (members.length % 2 !== 0) { res.status(400).json({ error: "Need an even number of members" }); return; }
 
-    const userIds = members.map((m: any) => m.userId);
+    let userIds = members.map((m: any) => m.userId);
+    let hasGhost = false;
+    let ghostUserId: string | null = null;
+
+    if (userIds.length % 2 !== 0) {
+      hasGhost = true;
+      // Find or create the global ghost user
+      let ghost = await prisma.user.findUnique({ where: { email: "ghost@system.internal" } });
+      if (!ghost) {
+        ghost = await prisma.user.create({
+          data: {
+            email: "ghost@system.internal",
+            password: "",
+            name: "Ghost",
+            displayName: "Ghost",
+          },
+        });
+      }
+      ghostUserId = ghost.id;
+      userIds = [...userIds, ghostUserId];
+    }
+
     const rounds = generateRoundRobin(userIds);
 
     const matchups = [];
     for (let i = 0; i < rounds.length; i++) {
       const weekNumber = i + 1;
       for (const [homeUserId, awayUserId] of rounds[i]) {
+        const isGhostMatchup = homeUserId === ghostUserId || awayUserId === ghostUserId;
         const matchup = await prisma.matchup.create({
-          data: { leagueId, weekNumber, homeUserId, awayUserId },
+          data: { leagueId, weekNumber, homeUserId, awayUserId, isGhostMatchup },
         });
         matchups.push(matchup);
       }
     }
 
-    await prisma.league.update({ where: { id: leagueId }, data: { seasonStarted: true } });
+    await prisma.league.update({ where: { id: leagueId }, data: { seasonStarted: true, hasGhost } });
 
     if (league.isPublic) {
       await ensureOpenPublicLeague(league.creatorId);
@@ -118,8 +139,8 @@ router.get("/:leagueId/matchups", requireAuth, async (req: any, res: any) => {
         ...(weekNumber ? { weekNumber: Number(weekNumber) } : {}),
       },
       include: {
-        homeUser: { select: { id: true, displayName: true } },
-        awayUser: { select: { id: true, displayName: true } },
+        homeUser: { select: { id: true, displayName: true, email: true } },
+        awayUser: { select: { id: true, displayName: true, email: true } },
       },
       orderBy: { weekNumber: "asc" },
     });

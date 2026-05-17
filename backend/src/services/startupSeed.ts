@@ -1,5 +1,6 @@
 import { prisma } from "../db/prisma";
 import { seedFakePropsForWeek, FAKE_PLAYERS } from "./fakeSync";
+import { scheduleMatchups } from "./scheduleMatchups";
 
 const FAKE_GAMES: Array<{ homeTeam: string; awayTeam: string; offsetDays: number; hour: number }> = [
   { homeTeam: "KC",  awayTeam: "BUF", offsetDays: 3, hour: 13 },
@@ -83,6 +84,35 @@ export async function runStartupSeed() {
         }
         const result = await seedFakePropsForWeek(week.id);
         console.log(`[seed] Seeded week ${week.number}: ${result.props} props`);
+      }
+    }
+    // Repair unstarted leagues with ≥2 members but missing matchups
+    const unstartedLeagues = await prisma.league.findMany({
+      where: { seasonStarted: false },
+      include: {
+        memberships: { where: { status: "ACTIVE" }, select: { id: true } },
+        matchups: { where: { isPlayoff: false, isConsolation: false }, select: { id: true }, take: 1 },
+      },
+    }) as any[];
+
+    for (const league of unstartedLeagues) {
+      if (league.memberships.length >= 2 && league.matchups.length === 0) {
+        await scheduleMatchups(league.id);
+        console.log(`[seed] Repaired matchups for league ${league.id}`);
+      }
+    }
+
+    // Auto-start leagues whose autoStartAt has passed
+    const leaguesToStart = await prisma.league.findMany({
+      where: { autoStartAt: { lte: new Date() }, seasonStarted: false },
+      include: { memberships: { where: { status: "ACTIVE" }, select: { id: true } } },
+    }) as any[];
+
+    for (const league of leaguesToStart) {
+      if (league.memberships.length >= 2) {
+        await scheduleMatchups(league.id);
+        await prisma.league.update({ where: { id: league.id }, data: { seasonStarted: true } });
+        console.log(`[seed] Auto-started league ${league.id}`);
       }
     }
   } catch (err) {

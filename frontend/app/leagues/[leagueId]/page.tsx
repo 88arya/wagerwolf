@@ -160,58 +160,11 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
           </div>
         )}
 
-        {/* This Week's Matchups — full width above grid */}
-        {weekMatchups.length > 0 && (
-          <div style={{ marginBottom: 14 }}>
-            <div className="card" style={{ padding: 0, overflow: "hidden" }}>
-              <div style={{ padding: "8px 14px", background: "var(--surface-2)", borderBottom: "1px solid var(--border)" }}>
-                <span style={{ fontSize: "0.58rem", fontWeight: 800, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--text-3)" }}>This Week&apos;s Matchups</span>
-              </div>
-              {weekMatchups.map((matchup: any, idx: number) => {
-                const isHome = matchup.homeUserId === userId;
-                const isAway = matchup.awayUserId === userId;
-                const resolved = matchup.winnerId != null || matchup.isTie;
-                const iWon = resolved && matchup.winnerId === userId;
-                const iLost = resolved && matchup.winnerId != null && matchup.winnerId !== userId;
-                return (
-                  <div key={matchup.id} style={{
-                    display: "flex", alignItems: "center",
-                    padding: "9px 14px",
-                    borderBottom: idx < weekMatchups.length - 1 ? "1px solid var(--border)" : "none",
-                    background: (isHome || isAway) ? "var(--accent-dim)" : "transparent",
-                  }}>
-                    <div style={{ flex: 1, textAlign: "right" }}>
-                      <span style={{ fontWeight: matchup.homeUserId === userId ? 800 : 600, fontSize: "0.82rem", color: matchup.homeUserId === userId ? "var(--accent)" : "var(--text)" }}>
-                        {matchup.homeUser?.displayName ?? "—"}
-                      </span>
-                    </div>
-                    <div style={{ width: 56, textAlign: "center", flexShrink: 0 }}>
-                      {resolved ? (
-                        matchup.isTie
-                          ? <span style={{ fontSize: "0.62rem", fontWeight: 800, color: "var(--text-3)", letterSpacing: "0.04em" }}>TIE</span>
-                          : <span style={{ fontSize: "0.62rem", fontWeight: 800, letterSpacing: "0.04em", color: iWon ? "var(--win)" : iLost ? "var(--loss)" : "var(--text-3)" }}>
-                              {matchup.winnerId === matchup.homeUserId ? "W" : "L"} – {matchup.winnerId === matchup.awayUserId ? "W" : "L"}
-                            </span>
-                      ) : (
-                        <span style={{ fontSize: "0.72rem", fontWeight: 700, color: "var(--text-3)" }}>vs</span>
-                      )}
-                    </div>
-                    <div style={{ flex: 1 }}>
-                      <span style={{ fontWeight: matchup.awayUserId === userId ? 800 : 600, fontSize: "0.82rem", color: matchup.awayUserId === userId ? "var(--accent)" : "var(--text)" }}>
-                        {matchup.awayUser?.displayName ?? "—"}
-                      </span>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
 
-        {/* 3-column grid: Games | Banner + Power Rankings | Standings */}
+        {/* 4-column grid: Games | Matchups | Banner + Power Rankings | Standings */}
         <div style={{
           display: "grid",
-          gridTemplateColumns: "148px 1fr 260px",
+          gridTemplateColumns: "148px 185px 1fr 260px",
           gridTemplateRows: "auto 1fr",
           gap: "0 14px",
           alignItems: "start",
@@ -279,8 +232,65 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
             </div>
           </div>
 
+          {/* COL 2: Matchups (spans both rows) */}
+          <div style={{ gridColumn: "2", gridRow: "1 / 3" }}>
+            <div className="card" style={{ padding: 0, overflow: "hidden" }}>
+              <div style={{ padding: "8px 10px", borderBottom: "1px solid var(--border)", background: "var(--surface-2)" }}>
+                <span style={{ fontSize: "0.58rem", fontWeight: 800, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--text-3)" }}>Matchups</span>
+              </div>
+              {weekMatchups.length === 0 ? (
+                <div className="empty" style={{ padding: "18px 0" }}>
+                  <div className="empty-text" style={{ fontSize: "0.75rem" }}>No matchups yet</div>
+                </div>
+              ) : weekMatchups.map((matchup: any, idx: number) => {
+                const isHome = matchup.homeUserId === userId;
+                const isAway = matchup.awayUserId === userId;
+                const homeName = matchup.isGhostMatchup && matchup.homeUser?.email === "ghost@system.internal" ? "Ghost" : (matchup.homeUser?.displayName ?? "—");
+                const awayName = matchup.isGhostMatchup && matchup.awayUser?.email === "ghost@system.internal" ? "Ghost" : (matchup.awayUser?.displayName ?? "—");
+                const homeScore = matchup.homeProfit ?? 0;
+                const awayScore = matchup.awayProfit ?? 0;
+                return (
+                  <div key={matchup.id} style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    padding: "9px 12px",
+                    borderBottom: idx < weekMatchups.length - 1 ? "1px solid var(--border)" : "none",
+                    background: (isHome || isAway) ? "var(--accent-dim)" : "transparent",
+                    gap: 8,
+                  }}>
+                    {/* Players stacked */}
+                    <div style={{ display: "flex", flexDirection: "column", gap: 6, flex: 1, minWidth: 0 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        <div className="avatar" style={{ width: 18, height: 18, fontSize: "0.48rem", flexShrink: 0 }}>
+                          {homeName.slice(0, 2).toUpperCase()}
+                        </div>
+                        <span style={{ fontWeight: isHome ? 800 : 600, fontSize: "0.75rem", color: isHome ? "var(--accent)" : homeName === "Ghost" ? "var(--text-3)" : "var(--text)", fontStyle: homeName === "Ghost" ? "italic" : "normal", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          {homeName}
+                        </span>
+                      </div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        <div className="avatar" style={{ width: 18, height: 18, fontSize: "0.48rem", flexShrink: 0 }}>
+                          {awayName.slice(0, 2).toUpperCase()}
+                        </div>
+                        <span style={{ fontWeight: isAway ? 800 : 600, fontSize: "0.75rem", color: isAway ? "var(--accent)" : awayName === "Ghost" ? "var(--text-3)" : "var(--text)", fontStyle: awayName === "Ghost" ? "italic" : "normal", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          {awayName}
+                        </span>
+                      </div>
+                    </div>
+                    {/* Scores */}
+                    <div style={{ display: "flex", flexDirection: "column", gap: 6, alignItems: "flex-end", flexShrink: 0 }}>
+                      <span style={{ fontSize: "0.72rem", fontWeight: 700, color: "var(--text-2)", fontVariantNumeric: "tabular-nums" }}>${homeScore}</span>
+                      <span style={{ fontSize: "0.72rem", fontWeight: 700, color: "var(--text-2)", fontVariantNumeric: "tabular-nums" }}>${awayScore}</span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
           {/* CENTER TOP: League Banner */}
-          <div style={{ gridColumn: "2", gridRow: "1", marginBottom: 14 }}>
+          <div style={{ gridColumn: "3", gridRow: "1", marginBottom: 14 }}>
             <div style={{
               background: "var(--surface)",
               border: "1px solid var(--border)",
@@ -319,7 +329,7 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
           </div>
 
           {/* CENTER BOTTOM: Power Rankings */}
-          <div style={{ gridColumn: "2", gridRow: "2" }}>
+          <div style={{ gridColumn: "3", gridRow: "2" }}>
             <div className="card" style={{ padding: 0, overflow: "hidden" }}>
               <div style={{ padding: "8px 12px", background: "var(--surface-2)", borderBottom: "1px solid var(--border)", display: "grid", gridTemplateColumns: "22px 1fr auto", gap: 6, alignItems: "center" }}>
                 <span style={{ fontSize: "0.58rem", fontWeight: 800, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--text-3)", gridColumn: "1 / 4" }}>Power Rankings</span>
@@ -343,7 +353,7 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
           </div>
 
           {/* RIGHT: Standings (spans both rows) */}
-          <div style={{ gridColumn: "3", gridRow: "1 / 3" }}>
+          <div style={{ gridColumn: "4", gridRow: "1 / 3" }}>
             <div className="card" style={{ padding: 0, overflow: "hidden" }}>
               <div style={{ padding: "8px 12px", background: "var(--surface-2)", borderBottom: "1px solid var(--border)" }}>
                 <span style={{ fontSize: "0.58rem", fontWeight: 800, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--text-3)" }}>Standings</span>

@@ -115,15 +115,6 @@ export default function LeagueSettingsPage({ params }: PageProps<"/leagues/[leag
     }
   }
 
-  async function startSeason() {
-    try {
-      await api(`/leagues/${leagueId}/season/start`, { method: "POST" });
-      setLeague(await api(`/leagues/${leagueId}`));
-    } catch (err: any) {
-      try { alert(JSON.parse(err.message).error); } catch { alert(err.message); }
-    }
-  }
-
   async function deleteLeague() {
     if (!confirm(`Permanently delete "${league?.name}"? This cannot be undone.`)) return;
     try {
@@ -343,19 +334,22 @@ export default function LeagueSettingsPage({ params }: PageProps<"/leagues/[leag
 
         {!league.seasonStarted && (
           <div className="card" style={{ marginBottom: 10 }}>
-            <div style={{ fontSize: "0.8rem", color: "var(--text-2)", marginBottom: 10 }}>
-              {members.length % 2 !== 0
-                ? `Need even number of members (currently ${members.length})`
-                : `${members.length} members ready to start`}
+            <div style={{ fontSize: "0.8rem", color: "var(--text-2)", marginBottom: 6 }}>
+              {members.length < 2
+                ? `Need at least 2 members to start`
+                : `${members.length} member${members.length !== 1 ? "s" : ""} ready${members.length % 2 !== 0 ? " (ghost team will be added)" : ""}`}
             </div>
-            <button onClick={startSeason} disabled={members.length < 2 || members.length % 2 !== 0} style={{ width: "100%", padding: "12px", marginBottom: 8 }}>
-              Start Season →
-            </button>
-            {members.length <= 1 && (
-              <button className="ghost" style={{ width: "100%", fontSize: "0.8rem", padding: "9px", color: "var(--loss)", borderColor: "var(--loss-border)" }} onClick={deleteLeague}>
-                Delete League
-              </button>
+            {league.autoStartAt && (
+              <div style={{ fontSize: "0.82rem", color: "var(--text)", fontWeight: 600, marginBottom: 10 }}>
+                Season auto-starts{" "}
+                {new Date(league.autoStartAt).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })}
+                {" at "}
+                {new Date(league.autoStartAt).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}
+              </div>
             )}
+            <button className="ghost" style={{ width: "100%", fontSize: "0.8rem", padding: "9px", color: "var(--loss)", borderColor: "var(--loss-border)" }} onClick={deleteLeague}>
+              Delete League
+            </button>
           </div>
         )}
 

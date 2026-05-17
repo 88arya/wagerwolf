@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { prisma } from "../db/prisma";
 import { requireAuth } from "../middleware/auth";
+import { scheduleMatchups } from "../services/scheduleMatchups";
 
 const router = Router();
 
@@ -81,6 +82,9 @@ router.post("/join-by-code", requireAuth, async (req: any, res: any) => {
     });
     if (!league) { res.status(404).json({ error: "Invalid invite code" }); return; }
     if (league.isPublic) { res.status(400).json({ error: "This is a public league — use the public join option" }); return; }
+    if (league.seasonStarted) {
+      res.status(400).json({ error: "This league has already started" }); return;
+    }
 
     const membership = await prisma.membership.create({
       data: { userId: req.userId, leagueId: league.id, balance: 0, status: "PENDING" },
@@ -110,6 +114,7 @@ router.post("/join-public", requireAuth, async (req: any, res: any) => {
       where: {
         isPublic: true,
         seasonStarted: false,
+        OR: [{ autoStartAt: null }, { autoStartAt: { gt: new Date() } }],
         ...(existingLeagueIds.length > 0 ? { id: { notIn: existingLeagueIds } } : {}),
       },
       include: {
@@ -131,6 +136,8 @@ router.post("/join-public", requireAuth, async (req: any, res: any) => {
       const membership = await prisma.membership.create({
         data: { userId: req.userId, leagueId: league.id, balance: activeWeek ? league.weeklyAllowance : 0, status: "ACTIVE", isPublicFill: false },
       });
+      await scheduleMatchups(league.id);
+
       // If this join filled the public league, ensure another is open
       const freshLeague = await prisma.league.findUnique({
         where: { id: league.id },
@@ -150,6 +157,7 @@ router.post("/join-public", requireAuth, async (req: any, res: any) => {
         isPublic: false,
         seasonStarted: false,
         maxPublicPlayers: { gt: 0 },
+        OR: [{ autoStartAt: null }, { autoStartAt: { gt: new Date() } }],
         ...(existingLeagueIds.length > 0 ? { id: { notIn: existingLeagueIds } } : {}),
       },
       include: {
@@ -177,6 +185,8 @@ router.post("/join-public", requireAuth, async (req: any, res: any) => {
     const membership = await prisma.membership.create({
       data: { userId: req.userId, leagueId: league.id, balance: activeWeekFill ? league.weeklyAllowance : 0, status: "ACTIVE", isPublicFill: true },
     });
+
+    await scheduleMatchups(league.id);
 
     res.status(201).json({ ...membership, league });
   } catch (err: any) {
