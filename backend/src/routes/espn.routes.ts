@@ -301,6 +301,9 @@ router.post("/resolve/:weekId", requireAuth, requireAdmin, async (req: any, res:
       where: { weekNumber: week.number, winnerId: null, isTie: false },
     }) as any[];
 
+    // Cache league means for ghost matchup scoring
+    const leagueMeanCache: Record<string, number> = {};
+
     for (const matchup of matchups) {
       const [homeMem, awayMem] = await Promise.all([
         prisma.membership.findUnique({
@@ -311,8 +314,24 @@ router.post("/resolve/:weekId", requireAuth, requireAdmin, async (req: any, res:
         }),
       ]);
 
-      const homeProfit = homeMem?.weeklyWinnings ?? 0;
-      const awayProfit = awayMem?.weeklyWinnings ?? 0;
+      let homeProfit = homeMem?.weeklyWinnings ?? 0;
+      let awayProfit = awayMem?.weeklyWinnings ?? 0;
+
+      if (matchup.isGhostMatchup) {
+        if (!(matchup.leagueId in leagueMeanCache)) {
+          const mems = await prisma.membership.findMany({
+            where: { leagueId: matchup.leagueId, status: "ACTIVE" },
+            select: { weeklyWinnings: true },
+          });
+          leagueMeanCache[matchup.leagueId] = mems.length > 0
+            ? mems.reduce((s: number, m: any) => s + m.weeklyWinnings, 0) / mems.length
+            : 0;
+        }
+        const mean = leagueMeanCache[matchup.leagueId];
+        if (!homeMem) homeProfit = mean;
+        if (!awayMem) awayProfit = mean;
+      }
+
       const isTie = homeProfit === awayProfit;
       const winnerId = isTie ? null : homeProfit > awayProfit ? matchup.homeUserId : matchup.awayUserId;
 

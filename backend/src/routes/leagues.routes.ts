@@ -26,6 +26,10 @@ router.post("/", requireAuth, async (req: any, res: any) => {
       res.status(400).json({ error: "Number of teams must be between 2 and 20" });
       return;
     }
+    if (mt % 2 !== 0) {
+      res.status(400).json({ error: "Number of teams must be even" });
+      return;
+    }
 
     const ps = nextSmallestPowerOf2(mt);
     const pw = Math.ceil(Math.log2(ps));
