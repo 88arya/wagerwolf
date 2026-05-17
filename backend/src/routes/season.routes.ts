@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { prisma } from "../db/prisma";
 import { requireAuth } from "../middleware/auth";
+import { generateLeagueName } from "../services/leagueName";
 
 async function ensureOpenPublicLeague(creatorId: string) {
   const open = await prisma.league.findFirst({
@@ -26,7 +27,7 @@ async function ensureOpenPublicLeague(creatorId: string) {
 
   await prisma.league.create({
     data: {
-      name: `Public League ${count + 1}`,
+      name: generateLeagueName(),
       weeklyAllowance: 300,
       inviteCode,
       creatorId,
@@ -133,19 +134,33 @@ router.get("/:leagueId/matchups", requireAuth, async (req: any, res: any) => {
     const { leagueId } = req.params;
     const { weekNumber } = req.query;
 
-    const matchups = await prisma.matchup.findMany({
-      where: {
-        leagueId,
-        ...(weekNumber ? { weekNumber: Number(weekNumber) } : {}),
-      },
-      include: {
-        homeUser: { select: { id: true, displayName: true, email: true } },
-        awayUser: { select: { id: true, displayName: true, email: true } },
-      },
-      orderBy: { weekNumber: "asc" },
-    });
+    const [matchups, memberships] = await Promise.all([
+      prisma.matchup.findMany({
+        where: {
+          leagueId,
+          ...(weekNumber ? { weekNumber: Number(weekNumber) } : {}),
+        },
+        include: {
+          homeUser: { select: { id: true, displayName: true, email: true } },
+          awayUser: { select: { id: true, displayName: true, email: true } },
+        },
+        orderBy: { weekNumber: "asc" },
+      }),
+      prisma.membership.findMany({
+        where: { leagueId, status: "ACTIVE" },
+        select: { userId: true, displayName: true, user: { select: { displayName: true } } },
+      }),
+    ]);
+    const nameMap: Record<string, string> = {};
+    for (const m of memberships as any[]) nameMap[m.userId] = m.displayName || m.user.displayName;
 
-    res.json(matchups);
+    const augmented = (matchups as any[]).map((mu) => ({
+      ...mu,
+      homeUser: { ...mu.homeUser, displayName: nameMap[mu.homeUser?.id] ?? mu.homeUser?.displayName },
+      awayUser: { ...mu.awayUser, displayName: nameMap[mu.awayUser?.id] ?? mu.awayUser?.displayName },
+    }));
+
+    res.json(augmented);
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }

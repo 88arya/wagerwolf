@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { prisma } from "../db/prisma";
 import { requireAuth, requireAdmin } from "../middleware/auth";
+import { generateLeagueName } from "../services/leagueName";
 
 const router = Router();
 
@@ -46,7 +47,7 @@ router.post("/leagues/public", requireAuth, requireAdmin, async (req: any, res: 
 
     const league = await prisma.league.create({
       data: {
-        name: `Public League ${count + 1}`,
+        name: generateLeagueName(),
         weeklyAllowance,
         inviteCode,
         creatorId: req.userId,

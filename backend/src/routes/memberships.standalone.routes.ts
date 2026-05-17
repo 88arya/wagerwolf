@@ -3,6 +3,8 @@ import { prisma } from "../db/prisma";
 import { requireAuth } from "../middleware/auth";
 import { scheduleMatchups } from "../services/scheduleMatchups";
 import { pickHelmetColor } from "../services/helmetColor";
+import { generateAbbreviation } from "../services/abbreviation";
+import { generateLeagueName } from "../services/leagueName";
 
 const router = Router();
 
@@ -30,7 +32,7 @@ async function ensureOpenPublicLeague(creatorId: string) {
 
   await prisma.league.create({
     data: {
-      name: `Public League ${count + 1}`,
+      name: generateLeagueName(),
       weeklyAllowance: 300,
       inviteCode,
       creatorId,
@@ -87,9 +89,13 @@ router.post("/join-by-code", requireAuth, async (req: any, res: any) => {
       res.status(400).json({ error: "This league has already started" }); return;
     }
 
-    const helmetColor = await pickHelmetColor(league.id);
+    const [helmetColor, joiningUser] = await Promise.all([
+      pickHelmetColor(league.id),
+      prisma.user.findUnique({ where: { id: req.userId }, select: { displayName: true } }),
+    ]);
+    const abbreviation = generateAbbreviation(joiningUser?.displayName ?? "");
     const membership = await prisma.membership.create({
-      data: { userId: req.userId, leagueId: league.id, balance: 0, status: "PENDING", helmetColor },
+      data: { userId: req.userId, leagueId: league.id, balance: 0, status: "PENDING", helmetColor, abbreviation },
     });
 
     res.status(201).json({ ...membership, league });
@@ -105,10 +111,14 @@ router.post("/join-by-code", requireAuth, async (req: any, res: any) => {
 // Public join: first try pure public leagues, then public-fill private leagues
 router.post("/join-public", requireAuth, async (req: any, res: any) => {
   try {
-    const existingMemberships = await prisma.membership.findMany({
-      where: { userId: req.userId },
-      select: { leagueId: true },
-    });
+    const [existingMemberships, publicUser] = await Promise.all([
+      prisma.membership.findMany({
+        where: { userId: req.userId },
+        select: { leagueId: true },
+      }),
+      prisma.user.findUnique({ where: { id: req.userId }, select: { displayName: true } }),
+    ]);
+    const abbreviation = generateAbbreviation(publicUser?.displayName ?? "");
     const existingLeagueIds = existingMemberships.map((m) => m.leagueId);
 
     // 1. Try pure public leagues
@@ -137,7 +147,7 @@ router.post("/join-public", requireAuth, async (req: any, res: any) => {
       });
       const helmetColor = await pickHelmetColor(league.id);
       const membership = await prisma.membership.create({
-        data: { userId: req.userId, leagueId: league.id, balance: activeWeek ? league.weeklyAllowance : 0, status: "ACTIVE", isPublicFill: false, helmetColor },
+        data: { userId: req.userId, leagueId: league.id, balance: activeWeek ? league.weeklyAllowance : 0, status: "ACTIVE", isPublicFill: false, helmetColor, abbreviation },
       });
       await scheduleMatchups(league.id);
 
@@ -187,7 +197,7 @@ router.post("/join-public", requireAuth, async (req: any, res: any) => {
     });
     const helmetColor = await pickHelmetColor(league.id);
     const membership = await prisma.membership.create({
-      data: { userId: req.userId, leagueId: league.id, balance: activeWeekFill ? league.weeklyAllowance : 0, status: "ACTIVE", isPublicFill: true, helmetColor },
+      data: { userId: req.userId, leagueId: league.id, balance: activeWeekFill ? league.weeklyAllowance : 0, status: "ACTIVE", isPublicFill: true, helmetColor, abbreviation },
     });
 
     await scheduleMatchups(league.id);

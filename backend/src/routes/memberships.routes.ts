@@ -3,6 +3,7 @@ import { prisma } from "../db/prisma";
 import { requireAuth } from "../middleware/auth";
 import { scheduleMatchups } from "../services/scheduleMatchups";
 import { pickHelmetColor } from "../services/helmetColor";
+import { generateAbbreviation } from "../services/abbreviation";
 
 const router = Router({ mergeParams: true });
 
@@ -22,9 +23,13 @@ router.post("/join", requireAuth, async (req: any, res: any) => {
     });
     const initialBalance = activeWeek ? league.weeklyAllowance : 0;
 
-    const helmetColor = await pickHelmetColor(leagueId);
+    const [helmetColor, user] = await Promise.all([
+      pickHelmetColor(leagueId),
+      prisma.user.findUnique({ where: { id: userId }, select: { displayName: true } }),
+    ]);
+    const abbreviation = generateAbbreviation(user?.displayName ?? "");
     const membership = await prisma.membership.create({
-      data: { userId, leagueId, balance: initialBalance, status: "ACTIVE", helmetColor },
+      data: { userId, leagueId, balance: initialBalance, status: "ACTIVE", helmetColor, abbreviation },
     });
 
     await scheduleMatchups(leagueId);
@@ -71,7 +76,8 @@ router.get("/leaderboard", requireAuth, async (req: any, res: any) => {
     const leaderboard = (memberships as any[])
       .map((m: any) => ({
         userId: m.user.id,
-        displayName: m.user.displayName,
+        displayName: m.displayName || m.user.displayName,
+        abbreviation: m.abbreviation,
         balance: m.balance,
         joinedAt: m.createdAt,
         helmetColor: m.helmetColor,
@@ -81,6 +87,43 @@ router.get("/leaderboard", requireAuth, async (req: any, res: any) => {
       .map((entry: any, i: number) => ({ rank: i + 1, ...entry }));
 
     res.json(leaderboard);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Update current user's abbreviation for this league
+router.patch("/my-abbreviation", requireAuth, async (req: any, res: any) => {
+  try {
+    const { id: leagueId } = req.params;
+    const { abbreviation } = req.body;
+    const trimmed = (abbreviation ?? "").trim().toUpperCase();
+    if (trimmed.length < 2 || trimmed.length > 3 || !/^[A-Z]+$/.test(trimmed)) {
+      res.status(400).json({ error: "Abbreviation must be 2–3 letters" }); return;
+    }
+    await prisma.membership.updateMany({
+      where: { leagueId, userId: req.userId },
+      data: { abbreviation: trimmed },
+    });
+    res.json({ abbreviation: trimmed });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Update current user's display name for this league
+router.patch("/my-display-name", requireAuth, async (req: any, res: any) => {
+  try {
+    const { id: leagueId } = req.params;
+    const { displayName } = req.body;
+    if (!displayName?.trim() || displayName.trim().length > 30) {
+      res.status(400).json({ error: "Display name must be 1–30 characters" }); return;
+    }
+    await prisma.membership.updateMany({
+      where: { leagueId, userId: req.userId },
+      data: { displayName: displayName.trim() },
+    });
+    res.json({ displayName: displayName.trim() });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
@@ -146,10 +189,14 @@ router.post("/members/:memberId/accept", requireAuth, async (req: any, res: any)
     });
     const initialBalance = activeWeek ? league.weeklyAllowance : 0;
 
-    const helmetColor = await pickHelmetColor(leagueId);
+    const [helmetColor, acceptedUser] = await Promise.all([
+      pickHelmetColor(leagueId),
+      prisma.user.findUnique({ where: { id: memberId }, select: { displayName: true } }),
+    ]);
+    const abbreviation = generateAbbreviation(acceptedUser?.displayName ?? "");
     const result = await prisma.membership.updateMany({
       where: { userId: memberId, leagueId, status: "PENDING" },
-      data: { status: "ACTIVE", balance: initialBalance, helmetColor },
+      data: { status: "ACTIVE", balance: initialBalance, helmetColor, abbreviation },
     });
     if (result.count === 0) { res.status(404).json({ error: "No pending request found" }); return; }
 
@@ -235,6 +282,13 @@ router.get("/feed", requireAuth, async (req: any, res: any) => {
       if (!week?.resolved) { res.json([]); return; }
     }
 
+    const leagueMembers = await prisma.membership.findMany({
+      where: { leagueId, status: "ACTIVE" },
+      include: { user: { select: { id: true, displayName: true } } },
+    });
+    const nameMap: Record<string, string> = {};
+    for (const m of leagueMembers as any[]) nameMap[m.userId] = m.displayName || m.user.displayName;
+
     const [picks, gamePicks, parlays] = await Promise.all([
       prisma.pick.findMany({
         where: {
@@ -294,9 +348,9 @@ router.get("/feed", requireAuth, async (req: any, res: any) => {
       : parlays;
 
     const feed = [
-      ...picks.map((p) => ({ type: "pick" as const, createdAt: p.createdAt, userId: p.user.id, displayName: p.user.displayName, pick: p })),
-      ...gamePicks.map((p) => ({ type: "gamepick" as const, createdAt: p.createdAt, userId: p.user.id, displayName: p.user.displayName, pick: p })),
-      ...visibleParlays.map((p) => ({ type: "parlay" as const, createdAt: p.createdAt, userId: p.user.id, displayName: p.user.displayName, pick: p })),
+      ...picks.map((p) => ({ type: "pick" as const, createdAt: p.createdAt, userId: p.user.id, displayName: nameMap[p.user.id] ?? p.user.displayName, pick: p })),
+      ...gamePicks.map((p) => ({ type: "gamepick" as const, createdAt: p.createdAt, userId: p.user.id, displayName: nameMap[p.user.id] ?? p.user.displayName, pick: p })),
+      ...visibleParlays.map((p) => ({ type: "parlay" as const, createdAt: p.createdAt, userId: p.user.id, displayName: nameMap[p.user.id] ?? p.user.displayName, pick: p })),
     ].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
     res.json(feed);
@@ -312,12 +366,25 @@ router.get("/messages", requireAuth, async (req: any, res: any) => {
     const membership = await prisma.membership.findFirst({ where: { leagueId, userId: req.userId, status: "ACTIVE" } });
     if (!membership) { res.status(403).json({ error: "Not a member" }); return; }
 
-    const messages = await prisma.leagueMessage.findMany({
-      where: { leagueId },
-      include: { user: { select: { id: true, displayName: true } } },
-      orderBy: { createdAt: "desc" },
-      take: 50,
-    });
+    const [rawMessages, memberships] = await Promise.all([
+      prisma.leagueMessage.findMany({
+        where: { leagueId },
+        include: { user: { select: { id: true, displayName: true } } },
+        orderBy: { createdAt: "desc" },
+        take: 50,
+      }),
+      prisma.membership.findMany({
+        where: { leagueId, status: "ACTIVE" },
+        select: { userId: true, displayName: true, user: { select: { displayName: true } } },
+      }),
+    ]);
+    const chatNameMap: Record<string, string> = {};
+    for (const m of memberships as any[]) chatNameMap[m.userId] = m.displayName || m.user.displayName;
+
+    const messages = (rawMessages as any[]).map((msg) => ({
+      ...msg,
+      user: { ...msg.user, displayName: chatNameMap[msg.user.id] ?? msg.user.displayName },
+    }));
 
     res.json(messages.reverse());
   } catch (err: any) {
@@ -335,12 +402,19 @@ router.post("/messages", requireAuth, async (req: any, res: any) => {
     const membership = await prisma.membership.findFirst({ where: { leagueId, userId: req.userId, status: "ACTIVE" } });
     if (!membership) { res.status(403).json({ error: "Not a member" }); return; }
 
-    const message = await prisma.leagueMessage.create({
-      data: { leagueId, userId: req.userId, body: body.trim() },
-      include: { user: { select: { id: true, displayName: true } } },
-    });
+    const [message, senderMembership] = await Promise.all([
+      prisma.leagueMessage.create({
+        data: { leagueId, userId: req.userId, body: body.trim() },
+        include: { user: { select: { id: true, displayName: true } } },
+      }),
+      prisma.membership.findFirst({
+        where: { leagueId, userId: req.userId },
+        select: { displayName: true },
+      }),
+    ]);
+    const leagueName = (senderMembership as any)?.displayName || (message as any).user.displayName;
 
-    res.status(201).json(message);
+    res.status(201).json({ ...message, user: { ...(message as any).user, displayName: leagueName } });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
@@ -457,7 +531,7 @@ router.get("/members/:targetUserId/stats", requireAuth, async (req: any, res: an
 
     res.json({
       userId: targetUserId,
-      displayName: (targetMembership as any).user.displayName,
+      displayName: (targetMembership as any).displayName || (targetMembership as any).user.displayName,
       balance: targetMembership.balance,
       rank,
       wins,

@@ -135,6 +135,8 @@ model Membership {
   status         MembershipStatus @default(ACTIVE)
   isPublicFill   Boolean          @default(false)
   helmetColor    String           @default("#2563EB")
+  displayName    String           @default("")
+  abbreviation   String           @default("")
   createdAt      DateTime         @default(now())
 
   user   User   @relation(fields: [userId], references: [id])
