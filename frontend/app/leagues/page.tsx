@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { api } from "@/lib/api";
 
-const NFL_CITIES = [
+const NFL_LOCATIONS = [
   "Arizona","Atlanta","Baltimore","Buffalo","Carolina","Chicago",
   "Cincinnati","Cleveland","Dallas","Denver","Detroit","Green Bay",
   "Houston","Indianapolis","Jacksonville","Kansas City","Las Vegas",
@@ -14,9 +14,18 @@ const NFL_CITIES = [
   "Tampa Bay","Tennessee","Washington",
 ];
 
+const NFL_NICKNAMES = [
+  "Cardinals","Falcons","Ravens","Bills","Panthers","Bears","Bengals",
+  "Browns","Cowboys","Broncos","Lions","Packers","Texans","Colts",
+  "Jaguars","Chiefs","Raiders","Chargers","Rams","Dolphins","Vikings",
+  "Patriots","Saints","Giants","Jets","Eagles","Steelers","49ers",
+  "Seahawks","Buccaneers","Titans","Commanders",
+];
+
 function randomLeagueName() {
-  const city = NFL_CITIES[Math.floor(Math.random() * NFL_CITIES.length)];
-  return `${city} ${new Date().getFullYear()} League`;
+  const loc = NFL_LOCATIONS[Math.floor(Math.random() * NFL_LOCATIONS.length)];
+  const nick = NFL_NICKNAMES[Math.floor(Math.random() * NFL_NICKNAMES.length)];
+  return `${loc} ${nick} ${new Date().getFullYear()} League`;
 }
 
 export default function LeaguesPage() {
@@ -277,7 +286,23 @@ export default function LeaguesPage() {
             <form className="form" onSubmit={createLeague}>
               <div>
                 <div className="label">League Name</div>
-                <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required />
+                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required style={{ flex: 1 }} />
+                  <button
+                    type="button"
+                    onClick={() => setForm((f) => ({ ...f, name: randomLeagueName() }))}
+                    title="Randomize name"
+                    style={{ flexShrink: 0, background: "none", border: "1px solid var(--border-2)", borderRadius: 6, padding: "6px 8px", cursor: "pointer", color: "var(--text-3)", display: "flex", alignItems: "center", justifyContent: "center", transition: "color 0.12s, border-color 0.12s" }}
+                    onMouseEnter={e => { const el = e.currentTarget; el.style.color = "var(--text)"; el.style.borderColor = "var(--text-3)"; }}
+                    onMouseLeave={e => { const el = e.currentTarget; el.style.color = "var(--text-3)"; el.style.borderColor = "var(--border-2)"; }}
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="23 4 23 10 17 10" />
+                      <polyline points="1 20 1 14 7 14" />
+                      <path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15" />
+                    </svg>
+                  </button>
+                </div>
               </div>
 
               <div>
@@ -317,12 +342,10 @@ export default function LeaguesPage() {
                     style={{ width: 38, height: 38, padding: 0, fontSize: "1.2rem", fontWeight: 700, flexShrink: 0 }}
                   >−</button>
                   <input
-                    type="number"
-                    min="25"
-                    max="1000000"
-                    step="25"
+                    type="text"
+                    inputMode="numeric"
                     value={form.weeklyAllowance}
-                    onChange={(e) => setForm({ ...form, weeklyAllowance: e.target.value })}
+                    onChange={(e) => setForm({ ...form, weeklyAllowance: e.target.value.replace(/[^0-9]/g, "") })}
                     style={{ textAlign: "center", fontWeight: 800, fontSize: "1.1rem", fontVariantNumeric: "tabular-nums" }}
                     required
                   />

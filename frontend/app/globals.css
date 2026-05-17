@@ -219,7 +219,7 @@ button.ghost:hover { border-color: var(--border-3); color: var(--text); backgrou
 /* ── Page wrappers ── */
 /* Full-width scroll containers — content centered via padding so scrollbar sits at viewport right edge */
 .page { flex: 1; min-height: 0; overflow-y: auto; scrollbar-gutter: stable; width: 100%; padding: 16px max(14px, calc((100% - 612px) / 2)) 24px; }
-.page-wide { flex: 1; min-height: 0; overflow-y: auto; scrollbar-gutter: stable; width: 100%; padding: 20px max(16px, calc((100% - 928px) / 2)) 24px; }
+.page-wide { flex: 1; min-height: 0; overflow-y: auto; scrollbar-gutter: stable; width: 100%; padding: 20px max(16px, calc((100% - 1220px) / 2)) 24px; }
 
 /* ── Typography ── */
 h1 {
