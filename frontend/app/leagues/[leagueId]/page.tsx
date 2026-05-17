@@ -6,6 +6,7 @@ import Link from "next/link";
 import TeamLogo from "@/components/TeamLogo";
 import { api } from "@/lib/api";
 import LeagueNav from "@/components/LeagueNav";
+import HelmetAvatar, { HELMET_COLORS } from "@/components/HelmetAvatar";
 
 function GearIcon() {
   return (
@@ -26,6 +27,8 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
   const [week, setWeek] = useState<any>(null);
   const [members, setMembers] = useState<any[]>([]);
   const [weekMatchups, setWeekMatchups] = useState<any[]>([]);
+  const [showColorPicker, setShowColorPicker] = useState(false);
+  const [myHelmetColor, setMyHelmetColor] = useState("#2563EB");
   const gamesScrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -57,6 +60,8 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
           } catch {}
         }
         setMembers(board);
+        const me = board.find((m: any) => m.userId === id);
+        if (me?.helmetColor) setMyHelmetColor(me.helmetColor);
       } catch {}
     }
     load();
@@ -71,6 +76,24 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
       try { alert(JSON.parse(err.message).error); } catch { alert(err.message); }
     }
   }
+
+  async function pickColor(color: string) {
+    const takenByOther = members.some(m => m.userId !== userId && m.helmetColor === color);
+    if (takenByOther) return;
+    setMyShieldColor(color);
+    setShowColorPicker(false);
+    setMembers(prev => prev.map(m => m.userId === userId ? { ...m, helmetColor: color } : m));
+    try {
+      await api(`/leagues/${leagueId}/my-helmet`, { method: "PATCH", body: JSON.stringify({ helmetColor: color }) });
+    } catch {
+      setMyHelmetColor(members.find(m => m.userId === userId)?.helmetColor ?? "#2563EB");
+    }
+  }
+
+  const takenColors = new Set(members.filter(m => m.userId !== userId).map(m => m.helmetColor));
+
+  const helmetColors: Record<string, string> = {};
+  members.forEach(m => { helmetColors[m.userId] = m.helmetColor ?? "#2563EB"; });
 
   const isCreator = league?.creatorId === userId;
   const myRecord = members.find((m) => m.userId === userId);
@@ -97,36 +120,39 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
 
   if (!league) return <div className="loading">Loading…</div>;
 
-  const RankRow = ({ m, rank, isMe, idx, total, href }: any) => {
-    const rankColor = rank === 1 ? "var(--gold)" : rank === 2 ? "var(--silver)" : rank === 3 ? "var(--bronze)" : "var(--text-3)";
+  const RANK_COLS = "22px 1fr 20px 20px 20px 26px";
+
+  const RankRow = ({ m, rank, isMe, idx, total, href, gb }: any) => {
+    const gbStr = gb === 0 ? "--" : gb % 1 === 0 ? String(gb) : String(gb);
     return (
       <Link href={href} style={{ textDecoration: "none", display: "block" }}>
         <div style={{
           display: "grid",
-          gridTemplateColumns: "22px 1fr auto",
-          padding: "8px 12px",
+          gridTemplateColumns: RANK_COLS,
+          padding: "6px 12px",
           borderBottom: idx < total - 1 ? "1px solid var(--border)" : "none",
-          background: isMe ? "var(--accent-dim)" : "transparent",
+          background: "transparent",
           alignItems: "center",
           cursor: "pointer",
           transition: "background 0.12s",
           gap: 6,
         }}>
-          <span style={{ fontWeight: 900, fontSize: "0.8rem", color: rankColor }}>{rank}</span>
-          <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
-            <div className="avatar" style={{
-              width: 22, height: 22, fontSize: "0.55rem", flexShrink: 0,
-              ...(rank === 1 ? { borderColor: "var(--gold)", color: "var(--gold)", background: "rgba(245,158,11,0.1)" } : {}),
-            }}>
-              {m.displayName.slice(0, 2).toUpperCase()}
+          <span style={{ fontWeight: 400, fontSize: "0.8rem", color: "var(--text)" }}>{rank}</span>
+          <div style={{ display: "flex", alignItems: "center", gap: 7, minWidth: 0 }}>
+            <div
+              onClick={isMe ? (e) => { e.preventDefault(); e.stopPropagation(); setShowColorPicker(true); } : undefined}
+              style={isMe ? { cursor: "pointer" } : undefined}
+            >
+              <HelmetAvatar color={helmetColors[m.userId] ?? "#2563EB"} initials={m.displayName.slice(0, 2)} size={24} />
             </div>
-            <span style={{ fontWeight: isMe ? 800 : 500, fontSize: "0.8rem", color: isMe ? "var(--accent)" : "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            <span style={{ fontWeight: isMe ? 700 : 400, fontSize: "0.8rem", color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
               {m.displayName}
             </span>
           </div>
-          <span style={{ fontSize: "0.75rem", fontWeight: 600, color: "var(--text-2)", whiteSpace: "nowrap" }}>
-            {m.wins}–{m.losses}–{m.ties}
-          </span>
+          <span style={{ fontSize: "0.72rem", fontWeight: 600, color: "var(--text-2)", textAlign: "center", fontVariantNumeric: "tabular-nums", fontWeight: 400 }}>{m.wins}</span>
+          <span style={{ fontSize: "0.72rem", fontWeight: 600, color: "var(--text-2)", textAlign: "center", fontVariantNumeric: "tabular-nums", fontWeight: 400 }}>{m.losses}</span>
+          <span style={{ fontSize: "0.72rem", fontWeight: 600, color: "var(--text-2)", textAlign: "center", fontVariantNumeric: "tabular-nums", fontWeight: 400 }}>{m.ties}</span>
+          <span style={{ fontSize: "0.72rem", fontWeight: 600, color: "var(--text-2)", textAlign: "center", fontVariantNumeric: "tabular-nums", fontWeight: 400 }}>{gbStr}</span>
         </div>
       </Link>
     );
@@ -173,145 +199,165 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
 
           {/* COL 1: Matchups (spans both rows) */}
           <div style={{ gridColumn: "1", gridRow: "1 / 3" }}>
-            <div className="card" style={{ padding: 0, overflow: "hidden" }}>
-              <div style={{ padding: "8px 10px", borderBottom: "1px solid var(--border)", background: "var(--surface-2)" }}>
-                <span style={{ fontSize: "0.58rem", fontWeight: 800, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--text-3)" }}>Matchups</span>
+            <div className="card" style={{ padding: 0, overflow: "hidden", background: "#fff" }}>
+              <div style={{ padding: "8px 10px", borderBottom: "1px solid var(--border)", background: "#fff" }}>
+                <span style={{ fontSize: "0.58rem", fontWeight: 800, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--text)" }}>Matchups</span>
               </div>
-              {weekMatchups.length === 0 ? (
-                <div className="empty" style={{ padding: "18px 0" }}>
-                  <div className="empty-text" style={{ fontSize: "0.75rem" }}>No matchups yet</div>
-                </div>
-              ) : weekMatchups.map((matchup: any, idx: number) => {
-                const isHome = matchup.homeUserId === userId;
-                const isAway = matchup.awayUserId === userId;
-                const homeName = matchup.isGhostMatchup && matchup.homeUser?.email === "ghost@system.internal" ? "Ghost" : (matchup.homeUser?.displayName ?? "—");
-                const awayName = matchup.isGhostMatchup && matchup.awayUser?.email === "ghost@system.internal" ? "Ghost" : (matchup.awayUser?.displayName ?? "—");
-                const homeScore = matchup.homeProfit ?? 0;
-                const awayScore = matchup.awayProfit ?? 0;
-                return (
-                  <div key={matchup.id} style={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    padding: "9px 12px",
-                    borderBottom: idx < weekMatchups.length - 1 ? "1px solid var(--border)" : "none",
-                    background: (isHome || isAway) ? "var(--accent-dim)" : "transparent",
-                    gap: 8,
-                  }}>
-                    {/* Players stacked */}
-                    <div style={{ display: "flex", flexDirection: "column", gap: 6, flex: 1, minWidth: 0 }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                        <div className="avatar" style={{ width: 18, height: 18, fontSize: "0.48rem", flexShrink: 0 }}>
-                          {homeName.slice(0, 2).toUpperCase()}
-                        </div>
-                        <span style={{ fontWeight: isHome ? 800 : 600, fontSize: "0.75rem", color: isHome ? "var(--accent)" : homeName === "Ghost" ? "var(--text-3)" : "var(--text)", fontStyle: homeName === "Ghost" ? "italic" : "normal", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                          {homeName}
-                        </span>
-                      </div>
-                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                        <div className="avatar" style={{ width: 18, height: 18, fontSize: "0.48rem", flexShrink: 0 }}>
-                          {awayName.slice(0, 2).toUpperCase()}
-                        </div>
-                        <span style={{ fontWeight: isAway ? 800 : 600, fontSize: "0.75rem", color: isAway ? "var(--accent)" : awayName === "Ghost" ? "var(--text-3)" : "var(--text)", fontStyle: awayName === "Ghost" ? "italic" : "normal", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                          {awayName}
-                        </span>
-                      </div>
-                    </div>
-                    {/* Scores */}
-                    <div style={{ display: "flex", flexDirection: "column", gap: 6, alignItems: "flex-end", flexShrink: 0 }}>
-                      <span style={{ fontSize: "0.72rem", fontWeight: 700, color: "var(--text-2)", fontVariantNumeric: "tabular-nums" }}>${homeScore}</span>
-                      <span style={{ fontSize: "0.72rem", fontWeight: 700, color: "var(--text-2)", fontVariantNumeric: "tabular-nums" }}>${awayScore}</span>
-                    </div>
+              {(() => {
+                const totalSlots = Math.floor((league?.maxTeams ?? 0) / 2);
+                const slots = Array.from({ length: Math.max(totalSlots, weekMatchups.length) }, (_, i) => weekMatchups[i] ?? null);
+                if (slots.length === 0) return (
+                  <div className="empty" style={{ padding: "18px 0" }}>
+                    <div className="empty-text" style={{ fontSize: "0.75rem" }}>No matchups yet</div>
                   </div>
                 );
-              })}
+                return slots.map((matchup: any, idx: number) => {
+                  const total = slots.length;
+                  if (!matchup) return (
+                    <div key={`blank-${idx}`} style={{
+                      display: "flex", alignItems: "center", padding: "9px 12px",
+                      borderBottom: idx < total - 1 ? "1px solid var(--border)" : "none",
+                      gap: 8, minHeight: 54,
+                    }}>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 6, flex: 1 }}>
+                        <div style={{ height: 14, width: 70, background: "var(--surface-2)", borderRadius: 3 }} />
+                        <div style={{ height: 14, width: 70, background: "var(--surface-2)", borderRadius: 3 }} />
+                      </div>
+                    </div>
+                  );
+                  const isHome = matchup.homeUserId === userId;
+                  const isAway = matchup.awayUserId === userId;
+                  const homeName = matchup.isGhostMatchup && matchup.homeUser?.email === "ghost@system.internal" ? "Ghost" : (matchup.homeUser?.displayName ?? "—");
+                  const awayName = matchup.isGhostMatchup && matchup.awayUser?.email === "ghost@system.internal" ? "Ghost" : (matchup.awayUser?.displayName ?? "—");
+                  const homeScore = matchup.homeProfit ?? 0;
+                  const awayScore = matchup.awayProfit ?? 0;
+                  return (
+                    <div key={matchup.id} style={{
+                      display: "flex", alignItems: "center", justifyContent: "space-between",
+                      padding: "9px 12px",
+                      borderBottom: idx < total - 1 ? "1px solid var(--border)" : "none",
+                      background: "transparent", gap: 8,
+                    }}>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 6, flex: 1, minWidth: 0 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                          <HelmetAvatar color={helmetColors[matchup.homeUserId] ?? "#2563EB"} initials={homeName.slice(0, 2)} size={20} />
+                          <span style={{ fontWeight: isHome ? 700 : 400, fontSize: "0.75rem", color: "var(--text)", fontStyle: homeName === "Ghost" ? "italic" : "normal", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                            {homeName}
+                          </span>
+                        </div>
+                        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                          <HelmetAvatar color={helmetColors[matchup.awayUserId] ?? "#2563EB"} initials={awayName.slice(0, 2)} size={20} />
+                          <span style={{ fontWeight: isAway ? 700 : 400, fontSize: "0.75rem", color: "var(--text)", fontStyle: awayName === "Ghost" ? "italic" : "normal", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                            {awayName}
+                          </span>
+                        </div>
+                      </div>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 6, alignItems: "flex-end", flexShrink: 0 }}>
+                        <span style={{ fontSize: "0.72rem", fontWeight: 700, color: "var(--text)", fontVariantNumeric: "tabular-nums" }}>${homeScore}</span>
+                        <span style={{ fontSize: "0.72rem", fontWeight: 700, color: "var(--text)", fontVariantNumeric: "tabular-nums" }}>${awayScore}</span>
+                      </div>
+                    </div>
+                  );
+                });
+              })()}
             </div>
           </div>
 
           {/* CENTER TOP: League Banner */}
           <div style={{ gridColumn: "2", gridRow: "1", marginBottom: 14 }}>
-            <div style={{
-              background: "var(--surface)",
-              border: "1px solid var(--border)",
-              borderRadius: "var(--radius-lg)",
-              borderTop: "3px solid var(--accent)",
-              padding: "16px 18px",
-              position: "relative",
-            }}>
-              {isCreator && (
-                <Link
-                  href={`/leagues/${leagueId}/settings`}
-                  style={{
-                    position: "absolute", top: 12, right: 12,
-                    color: "var(--text-3)",
-                    display: "flex", alignItems: "center", justifyContent: "center",
-                    width: 28, height: 28, borderRadius: 6,
-                    background: "var(--surface-2)",
-                    transition: "background 0.12s, color 0.12s",
-                  }}
-                  onMouseEnter={e => {
-                    (e.currentTarget as HTMLAnchorElement).style.background = "var(--surface-3)";
-                    (e.currentTarget as HTMLAnchorElement).style.color = "var(--text)";
-                  }}
-                  onMouseLeave={e => {
-                    (e.currentTarget as HTMLAnchorElement).style.background = "var(--surface-2)";
-                    (e.currentTarget as HTMLAnchorElement).style.color = "var(--text-3)";
-                  }}
-                >
-                  <GearIcon />
-                </Link>
-              )}
-              <div style={{ fontSize: "1.4rem", fontWeight: 900, letterSpacing: "-0.02em", color: "var(--text)", lineHeight: 1.2, paddingRight: isCreator ? 36 : 0 }}>
-                {league.name}
+            <div style={{ background: "#fff", border: "1px solid var(--border)", borderRadius: "var(--radius-lg)", overflow: "hidden" }}>
+              {/* Accent strip */}
+              <div style={{ height: 6, background: "var(--accent)" }} />
+              {/* Banner body */}
+              <div style={{ padding: "16px 20px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16 }}>
+                <div style={{ fontSize: "1.4rem", fontWeight: 900, letterSpacing: "-0.02em", color: "var(--text)", lineHeight: 1.2 }}>
+                  {league.name}
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 4, flexShrink: 0, textAlign: "right" }}>
+                  <span style={{ fontSize: "0.78rem", color: "var(--text-2)" }}>
+                    <span style={{ fontWeight: 700, color: "var(--text)" }}>Teams:</span> {members.length}/{league.maxTeams}
+                  </span>
+                  <span style={{ fontSize: "0.78rem", color: "var(--text-2)" }}>
+                    <span style={{ fontWeight: 700, color: "var(--text)" }}>Allowance:</span> ${league.weeklyAllowance}/wk
+                  </span>
+                </div>
               </div>
             </div>
           </div>
 
           {/* CENTER BOTTOM: Power Rankings */}
           <div style={{ gridColumn: "2", gridRow: "2" }}>
-            <div className="card" style={{ padding: 0, overflow: "hidden" }}>
-              <div style={{ padding: "8px 12px", background: "var(--surface-2)", borderBottom: "1px solid var(--border)", display: "grid", gridTemplateColumns: "22px 1fr auto", gap: 6, alignItems: "center" }}>
-                <span style={{ fontSize: "0.58rem", fontWeight: 800, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--text-3)", gridColumn: "1 / 4" }}>Power Rankings</span>
+            <div className="card" style={{ padding: 0, overflow: "hidden", background: "#fff" }}>
+              <div style={{ padding: "8px 12px", background: "#fff", borderBottom: "1px solid var(--border)", display: "grid", gridTemplateColumns: "22px 1fr auto", gap: 6, alignItems: "center" }}>
+                <span style={{ fontSize: "0.58rem", fontWeight: 800, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--text)", gridColumn: "1 / 4" }}>Power Rankings</span>
               </div>
               <div style={{
-                display: "grid", gridTemplateColumns: "22px 1fr auto",
+                display: "grid", gridTemplateColumns: RANK_COLS,
                 padding: "6px 12px", gap: 6,
-                background: "var(--surface-2)", borderBottom: "1px solid var(--border)",
+                background: "#fff", borderBottom: "1px solid var(--border)",
               }}>
-                {["#", "Player", "W-L-T"].map((h, i) => (
-                  <span key={h} style={{ fontSize: "0.58rem", fontWeight: 800, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--text-3)", textAlign: i === 2 ? "right" : "left" }}>{h}</span>
+                {["#", "Player", "W", "L", "T", "GB"].map((h, i) => (
+                  <span key={h} style={{ fontSize: "0.58rem", fontWeight: 800, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--text)", textAlign: i >= 2 ? "center" : "left" }}>{h}</span>
                 ))}
               </div>
-              {powerRankings.length === 0 && (
-                <div className="empty" style={{ padding: "18px 0" }}><div className="empty-text">No members yet</div></div>
-              )}
-              {powerRankings.map((m: any, idx: number) => (
-                <RankRow key={m.userId} m={m} rank={m.powerRank} isMe={m.userId === userId} idx={idx} total={powerRankings.length} href={`/leagues/${leagueId}/members/${m.userId}`} />
-              ))}
+              {(() => {
+                const totalSlots = league?.maxTeams ?? 0;
+                const slots = Array.from({ length: Math.max(totalSlots, powerRankings.length) }, (_, i) => powerRankings[i] ?? null);
+                const leader = powerRankings[0];
+                return slots.map((m: any, idx: number) => {
+                  const total = slots.length;
+                  if (!m) return (
+                    <div key={`blank-pr-${idx}`} style={{ display: "grid", gridTemplateColumns: RANK_COLS, padding: "8px 12px", borderBottom: idx < total - 1 ? "1px solid var(--border)" : "none", gap: 6, alignItems: "center", minHeight: 38 }}>
+                      <div style={{ height: 12, width: 14, background: "var(--surface-2)", borderRadius: 3 }} />
+                      <div style={{ height: 12, width: 70, background: "var(--surface-2)", borderRadius: 3 }} />
+                      <div style={{ height: 12, width: 14, background: "var(--surface-2)", borderRadius: 3 }} />
+                      <div style={{ height: 12, width: 14, background: "var(--surface-2)", borderRadius: 3 }} />
+                      <div style={{ height: 12, width: 14, background: "var(--surface-2)", borderRadius: 3 }} />
+                      <div style={{ height: 12, width: 26, background: "var(--surface-2)", borderRadius: 3 }} />
+                    </div>
+                  );
+                  const gb = leader ? ((leader.wins - m.wins) + (m.losses - leader.losses)) / 2 : 0;
+                  return <RankRow key={m.userId} m={m} rank={m.powerRank} isMe={m.userId === userId} idx={idx} total={total} href={`/leagues/${leagueId}/members/${m.userId}`} gb={gb} />;
+                });
+              })()}
             </div>
           </div>
 
           {/* RIGHT: Standings (spans both rows) */}
           <div style={{ gridColumn: "3", gridRow: "1 / 3" }}>
-            <div className="card" style={{ padding: 0, overflow: "hidden" }}>
-              <div style={{ padding: "8px 12px", background: "var(--surface-2)", borderBottom: "1px solid var(--border)" }}>
-                <span style={{ fontSize: "0.58rem", fontWeight: 800, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--text-3)" }}>Standings</span>
+            <div className="card" style={{ padding: 0, overflow: "hidden", background: "#fff" }}>
+              <div style={{ padding: "8px 12px", background: "#fff", borderBottom: "1px solid var(--border)" }}>
+                <span style={{ fontSize: "0.58rem", fontWeight: 800, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--text)" }}>Standings</span>
               </div>
               <div style={{
-                display: "grid", gridTemplateColumns: "22px 1fr auto",
+                display: "grid", gridTemplateColumns: RANK_COLS,
                 padding: "6px 12px", gap: 6,
-                background: "var(--surface-2)", borderBottom: "1px solid var(--border)",
+                background: "#fff", borderBottom: "1px solid var(--border)",
               }}>
-                {["#", "Player", "W-L-T"].map((h, i) => (
-                  <span key={h} style={{ fontSize: "0.58rem", fontWeight: 800, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--text-3)", textAlign: i === 2 ? "right" : "left" }}>{h}</span>
+                {["#", "Player", "W", "L", "T", "GB"].map((h, i) => (
+                  <span key={h} style={{ fontSize: "0.58rem", fontWeight: 800, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--text)", textAlign: i >= 2 ? "center" : "left" }}>{h}</span>
                 ))}
               </div>
-              {members.length === 0 && (
-                <div className="empty" style={{ padding: "18px 0" }}><div className="empty-text">No members yet</div></div>
-              )}
-              {members.map((m: any, idx: number) => (
-                <RankRow key={m.userId} m={m} rank={m.rank} isMe={m.userId === userId} idx={idx} total={members.length} href={`/leagues/${leagueId}/members/${m.userId}`} />
-              ))}
+              {(() => {
+                const totalSlots = league?.maxTeams ?? 0;
+                const slots = Array.from({ length: Math.max(totalSlots, members.length) }, (_, i) => members[i] ?? null);
+                const leader = members[0];
+                return slots.map((m: any, idx: number) => {
+                  const total = slots.length;
+                  if (!m) return (
+                    <div key={`blank-st-${idx}`} style={{ display: "grid", gridTemplateColumns: RANK_COLS, padding: "8px 12px", borderBottom: idx < total - 1 ? "1px solid var(--border)" : "none", gap: 6, alignItems: "center", minHeight: 38 }}>
+                      <div style={{ height: 12, width: 14, background: "var(--surface-2)", borderRadius: 3 }} />
+                      <div style={{ height: 12, width: 70, background: "var(--surface-2)", borderRadius: 3 }} />
+                      <div style={{ height: 12, width: 14, background: "var(--surface-2)", borderRadius: 3 }} />
+                      <div style={{ height: 12, width: 14, background: "var(--surface-2)", borderRadius: 3 }} />
+                      <div style={{ height: 12, width: 14, background: "var(--surface-2)", borderRadius: 3 }} />
+                      <div style={{ height: 12, width: 26, background: "var(--surface-2)", borderRadius: 3 }} />
+                    </div>
+                  );
+                  const gb = leader ? ((leader.wins - m.wins) + (m.losses - leader.losses)) / 2 : 0;
+                  return <RankRow key={m.userId} m={m} rank={m.rank} isMe={m.userId === userId} idx={idx} total={total} href={`/leagues/${leagueId}/members/${m.userId}`} gb={gb} />;
+                });
+              })()}
             </div>
 
             {!isCreator && !league.seasonStarted && membership && (
@@ -327,24 +373,27 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
 
         {/* Horizontal games strip */}
         {week?.games?.length > 0 && (
-          <div style={{ marginTop: 14, display: "flex", border: "1px solid var(--border)", background: "#f4f8f8", overflow: "hidden" }}>
-            <div onClick={() => { const el = gamesScrollRef.current; if (!el) return; const w = (el.firstElementChild as HTMLElement).getBoundingClientRect().width; el.scrollTo({ left: Math.round(el.scrollLeft / w - 1) * w, behavior: "smooth" }); }} onMouseEnter={e => (e.currentTarget.style.background = "#fff")} onMouseLeave={e => (e.currentTarget.style.background = "#f4f8f8")} style={{ flexShrink: 0, width: 28, background: "#f4f8f8", borderRight: "1px solid var(--border)", cursor: "pointer", color: "var(--text-2)", fontSize: "0.8rem", display: "flex", alignItems: "center", justifyContent: "center", userSelect: "none", transition: "background 0.12s" }}>‹</div>
-            <div style={{ flex: 1, overflow: "hidden" }}>
+          <div style={{ marginTop: 14, display: "flex", border: "1px solid var(--border)", background: "#f4f6f9", overflow: "hidden", borderRadius: "var(--radius-lg)" }}>
+            <div onClick={() => { const el = gamesScrollRef.current; if (!el) return; const w = (el.firstElementChild as HTMLElement).getBoundingClientRect().width; el.scrollTo({ left: Math.round(el.scrollLeft / w - 1) * w, behavior: "smooth" }); }} onMouseEnter={e => (e.currentTarget.style.background = "#fff")} onMouseLeave={e => (e.currentTarget.style.background = "#f4f6f9")} style={{ flexShrink: 0, width: 28, background: "#f4f6f9", borderRight: "1px solid var(--border)", cursor: "pointer", color: "var(--text-3)", display: "flex", alignItems: "center", justifyContent: "center", userSelect: "none", transition: "background 0.12s" }}><svg width="6" height="10" viewBox="0 0 9 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="7,1 2,7 7,13" /></svg></div>
+            <div style={{ flex: 1, overflow: "hidden", position: "relative" }}>
+              <div style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: 14, background: "linear-gradient(to right, rgba(0,0,0,0.07), transparent)", zIndex: 1, pointerEvents: "none" }} />
+              <div style={{ position: "absolute", right: 0, top: 0, bottom: 0, width: 14, background: "linear-gradient(to left, rgba(0,0,0,0.07), transparent)", zIndex: 1, pointerEvents: "none" }} />
             <div ref={gamesScrollRef} style={{ display: "flex", overflowX: "auto", scrollbarWidth: "none" }}>
               {week.games.map((game: any, idx: number) => {
                 const now = new Date();
                 const isLive = game.status === "IN_PROGRESS" ||
                   (game.status !== "FINAL" && game.status !== "CANCELLED" && game.gameDate && new Date(game.gameDate) <= now);
                 return (
-                  <div key={game.id} onMouseEnter={e => (e.currentTarget.style.background = "#fff")} onMouseLeave={e => (e.currentTarget.style.background = "transparent")} style={{
+                  <div key={game.id} onMouseEnter={e => (e.currentTarget.style.background = "#fff")} onMouseLeave={e => (e.currentTarget.style.background = "#f4f6f9")} style={{
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "space-between",
                     padding: "9px 14px",
-                    borderLeft: idx > 0 ? "1px solid var(--border)" : "none",
                     gap: 16,
                     flex: "0 0 calc(100% / 6)",
                     boxSizing: "border-box",
+                    background: "#f4f6f9",
+                    borderRight: "1px solid var(--border)",
                     transition: "background 0.12s",
                     cursor: "default",
                   }}>
@@ -386,11 +435,54 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
               })}
             </div>
             </div>
-            <div onClick={() => { const el = gamesScrollRef.current; if (!el) return; const w = (el.firstElementChild as HTMLElement).getBoundingClientRect().width; el.scrollTo({ left: Math.round(el.scrollLeft / w + 1) * w, behavior: "smooth" }); }} onMouseEnter={e => (e.currentTarget.style.background = "#fff")} onMouseLeave={e => (e.currentTarget.style.background = "#f4f8f8")} style={{ flexShrink: 0, width: 28, background: "#f4f8f8", borderLeft: "1px solid var(--border)", cursor: "pointer", color: "var(--text-2)", fontSize: "0.8rem", display: "flex", alignItems: "center", justifyContent: "center", userSelect: "none", transition: "background 0.12s" }}>›</div>
+            <div onClick={() => { const el = gamesScrollRef.current; if (!el) return; const w = (el.firstElementChild as HTMLElement).getBoundingClientRect().width; el.scrollTo({ left: Math.round(el.scrollLeft / w + 1) * w, behavior: "smooth" }); }} onMouseEnter={e => (e.currentTarget.style.background = "#fff")} onMouseLeave={e => (e.currentTarget.style.background = "#f4f6f9")} style={{ flexShrink: 0, width: 28, background: "#f4f6f9", borderLeft: "1px solid var(--border)", marginLeft: -1, cursor: "pointer", color: "var(--text-3)", display: "flex", alignItems: "center", justifyContent: "center", userSelect: "none", transition: "background 0.12s" }}><svg width="6" height="10" viewBox="0 0 9 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="2,1 7,7 2,13" /></svg></div>
           </div>
         )}
 
+
       </div>
+
+      {showColorPicker && (
+        <div
+          onClick={() => setShowColorPicker(false)}
+          style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.35)", zIndex: 50, display: "flex", alignItems: "center", justifyContent: "center" }}
+        >
+          <div onClick={e => e.stopPropagation()} style={{ background: "#fff", borderRadius: 12, padding: 20, width: 280, boxShadow: "0 8px 32px rgba(0,0,0,0.18)" }}>
+            <div style={{ fontWeight: 700, fontSize: "0.9rem", marginBottom: 14, color: "var(--text)" }}>Choose your helmet color</div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 8 }}>
+              {HELMET_COLORS.map(c => {
+                const taken = takenColors.has(c);
+                const selected = (helmetColors[userId] ?? "#2563EB") === c;
+                return (
+                  <div
+                    key={c}
+                    onClick={() => !taken && pickColor(c)}
+                    style={{
+                      width: 36, height: 36, borderRadius: "50%", background: c,
+                      cursor: taken ? "not-allowed" : "pointer",
+                      opacity: taken ? 0.3 : 1,
+                      outline: selected ? "3px solid var(--accent)" : "2px solid transparent",
+                      outlineOffset: 2,
+                      transition: "transform 0.1s",
+                    }}
+                  />
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isCreator && (
+        <Link
+          href={`/leagues/${leagueId}/settings`}
+          style={{ position: "fixed", bottom: 80, right: 20, width: 44, height: 44, borderRadius: "50%", background: "#fff", border: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-3)", boxShadow: "0 2px 8px rgba(0,0,0,0.12)", transition: "color 0.12s, box-shadow 0.12s", zIndex: 40 }}
+          onMouseEnter={e => { const el = e.currentTarget as HTMLAnchorElement; el.style.color = "var(--text)"; el.style.boxShadow = "0 4px 14px rgba(0,0,0,0.18)"; }}
+          onMouseLeave={e => { const el = e.currentTarget as HTMLAnchorElement; el.style.color = "var(--text-3)"; el.style.boxShadow = "0 2px 8px rgba(0,0,0,0.12)"; }}
+        >
+          <GearIcon />
+        </Link>
+      )}
     </>
   );
 }
