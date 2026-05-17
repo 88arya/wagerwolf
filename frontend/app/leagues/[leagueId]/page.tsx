@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import TeamLogo from "@/components/TeamLogo";
@@ -26,6 +26,7 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
   const [week, setWeek] = useState<any>(null);
   const [members, setMembers] = useState<any[]>([]);
   const [weekMatchups, setWeekMatchups] = useState<any[]>([]);
+  const gamesScrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     async function load() {
@@ -161,79 +162,17 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
         )}
 
 
-        {/* 4-column grid: Games | Matchups | Banner + Power Rankings | Standings */}
+        {/* 3-column grid: Matchups | Banner + Power Rankings | Standings */}
         <div style={{
           display: "grid",
-          gridTemplateColumns: "148px 185px 1fr 260px",
+          gridTemplateColumns: "185px 1fr 260px",
           gridTemplateRows: "auto 1fr",
           gap: "0 14px",
           alignItems: "start",
         }}>
 
-          {/* LEFT: This Week's Games (condensed, spans both rows) */}
+          {/* COL 1: Matchups (spans both rows) */}
           <div style={{ gridColumn: "1", gridRow: "1 / 3" }}>
-            <div className="card" style={{ padding: 0, overflow: "hidden" }}>
-              <div style={{ padding: "8px 10px", borderBottom: "1px solid var(--border)", background: "var(--surface-2)" }}>
-                <span style={{ fontSize: "0.58rem", fontWeight: 800, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--text-3)" }}>NFL Games</span>
-              </div>
-              {!week || !week.games?.length ? (
-                <div className="empty" style={{ padding: "18px 0" }}>
-                  <div className="empty-text" style={{ fontSize: "0.75rem" }}>No games yet</div>
-                </div>
-              ) : week.games.map((game: any, idx: number) => {
-                const now = new Date();
-                const isLive = game.status === "IN_PROGRESS" ||
-                  (game.status !== "FINAL" && game.status !== "CANCELLED" && game.gameDate && new Date(game.gameDate) <= now);
-                return (
-                  <div key={game.id} style={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    padding: "9px 12px",
-                    borderBottom: idx < week.games.length - 1 ? "1px solid var(--border)" : "none",
-                    gap: 8,
-                  }}>
-                    {/* Teams stacked: away top, home bottom */}
-                    <div style={{ display: "flex", flexDirection: "column", gap: 6, flex: 1 }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
-                        <TeamLogo team={game.awayTeam} size={20} plain />
-                        <span style={{ fontWeight: 700, fontSize: "0.75rem", color: "var(--text)" }}>{game.awayTeam}</span>
-                      </div>
-                      <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
-                        <TeamLogo team={game.homeTeam} size={20} plain />
-                        <span style={{ fontWeight: 700, fontSize: "0.75rem", color: "var(--text)" }}>{game.homeTeam}</span>
-                      </div>
-                    </div>
-                    {/* Score / time */}
-                    <div style={{ textAlign: "right", flexShrink: 0, display: "flex", flexDirection: "column", gap: 3, alignItems: "flex-end" }}>
-                      {game.status === "FINAL" ? (
-                        <>
-                          <span style={{ fontSize: "0.7rem", fontWeight: 800, color: "var(--text-2)", fontVariantNumeric: "tabular-nums" }}>{game.awayScore}</span>
-                          <span style={{ fontSize: "0.7rem", fontWeight: 800, color: "var(--text-2)", fontVariantNumeric: "tabular-nums" }}>{game.homeScore}</span>
-                        </>
-                      ) : isLive ? (
-                        <span style={{ fontSize: "0.52rem", color: "var(--win)", fontWeight: 800, letterSpacing: "0.04em" }}>LIVE</span>
-                      ) : game.status === "CANCELLED" ? (
-                        <span style={{ fontSize: "0.52rem", color: "var(--loss)", fontWeight: 800 }}>CANC</span>
-                      ) : game.gameDate ? (
-                        <>
-                          <span style={{ fontSize: "0.68rem", fontWeight: 700, color: "var(--text-3)" }}>
-                            {new Date(game.gameDate).toLocaleDateString("en-US", { weekday: "short", timeZone: "America/New_York" })}
-                          </span>
-                          <span style={{ fontSize: "0.65rem", fontWeight: 600, color: "var(--text-3)" }}>
-                            {new Date(game.gameDate).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: "America/New_York" })}
-                          </span>
-                        </>
-                      ) : null}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* COL 2: Matchups (spans both rows) */}
-          <div style={{ gridColumn: "2", gridRow: "1 / 3" }}>
             <div className="card" style={{ padding: 0, overflow: "hidden" }}>
               <div style={{ padding: "8px 10px", borderBottom: "1px solid var(--border)", background: "var(--surface-2)" }}>
                 <span style={{ fontSize: "0.58rem", fontWeight: 800, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--text-3)" }}>Matchups</span>
@@ -290,7 +229,7 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
           </div>
 
           {/* CENTER TOP: League Banner */}
-          <div style={{ gridColumn: "3", gridRow: "1", marginBottom: 14 }}>
+          <div style={{ gridColumn: "2", gridRow: "1", marginBottom: 14 }}>
             <div style={{
               background: "var(--surface)",
               border: "1px solid var(--border)",
@@ -329,7 +268,7 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
           </div>
 
           {/* CENTER BOTTOM: Power Rankings */}
-          <div style={{ gridColumn: "3", gridRow: "2" }}>
+          <div style={{ gridColumn: "2", gridRow: "2" }}>
             <div className="card" style={{ padding: 0, overflow: "hidden" }}>
               <div style={{ padding: "8px 12px", background: "var(--surface-2)", borderBottom: "1px solid var(--border)", display: "grid", gridTemplateColumns: "22px 1fr auto", gap: 6, alignItems: "center" }}>
                 <span style={{ fontSize: "0.58rem", fontWeight: 800, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--text-3)", gridColumn: "1 / 4" }}>Power Rankings</span>
@@ -353,7 +292,7 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
           </div>
 
           {/* RIGHT: Standings (spans both rows) */}
-          <div style={{ gridColumn: "4", gridRow: "1 / 3" }}>
+          <div style={{ gridColumn: "3", gridRow: "1 / 3" }}>
             <div className="card" style={{ padding: 0, overflow: "hidden" }}>
               <div style={{ padding: "8px 12px", background: "var(--surface-2)", borderBottom: "1px solid var(--border)" }}>
                 <span style={{ fontSize: "0.58rem", fontWeight: 800, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--text-3)" }}>Standings</span>
@@ -385,6 +324,72 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
           </div>
 
         </div>
+
+        {/* Horizontal games strip */}
+        {week?.games?.length > 0 && (
+          <div style={{ marginTop: 14, display: "flex", border: "1px solid var(--border)", background: "#f4f8f8", overflow: "hidden" }}>
+            <div onClick={() => { const el = gamesScrollRef.current; if (!el) return; const w = (el.firstElementChild as HTMLElement).getBoundingClientRect().width; el.scrollTo({ left: Math.round(el.scrollLeft / w - 1) * w, behavior: "smooth" }); }} onMouseEnter={e => (e.currentTarget.style.background = "#fff")} onMouseLeave={e => (e.currentTarget.style.background = "#f4f8f8")} style={{ flexShrink: 0, width: 28, background: "#f4f8f8", borderRight: "1px solid var(--border)", cursor: "pointer", color: "var(--text-2)", fontSize: "0.8rem", display: "flex", alignItems: "center", justifyContent: "center", userSelect: "none", transition: "background 0.12s" }}>‹</div>
+            <div style={{ flex: 1, overflow: "hidden" }}>
+            <div ref={gamesScrollRef} style={{ display: "flex", overflowX: "auto", scrollbarWidth: "none" }}>
+              {week.games.map((game: any, idx: number) => {
+                const now = new Date();
+                const isLive = game.status === "IN_PROGRESS" ||
+                  (game.status !== "FINAL" && game.status !== "CANCELLED" && game.gameDate && new Date(game.gameDate) <= now);
+                return (
+                  <div key={game.id} onMouseEnter={e => (e.currentTarget.style.background = "#fff")} onMouseLeave={e => (e.currentTarget.style.background = "transparent")} style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    padding: "9px 14px",
+                    borderLeft: idx > 0 ? "1px solid var(--border)" : "none",
+                    gap: 16,
+                    flex: "0 0 calc(100% / 6)",
+                    boxSizing: "border-box",
+                    transition: "background 0.12s",
+                    cursor: "default",
+                  }}>
+                    {/* Teams stacked: away top, home bottom */}
+                    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+                        <TeamLogo team={game.awayTeam} size={20} plain />
+                        <span style={{ fontWeight: 700, fontSize: "0.75rem", color: "var(--text)" }}>{game.awayTeam}</span>
+                      </div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+                        <TeamLogo team={game.homeTeam} size={20} plain />
+                        <span style={{ fontWeight: 700, fontSize: "0.75rem", color: "var(--text)" }}>{game.homeTeam}</span>
+                      </div>
+                    </div>
+                    {/* Score / time */}
+                    <div style={{ textAlign: "right", flexShrink: 0, display: "flex", flexDirection: "column", gap: 3, alignItems: "flex-end" }}>
+                      {game.status === "FINAL" ? (
+                        <>
+                          <span style={{ fontSize: "0.7rem", fontWeight: 800, color: "var(--text-2)", fontVariantNumeric: "tabular-nums" }}>{game.awayScore}</span>
+                          <span style={{ fontSize: "0.7rem", fontWeight: 800, color: "var(--text-2)", fontVariantNumeric: "tabular-nums" }}>{game.homeScore}</span>
+                        </>
+                      ) : isLive ? (
+                        <span style={{ fontSize: "0.52rem", color: "var(--win)", fontWeight: 800, letterSpacing: "0.04em" }}>LIVE</span>
+                      ) : game.status === "CANCELLED" ? (
+                        <span style={{ fontSize: "0.52rem", color: "var(--loss)", fontWeight: 800 }}>CANC</span>
+                      ) : game.gameDate ? (
+                        <>
+                          <span style={{ fontSize: "0.68rem", fontWeight: 700, color: "var(--text-3)" }}>
+                            {new Date(game.gameDate).toLocaleDateString("en-US", { weekday: "short", timeZone: "America/New_York" })}
+                          </span>
+                          <span style={{ fontSize: "0.65rem", fontWeight: 600, color: "var(--text-3)" }}>
+                            {new Date(game.gameDate).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: "America/New_York" })}
+                          </span>
+                        </>
+                      ) : null}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            </div>
+            <div onClick={() => { const el = gamesScrollRef.current; if (!el) return; const w = (el.firstElementChild as HTMLElement).getBoundingClientRect().width; el.scrollTo({ left: Math.round(el.scrollLeft / w + 1) * w, behavior: "smooth" }); }} onMouseEnter={e => (e.currentTarget.style.background = "#fff")} onMouseLeave={e => (e.currentTarget.style.background = "#f4f8f8")} style={{ flexShrink: 0, width: 28, background: "#f4f8f8", borderLeft: "1px solid var(--border)", cursor: "pointer", color: "var(--text-2)", fontSize: "0.8rem", display: "flex", alignItems: "center", justifyContent: "center", userSelect: "none", transition: "background 0.12s" }}>›</div>
+          </div>
+        )}
+
       </div>
     </>
   );
