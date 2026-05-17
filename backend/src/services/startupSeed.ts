@@ -1,6 +1,7 @@
 import { prisma } from "../db/prisma";
 import { seedFakePropsForWeek, FAKE_PLAYERS } from "./fakeSync";
 import { scheduleMatchups } from "./scheduleMatchups";
+import { pickHelmetColor } from "./helmetColor";
 
 const FAKE_GAMES: Array<{ homeTeam: string; awayTeam: string; offsetDays: number; hour: number }> = [
   { homeTeam: "KC",  awayTeam: "BUF", offsetDays: 3, hour: 13 },
@@ -99,6 +100,26 @@ export async function runStartupSeed() {
       if (league.memberships.length >= 2 && league.matchups.length === 0) {
         await scheduleMatchups(league.id);
         console.log(`[seed] Repaired matchups for league ${league.id}`);
+      }
+    }
+
+    // Fix duplicate helmet colors within leagues
+    const allLeagues = await prisma.league.findMany({ select: { id: true } });
+    for (const league of allLeagues) {
+      const members = await prisma.membership.findMany({
+        where: { leagueId: league.id },
+        select: { id: true, helmetColor: true },
+        orderBy: { createdAt: "asc" },
+      });
+      const seen = new Set<string>();
+      for (const m of members) {
+        if (seen.has(m.helmetColor)) {
+          const newColor = await pickHelmetColor(league.id);
+          await prisma.membership.update({ where: { id: m.id }, data: { helmetColor: newColor } });
+          console.log(`[seed] Reassigned helmet color for membership ${m.id}: ${m.helmetColor} → ${newColor}`);
+        } else {
+          seen.add(m.helmetColor);
+        }
       }
     }
 

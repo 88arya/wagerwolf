@@ -2,6 +2,7 @@ import { Router } from "express";
 import { prisma } from "../db/prisma";
 import { requireAuth } from "../middleware/auth";
 import { scheduleMatchups } from "../services/scheduleMatchups";
+import { pickHelmetColor } from "../services/helmetColor";
 
 const router = Router();
 
@@ -86,8 +87,9 @@ router.post("/join-by-code", requireAuth, async (req: any, res: any) => {
       res.status(400).json({ error: "This league has already started" }); return;
     }
 
+    const helmetColor = await pickHelmetColor(league.id);
     const membership = await prisma.membership.create({
-      data: { userId: req.userId, leagueId: league.id, balance: 0, status: "PENDING" },
+      data: { userId: req.userId, leagueId: league.id, balance: 0, status: "PENDING", helmetColor },
     });
 
     res.status(201).json({ ...membership, league });
@@ -133,8 +135,9 @@ router.post("/join-public", requireAuth, async (req: any, res: any) => {
         where: { resolved: false, number: { gte: league.startWeek, lte: maxWeek } },
         orderBy: { number: "asc" },
       });
+      const helmetColor = await pickHelmetColor(league.id);
       const membership = await prisma.membership.create({
-        data: { userId: req.userId, leagueId: league.id, balance: activeWeek ? league.weeklyAllowance : 0, status: "ACTIVE", isPublicFill: false },
+        data: { userId: req.userId, leagueId: league.id, balance: activeWeek ? league.weeklyAllowance : 0, status: "ACTIVE", isPublicFill: false, helmetColor },
       });
       await scheduleMatchups(league.id);
 
@@ -182,8 +185,9 @@ router.post("/join-public", requireAuth, async (req: any, res: any) => {
       where: { resolved: false, number: { gte: league.startWeek, lte: maxWeekFill } },
       orderBy: { number: "asc" },
     });
+    const helmetColor = await pickHelmetColor(league.id);
     const membership = await prisma.membership.create({
-      data: { userId: req.userId, leagueId: league.id, balance: activeWeekFill ? league.weeklyAllowance : 0, status: "ACTIVE", isPublicFill: true },
+      data: { userId: req.userId, leagueId: league.id, balance: activeWeekFill ? league.weeklyAllowance : 0, status: "ACTIVE", isPublicFill: true, helmetColor },
     });
 
     await scheduleMatchups(league.id);

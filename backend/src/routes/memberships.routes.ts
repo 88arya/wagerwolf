@@ -2,6 +2,7 @@ import { Router } from "express";
 import { prisma } from "../db/prisma";
 import { requireAuth } from "../middleware/auth";
 import { scheduleMatchups } from "../services/scheduleMatchups";
+import { pickHelmetColor } from "../services/helmetColor";
 
 const router = Router({ mergeParams: true });
 
@@ -21,9 +22,12 @@ router.post("/join", requireAuth, async (req: any, res: any) => {
     });
     const initialBalance = activeWeek ? league.weeklyAllowance : 0;
 
+    const helmetColor = await pickHelmetColor(leagueId);
     const membership = await prisma.membership.create({
-      data: { userId, leagueId, balance: initialBalance, status: "ACTIVE" },
+      data: { userId, leagueId, balance: initialBalance, status: "ACTIVE", helmetColor },
     });
+
+    await scheduleMatchups(leagueId);
 
     res.status(201).json(membership);
   } catch (err: any) {
@@ -70,12 +74,37 @@ router.get("/leaderboard", requireAuth, async (req: any, res: any) => {
         displayName: m.user.displayName,
         balance: m.balance,
         joinedAt: m.createdAt,
+        helmetColor: m.helmetColor,
         ...records[m.user.id],
       }))
       .sort((a: any, b: any) => b.wins - a.wins || b.ties - a.ties || b.balance - a.balance)
       .map((entry: any, i: number) => ({ rank: i + 1, ...entry }));
 
     res.json(leaderboard);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Update current user's shield color for this league
+router.patch("/my-helmet", requireAuth, async (req: any, res: any) => {
+  try {
+    const { id: leagueId } = req.params;
+    const { helmetColor } = req.body;
+    if (!helmetColor || !/^#[0-9a-fA-F]{6}$/.test(helmetColor)) {
+      res.status(400).json({ error: "Invalid color" }); return;
+    }
+    const taken = await prisma.membership.findFirst({
+      where: { leagueId, helmetColor, userId: { not: req.userId }, status: "ACTIVE" },
+    });
+    if (taken) {
+      res.status(409).json({ error: "Another member is already using that color" }); return;
+    }
+    await prisma.membership.updateMany({
+      where: { leagueId, userId: req.userId },
+      data: { helmetColor },
+    });
+    res.json({ helmetColor });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
@@ -117,9 +146,10 @@ router.post("/members/:memberId/accept", requireAuth, async (req: any, res: any)
     });
     const initialBalance = activeWeek ? league.weeklyAllowance : 0;
 
+    const helmetColor = await pickHelmetColor(leagueId);
     const result = await prisma.membership.updateMany({
       where: { userId: memberId, leagueId, status: "PENDING" },
-      data: { status: "ACTIVE", balance: initialBalance },
+      data: { status: "ACTIVE", balance: initialBalance, helmetColor },
     });
     if (result.count === 0) { res.status(404).json({ error: "No pending request found" }); return; }
 
