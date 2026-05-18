@@ -5,15 +5,20 @@ interface Props {
 }
 
 export const HELMET_COLORS = [
-  "#2563EB", "#1d4ed8", "#1e40af", "#3b82f6", "#60a5fa",
-  "#0891b2", "#0e7490", "#06b6d4",
-  "#dc2626", "#b91c1c", "#ef4444",
-  "#e11d48", "#9f1239", "#be185d", "#ec4899",
-  "#7c3aed", "#6d28d9", "#a855f7",
-  "#16a34a", "#15803d", "#059669", "#065f46",
-  "#ea580c", "#c2410c",
-  "#d97706", "#b45309", "#f59e0b",
-  "#0f172a", "#1e293b", "#374151", "#78716c",
+  // Red
+  "#fca5a5", "#f87171", "#dc2626", "#7f1d1d",
+  // Orange
+  "#fdba74", "#fb923c", "#ea580c", "#7c2d12",
+  // Yellow
+  "#fde68a", "#fbbf24", "#d97706", "#92400e",
+  // Green
+  "#86efac", "#4ade80", "#16a34a", "#14532d",
+  // Blue
+  "#93c5fd", "#60a5fa", "#2563eb", "#1e3a8a",
+  // Purple
+  "#c4b5fd", "#a78bfa", "#7c3aed", "#4c1d95",
+  // Pink
+  "#f9a8d4", "#f472b6", "#db2777", "#831843",
 ];
 
 export default function HelmetAvatar({ color, initials, size = 36 }: Props) {
