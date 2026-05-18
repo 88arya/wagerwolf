@@ -604,9 +604,7 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
               {membership && (
                 <button
                   onClick={openSettings}
-                  style={{ position: "absolute", bottom: 12, right: 14, background: "none", border: "none", padding: 4, cursor: "pointer", color: "rgba(255,255,255,0.4)", display: "flex", alignItems: "center", justifyContent: "center", transition: "color 0.12s", borderRadius: 4 }}
-                  onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.color = "#fff"; }}
-                  onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.color = "rgba(255,255,255,0.4)"; }}
+                  style={{ position: "absolute", bottom: 12, right: 14, background: "none", border: "none", padding: 4, cursor: "pointer", color: "rgba(255,255,255,0.4)", display: "flex", alignItems: "center", justifyContent: "center", borderRadius: 4 }}
                 >
                   <GearIcon />
                 </button>
