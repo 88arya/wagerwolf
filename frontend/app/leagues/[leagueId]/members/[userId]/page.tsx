@@ -4,7 +4,6 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { api } from "@/lib/api";
-import LeagueNav from "@/components/LeagueNav";
 
 function fmtOdds(n: number) { return n > 0 ? `+${n}` : `${n}`; }
 function fmtStatType(s: string) { return s.split("_").map((w: string) => w[0] + w.slice(1).toLowerCase()).join(" "); }
@@ -58,8 +57,6 @@ export default function MemberProfilePage({ params }: PageProps<"/leagues/[leagu
 
   return (
     <>
-      <LeagueNav leagueId={leagueId} />
-
       <div className="page" style={{ paddingBottom: 100 }}>
         {/* Profile header */}
         <div className="card" style={{ marginBottom: 10, textAlign: "center", padding: "22px 20px 18px" }}>

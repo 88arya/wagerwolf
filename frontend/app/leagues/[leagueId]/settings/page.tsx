@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
-import LeagueNav from "@/components/LeagueNav";
 
 export default function LeagueSettingsPage({ params }: PageProps<"/leagues/[leagueId]/settings">) {
   const router = useRouter();
@@ -47,8 +46,6 @@ export default function LeagueSettingsPage({ params }: PageProps<"/leagues/[leag
       setLeagueId(lid);
 
       const leagueData = await api(`/leagues/${lid}`);
-      if (leagueData.creatorId !== uid) { router.push(`/leagues/${lid}`); return; }
-
       setLeague(leagueData);
       setSettingsForm({
         startWeek: String(leagueData.startWeek ?? 1),
@@ -65,15 +62,17 @@ export default function LeagueSettingsPage({ params }: PageProps<"/leagues/[leag
       });
 
       try {
-        const [board, pending, allMatchups] = await Promise.all([
+        const [board, allMatchups] = await Promise.all([
           api(`/leagues/${lid}/leaderboard`),
-          api(`/leagues/${lid}/pending`),
           api(`/leagues/${lid}/matchups`),
         ]);
         setMembers(board);
-        setPendingMembers(pending);
         setPlayoffMatchups(allMatchups.filter((m: any) => m.isPlayoff));
         setConsolationMatchups(allMatchups.filter((m: any) => m.isConsolation));
+        if (leagueData.creatorId === uid) {
+          const pending = await api(`/leagues/${lid}/pending`);
+          setPendingMembers(pending);
+        }
       } catch {}
     }
     load();
@@ -235,8 +234,19 @@ export default function LeagueSettingsPage({ params }: PageProps<"/leagues/[leag
     }
   }
 
+  async function leaveLeague() {
+    if (!confirm(`Leave "${league?.name}"?`)) return;
+    try {
+      await api(`/leagues/${leagueId}/leave`, { method: "POST", body: JSON.stringify({}) });
+      router.push("/leagues");
+    } catch (err: any) {
+      try { alert(JSON.parse(err.message).error); } catch { alert(err.message); }
+    }
+  }
+
   if (!league) return <div className="loading">Loading…</div>;
 
+  const isCreator = league.creatorId === userId;
   const sw = Number(settingsForm.startWeek) || 1;
   const rsw = Number(settingsForm.regularSeasonWeeks) || 13;
   const ps = Number(settingsForm.playoffSize) || 4;
@@ -249,8 +259,6 @@ export default function LeagueSettingsPage({ params }: PageProps<"/leagues/[leag
 
   return (
     <>
-      <LeagueNav leagueId={leagueId} />
-
       <div className="page" style={{ paddingBottom: 100 }}>
         <div style={{ marginBottom: 18 }}>
           <h1>Manage League</h1>
@@ -268,8 +276,8 @@ export default function LeagueSettingsPage({ params }: PageProps<"/leagues/[leag
           </div>
         </div>
 
-        {/* Join Requests */}
-        {pendingMembers.length > 0 && (
+        {/* Join Requests — commissioner only */}
+        {isCreator && pendingMembers.length > 0 && (
           <>
             <div className="section-title" style={{ marginBottom: 8 }}>
               Join Requests
@@ -317,7 +325,7 @@ export default function LeagueSettingsPage({ params }: PageProps<"/leagues/[leag
                   {m.userId === userId && <span className="badge" style={{ marginLeft: 6 }}>you</span>}
                 </span>
               </div>
-              {m.userId !== userId && !league.seasonStarted && (
+              {isCreator && m.userId !== userId && !league.seasonStarted && (
                 <button className="ghost" style={{ fontSize: "0.7rem", padding: "4px 9px", color: "var(--loss)", borderColor: "var(--loss-border)" }} onClick={() => removeMember(m.userId)}>Remove</button>
               )}
             </div>
@@ -329,10 +337,10 @@ export default function LeagueSettingsPage({ params }: PageProps<"/leagues/[leag
           )}
         </div>
 
-        {/* Season Management */}
-        <div className="section-title" style={{ marginBottom: 8 }}>Season</div>
+        {/* Season Management — commissioner only */}
+        {isCreator && <div className="section-title" style={{ marginBottom: 8 }}>Season</div>}
 
-        {!league.seasonStarted && (
+        {isCreator && !league.seasonStarted && (
           <div className="card" style={{ marginBottom: 10 }}>
             <div style={{ fontSize: "0.8rem", color: "var(--text-2)", marginBottom: 6 }}>
               {members.length < 2
@@ -353,7 +361,7 @@ export default function LeagueSettingsPage({ params }: PageProps<"/leagues/[leag
           </div>
         )}
 
-        {league.seasonStarted && !league.seasonEnded && (
+        {isCreator && league.seasonStarted && !league.seasonEnded && (
           <>
             {/* Playoffs */}
             <div className="card" style={{ marginBottom: 8, padding: 0, overflow: "hidden" }}>
@@ -436,7 +444,7 @@ export default function LeagueSettingsPage({ params }: PageProps<"/leagues/[leag
           </>
         )}
 
-        {league.seasonEnded && (
+        {isCreator && league.seasonEnded && (
           <div className="card" style={{ marginBottom: 10 }}>
             <span className="badge badge-blue">Season Complete</span>
           </div>
@@ -444,13 +452,7 @@ export default function LeagueSettingsPage({ params }: PageProps<"/leagues/[leag
 
         {/* Season Structure */}
         <div className="section-title" style={{ marginBottom: 8 }}>Season Structure</div>
-        {league.seasonStarted ? (
-          <div className="card" style={{ marginBottom: 10 }}>
-            <div style={{ fontSize: "0.8rem", color: "var(--text-3)" }}>
-              Season structure is locked after the season starts.
-            </div>
-          </div>
-        ) : (
+        {isCreator && !league.seasonStarted ? (
           <div className="card" style={{ marginBottom: 10 }}>
             <form onSubmit={saveSettings} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
@@ -495,69 +497,97 @@ export default function LeagueSettingsPage({ params }: PageProps<"/leagues/[leag
               </button>
             </form>
           </div>
+        ) : (
+          <div className="card" style={{ marginBottom: 10 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+              {[
+                ["Start Week", league.startWeek],
+                ["Reg Season Weeks", league.regularSeasonWeeks],
+                ["Playoff Teams", league.playoffSize],
+                ["Consolation Weeks", league.consolationWeeks],
+                ["Weekly Allowance", `$${league.weeklyAllowance}`],
+                ["Max Teams", league.maxTeams],
+              ].map(([label, val]) => (
+                <div key={label as string}>
+                  <div className="label">{label}</div>
+                  <div style={{ fontSize: "0.88rem", fontWeight: 600, color: "var(--text)", paddingTop: 4 }}>{val}</div>
+                </div>
+              ))}
+            </div>
+          </div>
         )}
 
         {/* Betting Rules */}
         <div className="section-title" style={{ marginBottom: 8 }}>Betting Rules</div>
-        <div className="card" style={{ marginBottom: 10 }}>
-          <form onSubmit={saveLimits} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        {isCreator ? (
+          <div className="card" style={{ marginBottom: 10 }}>
+            <form onSubmit={saveLimits} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                <div>
+                  <div className="label">Max Stake / Bet</div>
+                  <input type="number" min="1" placeholder="No limit" value={limitsForm.maxStakePerBet}
+                    onChange={(e) => setLimitsForm({ ...limitsForm, maxStakePerBet: e.target.value })} />
+                </div>
+                <div>
+                  <div className="label">Max Bets / Week</div>
+                  <input type="number" min="1" placeholder="No limit" value={limitsForm.maxBetsPerWeek}
+                    onChange={(e) => setLimitsForm({ ...limitsForm, maxBetsPerWeek: e.target.value })} />
+                </div>
+                <div style={{ gridColumn: "span 2" }}>
+                  <div className="label">Max Parlay Legs</div>
+                  <input type="number" min="2" placeholder="No limit" value={limitsForm.maxParlayLegs}
+                    onChange={(e) => setLimitsForm({ ...limitsForm, maxParlayLegs: e.target.value })} />
+                </div>
+              </div>
+              <div>
+                <div className="label" style={{ marginBottom: 8 }}>Bet Feed Visibility</div>
+                <div style={{ display: "flex", gap: 8 }}>
+                  {[
+                    { value: "AFTER_KICKOFF", label: "After kickoff" },
+                    { value: "AFTER_RESOLVE", label: "After week resolves" },
+                  ].map(({ value, label }) => {
+                    const active = limitsForm.feedVisibility === value;
+                    return (
+                      <button key={value} type="button"
+                        onClick={() => setLimitsForm({ ...limitsForm, feedVisibility: value })}
+                        style={{ flex: 1, padding: "9px 10px", borderRadius: 6, fontSize: "0.8rem", fontWeight: active ? 800 : 500, background: active ? "var(--accent)" : "var(--surface-2)", color: active ? "#FFFFFF" : "var(--text-2)", border: active ? "1.5px solid var(--accent)" : "1.5px solid var(--border-2)", transition: "all 0.12s" }}
+                      >{label}</button>
+                    );
+                  })}
+                </div>
+                <div style={{ fontSize: "0.68rem", color: "var(--text-3)", marginTop: 6 }}>When members can see each other's bets</div>
+              </div>
+              <div style={{ fontSize: "0.7rem", color: "var(--text-3)" }}>Leave blank for no limit. Changes apply immediately.</div>
+              {limitsError && <p className="error">{limitsError}</p>}
+              <button type="submit" className="secondary">{limitsSaved ? "✓ Saved" : "Save Betting Rules"}</button>
+            </form>
+          </div>
+        ) : (
+          <div className="card" style={{ marginBottom: 10 }}>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-              <div>
-                <div className="label">Max Stake / Bet</div>
-                <input type="number" min="1" placeholder="No limit" value={limitsForm.maxStakePerBet}
-                  onChange={(e) => setLimitsForm({ ...limitsForm, maxStakePerBet: e.target.value })} />
-              </div>
-              <div>
-                <div className="label">Max Bets / Week</div>
-                <input type="number" min="1" placeholder="No limit" value={limitsForm.maxBetsPerWeek}
-                  onChange={(e) => setLimitsForm({ ...limitsForm, maxBetsPerWeek: e.target.value })} />
-              </div>
-              <div style={{ gridColumn: "span 2" }}>
-                <div className="label">Max Parlay Legs</div>
-                <input type="number" min="2" placeholder="No limit" value={limitsForm.maxParlayLegs}
-                  onChange={(e) => setLimitsForm({ ...limitsForm, maxParlayLegs: e.target.value })} />
-              </div>
+              {[
+                ["Max Stake / Bet", league.maxStakePerBet != null ? `$${league.maxStakePerBet}` : "No limit"],
+                ["Max Bets / Week", league.maxBetsPerWeek != null ? league.maxBetsPerWeek : "No limit"],
+                ["Max Parlay Legs", league.maxParlayLegs != null ? league.maxParlayLegs : "No limit"],
+                ["Feed Visibility", league.feedVisibility === "AFTER_RESOLVE" ? "After week resolves" : "After kickoff"],
+              ].map(([label, val]) => (
+                <div key={label as string}>
+                  <div className="label">{label}</div>
+                  <div style={{ fontSize: "0.88rem", fontWeight: 600, color: "var(--text)", paddingTop: 4 }}>{val}</div>
+                </div>
+              ))}
             </div>
+          </div>
+        )}
 
-            <div>
-              <div className="label" style={{ marginBottom: 8 }}>Bet Feed Visibility</div>
-              <div style={{ display: "flex", gap: 8 }}>
-                {[
-                  { value: "AFTER_KICKOFF", label: "After kickoff" },
-                  { value: "AFTER_RESOLVE", label: "After week resolves" },
-                ].map(({ value, label }) => {
-                  const active = limitsForm.feedVisibility === value;
-                  return (
-                    <button
-                      key={value}
-                      type="button"
-                      onClick={() => setLimitsForm({ ...limitsForm, feedVisibility: value })}
-                      style={{
-                        flex: 1, padding: "9px 10px", borderRadius: 6, fontSize: "0.8rem",
-                        fontWeight: active ? 800 : 500,
-                        background: active ? "var(--accent)" : "var(--surface-2)",
-                        color: active ? "#FFFFFF" : "var(--text-2)",
-                        border: active ? "1.5px solid var(--accent)" : "1.5px solid var(--border-2)",
-                        transition: "all 0.12s",
-                      }}
-                    >{label}</button>
-                  );
-                })}
-              </div>
-              <div style={{ fontSize: "0.68rem", color: "var(--text-3)", marginTop: 6 }}>
-                When members can see each other's bets
-              </div>
-            </div>
-
-            <div style={{ fontSize: "0.7rem", color: "var(--text-3)" }}>
-              Leave blank for no limit. Changes apply immediately.
-            </div>
-            {limitsError && <p className="error">{limitsError}</p>}
-            <button type="submit" className="secondary">
-              {limitsSaved ? "✓ Saved" : "Save Betting Rules"}
+        {/* Leave League — non-commissioner only */}
+        {!isCreator && !league.seasonStarted && (
+          <div style={{ marginTop: 24 }}>
+            <button className="ghost" style={{ width: "100%", fontSize: "0.8rem", padding: "9px", color: "var(--loss)", borderColor: "var(--loss-border)" }} onClick={leaveLeague}>
+              Leave League
             </button>
-          </form>
-        </div>
+          </div>
+        )}
       </div>
 
     </>

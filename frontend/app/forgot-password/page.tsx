@@ -33,7 +33,7 @@ export default function ForgotPasswordPage() {
           </div>
         </div>
 
-        <div style={{ background: "var(--surface)", borderRadius: 16, padding: "28px 24px", boxShadow: "0 20px 60px rgba(0,0,0,0.4)" }}>
+        <div style={{ background: "var(--surface)", borderRadius: 16, padding: "28px 24px" }}>
           {submitted ? (
             <div style={{ textAlign: "center" }}>
               <div style={{ fontSize: "2.5rem", marginBottom: 16 }}>📧</div>

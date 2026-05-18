@@ -82,7 +82,7 @@ export default function ResetPasswordPage() {
             PLAY<span style={{ color: "var(--gold)" }}>BOOK</span>
           </div>
         </div>
-        <div style={{ background: "var(--surface)", borderRadius: 16, padding: "28px 24px", boxShadow: "0 20px 60px rgba(0,0,0,0.4)" }}>
+        <div style={{ background: "var(--surface)", borderRadius: 16, padding: "28px 24px" }}>
           <Suspense fallback={<div style={{ color: "var(--text-3)" }}>Loading…</div>}>
             <ResetForm />
           </Suspense>

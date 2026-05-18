@@ -3,7 +3,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { api } from "@/lib/api";
-import LeagueNav from "@/components/LeagueNav";
 import BetSlip, { addToSlip, removeFromSlip, getBetSlip } from "@/components/BetSlip";
 import TeamLogo from "@/components/TeamLogo";
 import { getTeamSelectedColor, getTeamDisplayName, getTeamFullName, getTeamLogoUrl } from "@/lib/teamLogos";
@@ -552,8 +551,6 @@ export default function BetPage({ params }: PageProps<"/leagues/[leagueId]/bet">
 
     return (
       <>
-        <LeagueNav leagueId={leagueId} />
-
         <div className="page" style={{ paddingBottom: 160 }}>
           <button
             className="ghost"
@@ -568,7 +565,7 @@ export default function BetPage({ params }: PageProps<"/leagues/[leagueId]/bet">
             const awayColor = getTeamSelectedColor(selectedGame.awayTeam);
             const homeColor = getTeamSelectedColor(selectedGame.homeTeam);
             return (
-              <div style={{ marginBottom: 12, borderRadius: "var(--radius-lg)", overflow: "hidden", boxShadow: "var(--shadow-sm)" }}>
+              <div style={{ marginBottom: 12, borderRadius: "var(--radius-lg)", overflow: "hidden" }}>
                 <div style={{ position: "relative", background: `linear-gradient(90deg, ${awayColor} 50%, ${homeColor} 50%)` }}>
                   <div style={{ display: "flex", alignItems: "center" }}>
                     <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 8, padding: "20px 12px" }}>
@@ -853,8 +850,6 @@ export default function BetPage({ params }: PageProps<"/leagues/[leagueId]/bet">
 
   return (
     <>
-      <LeagueNav leagueId={leagueId} />
-
       <div className="page" style={{ paddingBottom: 160 }}>
         {weekNumber && (
           <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>

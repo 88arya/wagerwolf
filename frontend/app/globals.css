@@ -160,9 +160,9 @@ button.ghost:hover { border-color: var(--border-3); color: var(--text); backgrou
 .nav a, .nav button.nav-link {
   color: var(--text-3);
   font-size: 0.8rem;
-  font-weight: 600;
+  font-weight: 500;
   padding: 5px 9px;
-  border-radius: 5px;
+  border-radius: 0;
   transition: color 0.15s, background 0.15s;
   background: none;
   border: none;
@@ -253,16 +253,12 @@ h2 {
   border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: 14px;
-  margin-bottom: 8px;
-  box-shadow: var(--shadow-sm);
 }
 .card-elevated {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: 14px;
-  margin-bottom: 8px;
-  box-shadow: var(--shadow-md);
 }
 .card-accent {
   background: var(--accent-dim);

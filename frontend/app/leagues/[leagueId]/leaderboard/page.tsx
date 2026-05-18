@@ -4,7 +4,6 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { api } from "@/lib/api";
-import LeagueNav from "@/components/LeagueNav";
 
 export default function LeaderboardPage({ params }: PageProps<"/leagues/[leagueId]/leaderboard">) {
   const router = useRouter();
@@ -53,8 +52,6 @@ export default function LeaderboardPage({ params }: PageProps<"/leagues/[leagueI
 
   return (
     <>
-      <LeagueNav leagueId={leagueId} />
-
       <div className="page">
         <div style={{ marginBottom: 16 }}>
           <h1>Standings</h1>

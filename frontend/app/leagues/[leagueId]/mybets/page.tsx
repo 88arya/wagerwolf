@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
-import LeagueNav from "@/components/LeagueNav";
 
 function calcProfit(stake: number, odds: number): number {
   if (odds > 0) return Math.round((stake * odds) / 100);
@@ -117,8 +116,6 @@ export default function MyBetsPage({ params }: PageProps<"/leagues/[leagueId]/my
 
   return (
     <>
-      <LeagueNav leagueId={leagueId} />
-
       <div className="page" style={{ paddingBottom: 90 }}>
         <div style={{ marginBottom: 12 }}>
           <div style={{ fontSize: "1.1rem", fontWeight: 900, letterSpacing: "-0.01em" }}>My Bets</div>

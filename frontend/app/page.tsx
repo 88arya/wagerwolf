@@ -15,6 +15,10 @@ export default function AuthPage() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
+    if (mode === "register" && (form.displayName.trim().length < 3 || form.displayName.trim().length > 20)) {
+      setError("Display name must be 3–20 letters.");
+      return;
+    }
     setLoading(true);
     try {
       const res = mode === "register"
@@ -84,7 +88,6 @@ export default function AuthPage() {
           borderRadius: "var(--radius-lg)",
           border: "1px solid var(--border-2)",
           overflow: "hidden",
-          boxShadow: "var(--shadow-lg)",
         }}>
           {/* Mode toggle */}
           <div style={{
@@ -135,7 +138,9 @@ export default function AuthPage() {
                     <input
                       placeholder="BigBaller23"
                       value={form.displayName}
-                      onChange={(e) => setForm({ ...form, displayName: e.target.value })}
+                      onChange={(e) => setForm({ ...form, displayName: e.target.value.replace(/[^A-Za-z ]/g, "").replace(/ {2,}/g, " ").slice(0, 20) })}
+                      minLength={3}
+                      maxLength={20}
                       required
                     />
                   </div>
