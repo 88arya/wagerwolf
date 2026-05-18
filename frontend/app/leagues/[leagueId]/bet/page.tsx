@@ -579,7 +579,7 @@ export default function BetPage({ params }: PageProps<"/leagues/[leagueId]/bet">
                   </div>
                   <div style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)", pointerEvents: "none" }}>
                     <div style={{ background: "rgba(255,255,255,0.92)", borderRadius: 8, padding: "6px 12px", display: "flex", flexDirection: "column", alignItems: "center", gap: 3 }}>
-                      <div style={{ fontSize: "0.55rem", fontWeight: 800, color: "rgba(0,0,0,0.5)", letterSpacing: "0.08em" }}>{fmtCountdown(selectedGame.gameDate)}</div>
+                      <div style={{ fontSize: "0.55rem", fontWeight: 600, color: "rgba(0,0,0,0.9)", letterSpacing: "0.08em" }}>{fmtCountdown(selectedGame.gameDate)}</div>
                       <div style={{ fontSize: "0.55rem", color: "rgba(0,0,0,0.4)", textAlign: "center", whiteSpace: "nowrap", lineHeight: 1.4 }}>{fmtGameTime(selectedGame.gameDate)}</div>
                     </div>
                   </div>
@@ -603,7 +603,18 @@ export default function BetPage({ params }: PageProps<"/leagues/[leagueId]/bet">
                   {tabs.map(({ key, label }) => (
                     <button key={key} type="button"
                       className={`tab-btn${activeSection === key ? " active" : ""}`}
-                      onClick={() => setBetSection(key)}>
+                      style={undefined}
+                      onClick={(e) => {
+                        setBetSection(key);
+                        const btn = e.currentTarget;
+                        const container = btn.closest(".tab-bar") as HTMLElement | null;
+                        if (container) {
+                          const btnRect = btn.getBoundingClientRect();
+                          const cRect = container.getBoundingClientRect();
+                          if (btnRect.left < cRect.left) container.scrollLeft -= cRect.left - btnRect.left + 8;
+                          else if (btnRect.right > cRect.right) container.scrollLeft += btnRect.right - cRect.right + 8;
+                        }
+                      }}>
                       {label}
                     </button>
                   ))}
@@ -694,13 +705,11 @@ export default function BetPage({ params }: PageProps<"/leagues/[leagueId]/bet">
                           cursor: isDisabled ? "default" : "pointer",
                           background: inSlip ? "var(--accent-dim)" : "var(--surface-3)",
                           border: inSlip ? "1.5px solid var(--accent)" : "none",
-                          outline: "none",
+                          outline: "none", fontWeight: 400, position: "relative",
                         }}>
-                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-                          <span style={{ fontSize: "0.55rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: inSlip ? "var(--accent)" : "var(--text-2)" }}>{teamLabel}</span>
-                          <span style={{ fontSize: "0.7rem", fontVariantNumeric: "tabular-nums", color: "var(--accent)" }}>{fmtOdds(line.odds)}</span>
-                        </div>
-                        <div style={{ fontSize: "0.85rem", fontWeight: 700, fontVariantNumeric: "tabular-nums", color: inSlip ? "var(--accent)" : "var(--text)" }}>
+                        <span style={{ fontSize: "0.7rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: inSlip ? "var(--accent)" : "var(--text-2)" }}>{teamLabel}</span>
+                        <span style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", fontSize: "0.7rem", fontVariantNumeric: "tabular-nums", color: "var(--accent)" }}>{fmtOdds(line.odds)}</span>
+                        <div style={{ fontSize: "0.85rem", fontVariantNumeric: "tabular-nums", color: inSlip ? "var(--accent)" : "var(--text)" }}>
                           {fmtSpread(line.line)}
                         </div>
                       </button>
@@ -730,7 +739,7 @@ export default function BetPage({ params }: PageProps<"/leagues/[leagueId]/bet">
                             <span key={i} onClick={() => setAltSpreadIdx(i)} style={{
                               flexShrink: 0, cursor: "pointer", whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums",
                               fontSize: i === safeIdx ? "0.85rem" : "0.72rem",
-                              fontWeight: i === safeIdx ? 700 : 400,
+                              fontWeight: 400,
                               color: i === safeIdx ? "var(--text)" : "var(--text-3)",
                             }}>{fmtSpread(hl.line)}</span>
                           ))}
@@ -763,13 +772,11 @@ export default function BetPage({ params }: PageProps<"/leagues/[leagueId]/bet">
                           cursor: isDisabled ? "default" : "pointer",
                           background: inSlip ? "var(--accent-dim)" : "var(--surface-3)",
                           border: inSlip ? "1.5px solid var(--accent)" : "none",
-                          outline: "none",
+                          outline: "none", fontWeight: 400, position: "relative",
                         }}>
-                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-                          <span style={{ fontSize: "0.55rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: inSlip ? "var(--accent)" : "var(--text-2)" }}>{dirLabel}</span>
-                          <span style={{ fontSize: "0.7rem", fontVariantNumeric: "tabular-nums", color: "var(--accent)" }}>{fmtOdds(line.odds)}</span>
-                        </div>
-                        <div style={{ fontSize: "0.85rem", fontWeight: 700, fontVariantNumeric: "tabular-nums", color: inSlip ? "var(--accent)" : "var(--text)" }}>
+                        <span style={{ fontSize: "0.7rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: inSlip ? "var(--accent)" : "var(--text-2)" }}>{dirLabel}</span>
+                        <span style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", fontSize: "0.7rem", fontVariantNumeric: "tabular-nums", color: "var(--accent)" }}>{fmtOdds(line.odds)}</span>
+                        <div style={{ fontSize: "0.85rem", fontVariantNumeric: "tabular-nums", color: inSlip ? "var(--accent)" : "var(--text)" }}>
                           {valLabel}
                         </div>
                       </button>
@@ -799,7 +806,7 @@ export default function BetPage({ params }: PageProps<"/leagues/[leagueId]/bet">
                             <span key={i} onClick={() => setAltTotalIdx(i)} style={{
                               flexShrink: 0, cursor: "pointer", whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums",
                               fontSize: i === safeIdx ? "0.85rem" : "0.72rem",
-                              fontWeight: i === safeIdx ? 700 : 400,
+                              fontWeight: 400,
                               color: i === safeIdx ? "var(--text)" : "var(--text-3)",
                             }}>{lv}</span>
                           ))}

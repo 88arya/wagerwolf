@@ -4,6 +4,15 @@ Fantasy sports betting app for friend groups. NFL weekly structure, player props
 
 ---
 
+## UI Color Palette
+
+Only three colors are used in the UI:
+- **White** — backgrounds, text on dark surfaces
+- **Grey** — `var(--text-2)`, `var(--text-3)`, `var(--surface-3)`, borders, muted labels
+- **Royal Blue `#2563EB`** — the single accent/feature color; used via `var(--accent)` in CSS and `const ACCENT = "#2563EB"` in components. Applied to: active states, odds numbers, underlines, selected borders, buttons. Do NOT use other blues for UI chrome — team colors are the only exception.
+
+---
+
 ## Stack
 
 - **Frontend**: Next.js 14 App Router, TypeScript — `frontend/`

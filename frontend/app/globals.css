@@ -135,6 +135,7 @@ button.ghost:hover { border-color: var(--border-3); color: var(--text); backgrou
 .nav {
   background: var(--navy);
   border-bottom: 1px solid var(--border);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
   padding: 0 16px;
   display: flex;
   align-items: center;
@@ -172,7 +173,6 @@ button.ghost:hover { border-color: var(--border-3); color: var(--text); backgrou
 }
 .nav a:hover, .nav button.nav-link:hover {
   color: var(--text-2);
-  background: rgba(0,0,0,0.05);
 }
 
 /* ── Bottom Nav ── */
@@ -552,7 +552,7 @@ hr { border: none; border-top: 1px solid var(--border); margin: 14px 0; }
   background: transparent;
   border: none;
   border-radius: 0;
-  border-bottom: 2px solid transparent;
+  border-bottom: 4px solid transparent;
   color: var(--text-3);
   cursor: pointer;
   margin-bottom: -1px;
@@ -562,11 +562,9 @@ hr { border: none; border-top: 1px solid var(--border); margin: 14px 0; }
 }
 .tab-btn.active {
   border-bottom-color: var(--accent);
-  color: var(--accent);
-  font-weight: 700;
+  color: var(--text);
 }
 .tab-btn:hover { background: transparent; }
-.tab-btn:hover:not(.active) { border-bottom-color: var(--border-2); }
 
 /* ── Divider line with label ── */
 .section-divider {

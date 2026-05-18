@@ -494,12 +494,12 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
 
           {/* COL 1 ROW 1: User card */}
           {myRecord && (
-            <div className="card" style={{ gridColumn: "1", gridRow: "1", padding: "14px 16px", background: "#fff", minHeight: 160, display: "flex", flexDirection: "column", justifyContent: "space-between" }}>
+            <div className="card" style={{ gridColumn: "1", gridRow: "1", padding: "14px 16px", background: "#fff", minHeight: 160, display: "flex", flexDirection: "column", justifyContent: "space-between", minWidth: 0 }}>
               {/* Identity row */}
               <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12, marginTop: 10, paddingLeft: 10, paddingRight: 10 }}>
                 <HelmetAvatar color={myHelmetColor} initials={myRecord.displayName.slice(0, 2)} size={48} />
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: "0.9rem", fontWeight: 700, color: "var(--text)", marginBottom: 2 }}>
+                  <div style={{ fontSize: "0.9rem", fontWeight: 700, color: "var(--text)", marginBottom: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                     {myRecord.displayName}
                   </div>
                   <div style={{ fontSize: "0.65rem", fontWeight: 800, color: "var(--text-3)", letterSpacing: "0.1em", textTransform: "uppercase" }}>
@@ -529,7 +529,7 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
           )}
 
           {/* COL 1 ROW 2-4: Matchups */}
-          <div className="card" style={{ gridColumn: "1", gridRow: "2 / 4", padding: 0, overflow: "hidden", background: "#fff" }}>
+          <div className="card" style={{ gridColumn: "1", gridRow: "2 / 4", padding: 0, overflow: "hidden", background: "#fff", minWidth: 0 }}>
               <div style={{ padding: "8px 10px", borderBottom: "1px solid var(--border)", background: "#fff" }}>
                 <span style={{ fontSize: "0.58rem", fontWeight: 800, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--text)" }}>Matchups</span>
               </div>
@@ -554,16 +554,16 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
                       borderBottom: idx < total - 1 ? "1px solid var(--border)" : "none",
                       background: "transparent", gap: 8,
                     }}>
-                      <div style={{ display: "flex", flexDirection: "column", gap: 6, flex: 1 }}>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 6, flex: 1, minWidth: 0 }}>
                         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                           <HelmetAvatar color={homeName === "Ghost" ? "#ffffff" : (helmetColors[matchup.homeUserId] ?? "#2563EB")} initials={homeName.slice(0, 2)} size={20} />
-                          <span style={{ fontWeight: isHome ? 700 : 400, fontSize: "0.75rem", color: "var(--text)", fontStyle: homeName === "Ghost" ? "italic" : "normal" }}>
+                          <span style={{ fontWeight: isHome ? 700 : 400, fontSize: "0.75rem", color: "var(--text)", fontStyle: homeName === "Ghost" ? "italic" : "normal", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                             {homeName}
                           </span>
                         </div>
                         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                           <HelmetAvatar color={awayName === "Ghost" ? "#ffffff" : (helmetColors[matchup.awayUserId] ?? "#2563EB")} initials={awayName.slice(0, 2)} size={20} />
-                          <span style={{ fontWeight: isAway ? 700 : 400, fontSize: "0.75rem", color: "var(--text)", fontStyle: awayName === "Ghost" ? "italic" : "normal" }}>
+                          <span style={{ fontWeight: isAway ? 700 : 400, fontSize: "0.75rem", color: "var(--text)", fontStyle: awayName === "Ghost" ? "italic" : "normal", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                             {awayName}
                           </span>
                         </div>
@@ -741,7 +741,7 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
           </div>
 
           {/* RIGHT: Standings (spans both rows) */}
-          <div style={{ gridColumn: "3", gridRow: "1 / 4" }}>
+          <div style={{ gridColumn: "3", gridRow: "1 / 4", minWidth: 0 }}>
             <div className="card" style={{ padding: 0, overflow: "hidden", background: "#fff" }}>
               <div style={{ padding: "8px 12px", background: "#fff", borderBottom: "1px solid var(--border)" }}>
                 <span style={{ fontSize: "0.58rem", fontWeight: 800, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--text)" }}>Standings</span>
@@ -782,7 +782,7 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
                 const isLive = game.status === "IN_PROGRESS" ||
                   (game.status !== "FINAL" && game.status !== "CANCELLED" && game.gameDate && new Date(game.gameDate) <= now);
                 return (
-                  <div key={game.id} onMouseEnter={e => (e.currentTarget.style.background = "#f4f6f9")} onMouseLeave={e => (e.currentTarget.style.background = "#fff")} style={{
+                  <div key={game.id} onClick={() => router.push(`/leagues/${leagueId}/bet?gameId=${game.id}`)} onMouseEnter={e => (e.currentTarget.style.background = "#f4f6f9")} onMouseLeave={e => (e.currentTarget.style.background = "#fff")} style={{
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "space-between",
@@ -793,7 +793,7 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
                     background: "#fff",
                     borderRight: "1px solid var(--border)",
                     transition: "background 0.12s",
-                    cursor: "default",
+                    cursor: "pointer",
                   }}>
                     {/* Teams stacked: away top, home bottom */}
                     <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>

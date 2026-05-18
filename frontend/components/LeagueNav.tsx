@@ -118,8 +118,8 @@ export default function LeagueNav({ leagueId }: { leagueId: string }) {
             type="button"
             onClick={() => setOpen(o => !o)}
             style={{ display: "flex", alignItems: "center", gap: 5, background: "none", border: "none", padding: "5px 8px", cursor: "pointer", color: "var(--text)", fontWeight: 500, fontSize: "0.82rem", borderRadius: 0, transition: "background 0.12s", boxShadow: "none" }}
-            onMouseEnter={e => (e.currentTarget.style.background = "var(--surface-2)")}
-            onMouseLeave={e => (e.currentTarget.style.background = "none")}
+            onMouseEnter={undefined}
+            onMouseLeave={undefined}
           >
             <span style={{ whiteSpace: "nowrap" }}>
               {currentLeague?.league?.name ?? "Leagues"}
