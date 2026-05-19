@@ -29,7 +29,7 @@ router.post("/join", requireAuth, async (req: any, res: any) => {
     ]);
     const abbreviation = generateAbbreviation(user?.displayName ?? "");
     const membership = await prisma.membership.create({
-      data: { userId, leagueId, balance: initialBalance, status: "ACTIVE", helmetColor, abbreviation },
+      data: { userId, leagueId, balance: initialBalance, status: "ACTIVE", helmetColor, abbreviation, displayName: user?.displayName ?? "" },
     });
 
     await scheduleMatchups(leagueId);

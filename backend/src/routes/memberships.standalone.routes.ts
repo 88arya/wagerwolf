@@ -53,7 +53,7 @@ router.get("/", requireAuth, async (req: any, res: any) => {
   try {
     const memberships = await prisma.membership.findMany({
       where: { userId: req.userId, status: "ACTIVE" },
-      include: { league: true },
+      include: { league: true, user: { select: { displayName: true } } },
     });
     res.json(memberships);
   } catch (err: any) {
@@ -95,7 +95,7 @@ router.post("/join-by-code", requireAuth, async (req: any, res: any) => {
     ]);
     const abbreviation = generateAbbreviation(joiningUser?.displayName ?? "");
     const membership = await prisma.membership.create({
-      data: { userId: req.userId, leagueId: league.id, balance: 0, status: "PENDING", helmetColor, abbreviation },
+      data: { userId: req.userId, leagueId: league.id, balance: 0, status: "PENDING", helmetColor, abbreviation, displayName: joiningUser?.displayName ?? "" },
     });
 
     res.status(201).json({ ...membership, league });
@@ -147,7 +147,7 @@ router.post("/join-public", requireAuth, async (req: any, res: any) => {
       });
       const helmetColor = await pickHelmetColor(league.id);
       const membership = await prisma.membership.create({
-        data: { userId: req.userId, leagueId: league.id, balance: activeWeek ? league.weeklyAllowance : 0, status: "ACTIVE", isPublicFill: false, helmetColor, abbreviation },
+        data: { userId: req.userId, leagueId: league.id, balance: activeWeek ? league.weeklyAllowance : 0, status: "ACTIVE", isPublicFill: false, helmetColor, abbreviation, displayName: publicUser?.displayName ?? "" },
       });
       await scheduleMatchups(league.id);
 
@@ -197,7 +197,7 @@ router.post("/join-public", requireAuth, async (req: any, res: any) => {
     });
     const helmetColor = await pickHelmetColor(league.id);
     const membership = await prisma.membership.create({
-      data: { userId: req.userId, leagueId: league.id, balance: activeWeekFill ? league.weeklyAllowance : 0, status: "ACTIVE", isPublicFill: true, helmetColor, abbreviation },
+      data: { userId: req.userId, leagueId: league.id, balance: activeWeekFill ? league.weeklyAllowance : 0, status: "ACTIVE", isPublicFill: true, helmetColor, abbreviation, displayName: publicUser?.displayName ?? "" },
     });
 
     await scheduleMatchups(league.id);
