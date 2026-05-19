@@ -15,15 +15,6 @@ function PencilIcon() {
   );
 }
 
-function GearIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-      <circle cx="12" cy="12" r="3" />
-      <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z" />
-    </svg>
-  );
-}
-
 
 export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]">) {
   const router = useRouter();
@@ -46,25 +37,6 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
   const gamesScrollRef = useRef<HTMLDivElement>(null);
   const chatBottomRef = useRef<HTMLDivElement>(null);
 
-  // Settings modal
-  const [showSettings, setShowSettings] = useState(false);
-  const [pendingMembers, setPendingMembers] = useState<any[]>([]);
-  const [copied, setCopied] = useState(false);
-  const [settingsForm, setSettingsForm] = useState({ startWeek: "", regularSeasonWeeks: "", playoffSize: "", consolationWeeks: "", maxPublicPlayers: "" });
-  const [settingsError, setSettingsError] = useState("");
-  const [settingsSaved, setSettingsSaved] = useState(false);
-  const [limitsForm, setLimitsForm] = useState({ maxStakePerBet: "", maxBetsPerWeek: "", maxParlayLegs: "", feedVisibility: "AFTER_KICKOFF" });
-  const [limitsError, setLimitsError] = useState("");
-  const [limitsSaved, setLimitsSaved] = useState(false);
-  const [allMatchups, setAllMatchups] = useState<any[]>([]);
-  const [showPlayoffs, setShowPlayoffs] = useState(false);
-  const [showConsolation, setShowConsolation] = useState(false);
-  const [playoffWeekInput, setPlayoffWeekInput] = useState("");
-  const [advanceRound, setAdvanceRound] = useState("");
-  const [advanceWeek, setAdvanceWeek] = useState("");
-  const [consolationWeekInput, setConsolationWeekInput] = useState("");
-  const [consolationAdvanceRound, setConsolationAdvanceRound] = useState("");
-  const [consolationAdvanceWeek, setConsolationAdvanceWeek] = useState("");
 
   useEffect(() => {
     const games: any[] = week?.games ?? [];
@@ -182,185 +154,6 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
     ]);
   }
 
-  async function leaveLeague() {
-    if (!confirm(`Leave "${league?.name}"?`)) return;
-    try {
-      await api(`/leagues/${leagueId}/leave`, { method: "POST", body: JSON.stringify({}) });
-      router.push("/leagues");
-    } catch (err: any) {
-      try { alert(JSON.parse(err.message).error); } catch { alert(err.message); }
-    }
-  }
-
-  async function openSettings() {
-    setSettingsForm({
-      startWeek: String(league.startWeek ?? 1),
-      regularSeasonWeeks: String(league.regularSeasonWeeks ?? 13),
-      playoffSize: String(league.playoffSize ?? 4),
-      consolationWeeks: String(league.consolationWeeks ?? 2),
-      maxPublicPlayers: String(league.maxPublicPlayers ?? 0),
-    });
-    setLimitsForm({
-      maxStakePerBet: league.maxStakePerBet != null ? String(league.maxStakePerBet) : "",
-      maxBetsPerWeek: league.maxBetsPerWeek != null ? String(league.maxBetsPerWeek) : "",
-      maxParlayLegs: league.maxParlayLegs != null ? String(league.maxParlayLegs) : "",
-      feedVisibility: league.feedVisibility ?? "AFTER_KICKOFF",
-    });
-    setShowSettings(true);
-    const { leagueId: lId } = await params;
-    try {
-      const [matchupsData, pendingData] = await Promise.allSettled([
-        api(`/leagues/${lId}/matchups`),
-        league.creatorId === userId ? api(`/leagues/${lId}/pending`) : Promise.resolve([]),
-      ]);
-      if (matchupsData.status === "fulfilled") setAllMatchups(matchupsData.value);
-      if (pendingData.status === "fulfilled") setPendingMembers(pendingData.value);
-    } catch {}
-  }
-
-  function copyCode() {
-    navigator.clipboard.writeText(league.inviteCode);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  }
-
-  async function removeMember(memberId: string) {
-    if (!confirm("Remove this member?")) return;
-    try {
-      await api(`/leagues/${leagueId}/members/${memberId}`, { method: "DELETE" });
-      setMembers(prev => prev.filter(m => m.userId !== memberId));
-    } catch (err: any) {
-      try { alert(JSON.parse(err.message).error); } catch { alert(err.message); }
-    }
-  }
-
-  async function acceptMember(memberId: string) {
-    try {
-      await api(`/leagues/${leagueId}/members/${memberId}/accept`, { method: "POST", body: JSON.stringify({}) });
-      setPendingMembers(prev => prev.filter(m => m.userId !== memberId));
-      const board = await api(`/leagues/${leagueId}/leaderboard`);
-      setMembers(board);
-    } catch (err: any) {
-      try { alert(JSON.parse(err.message).error); } catch { alert(err.message); }
-    }
-  }
-
-  async function rejectMember(memberId: string) {
-    try {
-      await api(`/leagues/${leagueId}/members/${memberId}`, { method: "DELETE" });
-      setPendingMembers(prev => prev.filter(m => m.userId !== memberId));
-    } catch (err: any) {
-      try { alert(JSON.parse(err.message).error); } catch { alert(err.message); }
-    }
-  }
-
-  async function deleteLeague() {
-    if (!confirm(`Permanently delete "${league?.name}"? This cannot be undone.`)) return;
-    try {
-      await api(`/leagues/${leagueId}`, { method: "DELETE" });
-      router.push("/leagues");
-    } catch (err: any) {
-      try { alert(JSON.parse(err.message).error); } catch { alert(err.message); }
-    }
-  }
-
-  async function saveSettings(e: React.FormEvent) {
-    e.preventDefault();
-    setSettingsError(""); setSettingsSaved(false);
-    try {
-      const updated = await api(`/leagues/${leagueId}`, {
-        method: "PATCH",
-        body: JSON.stringify({
-          startWeek: Number(settingsForm.startWeek),
-          regularSeasonWeeks: Number(settingsForm.regularSeasonWeeks),
-          playoffSize: Number(settingsForm.playoffSize),
-          consolationWeeks: Number(settingsForm.consolationWeeks),
-          maxPublicPlayers: Number(settingsForm.maxPublicPlayers),
-        }),
-      });
-      setLeague(updated); setSettingsSaved(true);
-      setTimeout(() => setSettingsSaved(false), 2500);
-    } catch (err: any) {
-      try { setSettingsError(JSON.parse(err.message).error); } catch { setSettingsError(err.message); }
-    }
-  }
-
-  async function saveLimits(e: React.FormEvent) {
-    e.preventDefault();
-    setLimitsError(""); setLimitsSaved(false);
-    try {
-      const updated = await api(`/leagues/${leagueId}/limits`, {
-        method: "PATCH",
-        body: JSON.stringify({
-          maxStakePerBet: limitsForm.maxStakePerBet === "" ? null : Number(limitsForm.maxStakePerBet),
-          maxBetsPerWeek: limitsForm.maxBetsPerWeek === "" ? null : Number(limitsForm.maxBetsPerWeek),
-          maxParlayLegs: limitsForm.maxParlayLegs === "" ? null : Number(limitsForm.maxParlayLegs),
-          feedVisibility: limitsForm.feedVisibility,
-        }),
-      });
-      setLeague(updated); setLimitsSaved(true);
-      setTimeout(() => setLimitsSaved(false), 2500);
-    } catch (err: any) {
-      try { setLimitsError(JSON.parse(err.message).error); } catch { setLimitsError(err.message); }
-    }
-  }
-
-  async function startPlayoffs(e: React.FormEvent) {
-    e.preventDefault();
-    try {
-      const data = await api(`/leagues/${leagueId}/season/playoffs/start`, { method: "POST", body: JSON.stringify({ weekNumber: Number(playoffWeekInput) }) });
-      alert(`Playoffs started! Round 1 created for Week ${data.weekNumber}`);
-      setAllMatchups(prev => [...prev, ...data.bracket]);
-      setPlayoffWeekInput("");
-    } catch (err: any) {
-      try { alert(JSON.parse(err.message).error); } catch { alert(err.message); }
-    }
-  }
-
-  async function advancePlayoffs(e: React.FormEvent) {
-    e.preventDefault();
-    try {
-      const data = await api(`/leagues/${leagueId}/season/playoffs/advance`, { method: "POST", body: JSON.stringify({ completedRound: Number(advanceRound), nextWeekNumber: Number(advanceWeek) }) });
-      if (data.champion) {
-        alert(`Playoffs complete! Champion: ${data.champion.displayName}`);
-        setLeague((l: any) => ({ ...l, seasonEnded: true, championId: data.champion.userId }));
-      } else {
-        alert(`Round ${data.round} matchups created for Week ${data.weekNumber}`);
-        setAllMatchups(prev => [...prev, ...data.bracket]);
-      }
-      setAdvanceRound(""); setAdvanceWeek("");
-    } catch (err: any) {
-      try { alert(JSON.parse(err.message).error); } catch { alert(err.message); }
-    }
-  }
-
-  async function startConsolation(e: React.FormEvent) {
-    e.preventDefault();
-    try {
-      const data = await api(`/leagues/${leagueId}/season/consolation/start`, { method: "POST", body: JSON.stringify({ weekNumber: Number(consolationWeekInput) }) });
-      alert(`Consolation bracket started for Week ${data.weekNumber}`);
-      setAllMatchups(prev => [...prev, ...data.bracket]);
-      setConsolationWeekInput("");
-    } catch (err: any) {
-      try { alert(JSON.parse(err.message).error); } catch { alert(err.message); }
-    }
-  }
-
-  async function advanceConsolation(e: React.FormEvent) {
-    e.preventDefault();
-    try {
-      const data = await api(`/leagues/${leagueId}/season/consolation/advance`, { method: "POST", body: JSON.stringify({ completedRound: Number(consolationAdvanceRound), nextWeekNumber: Number(consolationAdvanceWeek) }) });
-      if (data.winner) {
-        alert(`Consolation complete! Winner: ${data.winner.displayName}`);
-      } else {
-        alert(`Consolation Round ${data.round} created for Week ${data.weekNumber}`);
-        setAllMatchups(prev => [...prev, ...data.bracket]);
-      }
-      setConsolationAdvanceRound(""); setConsolationAdvanceWeek("");
-    } catch (err: any) {
-      try { alert(JSON.parse(err.message).error); } catch { alert(err.message); }
-    }
-  }
 
   async function loadChatMessages() {
     if (!leagueId) return;
@@ -400,7 +193,6 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
   const helmetColors: Record<string, string> = {};
   members.forEach(m => { helmetColors[m.userId] = m.helmetColor ?? "#2563EB"; });
 
-  const isCreator = league?.creatorId === userId;
   const myRecord = members.find((m) => m.userId === userId);
   const myRank = myRecord?.rank ?? 0;
   const regularSeasonWeeks = league?.regularSeasonWeeks ?? 13;
@@ -582,33 +374,25 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
           <div style={{ gridColumn: "2", gridRow: "1" }}>
             <div style={{ background: "linear-gradient(135deg, #0f172a 0%, #1e3a5f 100%)", border: "1px solid #1e3a5f", borderRadius: "var(--radius-lg)", overflow: "hidden", position: "relative", minHeight: 160 }}>
               {/* Banner body */}
-              <div style={{ padding: "20px 20px 20px", display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16, position: "relative" }}>
+              <div style={{ padding: "20px 20px 20px", position: "relative" }}>
                 <div style={{ fontSize: "1.5rem", fontWeight: 800, letterSpacing: "-0.03em", color: "#fff", lineHeight: 1.15 }}>
                   {league.name.endsWith(" League")
                     ? <>{league.name.slice(0, -7)}<br /><span style={{ color: "rgba(255,255,255,0.55)" }}>League</span></>
                     : league.name}
                 </div>
-                <div style={{ display: "flex", flexDirection: "column", gap: 5, flexShrink: 0, marginRight: 12, marginTop: 2 }}>
-                  <span style={{ fontSize: "0.72rem", color: "rgba(255,255,255,0.65)" }}>
-                    <span style={{ fontWeight: 700, color: "rgba(255,255,255,0.4)" }}>Format:</span> Standard
-                  </span>
-                  <span style={{ fontSize: "0.72rem", color: "rgba(255,255,255,0.65)" }}>
-                    <span style={{ fontWeight: 700, color: "rgba(255,255,255,0.4)" }}>Allowance:</span> ${league.weeklyAllowance}
-                  </span>
-                  <span style={{ fontSize: "0.72rem", color: "rgba(255,255,255,0.65)" }}>
-                    <span style={{ fontWeight: 700, color: "rgba(255,255,255,0.4)" }}>Teams:</span> {members.length}
-                  </span>
-                </div>
               </div>
-              {/* Settings button — bottom right of banner */}
-              {membership && (
-                <button
-                  onClick={openSettings}
-                  style={{ position: "absolute", bottom: 12, right: 14, background: "none", border: "none", padding: 4, cursor: "pointer", color: "rgba(255,255,255,0.4)", display: "flex", alignItems: "center", justifyContent: "center", borderRadius: 4 }}
-                >
-                  <GearIcon />
-                </button>
-              )}
+              {/* Right panel: stats */}
+              <div style={{ position: "absolute", top: 20, right: 14, display: "flex", flexDirection: "column", gap: 5 }}>
+                <span style={{ fontSize: "0.72rem", color: "rgba(255,255,255,0.65)" }}>
+                  <span style={{ fontWeight: 700, color: "rgba(255,255,255,0.4)" }}>Format:</span> Standard
+                </span>
+                <span style={{ fontSize: "0.72rem", color: "rgba(255,255,255,0.65)" }}>
+                  <span style={{ fontWeight: 700, color: "rgba(255,255,255,0.4)" }}>Allowance:</span> ${league.weeklyAllowance}
+                </span>
+                <span style={{ fontSize: "0.72rem", color: "rgba(255,255,255,0.65)" }}>
+                  <span style={{ fontWeight: 700, color: "rgba(255,255,255,0.4)" }}>Teams:</span> {members.length}
+                </span>
+              </div>
             </div>
           </div>
 
@@ -1019,226 +803,6 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
         </div>
       )}
 
-      {/* Settings modal */}
-      {showSettings && league && (() => {
-        const isCreator = league.creatorId === userId;
-        const playoffMatchups = allMatchups.filter((m: any) => m.isPlayoff);
-        const consolationMatchups = allMatchups.filter((m: any) => m.isConsolation);
-        const maxPlayoffRound = playoffMatchups.length > 0 ? Math.max(...playoffMatchups.map((m: any) => m.playoffRound ?? 1)) : 0;
-        const maxConsolationRound = consolationMatchups.length > 0 ? Math.max(...consolationMatchups.map((m: any) => m.playoffRound ?? 1)) : 0;
-        const sw = Number(settingsForm.startWeek) || 1;
-        const rsw = Number(settingsForm.regularSeasonWeeks) || 13;
-        const ps = Number(settingsForm.playoffSize) || 4;
-        const pw = ps >= 2 ? Math.ceil(Math.log2(ps)) : 0;
-        const endWeek = sw + rsw + pw - 1;
-        const overLimit = endWeek > 18;
-        const maxTeams = league.maxTeams ?? 10;
-        const labelStyle = { fontSize: "0.62rem", fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase" as const, color: "var(--text-3)", marginBottom: 4 };
-        const sectionTitle = { fontSize: "0.62rem", fontWeight: 800, letterSpacing: "0.1em", textTransform: "uppercase" as const, color: "var(--text)", marginBottom: 8, marginTop: 16 };
-        return (
-          <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", zIndex: 50, display: "flex", alignItems: "center", justifyContent: "center" }}>
-            <div style={{ background: "#fff", borderRadius: 12, width: 440, maxHeight: "85vh", overflowY: "auto", boxShadow: "0 8px 32px rgba(0,0,0,0.18)", position: "relative" }}>
-              {/* Header */}
-              <div style={{ padding: "16px 20px 12px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between", position: "sticky", top: 0, background: "#fff", zIndex: 1 }}>
-                <div>
-                  <div style={{ fontWeight: 800, fontSize: "0.92rem", color: "var(--text)" }}>League Settings</div>
-                  <div style={{ fontSize: "0.68rem", color: "var(--text-3)", marginTop: 2 }}>
-                    Commissioner: <span style={{ fontWeight: 700, color: "var(--text-2)" }}>{members.find(m => m.userId === league.creatorId)?.displayName ?? "—"}</span>
-                  </div>
-                </div>
-                <button onClick={() => setShowSettings(false)} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text)", fontSize: "1.1rem", lineHeight: 1, padding: 2 }}>✕</button>
-              </div>
-
-              <div style={{ padding: "0 20px 20px" }}>
-                {/* Invite Code */}
-                <div style={sectionTitle}>Invite Code</div>
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: "var(--surface-2)", borderRadius: 8, padding: "9px 12px" }}>
-                  <span style={{ fontFamily: "monospace", fontWeight: 700, fontSize: "0.95rem", color: "var(--text)", letterSpacing: "0.08em" }}>{league.inviteCode}</span>
-                  <button onClick={copyCode} style={{ fontSize: "0.75rem", padding: "5px 12px", background: "var(--accent)", color: "#fff", border: "none", borderRadius: 6, cursor: "pointer", fontWeight: 700 }}>
-                    {copied ? "✓ Copied" : "Copy"}
-                  </button>
-                </div>
-
-                {/* Join Requests */}
-                {isCreator && pendingMembers.length > 0 && (
-                  <>
-                    <div style={sectionTitle}>Join Requests <span style={{ background: "var(--accent)", color: "#fff", borderRadius: 10, padding: "1px 7px", fontSize: "0.65rem", marginLeft: 6 }}>{pendingMembers.length}</span></div>
-                    <div style={{ border: "1px solid var(--border)", borderRadius: 8, overflow: "hidden" }}>
-                      {pendingMembers.map((m: any, idx: number) => (
-                        <div key={m.userId} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 12px", borderBottom: idx < pendingMembers.length - 1 ? "1px solid var(--border)" : "none" }}>
-                          <span style={{ fontSize: "0.85rem", fontWeight: 600, color: "var(--text)" }}>{m.user.displayName}</span>
-                          <div style={{ display: "flex", gap: 6 }}>
-                            <button onClick={() => acceptMember(m.userId)} style={{ fontSize: "0.72rem", padding: "4px 10px", background: "none", border: "1px solid var(--win-border)", borderRadius: 6, color: "var(--win)", cursor: "pointer", fontWeight: 700 }}>Accept</button>
-                            <button onClick={() => rejectMember(m.userId)} style={{ fontSize: "0.72rem", padding: "4px 10px", background: "none", border: "1px solid var(--loss-border)", borderRadius: 6, color: "var(--loss)", cursor: "pointer", fontWeight: 700 }}>Reject</button>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </>
-                )}
-
-                {/* Members */}
-                <div style={sectionTitle}>Members <span style={{ fontWeight: 400, color: "var(--text-3)", fontSize: "0.72rem" }}>({members.length})</span></div>
-                <div style={{ border: "1px solid var(--border)", borderRadius: 8, overflow: "hidden" }}>
-                  {members.map((m: any, idx: number) => (
-                    <div key={m.userId} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "9px 12px", borderBottom: idx < members.length - 1 ? "1px solid var(--border)" : "none" }}>
-                      <span style={{ fontSize: "0.85rem", fontWeight: m.userId === userId ? 700 : 400, color: "var(--text)" }}>
-                        {m.displayName}{m.userId === userId && <span style={{ fontSize: "0.65rem", background: "var(--surface-2)", borderRadius: 4, padding: "1px 6px", marginLeft: 6, fontWeight: 600, color: "var(--text-3)" }}>you</span>}
-                      </span>
-                      {isCreator && m.userId !== userId && !league.seasonStarted && (
-                        <button onClick={() => removeMember(m.userId)} style={{ fontSize: "0.7rem", padding: "3px 9px", background: "none", border: "1px solid var(--loss-border)", borderRadius: 6, color: "var(--loss)", cursor: "pointer" }}>Remove</button>
-                      )}
-                    </div>
-                  ))}
-                </div>
-
-                {/* Season Management */}
-                {isCreator && league.seasonStarted && !league.seasonEnded && (
-                  <>
-                    <div style={sectionTitle}>Playoffs</div>
-                    <div style={{ border: "1px solid var(--border)", borderRadius: 8, overflow: "hidden" }}>
-                      <button onClick={() => setShowPlayoffs(!showPlayoffs)} style={{ width: "100%", background: "transparent", border: "none", padding: "11px 12px", display: "flex", alignItems: "center", justifyContent: "space-between", fontWeight: 700, fontSize: "0.85rem", color: "var(--text)", cursor: "pointer" }}>
-                        <span>Playoffs {playoffMatchups.length > 0 && <span style={{ fontSize: "0.65rem", background: "var(--accent)", color: "#fff", borderRadius: 10, padding: "1px 7px", marginLeft: 6 }}>Round {maxPlayoffRound}</span>}</span>
-                        <span style={{ color: "var(--text-3)", fontSize: "0.75rem" }}>{showPlayoffs ? "▲" : "▼"}</span>
-                      </button>
-                      {showPlayoffs && (
-                        <div style={{ padding: "0 12px 12px", borderTop: "1px solid var(--border)" }}>
-                          {playoffMatchups.length === 0 ? (
-                            <form onSubmit={startPlayoffs} style={{ display: "flex", gap: 8, paddingTop: 10 }}>
-                              <input type="number" placeholder="Start week #" value={playoffWeekInput} onChange={e => setPlayoffWeekInput(e.target.value)} style={{ flex: 1, fontSize: "0.82rem" }} required />
-                              <button type="submit" style={{ fontSize: "0.82rem", padding: "7px 12px", background: "var(--accent)", color: "#fff", border: "none", borderRadius: 6, cursor: "pointer", fontWeight: 700 }}>Start →</button>
-                            </form>
-                          ) : (
-                            <div style={{ paddingTop: 8 }}>
-                              {playoffMatchups.filter((m: any) => m.playoffRound === maxPlayoffRound).map((m: any) => (
-                                <div key={m.id} style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", borderBottom: "1px solid var(--border)" }}>
-                                  <span style={{ fontSize: "0.82rem", color: "var(--text-2)" }}>{m.homeUser?.displayName ?? "?"} vs {m.awayUser?.displayName ?? "?"}</span>
-                                  {m.winnerId && <span style={{ color: "var(--win)", fontSize: "0.72rem", fontWeight: 700 }}>✓</span>}
-                                </div>
-                              ))}
-                              <form onSubmit={advancePlayoffs} style={{ display: "grid", gridTemplateColumns: "1fr 1fr auto", gap: 8, marginTop: 10 }}>
-                                <input type="number" placeholder="Round #" value={advanceRound} onChange={e => setAdvanceRound(e.target.value)} style={{ fontSize: "0.8rem" }} required />
-                                <input type="number" placeholder="Next week #" value={advanceWeek} onChange={e => setAdvanceWeek(e.target.value)} style={{ fontSize: "0.8rem" }} required />
-                                <button type="submit" style={{ fontSize: "0.8rem", padding: "7px 10px", background: "var(--accent)", color: "#fff", border: "none", borderRadius: 6, cursor: "pointer", fontWeight: 700 }}>Advance →</button>
-                              </form>
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </div>
-
-                    {league.consolationTeams >= 2 && (
-                      <>
-                        <div style={{ ...sectionTitle, marginTop: 12 }}>Consolation</div>
-                        <div style={{ border: "1px solid var(--border)", borderRadius: 8, overflow: "hidden" }}>
-                          <button onClick={() => setShowConsolation(!showConsolation)} style={{ width: "100%", background: "transparent", border: "none", padding: "11px 12px", display: "flex", alignItems: "center", justifyContent: "space-between", fontWeight: 700, fontSize: "0.85rem", color: "var(--text)", cursor: "pointer" }}>
-                            <span>Consolation {consolationMatchups.length > 0 && <span style={{ fontSize: "0.65rem", background: "var(--surface-3)", borderRadius: 10, padding: "1px 7px", marginLeft: 6 }}>R{maxConsolationRound}</span>}</span>
-                            <span style={{ color: "var(--text-3)", fontSize: "0.75rem" }}>{showConsolation ? "▲" : "▼"}</span>
-                          </button>
-                          {showConsolation && (
-                            <div style={{ padding: "0 12px 12px", borderTop: "1px solid var(--border)" }}>
-                              {consolationMatchups.length === 0 ? (
-                                <form onSubmit={startConsolation} style={{ display: "flex", gap: 8, paddingTop: 10 }}>
-                                  <input type="number" placeholder="Start week #" value={consolationWeekInput} onChange={e => setConsolationWeekInput(e.target.value)} style={{ flex: 1, fontSize: "0.82rem" }} required />
-                                  <button type="submit" style={{ fontSize: "0.82rem", padding: "7px 12px", background: "var(--accent)", color: "#fff", border: "none", borderRadius: 6, cursor: "pointer", fontWeight: 700 }}>Start →</button>
-                                </form>
-                              ) : (
-                                <div style={{ paddingTop: 8 }}>
-                                  {consolationMatchups.filter((m: any) => m.playoffRound === maxConsolationRound).map((m: any) => (
-                                    <div key={m.id} style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", borderBottom: "1px solid var(--border)" }}>
-                                      <span style={{ fontSize: "0.82rem", color: "var(--text-2)" }}>{m.homeUser?.displayName ?? "?"} vs {m.awayUser?.displayName ?? "?"}</span>
-                                      {m.winnerId && <span style={{ color: "var(--win)", fontSize: "0.72rem", fontWeight: 700 }}>✓</span>}
-                                    </div>
-                                  ))}
-                                  <form onSubmit={advanceConsolation} style={{ display: "grid", gridTemplateColumns: "1fr 1fr auto", gap: 8, marginTop: 10 }}>
-                                    <input type="number" placeholder="Round #" value={consolationAdvanceRound} onChange={e => setConsolationAdvanceRound(e.target.value)} style={{ fontSize: "0.8rem" }} required />
-                                    <input type="number" placeholder="Next week #" value={consolationAdvanceWeek} onChange={e => setConsolationAdvanceWeek(e.target.value)} style={{ fontSize: "0.8rem" }} required />
-                                    <button type="submit" style={{ fontSize: "0.8rem", padding: "7px 10px", background: "var(--accent)", color: "#fff", border: "none", borderRadius: 6, cursor: "pointer", fontWeight: 700 }}>Advance →</button>
-                                  </form>
-                                </div>
-                              )}
-                            </div>
-                          )}
-                        </div>
-                      </>
-                    )}
-                  </>
-                )}
-
-                {/* Season Structure */}
-                <div style={sectionTitle}>Season Structure</div>
-                {isCreator && !league.seasonStarted ? (
-                  <form onSubmit={saveSettings} style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-                      <div><div style={labelStyle}>Start Week</div><input type="number" min="1" max="17" value={settingsForm.startWeek} onChange={e => setSettingsForm({ ...settingsForm, startWeek: e.target.value })} required style={{ width: "100%", boxSizing: "border-box" }} /></div>
-                      <div><div style={labelStyle}>Reg Season Weeks</div><input type="number" min="1" value={settingsForm.regularSeasonWeeks} onChange={e => setSettingsForm({ ...settingsForm, regularSeasonWeeks: e.target.value })} required style={{ width: "100%", boxSizing: "border-box" }} /></div>
-                      <div><div style={labelStyle}>Playoff Teams</div><input type="number" min="2" max={maxTeams - 1} value={settingsForm.playoffSize} onChange={e => setSettingsForm({ ...settingsForm, playoffSize: e.target.value })} required style={{ width: "100%", boxSizing: "border-box" }} /></div>
-                      <div><div style={labelStyle}>Consolation Weeks</div><input type="number" min="1" value={settingsForm.consolationWeeks} onChange={e => setSettingsForm({ ...settingsForm, consolationWeeks: e.target.value })} required style={{ width: "100%", boxSizing: "border-box" }} /></div>
-                      <div style={{ gridColumn: "span 2" }}><div style={labelStyle}>Public Fill Slots</div><input type="number" min="0" max={maxTeams} placeholder="0 = invite-only" value={settingsForm.maxPublicPlayers} onChange={e => setSettingsForm({ ...settingsForm, maxPublicPlayers: e.target.value })} style={{ width: "100%", boxSizing: "border-box" }} /></div>
-                    </div>
-                    <div style={{ fontSize: "0.7rem", color: overLimit ? "var(--loss)" : "var(--text-3)" }}>
-                      {overLimit ? `Season ends week ${endWeek}, exceeds week 18` : `Ends NFL week ${endWeek} · ${maxTeams - ps} consolation teams · ${pw} playoff weeks`}
-                    </div>
-                    {settingsError && <p style={{ color: "var(--loss)", fontSize: "0.78rem", margin: 0 }}>{settingsError}</p>}
-                    <button type="submit" style={{ padding: "9px", fontSize: "0.82rem", fontWeight: 700, background: "var(--accent)", color: "#fff", border: "none", borderRadius: 8, cursor: "pointer" }}>
-                      {settingsSaved ? "✓ Saved" : "Save Season Settings"}
-                    </button>
-                  </form>
-                ) : (
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-                    {[["Start Week", league.startWeek], ["Reg Season Weeks", league.regularSeasonWeeks], ["Playoff Teams", league.playoffSize], ["Consolation Weeks", league.consolationWeeks], ["Weekly Allowance", `$${league.weeklyAllowance}`], ["Max Teams", league.maxTeams]].map(([label, val]) => (
-                      <div key={label as string}><div style={labelStyle}>{label}</div><div style={{ fontSize: "0.88rem", fontWeight: 600, color: "var(--text)" }}>{val}</div></div>
-                    ))}
-                  </div>
-                )}
-
-                {/* Betting Rules */}
-                <div style={sectionTitle}>Betting Rules</div>
-                {isCreator ? (
-                  <form onSubmit={saveLimits} style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-                      <div><div style={labelStyle}>Max Stake / Bet</div><input type="number" min="1" placeholder="No limit" value={limitsForm.maxStakePerBet} onChange={e => setLimitsForm({ ...limitsForm, maxStakePerBet: e.target.value })} style={{ width: "100%", boxSizing: "border-box" }} /></div>
-                      <div><div style={labelStyle}>Max Bets / Week</div><input type="number" min="1" placeholder="No limit" value={limitsForm.maxBetsPerWeek} onChange={e => setLimitsForm({ ...limitsForm, maxBetsPerWeek: e.target.value })} style={{ width: "100%", boxSizing: "border-box" }} /></div>
-                      <div style={{ gridColumn: "span 2" }}><div style={labelStyle}>Max Parlay Legs</div><input type="number" min="2" placeholder="No limit" value={limitsForm.maxParlayLegs} onChange={e => setLimitsForm({ ...limitsForm, maxParlayLegs: e.target.value })} style={{ width: "100%", boxSizing: "border-box" }} /></div>
-                    </div>
-                    <div>
-                      <div style={{ ...labelStyle, marginBottom: 8 }}>Bet Feed Visibility</div>
-                      <div style={{ display: "flex", gap: 8 }}>
-                        {[{ value: "AFTER_KICKOFF", label: "After kickoff" }, { value: "AFTER_RESOLVE", label: "After week resolves" }].map(({ value, label }) => {
-                          const active = limitsForm.feedVisibility === value;
-                          return <button key={value} type="button" onClick={() => setLimitsForm({ ...limitsForm, feedVisibility: value })} style={{ flex: 1, padding: "8px 10px", borderRadius: 6, fontSize: "0.8rem", fontWeight: active ? 800 : 500, background: active ? "var(--accent)" : "var(--surface-2)", color: active ? "#fff" : "var(--text-2)", border: active ? "1.5px solid var(--accent)" : "1.5px solid var(--border-2)", cursor: "pointer", transition: "all 0.12s" }}>{label}</button>;
-                        })}
-                      </div>
-                    </div>
-                    {limitsError && <p style={{ color: "var(--loss)", fontSize: "0.78rem", margin: 0 }}>{limitsError}</p>}
-                    <button type="submit" style={{ padding: "9px", fontSize: "0.82rem", fontWeight: 700, background: "var(--accent)", color: "#fff", border: "none", borderRadius: 8, cursor: "pointer" }}>
-                      {limitsSaved ? "✓ Saved" : "Save Betting Rules"}
-                    </button>
-                  </form>
-                ) : (
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-                    {[["Max Stake / Bet", league.maxStakePerBet != null ? `$${league.maxStakePerBet}` : "No limit"], ["Max Bets / Week", league.maxBetsPerWeek != null ? league.maxBetsPerWeek : "No limit"], ["Max Parlay Legs", league.maxParlayLegs != null ? league.maxParlayLegs : "No limit"], ["Feed Visibility", league.feedVisibility === "AFTER_RESOLVE" ? "After week resolves" : "After kickoff"]].map(([label, val]) => (
-                      <div key={label as string}><div style={labelStyle}>{label}</div><div style={{ fontSize: "0.88rem", fontWeight: 600, color: "var(--text)" }}>{val}</div></div>
-                    ))}
-                  </div>
-                )}
-
-                {/* Delete / Leave */}
-                {isCreator && !league.seasonStarted && (
-                  <button onClick={deleteLeague} style={{ width: "100%", marginTop: 20, padding: "9px", fontSize: "0.82rem", fontWeight: 700, background: "none", border: "1px solid var(--loss-border)", borderRadius: 8, color: "var(--loss)", cursor: "pointer" }}>
-                    Delete League
-                  </button>
-                )}
-                {!isCreator && !league.seasonStarted && (
-                  <button onClick={leaveLeague} style={{ width: "100%", marginTop: 20, padding: "9px", fontSize: "0.82rem", fontWeight: 700, background: "none", border: "1px solid var(--loss-border)", borderRadius: 8, color: "var(--loss)", cursor: "pointer" }}>
-                    Leave League
-                  </button>
-                )}
-              </div>
-            </div>
-          </div>
-        );
-      })()}
 
     </>
   );
