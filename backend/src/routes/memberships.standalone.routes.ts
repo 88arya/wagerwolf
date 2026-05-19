@@ -53,9 +53,13 @@ router.get("/", requireAuth, async (req: any, res: any) => {
   try {
     const memberships = await prisma.membership.findMany({
       where: { userId: req.userId, status: "ACTIVE" },
-      include: { league: true, user: { select: { displayName: true } } },
+      include: { league: true, user: { select: { displayName: true, name: true } } },
     });
-    res.json(memberships);
+    const enriched = memberships.map((m: any) => ({
+      ...m,
+      displayName: m.displayName || m.user?.displayName || m.user?.name || "",
+    }));
+    res.json(enriched);
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }

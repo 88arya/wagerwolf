@@ -30,11 +30,16 @@ export default function LeagueNav({ leagueId }: { leagueId: string }) {
   const router = useRouter();
   const [leagues, setLeagues] = useState<any[]>([]);
   const [currentLeague, setCurrentLeague] = useState<any>(null);
+  const [myDisplayName, setMyDisplayName] = useState("");
   const [open, setOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [hoveredGroup, setHoveredGroup] = useState<string | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const profileRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    api("/users/me").then((u: any) => setMyDisplayName(u.displayName || u.name || "")).catch(() => {});
+  }, []);
 
   useEffect(() => {
     api("/memberships").then((ms: any[]) => {
@@ -192,12 +197,10 @@ export default function LeagueNav({ leagueId }: { leagueId: string }) {
                       {m.league?.name ?? m.leagueId}
                     </div>
                     <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                      <HelmetAvatar color={m.helmetColor ?? ACCENT} initials={(m.displayName || m.user?.displayName || "").slice(0, 2)} size={18} />
-                      {(m.displayName || m.user?.displayName) && (
-                        <span style={{ fontSize: "0.72rem", fontWeight: 500 }}>
-                          {m.displayName || m.user?.displayName}
-                        </span>
-                      )}
+                      <HelmetAvatar color={m.helmetColor ?? ACCENT} initials={(m.displayName || myDisplayName).slice(0, 2)} size={18} />
+                      <span style={{ fontSize: "0.72rem", fontWeight: 500 }}>
+                        {m.displayName || myDisplayName}
+                      </span>
                     </div>
                   </button>
                 );
