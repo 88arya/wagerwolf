@@ -70,6 +70,11 @@ export default function LeagueNav({ leagueId }: { leagueId: string }) {
       label: "League",
       links: [
         { label: "League Home",     href: base },
+        { label: "Scoreboard",      href: `${base}/scoreboard` },
+        { label: "Standings",       href: `${base}/standings` },
+        { label: "Members",         href: `${base}/members` },
+        { label: "Bracket",         href: `${base}/bracket` },
+        { label: "Schedule",        href: `${base}/schedule` },
         { label: "League Settings", href: `${base}/settings` },
       ],
     },
@@ -78,6 +83,7 @@ export default function LeagueNav({ leagueId }: { leagueId: string }) {
       links: [
         { label: "Sportsbook", href: `${base}/bet` },
         { label: "My Bets",    href: `${base}/mybets` },
+        { label: "History",    href: `${base}/history` },
       ],
     },
   ];
@@ -129,7 +135,7 @@ export default function LeagueNav({ leagueId }: { leagueId: string }) {
               </div>
 
               {isHovered && (
-                <div style={{ position: "absolute", top: "100%", left: 0, background: "var(--surface)", border: "5px solid #fff", borderRadius: 0, boxShadow: "var(--shadow-md)", minWidth: 160, zIndex: 500, overflow: "hidden" }}>
+                <div style={{ position: "absolute", top: "100%", left: 0, background: "var(--surface)", border: "5px solid #fff", borderRadius: 0, boxShadow: "var(--shadow-md)", minWidth: 280, zIndex: 500, overflow: "hidden", display: "grid", gridTemplateColumns: "1fr 1fr" }}>
                   {group.links.map(({ label, href }) => {
                     const active = isActive(href);
                     return (

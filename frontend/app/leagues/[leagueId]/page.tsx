@@ -372,7 +372,8 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
 
           {/* CENTER TOP: League Banner */}
           <div style={{ gridColumn: "2", gridRow: "1" }}>
-            <div style={{ background: "linear-gradient(135deg, #0f172a 0%, #1e3a5f 100%)", border: "1px solid #1e3a5f", borderRadius: "var(--radius-lg)", overflow: "hidden", position: "relative", minHeight: 160 }}>
+            <div style={{ background: "linear-gradient(135deg, #0f172a 0%, #1e3a5f 100%)", borderRadius: 8, overflow: "hidden", position: "relative", minHeight: 160 }}>
+              <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 8, background: "var(--accent)" }} />
               {/* Banner body */}
               <div style={{ padding: "20px 20px 20px", position: "relative" }}>
                 <div style={{ fontSize: "1.5rem", fontWeight: 800, letterSpacing: "-0.03em", color: "#fff", lineHeight: 1.15 }}>
