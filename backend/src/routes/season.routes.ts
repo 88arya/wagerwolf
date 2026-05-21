@@ -102,6 +102,10 @@ router.post("/:leagueId/season/start", requireAuth, async (req: any, res: any) =
       userIds = [...userIds, ghostUserId];
     }
 
+    await prisma.matchup.deleteMany({
+      where: { leagueId, isPlayoff: false, isConsolation: false },
+    });
+
     const rounds = generateRoundRobin(userIds);
 
     const matchups = [];
