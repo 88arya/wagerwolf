@@ -65,6 +65,13 @@ export default function LeagueNav({ leagueId }: { leagueId: string }) {
 
   const base = `/leagues/${leagueId}`;
 
+  const seasonStarted = currentLeague?.league?.seasonStarted ?? true;
+
+  const lobbyLinks = [
+    { label: "Members", href: `${base}/members` },
+    { label: "Settings", href: `${base}/settings` },
+  ];
+
   const groups = [
     {
       label: "League",
@@ -104,66 +111,85 @@ export default function LeagueNav({ leagueId }: { leagueId: string }) {
           <div style={{ width: 28, height: 28, borderRadius: 6, background: "var(--surface-3)", border: "1px solid var(--border-2)", flexShrink: 0 }} />
         </div>
 
-        {/* Grouped dropdowns */}
-        {groups.map((group, gi) => {
-          const groupActive = group.links.some(l => isActive(l.href));
-          const isHovered = hoveredGroup === group.label;
-          return (
-            <div
-              key={group.label}
-              style={{ position: "relative", display: "flex", alignItems: "stretch" }}
-              onMouseEnter={() => setHoveredGroup(group.label)}
-              onMouseLeave={() => setHoveredGroup(null)}
-            >
-              <div style={{
-                display: "flex",
-                alignItems: "center",
-                padding: "0 11px",
-                fontSize: "0.82rem",
-                fontWeight: 500,
-                color: "#000",
-                borderBottom: `3.5px solid ${groupActive || isHovered ? ACCENT : "transparent"}`,
-                transition: "color 0.12s, border-color 0.12s",
-                userSelect: "none",
-                whiteSpace: "nowrap",
-                cursor: "default",
-              }}>
-                {group.label}
-                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" style={{ marginLeft: 4, flexShrink: 0, transform: isHovered ? "rotate(180deg)" : "none", transition: "transform 0.15s" }}>
-                  <polyline points="6 9 12 15 18 9" />
-                </svg>
-              </div>
+        {seasonStarted ? (
+          <>
+            {groups.map((group) => {
+              const groupActive = group.links.some(l => isActive(l.href));
+              const isHovered = hoveredGroup === group.label;
+              return (
+                <div
+                  key={group.label}
+                  style={{ position: "relative", display: "flex", alignItems: "stretch" }}
+                  onMouseEnter={() => setHoveredGroup(group.label)}
+                  onMouseLeave={() => setHoveredGroup(null)}
+                >
+                  <div style={{
+                    display: "flex",
+                    alignItems: "center",
+                    padding: "0 11px",
+                    fontSize: "0.82rem",
+                    fontWeight: 500,
+                    color: "#000",
+                    borderBottom: `3.5px solid ${groupActive || isHovered ? ACCENT : "transparent"}`,
+                    transition: "color 0.12s, border-color 0.12s",
+                    userSelect: "none",
+                    whiteSpace: "nowrap",
+                    cursor: "default",
+                  }}>
+                    {group.label}
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" style={{ marginLeft: 4, flexShrink: 0, transform: isHovered ? "rotate(180deg)" : "none", transition: "transform 0.15s" }}>
+                      <polyline points="6 9 12 15 18 9" />
+                    </svg>
+                  </div>
 
-              {isHovered && (
-                <div style={{ position: "absolute", top: "100%", left: 0, background: "var(--surface)", border: "5px solid #fff", borderRadius: 0, boxShadow: "var(--shadow-md)", minWidth: 280, zIndex: 500, overflow: "hidden", display: "grid", gridTemplateColumns: "1fr 1fr" }}>
-                  {group.links.map(({ label, href }) => {
-                    const active = isActive(href);
-                    return (
-                      <Link
-                        key={href}
-                        href={href}
-                        style={{
-                          display: "block",
-                          padding: "9px 14px",
-                          fontSize: "0.82rem",
-                          fontWeight: 500,
-                          color: "#000",
-                          background: "none",
-                          textDecoration: "none",
-                          transition: "background 0.1s, color 0.1s",
-                        }}
-                        onMouseEnter={e => { const el = e.currentTarget as HTMLAnchorElement; el.style.background = ACCENT; el.style.color = "#fff"; }}
-                        onMouseLeave={e => { const el = e.currentTarget as HTMLAnchorElement; el.style.background = "none"; el.style.color = "#000"; }}
-                      >
-                        {label}
-                      </Link>
-                    );
-                  })}
+                  {isHovered && (
+                    <div style={{ position: "absolute", top: "100%", left: 0, background: "var(--surface)", border: "5px solid #fff", borderRadius: 0, boxShadow: "var(--shadow-md)", minWidth: 280, zIndex: 500, overflow: "hidden", display: "grid", gridTemplateColumns: "1fr 1fr" }}>
+                      {group.links.map(({ label, href }) => {
+                        return (
+                          <Link
+                            key={href}
+                            href={href}
+                            style={{
+                              display: "block",
+                              padding: "9px 14px",
+                              fontSize: "0.82rem",
+                              fontWeight: 500,
+                              color: "#000",
+                              background: "none",
+                              textDecoration: "none",
+                              transition: "background 0.1s, color 0.1s",
+                            }}
+                            onMouseEnter={e => { const el = e.currentTarget as HTMLAnchorElement; el.style.background = ACCENT; el.style.color = "#fff"; }}
+                            onMouseLeave={e => { const el = e.currentTarget as HTMLAnchorElement; el.style.background = "none"; el.style.color = "#000"; }}
+                          >
+                            {label}
+                          </Link>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
-              )}
-            </div>
-          );
-        })}
+              );
+            })}
+          </>
+        ) : (
+          <>
+            {lobbyLinks.map(({ label, href }) => {
+              const active = isActive(href);
+              return (
+                <Link key={href} href={href} style={{
+                  display: "flex", alignItems: "center", padding: "0 14px",
+                  fontSize: "0.82rem", fontWeight: 500, color: "#000",
+                  textDecoration: "none", whiteSpace: "nowrap",
+                  borderBottom: `3.5px solid ${active ? ACCENT : "transparent"}`,
+                  transition: "border-color 0.12s",
+                }}>
+                  {label}
+                </Link>
+              );
+            })}
+          </>
+        )}
       </div>
 
       {/* Right: profile + league dropdown */}

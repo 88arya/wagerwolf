@@ -1,4 +1,5 @@
 import LeagueNav from "@/components/LeagueNav";
+import LobbyGate from "@/components/LobbyGate";
 
 export default async function LeagueLayout({
   children,
@@ -11,6 +12,7 @@ export default async function LeagueLayout({
   return (
     <>
       <LeagueNav leagueId={leagueId} />
+      <LobbyGate leagueId={leagueId} />
       {children}
     </>
   );
