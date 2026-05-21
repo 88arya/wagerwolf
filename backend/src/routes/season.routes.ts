@@ -107,18 +107,16 @@ router.post("/:leagueId/season/start", requireAuth, async (req: any, res: any) =
     });
 
     const rounds = generateRoundRobin(userIds);
-
-    const matchups = [];
-    for (let i = 0; i < rounds.length; i++) {
-      const weekNumber = i + 1;
+    const totalRounds = Math.min(rounds.length, league.regularSeasonWeeks);
+    const matchupData = [];
+    for (let i = 0; i < totalRounds; i++) {
+      const weekNumber = league.startWeek + i;
       for (const [homeUserId, awayUserId] of rounds[i]) {
         const isGhostMatchup = homeUserId === ghostUserId || awayUserId === ghostUserId;
-        const matchup = await prisma.matchup.create({
-          data: { leagueId, weekNumber, homeUserId, awayUserId, isGhostMatchup },
-        });
-        matchups.push(matchup);
+        matchupData.push({ leagueId, weekNumber, homeUserId, awayUserId, isGhostMatchup });
       }
     }
+    await prisma.matchup.createMany({ data: matchupData, skipDuplicates: true });
 
     await prisma.league.update({ where: { id: leagueId }, data: { seasonStarted: true, hasGhost } });
 
@@ -126,7 +124,7 @@ router.post("/:leagueId/season/start", requireAuth, async (req: any, res: any) =
       await ensureOpenPublicLeague(league.creatorId);
     }
 
-    res.json({ weeks: rounds.length, matchups });
+    res.json({ weeks: totalRounds });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
