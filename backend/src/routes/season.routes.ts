@@ -8,12 +8,12 @@ async function ensureOpenPublicLeague(creatorId: string) {
     where: { isPublic: true, seasonStarted: false },
     include: { memberships: { where: { status: "ACTIVE" }, select: { id: true } } },
   }) as any;
-  if (open && open.memberships.length < open.maxTeams) return;
+  if (open && open.memberships.length < open.maxPlayers) return;
 
   const count = await prisma.league.count({ where: { isPublic: true } });
   const playoffSize = 6;
   const playoffWeeks = Math.ceil(Math.log2(playoffSize));
-  const maxTeams = 10;
+  const maxPlayers = 10;
 
   const firstUnresolved = await prisma.week.findFirst({ where: { resolved: false }, orderBy: { number: "asc" } });
   let startWeek = 1;
@@ -32,12 +32,12 @@ async function ensureOpenPublicLeague(creatorId: string) {
       inviteCode,
       creatorId,
       isPublic: true,
-      maxTeams,
+      maxPlayers,
       startWeek,
       regularSeasonWeeks,
       playoffWeeks,
       playoffSize,
-      consolationTeams: maxTeams - playoffSize,
+      consolationTeams: maxPlayers - playoffSize,
       consolationWeeks: 2,
     },
   });

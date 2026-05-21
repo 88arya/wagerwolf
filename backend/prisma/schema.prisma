@@ -78,7 +78,7 @@ model League {
   seasonEnded        Boolean     @default(false)
   championId         String?
   isPublic           Boolean     @default(false)
-  maxTeams           Int         @default(10)
+  maxPlayers         Int         @default(10)
   startWeek          Int         @default(1)
   regularSeasonWeeks Int         @default(13)
   playoffWeeks       Int         @default(3)

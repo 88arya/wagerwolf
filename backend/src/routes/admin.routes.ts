@@ -20,11 +20,11 @@ router.get("/leagues", requireAuth, requireAdmin, async (req: any, res: any) => 
 // Create a standardized public league (admin only)
 router.post("/leagues/public", requireAuth, requireAdmin, async (req: any, res: any) => {
   try {
-    const maxTeams = 10;
+    const maxPlayers = 10;
     const weeklyAllowance = 300;
     const playoffSize = 6;
     const playoffWeeks = Math.ceil(Math.log2(playoffSize)); // 3
-    const consolationTeams = maxTeams - playoffSize; // 4
+    const consolationTeams = maxPlayers - playoffSize; // 4
     const consolationWeeks = 2;
 
     const firstUnresolved = await prisma.week.findFirst({
@@ -52,7 +52,7 @@ router.post("/leagues/public", requireAuth, requireAdmin, async (req: any, res: 
         inviteCode,
         creatorId: req.userId,
         isPublic: true,
-        maxTeams,
+        maxPlayers,
         startWeek,
         regularSeasonWeeks,
         playoffWeeks,

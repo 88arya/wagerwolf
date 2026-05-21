@@ -13,12 +13,12 @@ async function ensureOpenPublicLeague(creatorId: string) {
     where: { isPublic: true, seasonStarted: false },
     include: { memberships: { where: { status: "ACTIVE" }, select: { id: true } } },
   }) as any;
-  if (open && open.memberships.length < open.maxTeams) return;
+  if (open && open.memberships.length < open.maxPlayers) return;
 
   const count = await prisma.league.count({ where: { isPublic: true } });
   const playoffSize = 6;
   const playoffWeeks = Math.ceil(Math.log2(playoffSize));
-  const maxTeams = 10;
+  const maxPlayers = 10;
 
   const firstUnresolved = await prisma.week.findFirst({ where: { resolved: false }, orderBy: { number: "asc" } });
   let startWeek = 1;
@@ -37,12 +37,12 @@ async function ensureOpenPublicLeague(creatorId: string) {
       inviteCode,
       creatorId,
       isPublic: true,
-      maxTeams,
+      maxPlayers,
       startWeek,
       regularSeasonWeeks,
       playoffWeeks,
       playoffSize,
-      consolationTeams: maxTeams - playoffSize,
+      consolationTeams: maxPlayers - playoffSize,
       consolationWeeks: 2,
     },
   });
@@ -139,7 +139,7 @@ router.post("/join-public", requireAuth, async (req: any, res: any) => {
     });
 
     const availablePublic = publicLeagues
-      .filter((l) => l.memberships.length < l.maxTeams)
+      .filter((l) => l.memberships.length < l.maxPlayers)
       .sort((a, b) => b.memberships.length - a.memberships.length);
 
     if (availablePublic.length > 0) {
@@ -160,7 +160,7 @@ router.post("/join-public", requireAuth, async (req: any, res: any) => {
         where: { id: league.id },
         include: { memberships: { where: { status: "ACTIVE" }, select: { id: true } } },
       }) as any;
-      if (freshLeague && freshLeague.memberships.length >= freshLeague.maxTeams) {
+      if (freshLeague && freshLeague.memberships.length >= freshLeague.maxPlayers) {
         await ensureOpenPublicLeague(league.creatorId);
       }
 
@@ -185,7 +185,7 @@ router.post("/join-public", requireAuth, async (req: any, res: any) => {
     const availableFill = (privateWithFill as any[])
       .filter((l: any) => {
         const publicFillCount = l.memberships.filter((m: any) => m.isPublicFill).length;
-        return publicFillCount < l.maxPublicPlayers && l.memberships.length < l.maxTeams;
+        return publicFillCount < l.maxPublicPlayers && l.memberships.length < l.maxPlayers;
       })
       .sort((a: any, b: any) => b.memberships.length - a.memberships.length);
 
