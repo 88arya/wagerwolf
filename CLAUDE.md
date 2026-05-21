@@ -122,6 +122,26 @@ Player → Prop
 ### StatType enum (22 values)
 `PASSING_YARDS`, `PASSING_TOUCHDOWNS`, `PASSING_COMPLETIONS`, `PASSING_ATTEMPTS`, `PASSING_INTERCEPTIONS`, `PASSING_LONGEST`, `RUSHING_YARDS`, `RUSHING_TOUCHDOWNS`, `RUSHING_ATTEMPTS`, `RUSHING_LONGEST`, `RECEIVING_YARDS`, `RECEIVING_TOUCHDOWNS`, `RECEIVING_LONGEST`, `RECEIVING_TARGETS`, `RECEPTIONS`, `SACKS`, `TACKLES_ASSISTS`, `DEFENSIVE_INTERCEPTIONS`, `FIELD_GOALS_MADE`, `FIELD_GOAL_LONGEST`, `KICKING_POINTS`, `EXTRA_POINTS_MADE`, `TOUCHDOWNS`
 
+### League.status
+`PENDING` | `ACTIVE` — controls whether the league has been started by the commissioner.
+- `PENDING` — lobby phase; only the lobby page is accessible to members
+- `ACTIVE` — season started; all league pages unlocked
+
+**Lobby page** (`/leagues/[leagueId]/lobby`): shown to all members while `status === PENDING`. Displays invite code prominently, member list with avatars, and (commissioner only) a "Start League" button. Non-commissioners see "Waiting for [commissioner] to start the league."
+
+**Gate in `frontend/app/leagues/[leagueId]/layout.tsx`**: on load, fetch league status. If `PENDING`, render the lobby component instead of the normal nav + page content. If `ACTIVE`, normal flow.
+
+**Start League — `POST /leagues/:id/start`** (commissioner only):
+- Validates commissioner role, requires `>= 2 members`
+- Generates round-robin matchup schedule across all regular season weeks
+- Sets `League.status = ACTIVE`
+- Locks membership (no new joins after start) — or allow late joins at commissioner discretion
+
+**Testing without going through full lobby flow every time:**
+- Seed scripts (`seedWeek1.ts`, `startupSeed.ts`) set any seeded leagues to `status = ACTIVE` by default — dev always starts with active leagues
+- Admin panel has a "Force Start" action for any league (bypasses the 2-member minimum), useful for solo testing
+- Alternatively, hit `POST /leagues/:id/start?force=true` as admin to skip validation
+
 ### League.startWeek
 Controls which weeks are visible to the league. The weeks API filters to `weekNumber >= startWeek`. Seed must populate ALL unresolved weeks, not just week 1.
 
@@ -199,6 +219,7 @@ Real players from ESPN (with ESPN headshots) + fake prop lines. No live odds API
 4. **Live game status** — no polling during game hours; scores only appear after resolve runs
 
 ### Missing — ship with season
+- **League lobby + Start League flow** — `League.status` (`PENDING`/`ACTIVE`), lobby page, commissioner "Start League" button, round-robin schedule generation on start; see `League.status` section above for full spec
 - Prop hit rates (historical over/under % per player+stat)
 - Live scores on game cards
 - Commissioner balance adjustment tool

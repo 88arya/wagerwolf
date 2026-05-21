@@ -1,0 +1,18 @@
+a comissioner can:
+set league name 
+set weekly allowance 
+set number of players (note: please rename all instances of teams to players)
+set a league to either fully public or partially public with invite codes; how many spots called be filled public. first allow comissioner to choose public or private. then if select private add option for max number of public fill
+set the max number of bets and max stake per bet a player can make per week
+
+set the number of weeks the entire season is (regular + playoffs/consolation)
+set the number of playoff/consolation teams 
+
+why this matters: 
+i will delete all leagues i have created so far. 
+now: pressing create league will allow comissioner to edit league settings. 
+then once theyve decided to create the league, they willonly see 2 pages, members and settings. there they can edit settings and see members. 
+once theyve decided to start the league, no more members can join and settings cannot change. 
+upon league creation, the entire league schedule and matchups will have to be formulated. 
+
+ALSO note joining/creating a league should prompt player or comissioner to create their league profile (helmet and name and abrev)
