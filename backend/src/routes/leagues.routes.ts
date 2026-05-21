@@ -15,25 +15,25 @@ function nextSmallestPowerOf2(n: number): number {
 
 router.post("/", requireAuth, async (req: any, res: any) => {
   try {
-    const { name, weeklyAllowance, maxTeams } = req.body;
+    const { name, weeklyAllowance, maxPlayers, isPublic, maxPublicPlayers, maxBetsPerWeek, maxStakePerBet } = req.body;
     if (!name || !weeklyAllowance || Number(weeklyAllowance) <= 0 || Number(weeklyAllowance) > 1000000) {
       res.status(400).json({ error: "Weekly allowance must be between $1 and $1,000,000" });
       return;
     }
 
-    const mt = Number(maxTeams ?? 10);
-    if (mt < 2 || mt > 20) {
-      res.status(400).json({ error: "Number of teams must be between 2 and 20" });
+    const mp = Number(maxPlayers ?? 10);
+    if (mp < 2 || mp > 20) {
+      res.status(400).json({ error: "Number of players must be between 2 and 20" });
       return;
     }
-    if (mt % 2 !== 0) {
-      res.status(400).json({ error: "Number of teams must be even" });
+    if (mp % 2 !== 0) {
+      res.status(400).json({ error: "Number of players must be even" });
       return;
     }
 
-    const ps = nextSmallestPowerOf2(mt);
+    const ps = nextSmallestPowerOf2(mp);
     const pw = Math.ceil(Math.log2(ps));
-    const consolationTeams = mt - ps;
+    const consolationTeams = mp - ps;
 
     const firstUnresolved = await prisma.week.findFirst({
       where: { resolved: false },
@@ -56,8 +56,11 @@ router.post("/", requireAuth, async (req: any, res: any) => {
         weeklyAllowance: Number(weeklyAllowance),
         inviteCode,
         creatorId: req.userId,
-        isPublic: false,
-        maxTeams: mt,
+        isPublic: Boolean(isPublic),
+        maxPublicPlayers: Boolean(isPublic) ? 0 : Math.max(0, Number(maxPublicPlayers ?? 0)),
+        maxBetsPerWeek: maxBetsPerWeek ? Number(maxBetsPerWeek) : null,
+        maxStakePerBet: maxStakePerBet ? Number(maxStakePerBet) : null,
+        maxPlayers: mp,
         startWeek: sw,
         regularSeasonWeeks: rsw,
         playoffWeeks: pw,
@@ -83,13 +86,21 @@ router.patch("/:id", requireAuth, async (req: any, res: any) => {
     if (league.creatorId !== req.userId) { res.status(403).json({ error: "Commissioner only" }); return; }
     if (league.seasonStarted) { res.status(400).json({ error: "Cannot change settings after season has started" }); return; }
 
-    const { startWeek, regularSeasonWeeks, playoffSize, consolationWeeks, maxPublicPlayers } = req.body;
+    const { name, weeklyAllowance, startWeek, regularSeasonWeeks, playoffSize, consolationWeeks, isPublic, maxPublicPlayers } = req.body;
+
+    if (name !== undefined) {
+      const trimmed = String(name).trim();
+      if (!trimmed) { res.status(400).json({ error: "League name cannot be empty" }); return; }
+    }
+    if (weeklyAllowance !== undefined) {
+      const wa = Number(weeklyAllowance);
+      if (wa <= 0 || wa > 1000000) { res.status(400).json({ error: "Weekly allowance must be between $1 and $1,000,000" }); return; }
+    }
 
     const sw = startWeek !== undefined ? Number(startWeek) : league.startWeek;
     const rsw = regularSeasonWeeks !== undefined ? Number(regularSeasonWeeks) : league.regularSeasonWeeks;
     const ps = playoffSize !== undefined ? Number(playoffSize) : league.playoffSize;
     const cw = consolationWeeks !== undefined ? Number(consolationWeeks) : league.consolationWeeks;
-    const mpp = maxPublicPlayers !== undefined ? Number(maxPublicPlayers) : league.maxPublicPlayers;
 
     if (sw < 1 || sw > 17) {
       res.status(400).json({ error: "Start week must be between 1 and 17" }); return;
@@ -97,11 +108,8 @@ router.patch("/:id", requireAuth, async (req: any, res: any) => {
     if (rsw < 1) {
       res.status(400).json({ error: "Regular season must have at least 1 week" }); return;
     }
-    if (ps < 2 || ps >= league.maxTeams) {
-      res.status(400).json({ error: `Playoff teams must be between 2 and ${league.maxTeams - 1}` }); return;
-    }
-    if (mpp < 0 || mpp > league.maxTeams) {
-      res.status(400).json({ error: "maxPublicPlayers must be between 0 and maxTeams" }); return;
+    if (ps < 2 || ps >= league.maxPlayers) {
+      res.status(400).json({ error: `Playoff teams must be between 2 and ${league.maxPlayers - 1}` }); return;
     }
 
     const pw = Math.ceil(Math.log2(ps));
@@ -113,13 +121,19 @@ router.patch("/:id", requireAuth, async (req: any, res: any) => {
     const updated = await prisma.league.update({
       where: { id: req.params.id },
       data: {
+        ...(name !== undefined ? { name: String(name).trim() } : {}),
+        ...(weeklyAllowance !== undefined ? { weeklyAllowance: Number(weeklyAllowance) } : {}),
+        ...(isPublic !== undefined
+          ? { isPublic: Boolean(isPublic), maxPublicPlayers: Boolean(isPublic) ? 0 : Math.max(0, Number(maxPublicPlayers ?? league.maxPublicPlayers)) }
+          : maxPublicPlayers !== undefined
+          ? { maxPublicPlayers: Math.max(0, Number(maxPublicPlayers)) }
+          : {}),
         startWeek: sw,
         regularSeasonWeeks: rsw,
         playoffWeeks: pw,
         playoffSize: ps,
-        consolationTeams: league.maxTeams - ps,
+        consolationTeams: league.maxPlayers - ps,
         consolationWeeks: cw,
-        maxPublicPlayers: mpp,
       },
     });
 
