@@ -15,7 +15,9 @@ export default function LeagueSettingsPage({ params }: PageProps<"/leagues/[leag
 
   // Season structure form
   const [settingsForm, setSettingsForm] = useState({
-    startWeek: "", regularSeasonWeeks: "", playoffSize: "", consolationWeeks: "", maxPublicPlayers: "",
+    name: "", weeklyAllowance: "",
+    startWeek: "", regularSeasonWeeks: "", playoffSize: "", consolationWeeks: "",
+    isPublic: false, maxPublicPlayers: "0",
   });
   const [settingsError, setSettingsError] = useState("");
   const [settingsSaved, setSettingsSaved] = useState(false);
@@ -48,10 +50,13 @@ export default function LeagueSettingsPage({ params }: PageProps<"/leagues/[leag
       const leagueData = await api(`/leagues/${lid}`);
       setLeague(leagueData);
       setSettingsForm({
+        name: leagueData.name ?? "",
+        weeklyAllowance: String(leagueData.weeklyAllowance ?? 300),
         startWeek: String(leagueData.startWeek ?? 1),
         regularSeasonWeeks: String(leagueData.regularSeasonWeeks ?? 13),
         playoffSize: String(leagueData.playoffSize ?? 4),
         consolationWeeks: String(leagueData.consolationWeeks ?? 2),
+        isPublic: Boolean(leagueData.isPublic),
         maxPublicPlayers: String(leagueData.maxPublicPlayers ?? 0),
       });
       setLimitsForm({
@@ -200,11 +205,14 @@ export default function LeagueSettingsPage({ params }: PageProps<"/leagues/[leag
       const updated = await api(`/leagues/${leagueId}`, {
         method: "PATCH",
         body: JSON.stringify({
+          name: settingsForm.name.trim(),
+          weeklyAllowance: Number(settingsForm.weeklyAllowance),
           startWeek: Number(settingsForm.startWeek),
           regularSeasonWeeks: Number(settingsForm.regularSeasonWeeks),
           playoffSize: Number(settingsForm.playoffSize),
           consolationWeeks: Number(settingsForm.consolationWeeks),
-          maxPublicPlayers: Number(settingsForm.maxPublicPlayers),
+          isPublic: settingsForm.isPublic,
+          ...(settingsForm.isPublic ? {} : { maxPublicPlayers: Number(settingsForm.maxPublicPlayers) }),
         }),
       });
       setLeague(updated); setSettingsSaved(true);
@@ -253,7 +261,7 @@ export default function LeagueSettingsPage({ params }: PageProps<"/leagues/[leag
   const pw = ps >= 2 ? Math.ceil(Math.log2(ps)) : 0;
   const endWeek = sw + rsw + pw - 1;
   const overLimit = endWeek > 18;
-  const maxTeams = league.maxTeams ?? 10;
+  const maxPlayers = league.maxPlayers ?? 10;
   const maxPlayoffRound = playoffMatchups.length > 0 ? Math.max(...playoffMatchups.map((m) => m.playoffRound ?? 1)) : 0;
   const maxConsolationRound = consolationMatchups.length > 0 ? Math.max(...consolationMatchups.map((m) => m.playoffRound ?? 1)) : 0;
 
@@ -342,11 +350,6 @@ export default function LeagueSettingsPage({ params }: PageProps<"/leagues/[leag
 
         {isCreator && !league.seasonStarted && (
           <div className="card" style={{ marginBottom: 10 }}>
-            <div style={{ fontSize: "0.8rem", color: "var(--text-2)", marginBottom: 6 }}>
-              {members.length < 2
-                ? `Need at least 2 members to start`
-                : `${members.length} member${members.length !== 1 ? "s" : ""} ready${members.length % 2 !== 0 ? " (ghost team will be added)" : ""}`}
-            </div>
             {league.autoStartAt && (
               <div style={{ fontSize: "0.82rem", color: "var(--text)", fontWeight: 600, marginBottom: 10 }}>
                 Season auto-starts{" "}
@@ -455,6 +458,50 @@ export default function LeagueSettingsPage({ params }: PageProps<"/leagues/[leag
         {isCreator && !league.seasonStarted ? (
           <div className="card" style={{ marginBottom: 10 }}>
             <form onSubmit={saveSettings} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              <div>
+                <div className="label">League Name</div>
+                <input value={settingsForm.name} onChange={(e) => setSettingsForm({ ...settingsForm, name: e.target.value })} required />
+              </div>
+              <div>
+                <div className="label">Weekly Allowance ($)</div>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <button type="button" onClick={() => setSettingsForm({ ...settingsForm, weeklyAllowance: String(Math.max(25, Number(settingsForm.weeklyAllowance) - 25)) })}
+                    style={{ width: 38, height: 38, padding: 0, fontSize: "1.2rem", fontWeight: 700, flexShrink: 0 }}>−</button>
+                  <input type="text" inputMode="numeric" value={settingsForm.weeklyAllowance}
+                    onChange={(e) => setSettingsForm({ ...settingsForm, weeklyAllowance: e.target.value.replace(/[^0-9]/g, "") })}
+                    style={{ textAlign: "center", fontWeight: 800, fontSize: "1.1rem", fontVariantNumeric: "tabular-nums" }} required />
+                  <button type="button" onClick={() => setSettingsForm({ ...settingsForm, weeklyAllowance: String(Number(settingsForm.weeklyAllowance) + 25) })}
+                    style={{ width: 38, height: 38, padding: 0, fontSize: "1.2rem", fontWeight: 700, flexShrink: 0 }}>+</button>
+                </div>
+              </div>
+              <div>
+                <div className="label">Visibility</div>
+                <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
+                  {([{ value: false, label: "Invite Only" }, { value: true, label: "Public" }] as const).map(({ value, label }) => {
+                    const active = settingsForm.isPublic === value;
+                    return (
+                      <button key={label} type="button" onClick={() => setSettingsForm({ ...settingsForm, isPublic: value })}
+                        style={{ flex: 1, padding: "8px 10px", borderRadius: 6, fontSize: "0.85rem", fontWeight: active ? 800 : 500, background: active ? "var(--accent)" : "var(--surface-2)", color: active ? "#FFFFFF" : "var(--text-2)", border: active ? "1.5px solid var(--accent)" : "1.5px solid var(--border-2)", transition: "all 0.12s" }}>
+                        {label}
+                      </button>
+                    );
+                  })}
+                </div>
+                <div style={{ fontSize: "0.68rem", color: "var(--text-3)", marginTop: 4 }}>
+                  {settingsForm.isPublic ? "Anyone can join without an invite code" : "Members join via invite code; you approve requests"}
+                </div>
+              </div>
+              {!settingsForm.isPublic && (
+                <div>
+                  <div className="label">Max Public Fill Slots</div>
+                  <input type="number" min="0" max={maxPlayers} placeholder="0 = invite-only"
+                    value={settingsForm.maxPublicPlayers}
+                    onChange={e => setSettingsForm({ ...settingsForm, maxPublicPlayers: e.target.value })} />
+                  <div style={{ fontSize: "0.7rem", color: "var(--text-3)", marginTop: 4 }}>
+                    Allow random players to fill remaining open slots
+                  </div>
+                </div>
+              )}
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
                 <div>
                   <div className="label">Start Week</div>
@@ -468,7 +515,7 @@ export default function LeagueSettingsPage({ params }: PageProps<"/leagues/[leag
                 </div>
                 <div>
                   <div className="label">Playoff Teams</div>
-                  <input type="number" min="2" max={maxTeams - 1} value={settingsForm.playoffSize}
+                  <input type="number" min="2" max={maxPlayers - 1} value={settingsForm.playoffSize}
                     onChange={(e) => setSettingsForm({ ...settingsForm, playoffSize: e.target.value })} required />
                 </div>
                 <div>
@@ -476,20 +523,11 @@ export default function LeagueSettingsPage({ params }: PageProps<"/leagues/[leag
                   <input type="number" min="1" value={settingsForm.consolationWeeks}
                     onChange={(e) => setSettingsForm({ ...settingsForm, consolationWeeks: e.target.value })} required />
                 </div>
-                <div style={{ gridColumn: "span 2" }}>
-                  <div className="label">Public Fill Slots</div>
-                  <input type="number" min="0" max={maxTeams} placeholder="0 = invite-only"
-                    value={settingsForm.maxPublicPlayers}
-                    onChange={(e) => setSettingsForm({ ...settingsForm, maxPublicPlayers: e.target.value })} />
-                  <div style={{ fontSize: "0.7rem", color: "var(--text-3)", marginTop: 4 }}>
-                    Allow random players to fill open slots
-                  </div>
-                </div>
               </div>
               <div style={{ fontSize: "0.72rem", color: overLimit ? "var(--loss)" : "var(--text-3)" }}>
                 {overLimit
                   ? `Season ends week ${endWeek}, exceeds week 18`
-                  : `Ends NFL week ${endWeek} · ${maxTeams - ps} consolation teams · ${pw} playoff weeks`}
+                  : `Ends NFL week ${endWeek} · ${maxPlayers - ps} consolation teams · ${pw} playoff weeks`}
               </div>
               {settingsError && <p className="error">{settingsError}</p>}
               <button type="submit" className="secondary">
@@ -506,7 +544,8 @@ export default function LeagueSettingsPage({ params }: PageProps<"/leagues/[leag
                 ["Playoff Teams", league.playoffSize],
                 ["Consolation Weeks", league.consolationWeeks],
                 ["Weekly Allowance", `$${league.weeklyAllowance}`],
-                ["Max Teams", league.maxTeams],
+                ["Max Players", league.maxPlayers],
+                ["Visibility", league.isPublic ? "Public" : "Invite Only"],
               ].map(([label, val]) => (
                 <div key={label as string}>
                   <div className="label">{label}</div>
