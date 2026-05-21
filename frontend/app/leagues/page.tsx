@@ -32,7 +32,7 @@ export default function LeaguesPage() {
   const router = useRouter();
   const [memberships, setMemberships] = useState<any[]>([]);
   const [pendingMemberships, setPendingMemberships] = useState<any[]>([]);
-  const [form, setForm] = useState({ name: "", weeklyAllowance: "300", maxTeams: "10" });
+  const [form, setForm] = useState({ name: "", weeklyAllowance: "300", maxPlayers: "10", isPublic: false, maxPublicPlayers: "0", maxBetsPerWeek: "", maxStakePerBet: "" });
   const [joinCode, setJoinCode] = useState("");
   const [error, setError] = useState("");
   const [joinError, setJoinError] = useState("");
@@ -40,6 +40,10 @@ export default function LeaguesPage() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [tab, setTab] = useState<"create" | "join">("join");
   const [displayName, setDisplayName] = useState("");
+  const [profileSetup, setProfileSetup] = useState<{
+    leagueId: string; displayName: string; abbreviation: string; helmetColor: string; isPending: boolean;
+  } | null>(null);
+  const [profileSaving, setProfileSaving] = useState(false);
 
   useEffect(() => {
     if (!localStorage.getItem("token")) { router.push("/"); return; }
@@ -63,11 +67,15 @@ export default function LeaguesPage() {
         body: JSON.stringify({
           name: form.name,
           weeklyAllowance: Number(form.weeklyAllowance),
-          maxTeams: Number(form.maxTeams),
+          maxPlayers: Number(form.maxPlayers),
+          isPublic: form.isPublic,
+          maxPublicPlayers: Number(form.maxPublicPlayers),
+          maxBetsPerWeek: form.maxBetsPerWeek !== "" ? Number(form.maxBetsPerWeek) : null,
+          maxStakePerBet: form.maxStakePerBet !== "" ? Number(form.maxStakePerBet) : null,
         }),
       });
-      await api(`/leagues/${league.id}/join`, { method: "POST", body: JSON.stringify({}) });
-      router.push(`/leagues/${league.id}`);
+      const membership = await api(`/leagues/${league.id}/join`, { method: "POST", body: JSON.stringify({}) });
+      setProfileSetup({ leagueId: league.id, displayName: membership.displayName, abbreviation: membership.abbreviation, helmetColor: membership.helmetColor, isPending: false });
     } catch (err: any) {
       try { setError(JSON.parse(err.message).error); } catch { setError(err.message); }
     }
@@ -89,16 +97,38 @@ export default function LeaguesPage() {
     setJoinError(""); setJoinSuccess("");
     try {
       const result = await api("/memberships/join-by-code", { method: "POST", body: JSON.stringify({ code: joinCode }) });
-      setJoinSuccess(`Request sent to "${result.league?.name}" — waiting for commissioner approval.`);
       setJoinCode("");
       loadMemberships();
+      setProfileSetup({ leagueId: result.league.id, displayName: result.displayName, abbreviation: result.abbreviation, helmetColor: result.helmetColor, isPending: true });
     } catch (err: any) {
       try { setJoinError(JSON.parse(err.message).error); } catch { setJoinError(err.message); }
     }
   }
 
+  async function saveProfile() {
+    if (!profileSetup) return;
+    setProfileSaving(true);
+    try {
+      await Promise.all([
+        api(`/leagues/${profileSetup.leagueId}/my-display-name`, { method: "PATCH", body: JSON.stringify({ displayName: profileSetup.displayName }) }),
+        api(`/leagues/${profileSetup.leagueId}/my-abbreviation`, { method: "PATCH", body: JSON.stringify({ abbreviation: profileSetup.abbreviation }) }),
+        api(`/leagues/${profileSetup.leagueId}/my-helmet`, { method: "PATCH", body: JSON.stringify({ helmetColor: profileSetup.helmetColor }) }),
+      ]);
+      if (!profileSetup.isPending) {
+        router.push(`/leagues/${profileSetup.leagueId}/members`);
+      } else {
+        setProfileSetup(null);
+        setJoinSuccess(`Request sent — waiting for commissioner approval.`);
+      }
+    } catch (err: any) {
+      try { alert(JSON.parse(err.message).error); } catch { alert(err.message); }
+    } finally {
+      setProfileSaving(false);
+    }
+  }
+
   const initials = displayName.slice(0, 2).toUpperCase();
-  const teamOptions = [4, 6, 8, 10, 12, 14, 16, 18, 20];
+  const playerOptions = [4, 6, 8, 10, 12, 14, 16, 18, 20];
 
   return (
     <>
@@ -306,15 +336,15 @@ export default function LeaguesPage() {
               </div>
 
               <div>
-                <div className="label">Number of Teams</div>
+                <div className="label">Number of Players</div>
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 4 }}>
-                  {teamOptions.map((n) => {
-                    const active = Number(form.maxTeams) === n;
+                  {playerOptions.map((n) => {
+                    const active = Number(form.maxPlayers) === n;
                     return (
                       <button
                         key={n}
                         type="button"
-                        onClick={() => setForm({ ...form, maxTeams: String(n) })}
+                        onClick={() => setForm({ ...form, maxPlayers: String(n) })}
                         style={{
                           padding: "6px 14px",
                           borderRadius: 6,
@@ -330,6 +360,58 @@ export default function LeaguesPage() {
                       </button>
                     );
                   })}
+                </div>
+              </div>
+
+              <div>
+                <div className="label">Visibility</div>
+                <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
+                  {([{ value: false, label: "Invite Only" }, { value: true, label: "Public" }] as const).map(({ value, label }) => {
+                    const active = form.isPublic === value;
+                    return (
+                      <button
+                        key={label}
+                        type="button"
+                        onClick={() => setForm({ ...form, isPublic: value })}
+                        style={{
+                          flex: 1, padding: "8px 10px", borderRadius: 6, fontSize: "0.85rem",
+                          fontWeight: active ? 800 : 500,
+                          background: active ? "var(--accent)" : "var(--surface-2)",
+                          color: active ? "#FFFFFF" : "var(--text-2)",
+                          border: active ? "1.5px solid var(--accent)" : "1.5px solid var(--border-2)",
+                          transition: "all 0.12s",
+                        }}
+                      >{label}</button>
+                    );
+                  })}
+                </div>
+                <div style={{ fontSize: "0.68rem", color: "var(--text-3)", marginTop: 4 }}>
+                  {form.isPublic ? "Anyone can join without an invite code" : "Members join via invite code; you approve requests"}
+                </div>
+              </div>
+
+              {!form.isPublic && (
+                <div>
+                  <div className="label">Max Public Fill Slots</div>
+                  <input type="number" min="0" max={Number(form.maxPlayers)} placeholder="0 = invite-only"
+                    value={form.maxPublicPlayers}
+                    onChange={e => setForm({ ...form, maxPublicPlayers: e.target.value })} />
+                  <div style={{ fontSize: "0.68rem", color: "var(--text-3)", marginTop: 4 }}>
+                    Allow random players to fill remaining slots
+                  </div>
+                </div>
+              )}
+
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                <div>
+                  <div className="label">Max Bets / Week</div>
+                  <input type="number" min="1" placeholder="No limit" value={form.maxBetsPerWeek}
+                    onChange={e => setForm({ ...form, maxBetsPerWeek: e.target.value })} />
+                </div>
+                <div>
+                  <div className="label">Max Stake / Bet ($)</div>
+                  <input type="number" min="1" placeholder="No limit" value={form.maxStakePerBet}
+                    onChange={e => setForm({ ...form, maxStakePerBet: e.target.value })} />
                 </div>
               </div>
 
@@ -365,6 +447,50 @@ export default function LeaguesPage() {
           </div>
         )}
       </div>
+
+      {profileSetup && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+          <div className="card" style={{ width: "100%", maxWidth: 380, padding: 20 }}>
+            <div style={{ fontWeight: 800, fontSize: "1rem", marginBottom: 4 }}>Set up your league profile</div>
+            <div style={{ fontSize: "0.78rem", color: "var(--text-3)", marginBottom: 18 }}>How you appear in this league</div>
+
+            <div style={{ marginBottom: 12 }}>
+              <div className="label">Display Name</div>
+              <input value={profileSetup.displayName}
+                onChange={e => setProfileSetup({ ...profileSetup, displayName: e.target.value })}
+                maxLength={30} />
+            </div>
+
+            <div style={{ marginBottom: 12 }}>
+              <div className="label">Abbreviation (2–3 letters)</div>
+              <input value={profileSetup.abbreviation}
+                onChange={e => setProfileSetup({ ...profileSetup, abbreviation: e.target.value.toUpperCase().replace(/[^A-Z]/g, "").slice(0, 3) })}
+                maxLength={3}
+                style={{ letterSpacing: "0.2em", fontWeight: 800, textTransform: "uppercase" }} />
+            </div>
+
+            <div style={{ marginBottom: 20 }}>
+              <div className="label">Helmet Color</div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 6 }}>
+                {["#2563EB","#DC2626","#16A34A","#D97706","#9333EA","#0891B2","#DB2777","#EA580C","#065F46","#7C3AED","#0F172A","#92400E"].map(color => (
+                  <button key={color} type="button" onClick={() => setProfileSetup({ ...profileSetup, helmetColor: color })}
+                    style={{ width: 32, height: 32, borderRadius: "50%", background: color, border: profileSetup.helmetColor === color ? "3px solid var(--text)" : "3px solid transparent", padding: 0, cursor: "pointer", flexShrink: 0 }} />
+                ))}
+              </div>
+            </div>
+
+            <div style={{ display: "flex", gap: 8 }}>
+              <button onClick={saveProfile} disabled={profileSaving} style={{ flex: 1, fontWeight: 800, padding: "11px" }}>
+                {profileSaving ? "Saving…" : "Save Profile"}
+              </button>
+              <button className="secondary" onClick={() => { setProfileSetup(null); if (!profileSetup.isPending) router.push(`/leagues/${profileSetup.leagueId}/members`); }}
+                style={{ padding: "11px 16px" }}>
+                Skip
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }
