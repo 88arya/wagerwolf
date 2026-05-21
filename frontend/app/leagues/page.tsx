@@ -96,10 +96,10 @@ export default function LeaguesPage() {
     e.preventDefault();
     setJoinError(""); setJoinSuccess("");
     try {
-      const result = await api("/memberships/join-by-code", { method: "POST", body: JSON.stringify({ code: joinCode }) });
+      await api("/memberships/join-by-code", { method: "POST", body: JSON.stringify({ code: joinCode }) });
       setJoinCode("");
       loadMemberships();
-      setProfileSetup({ leagueId: result.league.id, displayName: result.displayName, abbreviation: result.abbreviation, helmetColor: result.helmetColor, isPending: true });
+      setJoinSuccess("Request sent — waiting for commissioner approval.");
     } catch (err: any) {
       try { setJoinError(JSON.parse(err.message).error); } catch { setJoinError(err.message); }
     }
