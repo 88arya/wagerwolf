@@ -55,7 +55,6 @@ model User {
   password     String
   name         String
   displayName  String
-  isAdmin      Boolean     @default(false)
   createdAt    DateTime    @default(now())
   memberships  Membership[]
   picks        Pick[]
@@ -150,9 +149,10 @@ model Week {
   number    Int      @unique
   startDate DateTime
   endDate   DateTime
-  resolved  Boolean  @default(false)
-  locked    Boolean  @default(false)
-  createdAt DateTime @default(now())
+  resolved              Boolean  @default(false)
+  locked                Boolean  @default(false)
+  allowanceDistributed  Boolean  @default(false)
+  createdAt             DateTime @default(now())
   games     Game[]
 }
 
