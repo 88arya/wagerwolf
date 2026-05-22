@@ -3,6 +3,7 @@ import { prisma } from "../db/prisma";
 import { resolveWeekById } from "./resolveWeek";
 import { syncESPNGames, syncOdds } from "./syncWeek";
 import { distributeWeeklyAllowances } from "./distributeAllowances";
+import { startLeagueSeason } from "./startSeason";
 
 // Tuesday 11:00 AM UTC — resolve last week, distribute allowances for new week
 const RESOLVE_SCHEDULE = "0 11 * * 2";
@@ -42,6 +43,26 @@ async function runResolveAndAllowances() {
   }
 }
 
+async function runAutoStartLeagues(weekNumber: number) {
+  const leagues = await prisma.league.findMany({
+    where: { startWeek: weekNumber, seasonStarted: false },
+    include: { memberships: { where: { status: "ACTIVE" }, select: { id: true } } },
+  }) as any[];
+
+  for (const league of leagues) {
+    if (league.memberships.length < 2) {
+      console.log(`[cron] Skipping auto-start for league ${league.id} — fewer than 2 members`);
+      continue;
+    }
+    try {
+      await startLeagueSeason(league.id);
+      console.log(`[cron] Auto-started league ${league.id} for week ${weekNumber}`);
+    } catch (err) {
+      console.error(`[cron] Failed to auto-start league ${league.id}:`, err);
+    }
+  }
+}
+
 async function runESPNGameSync() {
   const now = new Date();
   const upcoming = await prisma.week.findFirst({
@@ -54,6 +75,7 @@ async function runESPNGameSync() {
   } catch (err) {
     console.error(`[cron] ESPN game sync failed for week ${upcoming.number}:`, err);
   }
+  await runAutoStartLeagues(upcoming.number);
 }
 
 async function runOddsSync() {

@@ -17,7 +17,7 @@ function nextSmallestPowerOf2(n: number): number {
 
 router.post("/", requireAuth, async (req: any, res: any) => {
   try {
-    const { name, weeklyAllowance, maxPlayers, isPublic, maxPublicPlayers, maxBetsPerWeek, maxStakePerBet } = req.body;
+    const { name, weeklyAllowance, maxPlayers, isPublic, maxPublicPlayers, maxBetsPerWeek, maxStakePerBet, startWeek } = req.body;
     if (!name || !weeklyAllowance || Number(weeklyAllowance) <= 0 || Number(weeklyAllowance) > 1000000) {
       res.status(400).json({ error: "Weekly allowance must be between $1 and $1,000,000" });
       return;
@@ -37,11 +37,16 @@ router.post("/", requireAuth, async (req: any, res: any) => {
     const pw = Math.ceil(Math.log2(ps));
     const consolationTeams = mp - ps;
 
-    const firstUnresolved = await prisma.week.findFirst({
-      where: { resolved: false },
-      orderBy: { number: "asc" },
-    });
-    const sw = firstUnresolved ? firstUnresolved.number : 1;
+    let sw: number;
+    if (startWeek !== undefined) {
+      sw = Number(startWeek);
+      if (sw < 1 || sw > MAX_NFL_WEEK) {
+        res.status(400).json({ error: `Start week must be between 1 and ${MAX_NFL_WEEK}` }); return;
+      }
+    } else {
+      const firstUnresolved = await prisma.week.findFirst({ where: { resolved: false }, orderBy: { number: "asc" } });
+      sw = firstUnresolved ? firstUnresolved.number : 1;
+    }
 
     const rsw = Math.max(1, MAX_NFL_WEEK - sw - pw + 1);
 
@@ -50,7 +55,8 @@ router.post("/", requireAuth, async (req: any, res: any) => {
       inviteCode = generateInviteCode();
     }
 
-    const autoStartAt = getNearestTuesdayNoon(new Date());
+    const startWeekRecord = startWeek !== undefined ? await prisma.week.findFirst({ where: { number: sw } }) : null;
+    const autoStartAt = startWeekRecord ? startWeekRecord.startDate : getNearestTuesdayNoon(new Date());
 
     const league = await prisma.league.create({
       data: {
@@ -120,6 +126,12 @@ router.patch("/:id", requireAuth, async (req: any, res: any) => {
       res.status(400).json({ error: `Season would end on NFL week ${endWeek}, which exceeds week ${MAX_NFL_WEEK}` }); return;
     }
 
+    let autoStartAt: Date | null | undefined = undefined;
+    if (startWeek !== undefined && sw !== league.startWeek) {
+      const startWeekRecord = await prisma.week.findFirst({ where: { number: sw } });
+      autoStartAt = startWeekRecord ? startWeekRecord.startDate : null;
+    }
+
     const updated = await prisma.league.update({
       where: { id: req.params.id },
       data: {
@@ -136,6 +148,7 @@ router.patch("/:id", requireAuth, async (req: any, res: any) => {
         playoffSize: ps,
         consolationTeams: league.maxPlayers - ps,
         consolationWeeks: cw,
+        ...(autoStartAt !== undefined ? { autoStartAt } : {}),
       },
     });
 

@@ -32,7 +32,7 @@ export default function LeaguesPage() {
   const router = useRouter();
   const [memberships, setMemberships] = useState<any[]>([]);
   const [pendingMemberships, setPendingMemberships] = useState<any[]>([]);
-  const [form, setForm] = useState({ name: "", weeklyAllowance: "300", maxPlayers: "10", isPublic: false, maxPublicPlayers: "0", maxBetsPerWeek: "", maxStakePerBet: "" });
+  const [form, setForm] = useState({ name: "", weeklyAllowance: "300", maxPlayers: "10", isPublic: false, maxPublicPlayers: "0", maxBetsPerWeek: "", maxStakePerBet: "", startWeek: "1" });
   const [joinCode, setJoinCode] = useState("");
   const [error, setError] = useState("");
   const [joinError, setJoinError] = useState("");
@@ -70,6 +70,7 @@ export default function LeaguesPage() {
           maxPublicPlayers: Number(form.maxPublicPlayers),
           maxBetsPerWeek: form.maxBetsPerWeek !== "" ? Number(form.maxBetsPerWeek) : null,
           maxStakePerBet: form.maxStakePerBet !== "" ? Number(form.maxStakePerBet) : null,
+          startWeek: Number(form.startWeek),
         }),
       });
       const membership = await api(`/leagues/${league.id}/join`, { method: "POST", body: JSON.stringify({}) });
@@ -398,6 +399,15 @@ export default function LeaguesPage() {
                   </div>
                 </div>
               )}
+
+              <div>
+                <div className="label">Start Week</div>
+                <input type="number" min="1" max="17" value={form.startWeek}
+                  onChange={e => setForm({ ...form, startWeek: e.target.value })} required />
+                <div style={{ fontSize: "0.68rem", color: "var(--text-3)", marginTop: 4 }}>
+                  NFL week your season begins — league auto-starts that week
+                </div>
+              </div>
 
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
                 <div>
