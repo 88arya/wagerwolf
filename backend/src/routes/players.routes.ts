@@ -1,11 +1,11 @@
 import { Router } from "express";
 import { prisma } from "../db/prisma";
-import { requireAuth, requireAdmin } from "../middleware/auth";
+import { requireAuth, requireCron } from "../middleware/auth";
 import { searchEspnPlayerId, espnImageUrl } from "../services/espnApi";
 
 const router = Router();
 
-router.post("/", requireAuth, requireAdmin, async (req: any, res: any) => {
+router.post("/", requireAuth, requireCron, async (req: any, res: any) => {
   try {
     const { name, team, position } = req.body;
     if (!name || !team || !position) {

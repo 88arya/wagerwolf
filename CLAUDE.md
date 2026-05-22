@@ -24,8 +24,9 @@ Only three colors are used in the UI:
 
 ## Dev startup
 
+### Two-terminal approach (recommended)
 ```bash
-# Terminal 1 — start local Prisma DB (must run first)
+# Terminal 1 — start local Prisma DB (must stay running)
 cd backend && npx prisma dev
 
 # Terminal 2 — backend
@@ -34,6 +35,16 @@ cd backend && npm run dev     # port 5000
 # Terminal 3 — frontend
 cd frontend && npm run dev    # port 3000
 ```
+
+### Single-terminal approach (Claude Code / no persistent terminal)
+`npx prisma dev` must stay alive or the Postgres child process dies with it. Use `nohup` to fully detach both processes:
+```bash
+cd backend
+nohup npx prisma dev > /tmp/prismadev.log 2>&1 &
+# wait ~6 seconds for DB to start
+nohup npm run dev > /tmp/backend.log 2>&1 &
+```
+Check logs with `cat /tmp/prismadev.log` and `tail -f /tmp/backend.log`. Verify DB is up: `netstat -ano | grep 51214`.
 
 ---
 
@@ -63,7 +74,6 @@ cd frontend && npm run dev    # port 3000
 | `/leagues/[leagueId]/settings` | Commissioner: season config + betting limits |
 | `/settings` | User: display name, avatar link |
 | `/forgot-password`, `/reset-password` | Password reset flow |
-| `/admin` | Admin panel: weeks, games, props, players, sync, resolve |
 
 > **Note:** History (`/history`) and Leaderboard (`/leaderboard`) pages still exist as routes but are removed from the bottom nav. Bottom nav shows: Home, Bet, and (commissioner only) Manage.
 
@@ -84,9 +94,8 @@ cd frontend && npm run dev    # port 3000
 | `/gamepicks` | gamepicks.routes.ts | Game pick placement + cashout |
 | `/parlays` | parlays.routes.ts | Parlay placement + cashout |
 | `/sync` | sync.routes.ts | SportsGameOdds odds sync + fake sync |
-| `/espn` | espn.routes.ts | ESPN game sync + auto-resolve |
-| `/leagues` (season) | season.routes.ts | Start season, bracket, advance rounds |
-| `/admin` | admin.routes.ts | Admin-only operations |
+| `/espn` | espn.routes.ts | ESPN game sync + auto-resolve (cron-protected) |
+| `/leagues` (season) | season.routes.ts | Start season, matchup schedule |
 
 ### Key services
 
@@ -94,8 +103,13 @@ cd frontend && npm run dev    # port 3000
 - `backend/src/services/startupSeed.ts` — runs on startup via `app.listen`; seeds all unresolved weeks that are missing new stat types
 - `backend/src/services/espnApi.ts` — ESPN box score + game schedule fetching
 - `backend/src/services/oddsApi.ts` — SportsGameOdds API integration
+- `backend/src/services/resolveWeek.ts` — `resolveWeekById(weekId)`: fetches ESPN box scores, resolves props/game lines/picks/parlays, resolves matchups, then calls `triggerPostWeekActions`
+- `backend/src/services/autoPlayoffs.ts` — `triggerPostWeekActions(weekNumber)`: after each week resolves, auto-seeds or auto-advances playoffs for all active leagues; sets `seasonEnded + championId` when the final round is done
+- `backend/src/services/distributeAllowances.ts` — `distributeWeeklyAllowances(weekNumber)`: resets balance to `weeklyAllowance` and clears `weeklyWinnings` for all active members across all active leagues; tracked via `Week.allowanceDistributed`
+- `backend/src/services/syncWeek.ts` — `syncESPNGames(weekId)` (ESPN schedule + seedFakeProps) and `syncOdds(weekId)` (SportsGameOdds)
+- `backend/src/services/scheduler.ts` — node-cron jobs: resolve Tue 11 AM UTC, ESPN sync Tue 6 PM UTC, odds sync Wed + Fri 2 PM UTC; called via `startScheduler()` in `index.ts`
 - `backend/src/services/abbreviation.ts` — `generateAbbreviation(displayName)`: initials for multi-word names, first 3 chars for single-word; called on all 4 join paths
-- `backend/src/services/leagueName.ts` — `generateLeagueName()`: random real NFL location + random real NFL nickname + year + "League"; used by all `ensureOpenPublicLeague` calls and admin league creation
+- `backend/src/services/leagueName.ts` — `generateLeagueName()`: random real NFL location + random real NFL nickname + year + "League"; used by all `ensureOpenPublicLeague` calls
 
 ---
 
@@ -122,25 +136,22 @@ Player → Prop
 ### StatType enum (22 values)
 `PASSING_YARDS`, `PASSING_TOUCHDOWNS`, `PASSING_COMPLETIONS`, `PASSING_ATTEMPTS`, `PASSING_INTERCEPTIONS`, `PASSING_LONGEST`, `RUSHING_YARDS`, `RUSHING_TOUCHDOWNS`, `RUSHING_ATTEMPTS`, `RUSHING_LONGEST`, `RECEIVING_YARDS`, `RECEIVING_TOUCHDOWNS`, `RECEIVING_LONGEST`, `RECEIVING_TARGETS`, `RECEPTIONS`, `SACKS`, `TACKLES_ASSISTS`, `DEFENSIVE_INTERCEPTIONS`, `FIELD_GOALS_MADE`, `FIELD_GOAL_LONGEST`, `KICKING_POINTS`, `EXTRA_POINTS_MADE`, `TOUCHDOWNS`
 
-### League.status
-`PENDING` | `ACTIVE` — controls whether the league has been started by the commissioner.
-- `PENDING` — lobby phase; only the lobby page is accessible to members
-- `ACTIVE` — season started; all league pages unlocked
+### League.seasonStarted
+`Boolean @default(false)` — controls whether the league has been started by the commissioner.
+- `false` — lobby phase; non-commissioner members are redirected to `/leagues/[leagueId]/members`; only `/members` and `/settings` are accessible
+- `true` — season started; all league pages unlocked
 
-**Lobby page** (`/leagues/[leagueId]/lobby`): shown to all members while `status === PENDING`. Displays invite code prominently, member list with avatars, and (commissioner only) a "Start League" button. Non-commissioners see "Waiting for [commissioner] to start the league."
+**Lobby gate in `frontend/components/LobbyGate.tsx`**: wraps all `[leagueId]` page content (see `layout.tsx`). Starts invisible, fetches league on each navigation. If `seasonStarted`, caches `true` in a ref (never re-fetches). If not started and on a disallowed path, redirects to `/members`. Turns visible once gated check passes.
 
-**Gate in `frontend/app/leagues/[leagueId]/layout.tsx`**: on load, fetch league status. If `PENDING`, render the lobby component instead of the normal nav + page content. If `ACTIVE`, normal flow.
-
-**Start League — `POST /leagues/:id/start`** (commissioner only):
+**Start League — `POST /leagues/:leagueId/season/start`** (commissioner only):
 - Validates commissioner role, requires `>= 2 members`
 - Generates round-robin matchup schedule across all regular season weeks
-- Sets `League.status = ACTIVE`
-- Locks membership (no new joins after start) — or allow late joins at commissioner discretion
+- Sets `League.seasonStarted = true`, `League.hasGhost` (odd member count gets a ghost user)
+- Distributes first week's allowances immediately; sets `Week.allowanceDistributed = true`
 
 **Testing without going through full lobby flow every time:**
-- Seed scripts (`seedWeek1.ts`, `startupSeed.ts`) set any seeded leagues to `status = ACTIVE` by default — dev always starts with active leagues
-- Admin panel has a "Force Start" action for any league (bypasses the 2-member minimum), useful for solo testing
-- Alternatively, hit `POST /leagues/:id/start?force=true` as admin to skip validation
+- Seed scripts (`seedWeek1.ts`, `startupSeed.ts`) set any seeded leagues to `seasonStarted = true` by default — dev always starts with active leagues
+- Hit `POST /leagues/:leagueId/season/start` as the league creator to start normally (requires ≥ 2 members)
 
 ### League.startWeek
 Controls which weeks are visible to the league. The weeks API filters to `weekNumber >= startWeek`. Seed must populate ALL unresolved weeks, not just week 1.
@@ -149,7 +160,14 @@ Controls which weeks are visible to the league. The weeks API filters to `weekNu
 `SCHEDULED` | `LIVE` | `FINAL` | `CANCELLED` — currently only SCHEDULED and FINAL are set (no live polling yet)
 
 ### Bet locking
-Bets are locked server-side when `game.gameDate <= now`. `Week.locked` is a separate manual admin toggle used as a fallback.
+Bets are locked server-side when `game.gameDate <= now`. `Week.locked` is a separate toggle (cron-only via `POST /weeks/:id/lock`) used as a fallback.
+
+### Season lifecycle (automated)
+1. Commissioner starts season → round-robin matchups created, first week's allowances distributed
+2. Every Tuesday: scheduler resolves past week (ESPN box scores → picks/parlays settled → matchups resolved) then distributes allowances for next week
+3. After last regular season week: `triggerPostWeekActions` auto-seeds playoff bracket by standings
+4. After each playoff week: `triggerPostWeekActions` auto-advances or crowns champion (`League.seasonEnded = true, championId = winnerId`)
+5. Max season end: NFL week 17 (`MAX_NFL_WEEK = 17` in both backend routes and frontend settings page)
 
 ---
 
@@ -168,13 +186,20 @@ Real players from ESPN (with ESPN headshots) + fake prop lines. No live odds API
 
 ---
 
-## Production data flow (what's manual today, target: automated)
+## Production data flow (automated)
 
-1. Admin syncs ESPN games for the week (`POST /espn/games/:weekId`)
-2. Admin syncs odds from SportsGameOdds (`POST /sync/week/:weekId`) — or fake sync for dev
-3. Games kick off → bets auto-lock (server-side gameDate check)
-4. Admin triggers auto-resolve after Monday Night Game (`POST /espn/resolve/:weekId`)
-   - Fetches ESPN box scores, evaluates all props + game lines, credits/debits balances, resolves matchups, marks week resolved
+All of the following run automatically via node-cron in the backend process:
+
+1. **Tuesday 6 PM UTC** — `syncESPNGames`: fetches upcoming week's schedule from ESPN, seeds fake prop lines
+2. **Wednesday + Friday 2 PM UTC** — `syncOdds`: syncs real odds from SportsGameOdds for current + upcoming week
+3. **Game kickoff** — bets auto-lock server-side (`game.gameDate <= now`)
+4. **Tuesday 11 AM UTC** — `resolveWeekById`: fetches ESPN box scores, settles all picks/parlays/game picks, resolves matchups, triggers playoff auto-advance; then distributes allowances for next week
+
+Emergency override (requires `x-cron-secret` header in production):
+- `POST /espn/resolve/:weekId` — manual ESPN resolve
+- `POST /espn/games/:weekId` — manual ESPN game sync
+- `POST /sync/week/:weekId` — manual odds sync
+- `POST /weeks/:id/resolve` — manual fallback resolve (no ESPN required, takes raw results in body)
 
 ---
 
@@ -183,7 +208,7 @@ Real players from ESPN (with ESPN headshots) + fake prop lines. No live odds API
 ### Built
 - Auth (signup/login/forgot password/reset password)
 - Leagues (create, invite code, join, commissioner controls)
-- Season structure (regular season schedule, playoffs, consolation bracket, champion)
+- Season structure (regular season schedule, playoffs, champion) — consolation bracket removed
 - Betting: props (22 stat types), game lines (ML/spread/total), parlays
 - Bet limits (max stake, max bets/week, max parlay legs)
 - Parlay slip (DraftKings-style, conflict detection, compound odds)
@@ -192,8 +217,8 @@ Real players from ESPN (with ESPN headshots) + fake prop lines. No live odds API
 - Member profile page with stats
 - Weekly recap (shown on league home when week resolved)
 - Leaderboard, history, cashout
-- Admin panel (full control)
-- Auto-resolve via ESPN
+- Fully automated season lifecycle: ESPN sync, odds sync, resolve, allowance distribution, playoff seeding + advancement, champion crowning — all via node-cron scheduler
+- No admin panel; mutating routes protected by `requireCron` (open in dev, requires `x-cron-secret` header in prod)
 - Display name / avatar settings
 - Chat (LeagueMessage) — sliding drawer panel on league home, polls every 5s when open, bubble UI (own messages right/blue, others left/grey)
 - Per-league identity: helmet color + display name + abbreviation on `Membership`; single edit modal on league home user card; all join paths auto-generate abbreviation
@@ -214,12 +239,10 @@ Real players from ESPN (with ESPN headshots) + fake prop lines. No live odds API
 
 ### Missing — deployment blockers
 1. **Deployment** — not hosted anywhere; needs Vercel (frontend) + Railway/Render (backend) + prod Postgres URL
-2. **Automated crons** — odds sync, auto-resolve, week locking are all manual admin clicks
-3. **NFL 2025 weeks** — DB has weeks 1 seeded (BUF/MIA, LAR/SF, GB/DET); need all 18 with correct 2025 dates
-4. **Live game status** — no polling during game hours; scores only appear after resolve runs
+2. **NFL 2026 weeks** — DB has week 1 seeded (BUF/MIA, LAR/SF, GB/DET); need all 17 with correct 2026 dates
+3. **Live game status** — no polling during game hours; scores only appear after resolve runs
 
-### Missing — ship with season
-- **League lobby + Start League flow** — `League.status` (`PENDING`/`ACTIVE`), lobby page, commissioner "Start League" button, round-robin schedule generation on start; see `League.status` section above for full spec
+### Missing — nice to have
 - Prop hit rates (historical over/under % per player+stat)
 - Live scores on game cards
 - Commissioner balance adjustment tool

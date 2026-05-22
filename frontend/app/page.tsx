@@ -28,8 +28,7 @@ export default function AuthPage() {
       localStorage.setItem("token", res.token);
       localStorage.setItem("userId", res.userId);
       localStorage.setItem("displayName", res.displayName);
-      localStorage.setItem("isAdmin", String(res.isAdmin));
-      router.push(res.isAdmin ? "/admin" : "/leagues");
+      router.push("/leagues");
     } catch (err: any) {
       try { setError(JSON.parse(err.message).error); } catch { setError(err.message); }
       setLoading(false);

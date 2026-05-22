@@ -1,24 +1,43 @@
 "use client";
-import { useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 
-export default function LobbyGate({ leagueId }: { leagueId: string }) {
+export default function LobbyGate({ leagueId, children }: { leagueId: string; children: React.ReactNode }) {
+  const [visible, setVisible] = useState(false);
+  const startedRef = useRef(false);
   const pathname = usePathname();
   const router = useRouter();
 
   useEffect(() => {
-    if (!localStorage.getItem("token")) return;
+    if (!localStorage.getItem("token")) { setVisible(true); return; }
+
+    function evaluate(started: boolean) {
+      if (started) { setVisible(true); return; }
+      const base = `/leagues/${leagueId}`;
+      const allowed = [`${base}/members`, `${base}/settings`];
+      const ok = allowed.some(p => pathname === p || pathname.startsWith(p + "/"));
+      if (ok) {
+        setVisible(true);
+      } else {
+        setVisible(false);
+        router.replace(`${base}/members`);
+      }
+    }
+
+    if (startedRef.current) {
+      evaluate(true);
+      return;
+    }
+
     api(`/leagues/${leagueId}`)
       .then((league: any) => {
-        if (league.seasonStarted) return;
-        const base = `/leagues/${leagueId}`;
-        const allowed = [`${base}/members`, `${base}/settings`];
-        const ok = allowed.some(p => pathname === p || pathname.startsWith(p + "/"));
-        if (!ok) router.replace(`${base}/members`);
+        if (league.seasonStarted) startedRef.current = true;
+        evaluate(!!league.seasonStarted);
       })
-      .catch(() => {});
+      .catch(() => setVisible(true));
   }, [leagueId, pathname]);
 
-  return null;
+  if (!visible) return null;
+  return <>{children}</>;
 }

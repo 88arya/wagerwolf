@@ -7,14 +7,17 @@ export function requireAuth(req: any, res: any, next: NextFunction) {
   try {
     const payload = jwt.verify(token, process.env.JWT_SECRET!) as any;
     req.userId = payload.userId;
-    req.isAdmin = payload.isAdmin;
     next();
   } catch {
     res.status(401).json({ error: "Invalid token" });
   }
 }
 
-export function requireAdmin(req: any, res: any, next: NextFunction) {
-  if (!req.isAdmin) { res.status(403).json({ error: "Admin only" }); return; }
+export function requireCron(req: any, res: any, next: NextFunction) {
+  const secret = process.env.CRON_SECRET;
+  if (!secret) { next(); return; }
+  if (req.headers["x-cron-secret"] !== secret) {
+    res.status(403).json({ error: "Forbidden" }); return;
+  }
   next();
 }

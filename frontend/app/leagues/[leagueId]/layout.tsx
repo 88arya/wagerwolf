@@ -12,8 +12,7 @@ export default async function LeagueLayout({
   return (
     <>
       <LeagueNav leagueId={leagueId} />
-      <LobbyGate leagueId={leagueId} />
-      {children}
+      <LobbyGate leagueId={leagueId}>{children}</LobbyGate>
     </>
   );
 }

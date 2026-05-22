@@ -36,17 +36,21 @@ export default function LeagueNav({ leagueId }: { leagueId: string }) {
   const [hoveredGroup, setHoveredGroup] = useState<string | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const profileRef = useRef<HTMLDivElement>(null);
+  const navStartedRef = useRef(false);
 
   useEffect(() => {
     api("/users/me").then((u: any) => setMyDisplayName(u.displayName || u.name || "")).catch(() => {});
   }, []);
 
   useEffect(() => {
+    if (navStartedRef.current) return;
     api("/memberships").then((ms: any[]) => {
       setLeagues(ms);
-      setCurrentLeague(ms.find((m: any) => m.leagueId === leagueId) ?? null);
+      const match = ms.find((m: any) => m.leagueId === leagueId) ?? null;
+      setCurrentLeague(match);
+      if (match?.league?.seasonStarted) navStartedRef.current = true;
     }).catch(() => {});
-  }, [leagueId]);
+  }, [leagueId, pathname]);
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
@@ -65,7 +69,7 @@ export default function LeagueNav({ leagueId }: { leagueId: string }) {
 
   const base = `/leagues/${leagueId}`;
 
-  const seasonStarted = currentLeague?.league?.seasonStarted ?? true;
+  const seasonStarted = currentLeague?.league?.seasonStarted ?? false;
 
   const lobbyLinks = [
     { label: "Members", href: `${base}/members` },
@@ -240,7 +244,9 @@ export default function LeagueNav({ leagueId }: { leagueId: string }) {
               <button
                 type="button"
                 onClick={() => { router.push("/leagues"); setOpen(false); }}
-                style={{ display: "block", width: "100%", textAlign: "left", padding: "9px 14px", background: "none", border: "none", borderTop: "1px solid var(--border)", cursor: "pointer", fontSize: "0.75rem", fontWeight: 600, color: ACCENT, boxShadow: "none", borderRadius: 0 }}
+                style={{ display: "block", width: "100%", textAlign: "left", padding: "10px 14px", background: "none", border: "none", cursor: "pointer", fontSize: "0.82rem", fontWeight: 500, color: "#000", boxShadow: "none", borderRadius: 0, transition: "background 0.1s, color 0.1s" }}
+                onMouseEnter={e => { e.currentTarget.style.background = ACCENT; e.currentTarget.style.color = "#fff"; }}
+                onMouseLeave={e => { e.currentTarget.style.background = "none"; e.currentTarget.style.color = "#000"; }}
               >
                 + Add Another League
               </button>

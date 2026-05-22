@@ -37,7 +37,6 @@ export default function LeaguesPage() {
   const [error, setError] = useState("");
   const [joinError, setJoinError] = useState("");
   const [joinSuccess, setJoinSuccess] = useState("");
-  const [isAdmin, setIsAdmin] = useState(false);
   const [tab, setTab] = useState<"create" | "join">("join");
   const [displayName, setDisplayName] = useState("");
   const [profileSetup, setProfileSetup] = useState<{
@@ -47,7 +46,6 @@ export default function LeaguesPage() {
 
   useEffect(() => {
     if (!localStorage.getItem("token")) { router.push("/"); return; }
-    setIsAdmin(localStorage.getItem("isAdmin") === "true");
     setDisplayName(localStorage.getItem("displayName") ?? "");
     setForm((f) => ({ ...f, name: randomLeagueName() }));
     loadMemberships();
@@ -134,7 +132,6 @@ export default function LeaguesPage() {
     <>
       <nav className="nav">
         <div className="nav-logo">PLAY<span className="accent">BOOK</span></div>
-        {isAdmin && <Link href="/admin" style={{ fontSize: "0.78rem", fontWeight: 700 }}>Admin</Link>}
         <Link href="/settings" style={{ textDecoration: "none" }}>
           <div style={{
             width: 30, height: 30, borderRadius: "50%",

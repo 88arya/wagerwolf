@@ -38,16 +38,16 @@ router.post("/", async (req: any, res: any) => {
     const hashed = await bcrypt.hash(password, 10);
 
     const user = await prisma.user.create({
-      data: { email, password: hashed, name, displayName, isAdmin: false },
+      data: { email, password: hashed, name, displayName },
     });
 
     const token = jwt.sign(
-      { userId: user.id, isAdmin: user.isAdmin },
+      { userId: user.id },
       process.env.JWT_SECRET!,
       { expiresIn: "30d" }
     );
 
-    res.status(201).json({ token, userId: user.id, displayName: user.displayName, isAdmin: user.isAdmin });
+    res.status(201).json({ token, userId: user.id, displayName: user.displayName });
   } catch (err: any) {
     if (err.code === "P2002") {
       res.status(409).json({ error: "Email already in use" });
@@ -72,12 +72,12 @@ router.post("/login", async (req: any, res: any) => {
     if (!valid) { res.status(401).json({ error: "Invalid email or password" }); return; }
 
     const token = jwt.sign(
-      { userId: user.id, isAdmin: user.isAdmin },
+      { userId: user.id },
       process.env.JWT_SECRET!,
       { expiresIn: "30d" }
     );
 
-    res.json({ token, userId: user.id, displayName: user.displayName, isAdmin: user.isAdmin });
+    res.json({ token, userId: user.id, displayName: user.displayName });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
@@ -87,7 +87,7 @@ router.get("/me", requireAuth, async (req: any, res: any) => {
   try {
     const user = await prisma.user.findUnique({
       where: { id: req.userId },
-      select: { id: true, displayName: true, email: true, isAdmin: true },
+      select: { id: true, displayName: true, email: true },
     });
     if (!user) { res.status(404).json({ error: "User not found" }); return; }
     res.json(user);

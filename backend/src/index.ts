@@ -17,8 +17,8 @@ import espnRoutes from "./routes/espn.routes";
 import gamelineRoutes from "./routes/gamelines.routes";
 import gamePickRoutes from "./routes/gamepicks.routes";
 import parlayRoutes from "./routes/parlays.routes";
-import adminRoutes from "./routes/admin.routes";
 import { runStartupSeed } from "./services/startupSeed";
+import { startScheduler } from "./services/scheduler";
 
 dotenv.config();
 
@@ -43,7 +43,6 @@ app.use("/espn", espnRoutes);
 app.use("/gamelines", gamelineRoutes);
 app.use("/gamepicks", gamePickRoutes);
 app.use("/parlays", parlayRoutes);
-app.use("/admin", adminRoutes);
 
 app.get("/", (req, res) => {
   res.json({ status: "Playbook backend running" });
@@ -54,4 +53,5 @@ const PORT = process.env.PORT || 5000;
 app.listen(PORT, async () => {
   console.log(`Server running on port ${PORT}`);
   await runStartupSeed();
+  startScheduler();
 });

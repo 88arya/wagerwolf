@@ -3,6 +3,8 @@ import { prisma } from "../db/prisma";
 import { requireAuth } from "../middleware/auth";
 import { getNearestTuesdayNoon } from "../services/scheduleMatchups";
 
+const MAX_NFL_WEEK = 17;
+
 const router = Router();
 
 function generateInviteCode(): string {
@@ -41,7 +43,7 @@ router.post("/", requireAuth, async (req: any, res: any) => {
     });
     const sw = firstUnresolved ? firstUnresolved.number : 1;
 
-    const rsw = Math.max(1, 18 - sw - pw + 1);
+    const rsw = Math.max(1, MAX_NFL_WEEK - sw - pw + 1);
 
     let inviteCode = generateInviteCode();
     while (await prisma.league.findUnique({ where: { inviteCode } })) {
@@ -102,8 +104,8 @@ router.patch("/:id", requireAuth, async (req: any, res: any) => {
     const ps = playoffSize !== undefined ? Number(playoffSize) : league.playoffSize;
     const cw = consolationWeeks !== undefined ? Number(consolationWeeks) : league.consolationWeeks;
 
-    if (sw < 1 || sw > 17) {
-      res.status(400).json({ error: "Start week must be between 1 and 17" }); return;
+    if (sw < 1 || sw > MAX_NFL_WEEK) {
+      res.status(400).json({ error: `Start week must be between 1 and ${MAX_NFL_WEEK}` }); return;
     }
     if (rsw < 1) {
       res.status(400).json({ error: "Regular season must have at least 1 week" }); return;
@@ -114,8 +116,8 @@ router.patch("/:id", requireAuth, async (req: any, res: any) => {
 
     const pw = Math.ceil(Math.log2(ps));
     const endWeek = sw + rsw + pw - 1;
-    if (endWeek > 18) {
-      res.status(400).json({ error: `Season would end on NFL week ${endWeek}, which exceeds week 18` }); return;
+    if (endWeek > MAX_NFL_WEEK) {
+      res.status(400).json({ error: `Season would end on NFL week ${endWeek}, which exceeds week ${MAX_NFL_WEEK}` }); return;
     }
 
     const updated = await prisma.league.update({
@@ -187,24 +189,18 @@ router.get("/:id", requireAuth, async (req: any, res: any) => {
   }
 });
 
-// Admin can always delete; commissioner can only delete if they're the sole member
 router.delete("/:id", requireAuth, async (req: any, res: any) => {
   try {
     const league = await prisma.league.findUnique({ where: { id: req.params.id } });
     if (!league) { res.status(404).json({ error: "League not found" }); return; }
 
-    const isAdminUser = req.isAdmin;
-    const isCreator = league.creatorId === req.userId;
-
-    if (!isAdminUser && !isCreator) {
-      res.status(403).json({ error: "Only the commissioner or an admin can delete a league" }); return;
+    if (league.creatorId !== req.userId) {
+      res.status(403).json({ error: "Only the commissioner can delete a league" }); return;
     }
 
-    if (!isAdminUser) {
-      const memberCount = await prisma.membership.count({ where: { leagueId: req.params.id } });
-      if (memberCount > 1) {
-        res.status(400).json({ error: "Cannot delete a league with other members" }); return;
-      }
+    const memberCount = await prisma.membership.count({ where: { leagueId: req.params.id } });
+    if (memberCount > 1) {
+      res.status(400).json({ error: "Cannot delete a league with other members" }); return;
     }
 
     const parlays = await prisma.parlay.findMany({ where: { leagueId: req.params.id }, select: { id: true } });

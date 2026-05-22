@@ -1,10 +1,10 @@
 import { Router } from "express";
 import { prisma } from "../db/prisma";
-import { requireAuth, requireAdmin } from "../middleware/auth";
+import { requireAuth, requireCron } from "../middleware/auth";
 
 const router = Router();
 
-router.post("/", requireAuth, requireAdmin, async (req: any, res: any) => {
+router.post("/", requireAuth, requireCron, async (req: any, res: any) => {
   try {
     const { gameId, playerId, statType, line } = req.body;
     if (!gameId || !playerId || !statType || line == null) {
