@@ -58,6 +58,19 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
     });
   }, [week]);
 
+  // Poll every 60s when any game is live
+  useEffect(() => {
+    const hasLive = week?.games?.some((g: any) => g.status === "IN_PROGRESS");
+    if (!hasLive || !leagueId) return;
+    const interval = setInterval(async () => {
+      try {
+        const weeks = await api(`/weeks?current=true&leagueId=${leagueId}`);
+        if (weeks?.[0]) setWeek(weeks[0]);
+      } catch {}
+    }, 60000);
+    return () => clearInterval(interval);
+  }, [week, leagueId]);
+
   useEffect(() => {
     async function load() {
       if (!localStorage.getItem("token")) { router.push("/"); return; }
@@ -597,7 +610,21 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
                           <span style={{ fontSize: "0.7rem", fontWeight: 800, color: "var(--text-2)", fontVariantNumeric: "tabular-nums" }}>{game.homeScore}</span>
                         </>
                       ) : isLive ? (
-                        <span style={{ fontSize: "0.52rem", color: "var(--win)", fontWeight: 800, letterSpacing: "0.04em" }}>LIVE</span>
+                        <>
+                          {game.awayScore != null && game.homeScore != null && (
+                            <>
+                              <span style={{ fontSize: "0.7rem", fontWeight: 800, color: "var(--text)", fontVariantNumeric: "tabular-nums" }}>{game.awayScore}</span>
+                              <span style={{ fontSize: "0.7rem", fontWeight: 800, color: "var(--text)", fontVariantNumeric: "tabular-nums" }}>{game.homeScore}</span>
+                            </>
+                          )}
+                          <div style={{ display: "flex", alignItems: "center", gap: 3 }}>
+                            <div style={{ width: 5, height: 5, borderRadius: "50%", background: "var(--win)", flexShrink: 0 }} />
+                            <span style={{ fontSize: "0.52rem", color: "var(--win)", fontWeight: 800, letterSpacing: "0.04em" }}>LIVE</span>
+                          </div>
+                          {game.statusDetail ? (
+                            <span style={{ fontSize: "0.48rem", color: "var(--text-3)", fontWeight: 600, whiteSpace: "nowrap" }}>{game.statusDetail}</span>
+                          ) : null}
+                        </>
                       ) : game.status === "CANCELLED" ? (
                         <span style={{ fontSize: "0.52rem", color: "var(--loss)", fontWeight: 800 }}>CANC</span>
                       ) : game.gameDate ? (
