@@ -165,9 +165,10 @@ model Game {
   status     String     @default("SCHEDULED") // SCHEDULED | LIVE | FINAL | CANCELLED
   externalId String?    @unique
   espnId     String?    @unique
-  homeScore  Int?
-  awayScore  Int?
-  week       Week       @relation(fields: [weekId], references: [id])
+  homeScore    Int?
+  awayScore    Int?
+  statusDetail String   @default("")
+  week         Week     @relation(fields: [weekId], references: [id])
   props      Prop[]
   gameLines  GameLine[]
 }
