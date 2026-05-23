@@ -56,7 +56,9 @@ router.post("/", requireAuth, async (req: any, res: any) => {
     }
 
     const startWeekRecord = startWeek !== undefined ? await prisma.week.findFirst({ where: { number: sw } }) : null;
-    const autoStartAt = startWeekRecord ? startWeekRecord.startDate : getNearestTuesdayNoon(new Date());
+    const autoStartAt = startWeekRecord
+      ? startWeekRecord.startDate
+      : Boolean(isPublic) ? getNearestTuesdayNoon(new Date()) : null;
 
     const league = await prisma.league.create({
       data: {
