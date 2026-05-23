@@ -42,6 +42,10 @@ export interface ESPNGame {
   homeTeam: string;
   awayTeam: string;
   gameDate: Date;
+  homeScore: number | null;
+  awayScore: number | null;
+  status: "SCHEDULED" | "IN_PROGRESS" | "FINAL" | "CANCELLED";
+  statusDetail: string;
 }
 
 export interface PlayerGameStats {
@@ -79,11 +83,27 @@ export async function getNFLWeekGames(weekStartDate: Date, weekNumber: number): 
     const home = comp.competitors?.find((c: any) => c.homeAway === "home");
     const away = comp.competitors?.find((c: any) => c.homeAway === "away");
     if (!home || !away) continue;
+
+    const statusName: string = event.status?.type?.name ?? "";
+    const completed: boolean = event.status?.type?.completed ?? false;
+    let status: ESPNGame["status"] = "SCHEDULED";
+    if (completed || statusName === "STATUS_FINAL") status = "FINAL";
+    else if (statusName === "STATUS_IN_PROGRESS") status = "IN_PROGRESS";
+    else if (statusName === "STATUS_CANCELLED" || statusName === "STATUS_POSTPONED") status = "CANCELLED";
+
+    const homeScore = home.score != null ? (parseInt(home.score) || null) : null;
+    const awayScore = away.score != null ? (parseInt(away.score) || null) : null;
+    const statusDetail: string = event.status?.type?.shortDetail ?? "";
+
     games.push({
       espnId: String(event.id),
-      homeTeam: home.team.displayName,
-      awayTeam: away.team.displayName,
+      homeTeam: home.team.abbreviation,
+      awayTeam: away.team.abbreviation,
       gameDate: new Date(event.date),
+      homeScore,
+      awayScore,
+      status,
+      statusDetail,
     });
   }
   return games;

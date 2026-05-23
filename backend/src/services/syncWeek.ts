@@ -59,6 +59,30 @@ export async function syncESPNGames(weekId: string): Promise<{ synced: number }>
   return { synced };
 }
 
+export async function syncScores(weekId: string): Promise<{ updated: number }> {
+  const week = await prisma.week.findUnique({ where: { id: weekId } });
+  if (!week) throw new Error("Week not found");
+
+  const espnGames = await getNFLWeekGames(new Date(week.startDate), week.number);
+  let updated = 0;
+  for (const g of espnGames) {
+    const existing = await prisma.game.findUnique({ where: { espnId: g.espnId } });
+    if (!existing) continue;
+    await prisma.game.update({
+      where: { espnId: g.espnId },
+      data: {
+        status: g.status,
+        homeScore: g.homeScore,
+        awayScore: g.awayScore,
+        statusDetail: g.statusDetail,
+      },
+    });
+    updated++;
+  }
+  console.log(`[sync] Scores for week ${week.number}: ${updated} updated`);
+  return { updated };
+}
+
 export async function syncOdds(weekId: string): Promise<{ games: number; lines: number; props: number }> {
   const week = await prisma.week.findUnique({ where: { id: weekId } });
   if (!week) throw new Error("Week not found");
