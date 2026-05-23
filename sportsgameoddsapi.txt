@@ -1,0 +1,102 @@
+SportsGameOdds API v2 — NFL DraftKings Markets
+=================================================
+
+Base URL: https://api.sportsgameodds.com/v2
+Auth: x-api-key header
+
+oddID format: {statID}-{playerEntityID}-{periodID}-{betTypeID}-{sideID}
+  periodID: FG = full game
+  betTypeID: ou = over/under, ml = moneyline, sp = spread
+  sideID: O = over, U = under, H = home, A = away
+
+Access DraftKings odds: odds[oddKey].byBookmaker.draftkings
+
+
+=== GAME LINES ===
+
+Endpoint: GET /odds?sportID=NFL&leagueID=NFL&gameID={gameID}&bookmakerID=draftkings
+
+Markets returned per game:
+
+  moneyline_home      Home team moneyline win y
+  moneyline_away      Away team moneyline win y
+  spread_home         Home team spread (e.g. -3.5) y
+  spread_away         Away team spread y
+  total_over          Game total over (e.g. 47.5) y
+  total_under         Game total under y
+
+
+=== PLAYER PROPS ===
+
+Endpoint: GET /odds?sportID=NFL&leagueID=NFL&gameID={gameID}&bookmakerID=draftkings&statID={statID}
+
+-- PASSING --
+statID                  Market
+passing_yards           Passing yards O/U y
+passing_touchdowns      Passing TDs O/U y
+passing_completions     Completions O/U y
+passing_attempts        Pass attempts O/U y
+passing_interceptions   Interceptions O/U y
+passing_longest         Longest completion O/U y
+
+-- RUSHING --
+statID                  Market
+rushing_yards           Rushing yards O/U y
+rushing_touchdowns      Rushing TDs O/U y
+rushing_attempts        Rush attempts O/U y
+rushing_longest         Longest rush O/U y
+
+-- RECEIVING --
+statID                  Market
+receiving_yards         Receiving yards O/U y
+receiving_touchdowns    Receiving TDs O/U y
+receptions              Receptions O/U y
+receiving_longest       Longest reception O/U y
+receiving_targets       Targets O/U y
+
+-- DEFENSE --
+statID                  Market
+sacks                   Sacks O/U y
+tackles_assists         Tackles + assists O/U y
+interceptions           Defensive interceptions O/U y
+
+-- KICKING --
+statID                  Market
+field_goals_made        Field goals made O/U
+field_goal_longest      Longest FG O/U
+kicking_points          Kicking points O/U
+extra_points_made       PATs made O/U
+
+-- PUNTING --
+statID                  Market
+punts                   Punts O/U
+punting_yards           Punting yards O/U
+punting_longest         Longest punt O/U
+
+-- RETURN --
+statID                  Market
+kick_return_yards       Kick return yards O/U
+punt_return_yards       Punt return yards O/U
+
+-- ANYTIME SCORER --
+statID                  Market
+anytime_touchdown       Anytime TD scorer (ml: yes/no)
+first_touchdown         First TD scorer (ml: yes/no)
+
+
+=== CURRENT BACKEND PROP_STAT_IDS (oddsApi.ts) ===
+
+passing_yards
+passing_touchdowns
+rushing_yards
+receiving_yards
+receptions
+
+
+=== NOTES ===
+
+- Not all markets available for every game or player
+- DraftKings availability varies; check odds[key].byBookmaker.draftkings !== undefined
+- Lines returned as array of {line, overOdds, underOdds} objects
+- Player entityID is the player's SportsGameOdds playerID
+- Game lines oddKeys follow pattern: moneyline_home, spread_home, total_over (no playerEntityID component)
