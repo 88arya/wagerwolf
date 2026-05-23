@@ -1,7 +1,7 @@
 import cron from "node-cron";
 import { prisma } from "../db/prisma";
 import { resolveWeekById } from "./resolveWeek";
-import { syncESPNGames, syncOdds } from "./syncWeek";
+import { syncESPNGames, syncOdds, syncScores } from "./syncWeek";
 import { distributeWeeklyAllowances } from "./distributeAllowances";
 import { startLeagueSeason } from "./startSeason";
 
@@ -13,6 +13,8 @@ const GAME_SYNC_SCHEDULE = "0 18 * * 2";
 const ODDS_SYNC_SCHEDULE = "0 14 * * 3";
 // Friday 2:00 PM UTC — re-sync odds (line movements)
 const ODDS_REFRESH_SCHEDULE = "0 14 * * 5";
+// Every minute — sync scores only when a game has kicked off but isn't final yet
+const SCORE_SYNC_SCHEDULE = "* * * * *";
 
 async function runResolveAndAllowances() {
   const now = new Date();
@@ -101,10 +103,33 @@ async function runOddsSync() {
   }
 }
 
+async function runScoreSync() {
+  const now = new Date();
+  const week = await prisma.week.findFirst({
+    where: { resolved: false, startDate: { lte: now }, endDate: { gte: now } },
+    orderBy: { number: "asc" },
+    include: { games: { select: { gameDate: true, status: true } } },
+  });
+  if (!week) return;
+
+  // Only call ESPN if at least one game has kicked off but isn't done yet
+  const hasActiveGame = (week as any).games.some(
+    (g: any) => new Date(g.gameDate) <= now && g.status !== "FINAL" && g.status !== "CANCELLED"
+  );
+  if (!hasActiveGame) return;
+
+  try {
+    await syncScores(week.id);
+  } catch (err) {
+    console.error(`[cron] Score sync failed for week ${week.number}:`, err);
+  }
+}
+
 export function startScheduler() {
   cron.schedule(RESOLVE_SCHEDULE,    runResolveAndAllowances, { timezone: "UTC" });
   cron.schedule(GAME_SYNC_SCHEDULE,  runESPNGameSync,         { timezone: "UTC" });
   cron.schedule(ODDS_SYNC_SCHEDULE,  runOddsSync,             { timezone: "UTC" });
   cron.schedule(ODDS_REFRESH_SCHEDULE, runOddsSync,           { timezone: "UTC" });
+  cron.schedule(SCORE_SYNC_SCHEDULE, runScoreSync,            { timezone: "UTC" });
   console.log("[scheduler] Cron jobs registered");
 }

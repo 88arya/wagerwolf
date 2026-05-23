@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { requireAuth, requireCron } from "../middleware/auth";
-import { syncESPNGames } from "../services/syncWeek";
+import { syncESPNGames, syncScores } from "../services/syncWeek";
 import { resolveWeekById } from "../services/resolveWeek";
 
 const router = Router();
@@ -8,6 +8,15 @@ const router = Router();
 router.post("/games/:weekId", requireAuth, requireCron, async (req: any, res: any) => {
   try {
     const result = await syncESPNGames(req.params.weekId);
+    res.json(result);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post("/scores/:weekId", requireAuth, requireCron, async (req: any, res: any) => {
+  try {
+    const result = await syncScores(req.params.weekId);
     res.json(result);
   } catch (err: any) {
     res.status(500).json({ error: err.message });
