@@ -93,9 +93,9 @@ export default function MemberProfilePage({ params }: PageProps<"/leagues/[leagu
           {[
             { label: "Balance", value: `$${stats.balance.toLocaleString()}`, color: "var(--accent)" },
             { label: "Record", value: `${stats.wins}–${stats.losses}–${stats.ties}`, color: "var(--text)" },
-            { label: "Win Rate", value: (stats.wonPicks + stats.lostPicks) > 0 ? `${Math.round(stats.wonPicks / (stats.wonPicks + stats.lostPicks) * 100)}%` : "—", color: "var(--text)" },
+            { label: "Hit Rate", value: (stats.wonPicks + stats.lostPicks) > 0 ? `${Math.round(stats.wonPicks / (stats.wonPicks + stats.lostPicks) * 100)}%` : "—", color: "var(--text)" },
             { label: "ROI", value: stats.totalStaked > 0 ? `${stats.roi > 0 ? "+" : ""}${stats.roi}%` : "—", color: roiColor },
-            { label: "Total Bets", value: String(stats.totalPicks), color: "var(--text)" },
+            { label: "Avg / Week", value: stats.avgWeeklyWinnings !== 0 ? `${stats.avgWeeklyWinnings > 0 ? "+" : ""}$${Math.abs(stats.avgWeeklyWinnings).toLocaleString()}` : "—", color: stats.avgWeeklyWinnings > 0 ? "var(--win)" : stats.avgWeeklyWinnings < 0 ? "var(--loss)" : "var(--text-2)" },
             { label: "Profit", value: stats.totalProfit !== 0 ? `${stats.totalProfit > 0 ? "+" : ""}$${Math.abs(stats.totalProfit).toLocaleString()}` : "$0", color: stats.totalProfit > 0 ? "var(--win)" : stats.totalProfit < 0 ? "var(--loss)" : "var(--text-2)" },
           ].map(({ label, value, color }) => (
             <div key={label} className="card" style={{ margin: 0, textAlign: "center", padding: "12px 8px" }}>
@@ -135,6 +135,34 @@ export default function MemberProfilePage({ params }: PageProps<"/leagues/[leagu
                 </span>
               </div>
             )}
+          </div>
+        )}
+
+        {/* Hit rates by stat type */}
+        {stats.statTypeHitRates?.length > 0 && (
+          <div className="card" style={{ marginBottom: 10, padding: "14px" }}>
+            <div style={{ fontSize: "0.6rem", fontWeight: 800, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--text-3)", marginBottom: 12 }}>
+              Hit Rates by Category
+            </div>
+            {stats.statTypeHitRates.map((s: any, idx: number) => {
+              const hitColor = s.hitRate >= 55 ? "var(--win)" : s.hitRate <= 40 ? "var(--loss)" : "var(--text-2)";
+              return (
+                <div key={s.statType} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: idx < stats.statTypeHitRates.length - 1 ? 10 : 0 }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: "0.8rem", fontWeight: 600, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {fmtStatType(s.statType)}
+                    </div>
+                    <div style={{ marginTop: 4, height: 3, borderRadius: 2, background: "var(--surface-3)", overflow: "hidden" }}>
+                      <div style={{ height: "100%", width: `${s.hitRate}%`, background: hitColor, borderRadius: 2, transition: "width 0.3s" }} />
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", flexShrink: 0, gap: 1 }}>
+                    <span style={{ fontSize: "0.85rem", fontWeight: 800, color: hitColor, fontVariantNumeric: "tabular-nums" }}>{s.hitRate}%</span>
+                    <span style={{ fontSize: "0.65rem", color: "var(--text-3)", fontVariantNumeric: "tabular-nums" }}>{s.won}/{s.total}</span>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         )}
 

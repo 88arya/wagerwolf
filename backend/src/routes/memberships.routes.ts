@@ -462,12 +462,12 @@ router.get("/members/:targetUserId/stats", requireAuth, async (req: any, res: an
     const [picks, gamePicks, parlays, matchups] = await Promise.all([
       prisma.pick.findMany({
         where: { leagueId, userId: targetUserId },
-        include: { prop: { include: { player: { select: { name: true } }, game: { select: { gameDate: true } } } } },
+        include: { prop: { include: { player: { select: { name: true } }, game: { select: { gameDate: true, weekId: true } } } } },
         orderBy: { createdAt: "desc" },
       }),
       prisma.gamePick.findMany({
         where: { leagueId, userId: targetUserId },
-        include: { gameLine: { include: { game: { select: { gameDate: true } } } } },
+        include: { gameLine: { include: { game: { select: { gameDate: true, weekId: true } } } } },
         orderBy: { createdAt: "desc" },
       }),
       prisma.parlay.findMany({
@@ -506,14 +506,41 @@ router.get("/members/:targetUserId/stats", requireAuth, async (req: any, res: an
       else break;
     }
 
-    // Best/worst prop stat types
-    const statProfits: Record<string, number> = {};
+    // Hit rates and profit per stat type
+    const statTypeStats: Record<string, { won: number; total: number; profit: number }> = {};
     for (const p of picks) {
       if (p.outcome === "PENDING") continue;
       const st = p.prop.statType;
-      statProfits[st] = (statProfits[st] ?? 0) + calcProfit(p.stake, p.odds, p.outcome);
+      if (!statTypeStats[st]) statTypeStats[st] = { won: 0, total: 0, profit: 0 };
+      statTypeStats[st].total++;
+      if (p.outcome === "WIN") statTypeStats[st].won++;
+      statTypeStats[st].profit += calcProfit(p.stake, p.odds, p.outcome);
     }
-    const statEntries = Object.entries(statProfits).sort((a, b) => b[1] - a[1]);
+    const statTypeHitRates = Object.entries(statTypeStats)
+      .map(([statType, s]) => ({
+        statType,
+        won: s.won,
+        total: s.total,
+        hitRate: Math.round((s.won / s.total) * 100),
+        profit: s.profit,
+      }))
+      .sort((a, b) => b.total - a.total);
+    const statEntries = statTypeHitRates.map((s) => [s.statType, s.profit] as [string, number]).sort((a, b) => b[1] - a[1]);
+
+    // Avg weekly winnings across weeks with settled bets
+    const weekProfits: Record<string, number> = {};
+    for (const p of picks) {
+      if (p.outcome === "PENDING") continue;
+      const wid = p.prop.game.weekId;
+      weekProfits[wid] = (weekProfits[wid] ?? 0) + calcProfit(p.stake, p.odds, p.outcome);
+    }
+    for (const p of gamePicks) {
+      if (p.outcome === "PENDING") continue;
+      const wid = p.gameLine.game.weekId;
+      weekProfits[wid] = (weekProfits[wid] ?? 0) + calcProfit(p.stake, p.odds, p.outcome);
+    }
+    const weeksActive = Object.keys(weekProfits).length;
+    const avgWeeklyWinnings = weeksActive > 0 ? Math.round(totalProfit / weeksActive) : 0;
 
     // Matchup record
     let wins = 0, losses = 0, ties = 0;
@@ -545,8 +572,10 @@ router.get("/members/:targetUserId/stats", requireAuth, async (req: any, res: an
       totalProfit,
       roi: totalStaked > 0 ? Math.round((totalProfit / totalStaked) * 1000) / 10 : 0,
       streak,
+      avgWeeklyWinnings,
       bestStatType: statEntries[0] ? { statType: statEntries[0][0], profit: statEntries[0][1] } : null,
       worstStatType: statEntries.length > 1 ? { statType: statEntries[statEntries.length - 1][0], profit: statEntries[statEntries.length - 1][1] } : null,
+      statTypeHitRates,
       recentPicks: picks.slice(0, 10).map((p) => ({
         id: p.id,
         playerName: p.prop.player.name,
