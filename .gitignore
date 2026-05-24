@@ -6,3 +6,9 @@ build/
 .claude/
 spec.txt
 claude.txt
+.vscode/
+CLAUDE.md
+comissioner_rules.txt
+espnweekreturn.md
+sportsgameoddsapi.txt
+todolist.txt
