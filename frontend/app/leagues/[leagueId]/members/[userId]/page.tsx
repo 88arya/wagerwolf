@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { api } from "@/lib/api";
+import HelmetAvatar from "@/components/HelmetAvatar";
 
 function fmtOdds(n: number) { return n > 0 ? `+${n}` : `${n}`; }
 function fmtStatType(s: string) { return s.split("_").map((w: string) => w[0] + w.slice(1).toLowerCase()).join(" "); }
@@ -60,15 +61,8 @@ export default function MemberProfilePage({ params }: PageProps<"/leagues/[leagu
       <div className="page" style={{ paddingBottom: 100 }}>
         {/* Profile header */}
         <div className="card" style={{ marginBottom: 10, textAlign: "center", padding: "22px 20px 18px" }}>
-          <div style={{
-            width: 60, height: 60, borderRadius: "50%",
-            background: "var(--accent-dim)",
-            border: `2.5px solid ${isMe ? "var(--accent)" : "var(--border-2)"}`,
-            display: "flex", alignItems: "center", justifyContent: "center",
-            fontSize: "1.3rem", fontWeight: 900, color: "var(--accent)",
-            margin: "0 auto 12px",
-          }}>
-            {stats.displayName.slice(0, 2).toUpperCase()}
+          <div style={{ display: "flex", justifyContent: "center", margin: "0 auto 12px" }}>
+            <HelmetAvatar color={stats.helmetColor ?? "#2563EB"} initials={stats.abbreviation || stats.displayName.slice(0, 2).toUpperCase()} size={60} />
           </div>
           <div style={{ fontWeight: 900, fontSize: "1.15rem", color: "var(--text)", marginBottom: 6, lineHeight: 1.2 }}>
             {stats.displayName}

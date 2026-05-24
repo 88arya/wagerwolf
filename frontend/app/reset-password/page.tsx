@@ -43,9 +43,9 @@ function ResetForm() {
   if (done) {
     return (
       <div style={{ textAlign: "center" }}>
-        <div style={{ fontSize: "2.5rem", marginBottom: 16 }}>✅</div>
-        <div style={{ fontWeight: 800, fontSize: "1.1rem", color: "var(--text)", marginBottom: 8 }}>Password reset!</div>
-        <div style={{ color: "var(--text-3)", fontSize: "0.85rem", marginBottom: 20 }}>You can now sign in with your new password.</div>
+        <div style={{ fontSize: "2.2rem", marginBottom: 14 }}>✅</div>
+        <div style={{ fontWeight: 800, fontSize: "1rem", color: "var(--text)", marginBottom: 8 }}>Password reset!</div>
+        <div style={{ color: "var(--text-3)", fontSize: "0.82rem", marginBottom: 20 }}>You can now sign in with your new password.</div>
         <Link href="/"><button style={{ width: "100%" }}>Sign In</button></Link>
       </div>
     );
@@ -53,8 +53,8 @@ function ResetForm() {
 
   return (
     <>
-      <div style={{ fontWeight: 800, fontSize: "1.1rem", color: "var(--text)", marginBottom: 6 }}>New Password</div>
-      <div style={{ color: "var(--text-3)", fontSize: "0.82rem", marginBottom: 20 }}>Choose a new password for your account.</div>
+      <div style={{ fontWeight: 800, fontSize: "1rem", color: "var(--text)", marginBottom: 4 }}>New Password</div>
+      <div style={{ color: "var(--text-3)", fontSize: "0.78rem", marginBottom: 20 }}>Choose a new password for your account.</div>
       <form className="form" onSubmit={handleSubmit}>
         <div>
           <div className="label">New Password</div>
@@ -75,18 +75,30 @@ function ResetForm() {
 
 export default function ResetPasswordPage() {
   return (
-    <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", background: "var(--navy)", padding: "20px" }}>
-      <div style={{ width: "100%", maxWidth: 400 }}>
-        <div style={{ textAlign: "center", marginBottom: 32 }}>
-          <div style={{ fontSize: "2rem", fontWeight: 900, letterSpacing: "0.06em", color: "var(--text)", marginBottom: 8 }}>
-            PLAY<span style={{ color: "var(--gold)" }}>BOOK</span>
+    <div style={{ flex: 1, minHeight: 0, overflowY: "auto", display: "flex", flexDirection: "column", background: "var(--bg)" }}>
+      <div style={{ height: 3, background: "linear-gradient(90deg, var(--accent-muted), var(--accent), var(--accent-hover))" }} />
+
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "32px 20px 28px" }}>
+        <div style={{ textAlign: "center", marginBottom: 36 }}>
+          <div style={{ fontSize: "2.6rem", fontWeight: 900, letterSpacing: "0.08em", color: "var(--text)", lineHeight: 1, marginBottom: 10, textTransform: "uppercase" }}>
+            PLAY<span style={{ color: "var(--accent)" }}>BOOK</span>
+          </div>
+          <div style={{ color: "var(--text-3)", fontSize: "0.68rem", fontWeight: 700, letterSpacing: "0.22em", textTransform: "uppercase" }}>
+            NFL Prop Betting · Friend Leagues
           </div>
         </div>
-        <div style={{ background: "var(--surface)", borderRadius: 16, padding: "28px 24px" }}>
-          <Suspense fallback={<div style={{ color: "var(--text-3)" }}>Loading…</div>}>
-            <ResetForm />
-          </Suspense>
+
+        <div style={{ width: "100%", maxWidth: 400, background: "var(--surface)", borderRadius: "var(--radius-lg)", border: "1px solid var(--border-2)", overflow: "hidden" }}>
+          <div style={{ padding: "24px 22px" }}>
+            <Suspense fallback={<div style={{ color: "var(--text-3)", fontSize: "0.78rem" }}>Loading…</div>}>
+              <ResetForm />
+            </Suspense>
+          </div>
         </div>
+      </div>
+
+      <div style={{ textAlign: "center", padding: "14px 0 24px", color: "var(--text-4)", fontSize: "0.65rem", letterSpacing: "0.1em", textTransform: "uppercase" }}>
+        Playbook · NFL Fantasy · Fake Money, Real Fun
       </div>
     </div>
   );

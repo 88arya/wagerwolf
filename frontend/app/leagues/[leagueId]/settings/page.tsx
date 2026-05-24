@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
+import HelmetAvatar from "@/components/HelmetAvatar";
 
 const MAX_NFL_WEEK = 17;
 
@@ -216,9 +217,7 @@ export default function LeagueSettingsPage({ params }: PageProps<"/leagues/[leag
                   borderBottom: idx < pendingMembers.length - 1 ? "1px solid var(--border)" : "none",
                 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
-                    <div className="avatar" style={{ width: 30, height: 30, fontSize: "0.65rem" }}>
-                      {m.user.displayName.slice(0, 2).toUpperCase()}
-                    </div>
+                    <HelmetAvatar color={m.helmetColor ?? "#2563EB"} initials={m.user.displayName.slice(0, 2).toUpperCase()} size={30} />
                     <span style={{ fontWeight: 600, fontSize: "0.88rem" }}>{m.user.displayName}</span>
                   </div>
                   <div style={{ display: "flex", gap: 6 }}>
@@ -244,7 +243,7 @@ export default function LeagueSettingsPage({ params }: PageProps<"/leagues/[leag
               borderBottom: idx < members.length - 1 ? "1px solid var(--border)" : "none",
             }}>
               <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
-                <div className="avatar" style={{ width: 28, height: 28, fontSize: "0.63rem" }}>{m.displayName.slice(0, 2).toUpperCase()}</div>
+                <HelmetAvatar color={m.helmetColor ?? "#2563EB"} initials={m.displayName.slice(0, 2).toUpperCase()} size={28} />
                 <span style={{ fontWeight: 600, fontSize: "0.88rem" }}>
                   {m.displayName}
                   {m.userId === userId && <span className="badge" style={{ marginLeft: 6 }}>you</span>}

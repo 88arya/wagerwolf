@@ -57,7 +57,7 @@ export default function SettingsPage() {
           <div style={{
             width: 68, height: 68, borderRadius: "50%",
             background: "var(--accent-dim)",
-            border: "2.5px solid rgba(56,189,248,0.3)",
+            border: "2.5px solid rgba(37,99,235,0.25)",
             display: "flex", alignItems: "center", justifyContent: "center",
             fontSize: "1.4rem", fontWeight: 900, color: "var(--accent)",
           }}>

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { api } from "@/lib/api";
+import HelmetAvatar from "@/components/HelmetAvatar";
 
 export default function LeaderboardPage({ params }: PageProps<"/leagues/[leagueId]/leaderboard">) {
   const router = useRouter();
@@ -126,14 +127,7 @@ export default function LeaderboardPage({ params }: PageProps<"/leagues/[leagueI
 
                     {/* Player */}
                     <div style={{ display: "flex", alignItems: "center", gap: 9, minWidth: 0 }}>
-                      <div className="avatar" style={{
-                        width: 32, height: 32, fontSize: "0.68rem", flexShrink: 0,
-                        ...(rank === 1 ? { borderColor: "var(--gold)", color: "var(--gold)", background: "rgba(245,158,11,0.1)" } : {}),
-                        ...(rank === 2 ? { borderColor: "var(--silver)", color: "var(--silver)", background: "rgba(148,163,184,0.08)" } : {}),
-                        ...(rank === 3 ? { borderColor: "var(--bronze)", color: "var(--bronze)", background: "rgba(205,127,50,0.08)" } : {}),
-                      }}>
-                        {initials}
-                      </div>
+                      <HelmetAvatar color={entry.helmetColor ?? "#2563EB"} initials={initials} size={32} />
                       <div style={{ minWidth: 0 }}>
                         <div style={{
                           fontWeight: isMe ? 800 : 600,
