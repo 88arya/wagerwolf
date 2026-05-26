@@ -11,12 +11,12 @@
   --border-2:     #CBD5E1;
   --border-3:     #94A3B8;
 
-  /* ── Accent: Royal Blue ── */
-  --accent:       #2563EB;
-  --accent-hover: #1D4ED8;
-  --accent-muted: #3B82F6;
-  --accent-dim:   rgba(37, 99, 235, 0.08);
-  --accent-glow:  rgba(37, 99, 235, 0.15);
+  /* ── Accent Blue ── */
+  --accent:       #0070EB;
+  --accent-hover: #005cc9;
+  --accent-muted: #3385ee;
+  --accent-dim:   rgba(0, 112, 235, 0.08);
+  --accent-glow:  rgba(0, 112, 235, 0.15);
 
   /* ── Header ── */
   --navy:         #FFFFFF;
@@ -589,8 +589,8 @@ hr { border: none; border-top: 1px solid var(--border); margin: 14px 0; }
 
 /* ── League hero banner ── */
 .league-banner {
-  background: linear-gradient(135deg, #1E3A8A 0%, #2563EB 100%);
-  border: 1px solid rgba(37, 99, 235, 0.2);
+  background: linear-gradient(135deg, #004b9e 0%, #0070EB 100%);
+  border: 1px solid rgba(0, 112, 235, 0.2);
   border-radius: var(--radius-lg);
   padding: 18px 16px;
   color: #fff;

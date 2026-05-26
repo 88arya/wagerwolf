@@ -1,4 +1,4 @@
-import { Router } from "express";
+﻿import { Router } from "express";
 import { prisma } from "../db/prisma";
 import { requireAuth } from "../middleware/auth";
 import { scheduleMatchups } from "../services/scheduleMatchups";
@@ -559,7 +559,7 @@ router.get("/members/:targetUserId/stats", requireAuth, async (req: any, res: an
     res.json({
       userId: targetUserId,
       displayName: (targetMembership as any).displayName || (targetMembership as any).user.displayName,
-      helmetColor: (targetMembership as any).helmetColor ?? "#2563EB",
+      helmetColor: (targetMembership as any).helmetColor ?? "#0070EB",
       abbreviation: (targetMembership as any).abbreviation ?? "",
       balance: targetMembership.balance,
       rank,

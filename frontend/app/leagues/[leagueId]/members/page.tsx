@@ -169,7 +169,7 @@ export default function MembersPage({ params }: PageProps<"/leagues/[leagueId]/m
               onMouseEnter={e => { if (league.seasonStarted) e.currentTarget.style.background = "var(--surface-2)"; }}
               onMouseLeave={e => (e.currentTarget.style.background = "transparent")}
             >
-              <HelmetAvatar color={m.helmetColor ?? "#2563EB"} initials={(m.displayName ?? "?").slice(0, 2)} size={36} />
+              <HelmetAvatar color={m.helmetColor ?? "#0070EB"} initials={(m.displayName ?? "?").slice(0, 2)} size={36} />
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: "0.85rem", fontWeight: isMe ? 700 : 500, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                   {m.displayName}{isMe && <span style={{ fontSize: "0.65rem", color: "var(--text-3)", fontWeight: 400, marginLeft: 6 }}>you</span>}

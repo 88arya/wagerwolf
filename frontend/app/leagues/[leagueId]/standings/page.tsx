@@ -14,7 +14,7 @@ export default function StandingsPage({ params }: PageProps<"/leagues/[leagueId]
   const [loaded, setLoaded] = useState(false);
 
   const helmetColors: Record<string, string> = {};
-  members.forEach((m) => { helmetColors[m.userId] = m.helmetColor ?? "#2563EB"; });
+  members.forEach((m) => { helmetColors[m.userId] = m.helmetColor ?? "#0070EB"; });
 
   useEffect(() => {
     async function load() {
@@ -65,7 +65,7 @@ export default function StandingsPage({ params }: PageProps<"/leagues/[leagueId]
             }}>
               <span style={{ fontWeight: 400, fontSize: "0.85rem", color: "var(--text)" }}>{m.rank}</span>
               <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
-                <HelmetAvatar color={helmetColors[m.userId] ?? "#2563EB"} initials={m.displayName.slice(0, 2)} size={26} />
+                <HelmetAvatar color={helmetColors[m.userId] ?? "#0070EB"} initials={m.displayName.slice(0, 2)} size={26} />
                 <span style={{ fontWeight: isMe ? 700 : 400, fontSize: "0.85rem", color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                   {m.displayName}
                 </span>

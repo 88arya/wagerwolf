@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
@@ -23,7 +23,7 @@ function UserIcon() {
   );
 }
 
-const ACCENT = "#2563EB";
+const ACCENT = "#0070EB";
 
 export default function LeagueNav({ leagueId }: { leagueId: string }) {
   const pathname = usePathname();

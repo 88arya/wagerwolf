@@ -62,7 +62,7 @@ export default function MemberProfilePage({ params }: PageProps<"/leagues/[leagu
         {/* Profile header */}
         <div className="card" style={{ marginBottom: 10, textAlign: "center", padding: "22px 20px 18px" }}>
           <div style={{ display: "flex", justifyContent: "center", margin: "0 auto 12px" }}>
-            <HelmetAvatar color={stats.helmetColor ?? "#2563EB"} initials={stats.abbreviation || stats.displayName.slice(0, 2).toUpperCase()} size={60} />
+            <HelmetAvatar color={stats.helmetColor ?? "#0070EB"} initials={stats.abbreviation || stats.displayName.slice(0, 2).toUpperCase()} size={60} />
           </div>
           <div style={{ fontWeight: 900, fontSize: "1.15rem", color: "var(--text)", marginBottom: 6, lineHeight: 1.2 }}>
             {stats.displayName}

@@ -127,7 +127,7 @@ export default function LeaderboardPage({ params }: PageProps<"/leagues/[leagueI
 
                     {/* Player */}
                     <div style={{ display: "flex", alignItems: "center", gap: 9, minWidth: 0 }}>
-                      <HelmetAvatar color={entry.helmetColor ?? "#2563EB"} initials={initials} size={32} />
+                      <HelmetAvatar color={entry.helmetColor ?? "#0070EB"} initials={initials} size={32} />
                       <div style={{ minWidth: 0 }}>
                         <div style={{
                           fontWeight: isMe ? 800 : 600,
