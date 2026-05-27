@@ -1,86 +1,634 @@
 "use client";
 
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
+import { GoogleLogin } from "@react-oauth/google";
+import { api } from "@/lib/api";
 
-function HelmetSVG({ style }: { style?: React.CSSProperties }) {
-  return (
-    <svg height="480" viewBox="0 0 64 64" width="480" xmlns="http://www.w3.org/2000/svg" style={{ display: "block", ...style }}><g id="_02-american_football_helmet" data-name="02-american football helmet"><g fill="#e9edf5"><path d="m41 41v3.09l-5.56 3.79a1.823 1.823 0 0 1 -1.65-.17 1.677 1.677 0 0 1 .13-2.92z"/><circle cx="32" cy="29" r="2"/><path d="m62.5 43.29a1.219 1.219 0 0 1 -.07.41l-1.43 4.3v1.33a2 2 0 0 1 -1.64 1.97l-9.36 1.7v-3l2-5 8.8-2.93a.653.653 0 0 1 .2-.05.749.749 0 0 1 .21-.02 1.293 1.293 0 0 1 1.29 1.29z"/><path d="m13.21 19.23-1.11-1.12a30.284 30.284 0 0 0 -3.1 4.89v6l3 .92v-4.44a3.873 3.873 0 0 1 1.21-2.71 2.378 2.378 0 0 0 0-3.54z"/></g><path d="m25 30-6.06-1.6-6.94-1.82v3.34l6.4 1.97 1.36.42a6.641 6.641 0 0 1 3.4 2.44 4.843 4.843 0 0 1 2.61-.75h1.23l.25-.15z" fill="#181818"/><path d="m27.25 33.85 4.75 8.15-3 2-9 1.64v-1.45a4.03 4.03 0 0 1 1.84-3.37l.93-.59a4.184 4.184 0 0 0 .53-5.28c-.05-.07-.09-.14-.14-.2a4.843 4.843 0 0 1 2.61-.75h1.23z" fill="#181818"/><path d="m33.52 50.5-4.52-2.54c-1.3-.76-1.28-2.7 0-3.96l13-8h15c4.37 0 5.69-2.3 5.95-2.87a23.768 23.768 0 0 1 -.87 5.1l-1.08 3.77v.02a.653.653 0 0 0 -.2.05l-8.8 2.93-15.24 5.77a3.912 3.912 0 0 1 -3.24-.27zm.27-2.79a1.823 1.823 0 0 0 1.65.17l5.56-3.79v-3.09l-7.08 3.79a1.677 1.677 0 0 0 -.13 2.92z" fill="#0c0c0c"/><path d="m52 45-2 5v2c-4.16 0-8.32 2.89-10.48 4.65a5.958 5.958 0 0 1 -3.79 1.35h-1.73c-8.29 0-14-5.58-14-10v-2.36l9-1.64c-1.28 1.26-1.3 3.2 0 3.96l4.52 2.54a3.912 3.912 0 0 0 3.24.27z" fill="#181818"/><path d="m18.94 28.4-6.94-1.82v-1.1a3.873 3.873 0 0 1 1.21-2.71 2.378 2.378 0 0 0 0-3.54l-1.11-1.12c3.82-5.02 11.28-12.11 22.9-12.11 15.48 0 28 11.18 28 25v.64c0 .5-.02.99-.05 1.49-.26.57-1.58 2.87-5.95 2.87h-15l-13 8 3-2-4.75-8.15-2.25-3.85zm15.06.6a2 2 0 1 0 -2 2 2.006 2.006 0 0 0 2-2z" fill="#181818"/><path d="m41 41v3.09l-5.56 3.79a1.823 1.823 0 0 1 -1.65-.17 1.677 1.677 0 0 1 .13-2.92z" fill="#cdd2e1"/><path d="m40 27a20.513 20.513 0 0 0 -10.363.536 4.35 4.35 0 0 0 -2.387 6.314l4.75 8.15-3 2 13-8h15c4.37 0 5.69-2.3 5.95-2.87.03-.5.05-.99.05-1.49v-.64c0-.648-.036-1.288-.09-1.923-5.738 2.253-13.138-.3-22.91-2.077zm-8 4a2 2 0 1 1 2-2 2.006 2.006 0 0 1 -2 2z" fill="#0c0c0c"/><path d="m13.21 19.23-.21-.214a2.5 2.5 0 0 1 -.788 1.754 3.873 3.873 0 0 0 -1.212 2.71v2.348a1.547 1.547 0 0 1 -2 1.479v1.693l3 .92v-4.44a3.873 3.873 0 0 1 1.21-2.71 2.378 2.378 0 0 0 0-3.54z" fill="#cdd2e1"/><path d="m43 39h15a7.979 7.979 0 0 0 4.132-.973 23.7 23.7 0 0 0 .818-4.9c-.26.573-1.58 2.873-5.95 2.873h-15l-13 8c-1.28 1.26-1.3 3.2 0 3.96l.257.145a3.328 3.328 0 0 1 .743-1.105z" fill="#000000"/><path d="m34.92 45.79 6.08-3.255v-1.535l-7.08 3.79a1.677 1.677 0 0 0 -.13 2.92 1.781 1.781 0 0 0 .328.161 1.65 1.65 0 0 1 -.118-.581 1.683 1.683 0 0 1 .92-1.5z" fill="#333940"/><path d="m55.944 48.528-1.417.708a1.056 1.056 0 0 1 -1.377-1.487l2.35-3.914-3.5 1.165-2 5v3l9.36-1.7a2 2 0 0 0 1.64-1.97v-1.33h-2.82a5 5 0 0 0 -2.236.528z" fill="#cdd2e1"/><path d="m20.839 30.526-8.839-2.526v1.92l6.4 1.97 1.36.42a6.641 6.641 0 0 1 3.4 2.44 4.823 4.823 0 0 1 2.291-.728 7.993 7.993 0 0 0 -4.612-3.496z" fill="#000000"/><path d="m24.916 41.521a2.458 2.458 0 0 0 1.847-2.656l-.17-1.531a8 8 0 0 0 -1.142-3.312 4.823 4.823 0 0 0 -2.291.728c.05.06.09.13.14.2a4.184 4.184 0 0 1 -.53 5.28l-.93.59a4.03 4.03 0 0 0 -1.84 3.37v1.45l3-.547v-1.118a2.53 2.53 0 0 1 1.916-2.454z" fill="#000000"/><path d="m48.3 46.4-.9 1.8a5.592 5.592 0 0 0 -.433 1.468 2.03 2.03 0 0 1 -.205.573 20.961 20.961 0 0 0 -5.7 2.855l-1.01.722a10.342 10.342 0 0 1 -7.652 1.84c-8.65-1.405-9.4-6.658-9.4-6.658v-3.907l-3 .547v2.36c0 4.42 5.71 10 14 10h1.73a5.958 5.958 0 0 0 3.79-1.35c2.16-1.76 6.32-4.65 10.48-4.65v-2l2-5z" fill="#000000"/><path d="m32 10c13.51 0 24.752 8.506 27.4 19.842a12.885 12.885 0 0 0 3.513-.8c-1.102-12.9-13.159-23.042-27.913-23.042-11.62 0-19.08 7.078-22.9 12.09l.276.278a27.5 27.5 0 0 1 19.624-8.368z" fill="#292929"/><path d="m59.08 42.23-.131.456 1.851-.616a.653.653 0 0 1 .2-.05v-.02l1.08-3.77c.019-.067.033-.136.052-.2a7.036 7.036 0 0 1 -2.354.811 24.123 24.123 0 0 1 -.698 3.389z" fill="#181818"/><path d="m60 35.541v.1c0 .5-.02.99-.05 1.49-.033.572-.1 1.141-.172 1.708a7.036 7.036 0 0 0 2.354-.811c.217-.8.4-1.6.535-2.414.01-.064.017-.128.027-.191.055-.344.107-.689.146-1.035q.072-.626.109-1.254a4.87 4.87 0 0 1 -2.949 2.407z" fill="#0c0c0c"/><path d="m62.91 29.077a12.825 12.825 0 0 1 -3.5.8 22.592 22.592 0 0 1 .59 5.123v.541a4.87 4.87 0 0 0 2.95-2.411c.03-.5.05-.99.05-1.49v-.64c0-.648-.036-1.288-.09-1.923z" fill="#181818"/><path d="m32 26a3 3 0 1 0 3 3 3 3 0 0 0 -3-3zm0 5a2 2 0 1 1 2-2 2.006 2.006 0 0 1 -2 2z" fill="#000000"/><path d="m20.213 24.268-5.213-1.955a15.214 15.214 0 0 1 12.721-10.3 1.754 1.754 0 0 1 1.746.828l.829 1.381a1.729 1.729 0 0 1 -.9 2.526 11.042 11.042 0 0 0 -6.959 6.508 1.733 1.733 0 0 1 -2.224 1.012z" fill="#292929"/><circle cx="32" cy="29" fill="#333940" r="1"/><circle cx="26" cy="48" fill="#e9edf5" r="1"/><circle cx="28" cy="51" fill="#e9edf5" r="1"/><circle cx="32" cy="53" fill="#e9edf5" r="1"/><circle cx="41" cy="51" fill="#e9edf5" r="1"/><path d="m32.864 41.5-7-12a1 1 0 0 0 -.608-.463l-13.256-3.493-3-.789-1.9-.5a.129.129 0 0 1 .03-.255h1.87v-1s.181-.378.53-1h-2.4a2.129 2.129 0 0 0 -.545 4.187l2.415.636 3 .789 12.345 3.249 6.317 10.829-2.045 1.363-10.706 1.947h-1.932c-5.384.009-12.694.017-14.131-.53a1 1 0 0 0 -1.848.53 1.639 1.639 0 0 0 .075.416.862.862 0 0 0 .045.109c.594 1.228 2.827 1.475 14.605 1.475h3.275a.948.948 0 0 0 .177-.016l11-2a1.011 1.011 0 0 0 .376-.152l3-2a1 1 0 0 0 .311-1.332z" fill="#cdd2e1"/><path d="m1 44a1 1 0 0 1 .848.47c.041.016.1.029.152.044v-1.854a1.058 1.058 0 0 1 .054-.331 1.014 1.014 0 0 1 .76-.656l13.458-2.519.323-2.1-14.156 2.654a3.029 3.029 0 0 0 -2.278 1.977 3.075 3.075 0 0 0 -.161.975v2.34a1 1 0 0 1 1-1z" fill="#afb4c8"/><path d="m15.065 47-.945 6.143-8.5 1.542a.967.967 0 0 1 -.921-.329.92.92 0 0 1 -.215-.391l-2.006-7.335c-1.529-.223-2.099-.571-2.358-1.106a.862.862 0 0 1 -.045-.109c-.006-.016-.01-.043-.016-.063l2.5 9.126a2.865 2.865 0 0 0 .651 1.2 2.963 2.963 0 0 0 2.234 1.022 2.932 2.932 0 0 0 .535-.048l9.2-1.67a1 1 0 0 0 .809-.832l1.101-7.15z" fill="#bec3d2"/><path d="m17.813 29.141-1.213 7.917-.323 2.095-.904 5.847h2.027l2.361-15.346z" fill="#bec3d2"/><path d="m11.553 50.105-7.147 3.573.078.287a.916.916 0 0 0 .215.39.965.965 0 0 0 .921.329l1.956-.355 4.869-2.429a7.354 7.354 0 0 0 2.17-1.97l.45-2.93h-.822a9.991 9.991 0 0 1 -2.69 3.105z" fill="#9da3b5"/><path d="m25.593 33h-.269a6.094 6.094 0 0 0 -5.087 2.819l-2 3.194a4.215 4.215 0 0 1 -3.583 1.987h-13.99a.948.948 0 0 0 -.176.036 2.992 2.992 0 0 0 -.327.649 3.075 3.075 0 0 0 -.161.975v.076a.988.988 0 0 0 .664.264h13.99a6.212 6.212 0 0 0 5.277-2.929l2-3.193a3.894 3.894 0 0 1 1.317-1.284 3.845 3.845 0 0 1 2.076-.594h1.436z" fill="#cdd2e1"/><ellipse cx="52.684" cy="15.695" fill="#f6fafd" rx="1.642" ry="2.286" transform="matrix(.707 -.707 .707 .707 4.342 41.867)"/><ellipse cx="43.682" cy="18.708" fill="#f6fafd" rx=".825" ry="1.148" transform="matrix(.707 -.707 .707 .707 -.428 36.382)"/><ellipse cx="41.427" cy="16.208" fill="#f6fafd" rx=".413" ry=".574" transform="matrix(.707 -.707 .707 .707 .679 34.055)"/></g></svg>
-  );
+const ACCENT = "#0070EB";
+
+const NFL_LOCATIONS = [
+  "Arizona","Atlanta","Baltimore","Buffalo","Carolina","Chicago",
+  "Cincinnati","Cleveland","Dallas","Denver","Detroit","Green Bay",
+  "Houston","Indianapolis","Jacksonville","Kansas City","Las Vegas",
+  "Los Angeles","Miami","Minnesota","New England","New Orleans",
+  "New York","Philadelphia","Pittsburgh","San Francisco","Seattle",
+  "Tampa Bay","Tennessee","Washington",
+];
+const NFL_NICKNAMES = [
+  "Cardinals","Falcons","Ravens","Bills","Panthers","Bears","Bengals",
+  "Browns","Cowboys","Broncos","Lions","Packers","Texans","Colts",
+  "Jaguars","Chiefs","Raiders","Chargers","Rams","Dolphins","Vikings",
+  "Patriots","Saints","Giants","Jets","Eagles","Steelers","49ers",
+  "Seahawks","Buccaneers","Titans","Commanders",
+];
+function randomLeagueName() {
+  const loc = NFL_LOCATIONS[Math.floor(Math.random() * NFL_LOCATIONS.length)];
+  const nick = NFL_NICKNAMES[Math.floor(Math.random() * NFL_NICKNAMES.length)];
+  return `${loc} ${nick} ${new Date().getFullYear()} League`;
 }
 
-export default function LandingPage() {
+type Modal = "login" | "register" | null;
+
+export default function HomePage() {
   const router = useRouter();
 
+  // Auth state
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [displayName, setDisplayName] = useState("");
+  const [memberships, setMemberships] = useState<any[]>([]);
+  const [pendingMemberships, setPendingMemberships] = useState<any[]>([]);
+
+  // Navbar dropdown
+  const [showLeagues, setShowLeagues] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  // Auth modal
+  const [modal, setModal] = useState<Modal>(null);
+  const [loginForm, setLoginForm] = useState({ email: "", password: "" });
+  const [registerForm, setRegisterForm] = useState({ email: "", password: "", name: "", displayName: "" });
+  const [modalError, setModalError] = useState("");
+  const [modalLoading, setModalLoading] = useState(false);
+
+  // Leagues view
+  const [view, setView] = useState<"menu" | "private" | "create">("menu");
+  const [form, setForm] = useState({ name: "", weeklyAllowance: "300", maxPlayers: "10", isPublic: false, maxPublicPlayers: "0", maxBetsPerWeek: "", maxStakePerBet: "", startWeek: "1" });
+  const [joinCode, setJoinCode] = useState("");
+  const [error, setError] = useState("");
+  const [joinError, setJoinError] = useState("");
+  const [joinSuccess, setJoinSuccess] = useState("");
+  const [authNag, setAuthNag] = useState("");
+
+  // Profile setup modal
+  const [profileSetup, setProfileSetup] = useState<{ leagueId: string; displayName: string; abbreviation: string; helmetColor: string; isPending: boolean } | null>(null);
+  const [profileSaving, setProfileSaving] = useState(false);
+
+  useEffect(() => {
+    const token = localStorage.getItem("token");
+    if (token) {
+      setIsLoggedIn(true);
+      setDisplayName(localStorage.getItem("displayName") ?? "");
+      loadMemberships();
+    }
+    setForm(f => ({ ...f, name: randomLeagueName() }));
+  }, []);
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    function handler(e: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setShowLeagues(false);
+      }
+    }
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  async function loadMemberships() {
+    try { setMemberships(await api("/memberships")); } catch {}
+    try { setPendingMemberships(await api("/memberships/pending")); } catch {}
+  }
+
+  function requireAuth(action: () => void) {
+    if (!isLoggedIn) { setAuthNag("You must be logged in to do this."); return; }
+    setAuthNag("");
+    action();
+  }
+
+  // Auth handlers
+  async function handleLogin(e: React.FormEvent) {
+    e.preventDefault();
+    setModalError(""); setModalLoading(true);
+    try {
+      const res = await api("/users/login", { method: "POST", body: JSON.stringify(loginForm) });
+      localStorage.setItem("token", res.token);
+      localStorage.setItem("userId", res.userId);
+      localStorage.setItem("displayName", res.displayName);
+      setIsLoggedIn(true);
+      setDisplayName(res.displayName);
+      setModal(null);
+      loadMemberships();
+    } catch (err: any) {
+      try { setModalError(JSON.parse(err.message).error); } catch { setModalError(err.message); }
+      setModalLoading(false);
+    }
+  }
+
+  async function handleRegister(e: React.FormEvent) {
+    e.preventDefault();
+    setModalError("");
+    if (registerForm.displayName.trim().length < 3 || registerForm.displayName.trim().length > 20) {
+      setModalError("Display name must be 3–20 characters."); return;
+    }
+    setModalLoading(true);
+    try {
+      const res = await api("/users", { method: "POST", body: JSON.stringify(registerForm) });
+      localStorage.setItem("token", res.token);
+      localStorage.setItem("userId", res.userId);
+      localStorage.setItem("displayName", res.displayName);
+      setIsLoggedIn(true);
+      setDisplayName(res.displayName);
+      setModal(null);
+      loadMemberships();
+    } catch (err: any) {
+      try { setModalError(JSON.parse(err.message).error); } catch { setModalError(err.message); }
+      setModalLoading(false);
+    }
+  }
+
+  async function handleGoogleSuccess(credentialResponse: any) {
+    setModalError(""); setModalLoading(true);
+    try {
+      const res = await api("/users/auth/google", { method: "POST", body: JSON.stringify({ credential: credentialResponse.credential }) });
+      localStorage.setItem("token", res.token);
+      localStorage.setItem("userId", res.userId);
+      localStorage.setItem("displayName", res.displayName);
+      setIsLoggedIn(true);
+      setDisplayName(res.displayName);
+      setModal(null);
+      loadMemberships();
+    } catch (err: any) {
+      try { setModalError(JSON.parse(err.message).error); } catch { setModalError(err.message); }
+      setModalLoading(false);
+    }
+  }
+
+  // League actions
+  async function joinPublic() {
+    setJoinError(""); setJoinSuccess("");
+    try {
+      const result = await api("/memberships/join-public", { method: "POST", body: JSON.stringify({}) });
+      setJoinSuccess(`Joined "${result.league?.name}"!`);
+      loadMemberships();
+    } catch (err: any) {
+      try { setJoinError(JSON.parse(err.message).error); } catch { setJoinError(err.message); }
+    }
+  }
+
+  async function joinPrivate(e: React.FormEvent) {
+    e.preventDefault();
+    setJoinError(""); setJoinSuccess("");
+    try {
+      await api("/memberships/join-by-code", { method: "POST", body: JSON.stringify({ code: joinCode }) });
+      setJoinCode(""); loadMemberships();
+      setJoinSuccess("Request sent — waiting for commissioner approval.");
+    } catch (err: any) {
+      try { setJoinError(JSON.parse(err.message).error); } catch { setJoinError(err.message); }
+    }
+  }
+
+  async function createLeague(e: React.FormEvent) {
+    e.preventDefault(); setError("");
+    try {
+      const league = await api("/leagues", {
+        method: "POST",
+        body: JSON.stringify({
+          name: form.name,
+          weeklyAllowance: Number(form.weeklyAllowance),
+          maxPlayers: Number(form.maxPlayers),
+          isPublic: form.isPublic,
+          maxPublicPlayers: Number(form.maxPublicPlayers),
+          maxBetsPerWeek: form.maxBetsPerWeek !== "" ? Number(form.maxBetsPerWeek) : null,
+          maxStakePerBet: form.maxStakePerBet !== "" ? Number(form.maxStakePerBet) : null,
+          startWeek: Number(form.startWeek),
+        }),
+      });
+      const membership = await api(`/leagues/${league.id}/join`, { method: "POST", body: JSON.stringify({}) });
+      setProfileSetup({ leagueId: league.id, displayName: membership.displayName, abbreviation: membership.abbreviation, helmetColor: membership.helmetColor, isPending: false });
+    } catch (err: any) {
+      try { setError(JSON.parse(err.message).error); } catch { setError(err.message); }
+    }
+  }
+
+  async function saveProfile() {
+    if (!profileSetup) return;
+    setProfileSaving(true);
+    try {
+      await Promise.all([
+        api(`/leagues/${profileSetup.leagueId}/my-display-name`, { method: "PATCH", body: JSON.stringify({ displayName: profileSetup.displayName }) }),
+        api(`/leagues/${profileSetup.leagueId}/my-abbreviation`, { method: "PATCH", body: JSON.stringify({ abbreviation: profileSetup.abbreviation }) }),
+        api(`/leagues/${profileSetup.leagueId}/my-helmet`, { method: "PATCH", body: JSON.stringify({ helmetColor: profileSetup.helmetColor }) }),
+      ]);
+      if (!profileSetup.isPending) {
+        router.push(`/leagues/${profileSetup.leagueId}/members`);
+      } else {
+        setProfileSetup(null);
+        setJoinSuccess("Request sent — waiting for commissioner approval.");
+      }
+    } catch (err: any) {
+      try { alert(JSON.parse(err.message).error); } catch { alert(err.message); }
+    } finally { setProfileSaving(false); }
+  }
+
+  const initials = displayName.slice(0, 2).toUpperCase();
+  const playerOptions = [4, 6, 8, 10, 12, 14, 16, 18, 20];
+
+  function openModal(m: Modal) {
+    setModalError(""); setModalLoading(false);
+    setModal(m);
+  }
+
   return (
-    <div style={{
-      flex: 1, minHeight: 0, overflowY: "auto", background: "var(--accent)",
-      display: "flex", alignItems: "center", justifyContent: "center",
-      padding: "32px 24px",
-    }}>
-      <div style={{ display: "flex", flexDirection: "row", alignItems: "center", gap: 48 }}>
-        {/* Text + buttons */}
-        <div style={{ display: "flex", flexDirection: "column", gap: 48 }}>
-          <div>
-            <div style={{
-              fontSize: "4.5rem",
-              fontWeight: 900,
-              letterSpacing: "0.02em",
-              textTransform: "uppercase",
-              color: "#ffffff",
-              lineHeight: 1.05,
-              marginBottom: 12,
-            }}>
-              Welcome to<br />Playbook!
-            </div>
-            <div style={{ fontSize: "1rem", fontWeight: 500, color: "rgba(255,255,255,0.75)", cursor: "pointer" }}>
-              New to Playbook? Learn how to play →
-            </div>
-          </div>
-          <div style={{ display: "flex", gap: 10 }}>
-            <button
-              onClick={() => router.push("/login")}
-              style={{
-                borderRadius: 0,
-                width: 183,
-                height: 72,
-                padding: 0,
-                fontSize: "18px",
-                fontWeight: 900,
-                letterSpacing: "0.1em",
-                textTransform: "uppercase",
-                background: "#000000",
-                color: "#ffffff",
-                border: "none",
-                cursor: "pointer",
-              }}
-            >
-              Log In
-            </button>
-            <button
-              onClick={() => router.push("/register")}
-              style={{
-                borderRadius: 0,
-                width: 183,
-                height: 72,
-                padding: 0,
-                fontSize: "18px",
-                fontWeight: 900,
-                letterSpacing: "0.1em",
-                textTransform: "uppercase",
-                background: "#000000",
-                color: "#ffffff",
-                border: "none",
-                cursor: "pointer",
-              }}
-            >
-              Sign Up
-            </button>
-          </div>
+    <>
+      {/* ── Navbar ── */}
+      <div style={{
+        position: "sticky", top: 0, zIndex: 50,
+        background: "#ffffff", borderBottom: "1px solid var(--border)",
+        display: "flex", alignItems: "center", justifyContent: "space-between",
+        padding: "0 24px", height: 56, gap: 16,
+      }}>
+        {/* Logo */}
+        <div style={{ fontSize: "1.1rem", fontWeight: 900, letterSpacing: "0.08em", color: "#000", textTransform: "uppercase", flexShrink: 0 }}>
+          PLAYBOOK
         </div>
 
-        {/* Helmet */}
-        <HelmetSVG />
+        {/* Right side */}
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          {/* Your Leagues dropdown */}
+          <div ref={dropdownRef} style={{ position: "relative" }}>
+            <button
+              onClick={() => isLoggedIn && setShowLeagues(v => !v)}
+              style={{
+                background: "none", border: "1px solid var(--border-2)", borderRadius: 0,
+                padding: "6px 12px", fontSize: "0.82rem", fontWeight: 700,
+                color: isLoggedIn ? "var(--text)" : "var(--text-3)",
+                cursor: isLoggedIn ? "pointer" : "default",
+                display: "flex", alignItems: "center", gap: 6,
+              }}
+            >
+              Your Leagues
+              {isLoggedIn && <span style={{ fontSize: "0.65rem" }}>▼</span>}
+            </button>
+
+            {showLeagues && (
+              <div style={{
+                position: "absolute", top: "calc(100% + 6px)", right: 0,
+                background: "var(--surface)", border: "1px solid var(--border)",
+                minWidth: 220, zIndex: 100, boxShadow: "0 4px 16px rgba(0,0,0,0.10)",
+              }}>
+                {memberships.length === 0 && pendingMemberships.length === 0 ? (
+                  <div style={{ padding: "14px 16px", fontSize: "0.8rem", color: "var(--text-3)", fontWeight: 600 }}>
+                    No leagues yet
+                  </div>
+                ) : (
+                  <>
+                    {memberships.map((m: any) => (
+                      <Link key={m.id} href={`/leagues/${m.leagueId}`} onClick={() => setShowLeagues(false)}>
+                        <div style={{
+                          padding: "10px 16px", borderBottom: "1px solid var(--border)",
+                          cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8,
+                        }}
+                          onMouseEnter={e => e.currentTarget.style.background = "var(--surface-2)"}
+                          onMouseLeave={e => e.currentTarget.style.background = ""}
+                        >
+                          <div style={{ fontSize: "0.82rem", fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                            {m.league?.name}
+                          </div>
+                          <span style={{ fontSize: "0.72rem", color: ACCENT, fontWeight: 800, flexShrink: 0 }}>
+                            ${m.balance?.toLocaleString()}
+                          </span>
+                        </div>
+                      </Link>
+                    ))}
+                    {pendingMemberships.map((m: any) => (
+                      <div key={m.id} style={{ padding: "10px 16px", borderBottom: "1px solid var(--border)", opacity: 0.55 }}>
+                        <div style={{ fontSize: "0.82rem", fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          {m.league?.name}
+                        </div>
+                        <div style={{ fontSize: "0.68rem", color: "var(--text-3)", marginTop: 2 }}>Pending approval</div>
+                      </div>
+                    ))}
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Auth buttons or avatar */}
+          {!isLoggedIn ? (
+            <div style={{ display: "flex", gap: 8 }}>
+              <button
+                onClick={() => openModal("login")}
+                style={{ padding: "6px 16px", fontSize: "0.82rem", fontWeight: 800, borderRadius: 0, background: "none", border: "1px solid var(--border-2)", color: "var(--text)", cursor: "pointer" }}
+              >
+                Log In
+              </button>
+              <button
+                onClick={() => openModal("register")}
+                style={{ padding: "6px 16px", fontSize: "0.82rem", fontWeight: 800, borderRadius: 0, background: "#000", border: "1px solid #000", color: "#fff", cursor: "pointer" }}
+              >
+                Sign Up
+              </button>
+            </div>
+          ) : (
+            <Link href="/settings" style={{ textDecoration: "none" }}>
+              <div style={{
+                width: 32, height: 32, borderRadius: "50%",
+                background: "var(--accent-dim)", border: "1.5px solid rgba(37,99,235,0.25)",
+                color: ACCENT, fontSize: "0.7rem", fontWeight: 800,
+                display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer",
+              }}>
+                {initials || "?"}
+              </div>
+            </Link>
+          )}
+        </div>
       </div>
-    </div>
+
+      {/* ── Main content ── */}
+      <div className="page" style={{ display: "flex", flexDirection: "column", alignItems: "center", paddingTop: "6vh" }}>
+
+        {/* Card */}
+        <div style={{ width: "100%", maxWidth: 460, background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 0, padding: "32px 28px", fontWeight: 800 }}>
+
+          {view === "menu" && (
+            <>
+              <div style={{ fontSize: "1.55rem", fontWeight: 800, marginBottom: 28 }}>Fantasy Football 2026!</div>
+
+              {authNag && (
+                <div style={{ marginBottom: 14, padding: "10px 14px", background: "var(--error-bg, #fef2f2)", border: "1px solid var(--error-border, #fecaca)", borderRadius: 0, color: "var(--error, #dc2626)", fontSize: "0.82rem", fontWeight: 700 }}>
+                  {authNag}{" "}
+                  <span onClick={() => openModal("login")} style={{ textDecoration: "underline", cursor: "pointer" }}>Log in</span>
+                  {" or "}
+                  <span onClick={() => openModal("register")} style={{ textDecoration: "underline", cursor: "pointer" }}>sign up</span>.
+                </div>
+              )}
+
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                <button
+                  onClick={() => requireAuth(joinPublic)}
+                  style={{ width: "100%", padding: "13px", fontSize: "0.9rem", fontWeight: 800, borderRadius: 0 }}
+                >
+                  Join Public League
+                </button>
+                <button
+                  className="secondary"
+                  onClick={() => requireAuth(() => { setView("private"); setJoinError(""); setJoinSuccess(""); })}
+                  style={{ width: "100%", padding: "13px", fontSize: "0.9rem", fontWeight: 800, borderRadius: 0 }}
+                >
+                  Join Private League
+                </button>
+                <button
+                  className="secondary"
+                  onClick={() => requireAuth(() => { setView("create"); setError(""); })}
+                  style={{ width: "100%", padding: "13px", fontSize: "0.9rem", fontWeight: 800, borderRadius: 0 }}
+                >
+                  Create a League
+                </button>
+              </div>
+
+              {joinError && <p className="error" style={{ marginTop: 14 }}>{joinError}</p>}
+              {joinSuccess && (
+                <div style={{ marginTop: 14, background: "var(--win-bg)", border: "1px solid var(--win-border)", borderRadius: 0, padding: "10px 14px", color: "var(--win)", fontSize: "0.82rem", fontWeight: 800 }}>
+                  {joinSuccess}
+                </div>
+              )}
+
+              <div style={{ marginTop: 28, borderTop: "1px solid var(--border)", paddingTop: 18 }}>
+                <Link href="/how-to-play" style={{ fontWeight: 800, fontSize: "0.85rem", color: "var(--text-2)", textDecoration: "none" }}>
+                  New here? Learn how to play →
+                </Link>
+              </div>
+            </>
+          )}
+
+          {view === "private" && (
+            <>
+              <button className="ghost" onClick={() => { setView("menu"); setJoinError(""); setJoinSuccess(""); }}
+                style={{ borderRadius: 0, padding: "5px 10px", fontSize: "0.8rem", marginBottom: 24, display: "flex", alignItems: "center", gap: 5, fontWeight: 800 }}>
+                ‹ Back
+              </button>
+              <div style={{ fontSize: "1rem", fontWeight: 800, marginBottom: 16 }}>Enter invite code</div>
+              <form onSubmit={joinPrivate} style={{ display: "flex", gap: 8 }}>
+                <input placeholder="ABC123" value={joinCode} onChange={(e) => setJoinCode(e.target.value.toUpperCase())} maxLength={6}
+                  style={{ flex: 1, textTransform: "uppercase", letterSpacing: "0.3em", fontWeight: 900, textAlign: "center", fontSize: "1.3rem", color: "var(--accent)", borderRadius: 0, padding: "10px 8px" }} required />
+                <button type="submit" style={{ padding: "0 20px", fontWeight: 800, fontSize: "1.2rem", flexShrink: 0, borderRadius: 0 }}>›</button>
+              </form>
+              {joinError && <p className="error" style={{ marginTop: 12 }}>{joinError}</p>}
+              {joinSuccess && (
+                <div style={{ marginTop: 12, background: "var(--win-bg)", border: "1px solid var(--win-border)", borderRadius: 0, padding: "10px 14px", color: "var(--win)", fontSize: "0.82rem", fontWeight: 800 }}>
+                  {joinSuccess}
+                </div>
+              )}
+            </>
+          )}
+
+          {view === "create" && (
+            <>
+              <button className="ghost" onClick={() => { setView("menu"); setError(""); }}
+                style={{ borderRadius: 0, padding: "5px 10px", fontSize: "0.8rem", marginBottom: 24, display: "flex", alignItems: "center", gap: 5, fontWeight: 800 }}>
+                ‹ Back
+              </button>
+              <div style={{ fontSize: "1rem", fontWeight: 800, marginBottom: 20 }}>New League</div>
+              <form className="form" onSubmit={createLeague}>
+                <div>
+                  <div className="label">League Name</div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required style={{ flex: 1 }} />
+                    <button type="button" onClick={() => setForm(f => ({ ...f, name: randomLeagueName() }))} title="Randomize"
+                      style={{ flexShrink: 0, background: "none", border: "1px solid var(--border-2)", borderRadius: 0, padding: "6px 8px", cursor: "pointer", color: "var(--text-3)", display: "flex", alignItems: "center", justifyContent: "center" }}
+                      onMouseEnter={e => { e.currentTarget.style.color = "var(--text)"; e.currentTarget.style.borderColor = "var(--text-3)"; }}
+                      onMouseLeave={e => { e.currentTarget.style.color = "var(--text-3)"; e.currentTarget.style.borderColor = "var(--border-2)"; }}>
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/>
+                        <path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/>
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+                <div>
+                  <div className="label">Players</div>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginTop: 4 }}>
+                    {playerOptions.map(n => {
+                      const active = Number(form.maxPlayers) === n;
+                      return (
+                        <button key={n} type="button" onClick={() => setForm({ ...form, maxPlayers: String(n) })}
+                          style={{ padding: "5px 11px", borderRadius: 0, fontSize: "0.82rem", fontWeight: active ? 800 : 600, background: active ? "var(--accent)" : "var(--surface-2)", color: active ? "#fff" : "var(--text-2)", border: active ? "1.5px solid var(--accent)" : "1.5px solid var(--border-2)" }}>
+                          {n}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+                <div>
+                  <div className="label">Visibility</div>
+                  <div style={{ display: "flex", gap: 6, marginTop: 4 }}>
+                    {([{ value: false, label: "Invite Only" }, { value: true, label: "Public" }] as const).map(({ value, label }) => {
+                      const active = form.isPublic === value;
+                      return (
+                        <button key={label} type="button" onClick={() => setForm({ ...form, isPublic: value })}
+                          style={{ flex: 1, padding: "8px", borderRadius: 0, fontSize: "0.82rem", fontWeight: active ? 800 : 600, background: active ? "var(--accent)" : "var(--surface-2)", color: active ? "#fff" : "var(--text-2)", border: active ? "1.5px solid var(--accent)" : "1.5px solid var(--border-2)" }}>
+                          {label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <div style={{ fontSize: "0.68rem", color: "var(--text-3)", marginTop: 4, fontWeight: 600 }}>
+                    {form.isPublic ? "Anyone can join without an invite code" : "Members join via invite code; you approve requests"}
+                  </div>
+                </div>
+                {!form.isPublic && (
+                  <div>
+                    <div className="label">Max Public Fill Slots</div>
+                    <input type="number" min="0" max={Number(form.maxPlayers)} placeholder="0 = invite-only" value={form.maxPublicPlayers} onChange={e => setForm({ ...form, maxPublicPlayers: e.target.value })} />
+                    <div style={{ fontSize: "0.68rem", color: "var(--text-3)", marginTop: 4, fontWeight: 600 }}>Allow random players to fill remaining slots</div>
+                  </div>
+                )}
+                <div>
+                  <div className="label">Start Week</div>
+                  <input type="number" min="1" max="17" value={form.startWeek} onChange={e => setForm({ ...form, startWeek: e.target.value })} required />
+                  <div style={{ fontSize: "0.68rem", color: "var(--text-3)", marginTop: 4, fontWeight: 600 }}>NFL week your season begins</div>
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                  <div>
+                    <div className="label">Max Bets / Week</div>
+                    <input type="number" min="1" placeholder="No limit" value={form.maxBetsPerWeek} onChange={e => setForm({ ...form, maxBetsPerWeek: e.target.value })} />
+                  </div>
+                  <div>
+                    <div className="label">Max Stake / Bet</div>
+                    <input type="number" min="1" placeholder="No limit" value={form.maxStakePerBet} onChange={e => setForm({ ...form, maxStakePerBet: e.target.value })} />
+                  </div>
+                </div>
+                <div>
+                  <div className="label">Weekly Allowance ($)</div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <button type="button" onClick={() => setForm({ ...form, weeklyAllowance: String(Math.max(25, Number(form.weeklyAllowance) - 25)) })}
+                      style={{ width: 36, height: 36, padding: 0, fontSize: "1.2rem", fontWeight: 800, flexShrink: 0, borderRadius: 0 }}>−</button>
+                    <input type="text" inputMode="numeric" value={form.weeklyAllowance}
+                      onChange={e => setForm({ ...form, weeklyAllowance: e.target.value.replace(/[^0-9]/g, "") })}
+                      style={{ textAlign: "center", fontWeight: 800, fontSize: "1rem", fontVariantNumeric: "tabular-nums" }} required />
+                    <button type="button" onClick={() => setForm({ ...form, weeklyAllowance: String(Number(form.weeklyAllowance) + 25) })}
+                      style={{ width: 36, height: 36, padding: 0, fontSize: "1.2rem", fontWeight: 800, flexShrink: 0, borderRadius: 0 }}>+</button>
+                  </div>
+                </div>
+                {error && <p className="error">{error}</p>}
+                <button type="submit" style={{ width: "100%", padding: "13px", fontSize: "0.9rem", fontWeight: 800, borderRadius: 0 }}>Create League</button>
+              </form>
+            </>
+          )}
+        </div>
+
+        {/* Leagues list */}
+        {(memberships.length > 0 || pendingMemberships.length > 0) && (
+          <div style={{ width: "100%", maxWidth: 460, marginTop: 24 }}>
+            {memberships.map((m: any) => (
+              <Link key={m.id} href={`/leagues/${m.leagueId}`}>
+                <div style={{ padding: "12px 2px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, cursor: "pointer", transition: "opacity 0.12s" }}
+                  onMouseEnter={e => e.currentTarget.style.opacity = "0.6"}
+                  onMouseLeave={e => e.currentTarget.style.opacity = "1"}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: 800, fontSize: "0.88rem", marginBottom: 4, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.league?.name}</div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                      <span style={{ background: "var(--accent-dim)", color: "var(--accent)", borderRadius: 20, padding: "2px 9px", fontSize: "0.72rem", fontWeight: 800 }}>${m.balance.toLocaleString()}</span>
+                      <span style={{ color: "var(--text-3)", fontSize: "0.7rem", fontWeight: 700 }}>${m.league?.weeklyAllowance}/wk</span>
+                      {m.league?.isPublic && <span className="badge badge-blue">Public</span>}
+                    </div>
+                  </div>
+                  <span style={{ color: "var(--text-3)", fontSize: "1.1rem", fontWeight: 300, flexShrink: 0 }}>›</span>
+                </div>
+              </Link>
+            ))}
+            {pendingMemberships.map((m: any) => (
+              <div key={m.id} style={{ padding: "12px 2px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, opacity: 0.55 }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: 800, fontSize: "0.88rem", marginBottom: 3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.league?.name}</div>
+                  <div style={{ fontSize: "0.7rem", color: "var(--text-3)", fontWeight: 700 }}>Waiting for commissioner</div>
+                </div>
+                <span className="badge badge-yellow">Pending</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* ── Auth Modal ── */}
+      {modal && (
+        <div onClick={() => setModal(null)} style={{ position: "fixed", inset: 0, zIndex: 100, background: "rgba(0,0,0,0.45)", backdropFilter: "blur(6px)", display: "flex", alignItems: "center", justifyContent: "center", padding: "32px 24px" }}>
+          <div onClick={e => e.stopPropagation()} style={{ width: 400, background: "var(--surface)", borderRadius: "var(--radius-lg)", border: "1px solid var(--border-2)", overflow: "hidden", position: "relative" }}>
+            <button onClick={() => setModal(null)} style={{ position: "absolute", top: 14, right: 16, background: "none", border: "none", cursor: "pointer", fontSize: "1.1rem", color: "var(--text-3)", lineHeight: 1, padding: 4 }}>✕</button>
+            <div style={{ padding: "28px 28px 24px" }}>
+              <div style={{ fontWeight: 800, fontSize: "1.1rem", color: "var(--text)", marginBottom: 20 }}>
+                {modal === "login" ? "Log In" : "Create Account"}
+              </div>
+              {modal === "login" ? (
+                <form className="form" onSubmit={handleLogin}>
+                  <div><div className="label">Email</div><input type="email" value={loginForm.email} onChange={e => setLoginForm({ ...loginForm, email: e.target.value })} required /></div>
+                  <div><div className="label">Password</div><input type="password" placeholder="••••••••" value={loginForm.password} onChange={e => setLoginForm({ ...loginForm, password: e.target.value })} required /></div>
+                  {modalError && <p className="error">{modalError}</p>}
+                  <div style={{ display: "flex", justifyContent: "center", paddingTop: 8 }}>
+                    <button type="submit" disabled={modalLoading} style={{ borderRadius: 0, width: 183, height: 72, fontSize: "18px", fontWeight: 900, letterSpacing: "0.1em", textTransform: "uppercase", background: "#000", color: "#fff", border: "none", cursor: "pointer" }}>
+                      {modalLoading ? "…" : "Log In"}
+                    </button>
+                  </div>
+                  <div style={{ textAlign: "center" }}>
+                    <span onClick={() => { setModal(null); router.push("/forgot-password"); }} style={{ fontSize: "0.75rem", color: "var(--text-3)", fontWeight: 700, cursor: "pointer" }}>Forgot password?</span>
+                  </div>
+                </form>
+              ) : (
+                <form className="form" onSubmit={handleRegister}>
+                  <div><div className="label">Full Name</div><input placeholder="John Smith" value={registerForm.name} onChange={e => setRegisterForm({ ...registerForm, name: e.target.value })} required /></div>
+                  <div><div className="label">Display Name</div><input placeholder="BigBaller23" value={registerForm.displayName} onChange={e => setRegisterForm({ ...registerForm, displayName: e.target.value.replace(/[^A-Za-z ]/g, "").replace(/ {2,}/g, " ").slice(0, 20) })} minLength={3} maxLength={20} required /></div>
+                  <div><div className="label">Email</div><input type="email" value={registerForm.email} onChange={e => setRegisterForm({ ...registerForm, email: e.target.value })} required /></div>
+                  <div><div className="label">Password</div><input type="password" placeholder="••••••••" value={registerForm.password} onChange={e => setRegisterForm({ ...registerForm, password: e.target.value })} required /></div>
+                  {modalError && <p className="error">{modalError}</p>}
+                  <div style={{ display: "flex", justifyContent: "center", paddingTop: 8 }}>
+                    <button type="submit" disabled={modalLoading} style={{ borderRadius: 0, width: 183, height: 72, fontSize: "18px", fontWeight: 900, letterSpacing: "0.1em", textTransform: "uppercase", background: "#000", color: "#fff", border: "none", cursor: "pointer" }}>
+                      {modalLoading ? "…" : "Sign Up"}
+                    </button>
+                  </div>
+                </form>
+              )}
+              <div style={{ display: "flex", alignItems: "center", gap: 12, margin: "20px 0 4px" }}>
+                <div style={{ flex: 1, height: 1, background: "var(--border)" }} />
+                <span style={{ fontSize: "0.72rem", color: "var(--text-3)", fontWeight: 600 }}>OR</span>
+                <div style={{ flex: 1, height: 1, background: "var(--border)" }} />
+              </div>
+              <div style={{ display: "flex", justifyContent: "center" }}>
+                <GoogleLogin onSuccess={handleGoogleSuccess} onError={() => setModalError("Google sign-in failed")} width="344" />
+              </div>
+            </div>
+            <div style={{ borderTop: "1px solid var(--border)", padding: "14px 28px", background: "var(--surface-2)", textAlign: "center" }}>
+              {modal === "login" ? (
+                <><span style={{ fontSize: "0.78rem", color: "var(--text-3)" }}>No account? </span><span onClick={() => { setModalError(""); setModal("register"); }} style={{ fontSize: "0.78rem", fontWeight: 700, color: ACCENT, cursor: "pointer" }}>Sign up</span></>
+              ) : (
+                <><span style={{ fontSize: "0.78rem", color: "var(--text-3)" }}>Already have an account? </span><span onClick={() => { setModalError(""); setModal("login"); }} style={{ fontSize: "0.78rem", fontWeight: 700, color: ACCENT, cursor: "pointer" }}>Log in</span></>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Profile setup modal */}
+      {profileSetup && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+          <div className="card" style={{ width: "100%", maxWidth: 380, padding: 20 }}>
+            <div style={{ fontWeight: 800, fontSize: "1rem", marginBottom: 4 }}>Set up your league profile</div>
+            <div style={{ fontSize: "0.78rem", color: "var(--text-3)", marginBottom: 18 }}>How you appear in this league</div>
+            <div style={{ marginBottom: 12 }}>
+              <div className="label">Display Name</div>
+              <input value={profileSetup.displayName} onChange={e => setProfileSetup({ ...profileSetup, displayName: e.target.value })} maxLength={30} />
+            </div>
+            <div style={{ marginBottom: 12 }}>
+              <div className="label">Abbreviation (2–3 letters)</div>
+              <input value={profileSetup.abbreviation} onChange={e => setProfileSetup({ ...profileSetup, abbreviation: e.target.value.toUpperCase().replace(/[^A-Z]/g, "").slice(0, 3) })} maxLength={3} style={{ letterSpacing: "0.2em", fontWeight: 800, textTransform: "uppercase" }} />
+            </div>
+            <div style={{ marginBottom: 20 }}>
+              <div className="label">Helmet Color</div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 6 }}>
+                {["#0070EB","#DC2626","#16A34A","#D97706","#9333EA","#0891B2","#DB2777","#EA580C","#065F46","#7C3AED","#0F172A","#92400E"].map(color => (
+                  <button key={color} type="button" onClick={() => setProfileSetup({ ...profileSetup, helmetColor: color })}
+                    style={{ width: 32, height: 32, borderRadius: "50%", background: color, border: profileSetup.helmetColor === color ? "3px solid var(--text)" : "3px solid transparent", padding: 0, cursor: "pointer", flexShrink: 0 }} />
+                ))}
+              </div>
+            </div>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button onClick={saveProfile} disabled={profileSaving} style={{ flex: 1, fontWeight: 800, padding: "11px" }}>{profileSaving ? "Saving…" : "Save Profile"}</button>
+              <button className="secondary" onClick={() => { setProfileSetup(null); if (!profileSetup.isPending) router.push(`/leagues/${profileSetup.leagueId}/members`); }} style={{ padding: "11px 16px" }}>Skip</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 }

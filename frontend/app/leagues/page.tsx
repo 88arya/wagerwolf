@@ -45,10 +45,7 @@ export default function LeaguesPage() {
   const [profileSaving, setProfileSaving] = useState(false);
 
   useEffect(() => {
-    if (!localStorage.getItem("token")) { router.push("/"); return; }
-    setDisplayName(localStorage.getItem("displayName") ?? "");
-    setForm((f) => ({ ...f, name: randomLeagueName() }));
-    loadMemberships();
+    router.replace("/");
   }, []);
 
   async function loadMemberships() {
