@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import GoogleProvider from "@/components/GoogleProvider";
 
 export const metadata: Metadata = {
   title: "Playbook",
@@ -9,7 +10,7 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" style={{ colorScheme: "light" }}>
-      <body suppressHydrationWarning>{children}</body>
+      <body suppressHydrationWarning><GoogleProvider>{children}</GoogleProvider></body>
     </html>
   );
 }

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { GoogleLogin } from "@react-oauth/google";
 import { api } from "@/lib/api";
 
 const btnStyle: React.CSSProperties = {
@@ -25,6 +26,24 @@ export default function LoginPage() {
   const [form, setForm] = useState({ email: "", password: "" });
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+
+  async function handleGoogleSuccess(credentialResponse: any) {
+    setError("");
+    setLoading(true);
+    try {
+      const res = await api("/users/auth/google", {
+        method: "POST",
+        body: JSON.stringify({ credential: credentialResponse.credential }),
+      });
+      localStorage.setItem("token", res.token);
+      localStorage.setItem("userId", res.userId);
+      localStorage.setItem("displayName", res.displayName);
+      router.push("/leagues");
+    } catch (err: any) {
+      try { setError(JSON.parse(err.message).error); } catch { setError(err.message); }
+      setLoading(false);
+    }
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -79,6 +98,14 @@ export default function LoginPage() {
                 </Link>
               </div>
             </form>
+            <div style={{ display: "flex", alignItems: "center", gap: 12, margin: "20px 0 4px" }}>
+              <div style={{ flex: 1, height: 1, background: "var(--border)" }} />
+              <span style={{ fontSize: "0.72rem", color: "var(--text-3)", fontWeight: 600 }}>OR</span>
+              <div style={{ flex: 1, height: 1, background: "var(--border)" }} />
+            </div>
+            <div style={{ display: "flex", justifyContent: "center" }}>
+              <GoogleLogin onSuccess={handleGoogleSuccess} onError={() => setError("Google sign-in failed")} width="344" />
+            </div>
           </div>
           <div style={{ borderTop: "1px solid var(--border)", padding: "14px 28px", background: "var(--surface-2)", textAlign: "center" }}>
             <span style={{ fontSize: "0.78rem", color: "var(--text-3)" }}>No account? </span>
