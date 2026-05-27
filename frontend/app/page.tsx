@@ -8,6 +8,21 @@ import { api } from "@/lib/api";
 
 const ACCENT = "#0070EB";
 
+type NewsArticle = {
+  headline: string;
+  published: string;
+  links: { web: { href: string } };
+  categories?: { description: string; type: string }[];
+};
+
+function timeAgo(dateStr: string) {
+  const diff = Date.now() - new Date(dateStr).getTime();
+  const h = Math.floor(diff / 3600000);
+  if (h < 1) return `${Math.floor(diff / 60000)}m ago`;
+  if (h < 24) return `${h}h ago`;
+  return `${Math.floor(h / 24)}d ago`;
+}
+
 const NFL_LOCATIONS = [
   "Arizona","Atlanta","Baltimore","Buffalo","Carolina","Chicago",
   "Cincinnati","Cleveland","Dallas","Denver","Detroit","Green Bay",
@@ -64,6 +79,10 @@ export default function HomePage() {
   const [profileSetup, setProfileSetup] = useState<{ leagueId: string; displayName: string; abbreviation: string; helmetColor: string; isPending: boolean } | null>(null);
   const [profileSaving, setProfileSaving] = useState(false);
 
+  // News
+  const [news, setNews] = useState<NewsArticle[]>([]);
+  const [newsLoading, setNewsLoading] = useState(true);
+
   useEffect(() => {
     const token = localStorage.getItem("token");
     if (token) {
@@ -83,6 +102,14 @@ export default function HomePage() {
     }
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  // Fetch NFL news
+  useEffect(() => {
+    fetch("https://site.api.espn.com/apis/site/v2/sports/football/nfl/news?limit=25")
+      .then(r => r.json())
+      .then(d => { setNews(d.articles ?? []); setNewsLoading(false); })
+      .catch(() => setNewsLoading(false));
   }, []);
 
   async function loadMemberships() {
@@ -337,209 +364,263 @@ export default function HomePage() {
       </div>
 
       {/* ── Main content ── */}
-      <div className="page" style={{ display: "flex", flexDirection: "column", alignItems: "center", paddingTop: "6vh" }}>
+      <div className="page" style={{ display: "flex", flexDirection: "column", alignItems: "center", paddingTop: "6vh", paddingBottom: 48 }}>
+        <div style={{ width: "100%", maxWidth: 980, display: "flex", gap: 40, alignItems: "flex-start", padding: "0 24px" }}>
 
-        {/* Card */}
-        <div style={{ width: "100%", maxWidth: 460, background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 0, padding: "32px 28px", fontWeight: 800 }}>
+          {/* Left: card + leagues list */}
+          <div style={{ flex: "0 0 460px", minWidth: 0 }}>
 
-          {view === "menu" && (
-            <>
-              <div style={{ fontSize: "1.55rem", fontWeight: 800, marginBottom: 28 }}>Fantasy Football 2026!</div>
+            {/* Card */}
+            <div style={{ width: "100%", background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 0, padding: "32px 28px", fontWeight: 800 }}>
 
-              {authNag && (
-                <div style={{ marginBottom: 14, padding: "10px 14px", background: "var(--error-bg, #fef2f2)", border: "1px solid var(--error-border, #fecaca)", borderRadius: 0, color: "var(--error, #dc2626)", fontSize: "0.82rem", fontWeight: 700 }}>
-                  {authNag}{" "}
-                  <span onClick={() => openModal("login")} style={{ textDecoration: "underline", cursor: "pointer" }}>Log in</span>
-                  {" or "}
-                  <span onClick={() => openModal("register")} style={{ textDecoration: "underline", cursor: "pointer" }}>sign up</span>.
-                </div>
-              )}
+              {view === "menu" && (
+                <>
+                  <div style={{ fontSize: "1.55rem", fontWeight: 800, marginBottom: 28 }}>Fantasy Football 2026!</div>
 
-              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                <button
-                  onClick={() => requireAuth(joinPublic)}
-                  style={{ width: "100%", padding: "13px", fontSize: "0.9rem", fontWeight: 800, borderRadius: 0 }}
-                >
-                  Join Public League
-                </button>
-                <button
-                  className="secondary"
-                  onClick={() => requireAuth(() => { setView("private"); setJoinError(""); setJoinSuccess(""); })}
-                  style={{ width: "100%", padding: "13px", fontSize: "0.9rem", fontWeight: 800, borderRadius: 0 }}
-                >
-                  Join Private League
-                </button>
-                <button
-                  className="secondary"
-                  onClick={() => requireAuth(() => { setView("create"); setError(""); })}
-                  style={{ width: "100%", padding: "13px", fontSize: "0.9rem", fontWeight: 800, borderRadius: 0 }}
-                >
-                  Create a League
-                </button>
-              </div>
+                  {authNag && (
+                    <div style={{ marginBottom: 14, padding: "10px 14px", background: "var(--error-bg, #fef2f2)", border: "1px solid var(--error-border, #fecaca)", borderRadius: 0, color: "var(--error, #dc2626)", fontSize: "0.82rem", fontWeight: 700 }}>
+                      {authNag}{" "}
+                      <span onClick={() => openModal("login")} style={{ textDecoration: "underline", cursor: "pointer" }}>Log in</span>
+                      {" or "}
+                      <span onClick={() => openModal("register")} style={{ textDecoration: "underline", cursor: "pointer" }}>sign up</span>.
+                    </div>
+                  )}
 
-              {joinError && <p className="error" style={{ marginTop: 14 }}>{joinError}</p>}
-              {joinSuccess && (
-                <div style={{ marginTop: 14, background: "var(--win-bg)", border: "1px solid var(--win-border)", borderRadius: 0, padding: "10px 14px", color: "var(--win)", fontSize: "0.82rem", fontWeight: 800 }}>
-                  {joinSuccess}
-                </div>
-              )}
-
-              <div style={{ marginTop: 28, borderTop: "1px solid var(--border)", paddingTop: 18 }}>
-                <Link href="/how-to-play" style={{ fontWeight: 800, fontSize: "0.85rem", color: "var(--text-2)", textDecoration: "none" }}>
-                  New here? Learn how to play →
-                </Link>
-              </div>
-            </>
-          )}
-
-          {view === "private" && (
-            <>
-              <button className="ghost" onClick={() => { setView("menu"); setJoinError(""); setJoinSuccess(""); }}
-                style={{ borderRadius: 0, padding: "5px 10px", fontSize: "0.8rem", marginBottom: 24, display: "flex", alignItems: "center", gap: 5, fontWeight: 800 }}>
-                ‹ Back
-              </button>
-              <div style={{ fontSize: "1rem", fontWeight: 800, marginBottom: 16 }}>Enter invite code</div>
-              <form onSubmit={joinPrivate} style={{ display: "flex", gap: 8 }}>
-                <input placeholder="ABC123" value={joinCode} onChange={(e) => setJoinCode(e.target.value.toUpperCase())} maxLength={6}
-                  style={{ flex: 1, textTransform: "uppercase", letterSpacing: "0.3em", fontWeight: 900, textAlign: "center", fontSize: "1.3rem", color: "var(--accent)", borderRadius: 0, padding: "10px 8px" }} required />
-                <button type="submit" style={{ padding: "0 20px", fontWeight: 800, fontSize: "1.2rem", flexShrink: 0, borderRadius: 0 }}>›</button>
-              </form>
-              {joinError && <p className="error" style={{ marginTop: 12 }}>{joinError}</p>}
-              {joinSuccess && (
-                <div style={{ marginTop: 12, background: "var(--win-bg)", border: "1px solid var(--win-border)", borderRadius: 0, padding: "10px 14px", color: "var(--win)", fontSize: "0.82rem", fontWeight: 800 }}>
-                  {joinSuccess}
-                </div>
-              )}
-            </>
-          )}
-
-          {view === "create" && (
-            <>
-              <button className="ghost" onClick={() => { setView("menu"); setError(""); }}
-                style={{ borderRadius: 0, padding: "5px 10px", fontSize: "0.8rem", marginBottom: 24, display: "flex", alignItems: "center", gap: 5, fontWeight: 800 }}>
-                ‹ Back
-              </button>
-              <div style={{ fontSize: "1rem", fontWeight: 800, marginBottom: 20 }}>New League</div>
-              <form className="form" onSubmit={createLeague}>
-                <div>
-                  <div className="label">League Name</div>
-                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                    <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required style={{ flex: 1 }} />
-                    <button type="button" onClick={() => setForm(f => ({ ...f, name: randomLeagueName() }))} title="Randomize"
-                      style={{ flexShrink: 0, background: "none", border: "1px solid var(--border-2)", borderRadius: 0, padding: "6px 8px", cursor: "pointer", color: "var(--text-3)", display: "flex", alignItems: "center", justifyContent: "center" }}
-                      onMouseEnter={e => { e.currentTarget.style.color = "var(--text)"; e.currentTarget.style.borderColor = "var(--text-3)"; }}
-                      onMouseLeave={e => { e.currentTarget.style.color = "var(--text-3)"; e.currentTarget.style.borderColor = "var(--border-2)"; }}>
-                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/>
-                        <path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/>
-                      </svg>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                    <button
+                      onClick={() => requireAuth(joinPublic)}
+                      style={{ width: "100%", padding: "13px", fontSize: "0.9rem", fontWeight: 800, borderRadius: 0 }}
+                    >
+                      Join Public League
+                    </button>
+                    <button
+                      className="secondary"
+                      onClick={() => requireAuth(() => { setView("private"); setJoinError(""); setJoinSuccess(""); })}
+                      style={{ width: "100%", padding: "13px", fontSize: "0.9rem", fontWeight: 800, borderRadius: 0 }}
+                    >
+                      Join Private League
+                    </button>
+                    <button
+                      className="secondary"
+                      onClick={() => requireAuth(() => { setView("create"); setError(""); })}
+                      style={{ width: "100%", padding: "13px", fontSize: "0.9rem", fontWeight: 800, borderRadius: 0 }}
+                    >
+                      Create a League
                     </button>
                   </div>
-                </div>
-                <div>
-                  <div className="label">Players</div>
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginTop: 4 }}>
-                    {playerOptions.map(n => {
-                      const active = Number(form.maxPlayers) === n;
-                      return (
-                        <button key={n} type="button" onClick={() => setForm({ ...form, maxPlayers: String(n) })}
-                          style={{ padding: "5px 11px", borderRadius: 0, fontSize: "0.82rem", fontWeight: active ? 800 : 600, background: active ? "var(--accent)" : "var(--surface-2)", color: active ? "#fff" : "var(--text-2)", border: active ? "1.5px solid var(--accent)" : "1.5px solid var(--border-2)" }}>
-                          {n}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-                <div>
-                  <div className="label">Visibility</div>
-                  <div style={{ display: "flex", gap: 6, marginTop: 4 }}>
-                    {([{ value: false, label: "Invite Only" }, { value: true, label: "Public" }] as const).map(({ value, label }) => {
-                      const active = form.isPublic === value;
-                      return (
-                        <button key={label} type="button" onClick={() => setForm({ ...form, isPublic: value })}
-                          style={{ flex: 1, padding: "8px", borderRadius: 0, fontSize: "0.82rem", fontWeight: active ? 800 : 600, background: active ? "var(--accent)" : "var(--surface-2)", color: active ? "#fff" : "var(--text-2)", border: active ? "1.5px solid var(--accent)" : "1.5px solid var(--border-2)" }}>
-                          {label}
-                        </button>
-                      );
-                    })}
-                  </div>
-                  <div style={{ fontSize: "0.68rem", color: "var(--text-3)", marginTop: 4, fontWeight: 600 }}>
-                    {form.isPublic ? "Anyone can join without an invite code" : "Members join via invite code; you approve requests"}
-                  </div>
-                </div>
-                {!form.isPublic && (
-                  <div>
-                    <div className="label">Max Public Fill Slots</div>
-                    <input type="number" min="0" max={Number(form.maxPlayers)} placeholder="0 = invite-only" value={form.maxPublicPlayers} onChange={e => setForm({ ...form, maxPublicPlayers: e.target.value })} />
-                    <div style={{ fontSize: "0.68rem", color: "var(--text-3)", marginTop: 4, fontWeight: 600 }}>Allow random players to fill remaining slots</div>
-                  </div>
-                )}
-                <div>
-                  <div className="label">Start Week</div>
-                  <input type="number" min="1" max="17" value={form.startWeek} onChange={e => setForm({ ...form, startWeek: e.target.value })} required />
-                  <div style={{ fontSize: "0.68rem", color: "var(--text-3)", marginTop: 4, fontWeight: 600 }}>NFL week your season begins</div>
-                </div>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-                  <div>
-                    <div className="label">Max Bets / Week</div>
-                    <input type="number" min="1" placeholder="No limit" value={form.maxBetsPerWeek} onChange={e => setForm({ ...form, maxBetsPerWeek: e.target.value })} />
-                  </div>
-                  <div>
-                    <div className="label">Max Stake / Bet</div>
-                    <input type="number" min="1" placeholder="No limit" value={form.maxStakePerBet} onChange={e => setForm({ ...form, maxStakePerBet: e.target.value })} />
-                  </div>
-                </div>
-                <div>
-                  <div className="label">Weekly Allowance ($)</div>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <button type="button" onClick={() => setForm({ ...form, weeklyAllowance: String(Math.max(25, Number(form.weeklyAllowance) - 25)) })}
-                      style={{ width: 36, height: 36, padding: 0, fontSize: "1.2rem", fontWeight: 800, flexShrink: 0, borderRadius: 0 }}>−</button>
-                    <input type="text" inputMode="numeric" value={form.weeklyAllowance}
-                      onChange={e => setForm({ ...form, weeklyAllowance: e.target.value.replace(/[^0-9]/g, "") })}
-                      style={{ textAlign: "center", fontWeight: 800, fontSize: "1rem", fontVariantNumeric: "tabular-nums" }} required />
-                    <button type="button" onClick={() => setForm({ ...form, weeklyAllowance: String(Number(form.weeklyAllowance) + 25) })}
-                      style={{ width: 36, height: 36, padding: 0, fontSize: "1.2rem", fontWeight: 800, flexShrink: 0, borderRadius: 0 }}>+</button>
-                  </div>
-                </div>
-                {error && <p className="error">{error}</p>}
-                <button type="submit" style={{ width: "100%", padding: "13px", fontSize: "0.9rem", fontWeight: 800, borderRadius: 0 }}>Create League</button>
-              </form>
-            </>
-          )}
-        </div>
 
-        {/* Leagues list */}
-        {(memberships.length > 0 || pendingMemberships.length > 0) && (
-          <div style={{ width: "100%", maxWidth: 460, marginTop: 24 }}>
-            {memberships.map((m: any) => (
-              <Link key={m.id} href={`/leagues/${m.leagueId}`}>
-                <div style={{ padding: "12px 2px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, cursor: "pointer", transition: "opacity 0.12s" }}
-                  onMouseEnter={e => e.currentTarget.style.opacity = "0.6"}
-                  onMouseLeave={e => e.currentTarget.style.opacity = "1"}>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontWeight: 800, fontSize: "0.88rem", marginBottom: 4, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.league?.name}</div>
-                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                      <span style={{ background: "var(--accent-dim)", color: "var(--accent)", borderRadius: 20, padding: "2px 9px", fontSize: "0.72rem", fontWeight: 800 }}>${m.balance.toLocaleString()}</span>
-                      <span style={{ color: "var(--text-3)", fontSize: "0.7rem", fontWeight: 700 }}>${m.league?.weeklyAllowance}/wk</span>
-                      {m.league?.isPublic && <span className="badge badge-blue">Public</span>}
+                  {joinError && <p className="error" style={{ marginTop: 14 }}>{joinError}</p>}
+                  {joinSuccess && (
+                    <div style={{ marginTop: 14, background: "var(--win-bg)", border: "1px solid var(--win-border)", borderRadius: 0, padding: "10px 14px", color: "var(--win)", fontSize: "0.82rem", fontWeight: 800 }}>
+                      {joinSuccess}
                     </div>
+                  )}
+
+                  <div style={{ marginTop: 28, borderTop: "1px solid var(--border)", paddingTop: 18 }}>
+                    <Link href="/how-to-play" style={{ fontWeight: 800, fontSize: "0.85rem", color: "var(--text-2)", textDecoration: "none" }}>
+                      New here? Learn how to play →
+                    </Link>
                   </div>
-                  <span style={{ color: "var(--text-3)", fontSize: "1.1rem", fontWeight: 300, flexShrink: 0 }}>›</span>
-                </div>
-              </Link>
-            ))}
-            {pendingMemberships.map((m: any) => (
-              <div key={m.id} style={{ padding: "12px 2px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, opacity: 0.55 }}>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontWeight: 800, fontSize: "0.88rem", marginBottom: 3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.league?.name}</div>
-                  <div style={{ fontSize: "0.7rem", color: "var(--text-3)", fontWeight: 700 }}>Waiting for commissioner</div>
-                </div>
-                <span className="badge badge-yellow">Pending</span>
+                </>
+              )}
+
+              {view === "private" && (
+                <>
+                  <button className="ghost" onClick={() => { setView("menu"); setJoinError(""); setJoinSuccess(""); }}
+                    style={{ borderRadius: 0, padding: "5px 10px", fontSize: "0.8rem", marginBottom: 24, display: "flex", alignItems: "center", gap: 5, fontWeight: 800 }}>
+                    ‹ Back
+                  </button>
+                  <div style={{ fontSize: "1rem", fontWeight: 800, marginBottom: 16 }}>Enter invite code</div>
+                  <form onSubmit={joinPrivate} style={{ display: "flex", gap: 8 }}>
+                    <input placeholder="ABC123" value={joinCode} onChange={(e) => setJoinCode(e.target.value.toUpperCase())} maxLength={6}
+                      style={{ flex: 1, textTransform: "uppercase", letterSpacing: "0.3em", fontWeight: 900, textAlign: "center", fontSize: "1.3rem", color: "var(--accent)", borderRadius: 0, padding: "10px 8px" }} required />
+                    <button type="submit" style={{ padding: "0 20px", fontWeight: 800, fontSize: "1.2rem", flexShrink: 0, borderRadius: 0 }}>›</button>
+                  </form>
+                  {joinError && <p className="error" style={{ marginTop: 12 }}>{joinError}</p>}
+                  {joinSuccess && (
+                    <div style={{ marginTop: 12, background: "var(--win-bg)", border: "1px solid var(--win-border)", borderRadius: 0, padding: "10px 14px", color: "var(--win)", fontSize: "0.82rem", fontWeight: 800 }}>
+                      {joinSuccess}
+                    </div>
+                  )}
+                </>
+              )}
+
+              {view === "create" && (
+                <>
+                  <button className="ghost" onClick={() => { setView("menu"); setError(""); }}
+                    style={{ borderRadius: 0, padding: "5px 10px", fontSize: "0.8rem", marginBottom: 24, display: "flex", alignItems: "center", gap: 5, fontWeight: 800 }}>
+                    ‹ Back
+                  </button>
+                  <div style={{ fontSize: "1rem", fontWeight: 800, marginBottom: 20 }}>New League</div>
+                  <form className="form" onSubmit={createLeague}>
+                    <div>
+                      <div className="label">League Name</div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required style={{ flex: 1 }} />
+                        <button type="button" onClick={() => setForm(f => ({ ...f, name: randomLeagueName() }))} title="Randomize"
+                          style={{ flexShrink: 0, background: "none", border: "1px solid var(--border-2)", borderRadius: 0, padding: "6px 8px", cursor: "pointer", color: "var(--text-3)", display: "flex", alignItems: "center", justifyContent: "center" }}
+                          onMouseEnter={e => { e.currentTarget.style.color = "var(--text)"; e.currentTarget.style.borderColor = "var(--text-3)"; }}
+                          onMouseLeave={e => { e.currentTarget.style.color = "var(--text-3)"; e.currentTarget.style.borderColor = "var(--border-2)"; }}>
+                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/>
+                            <path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/>
+                          </svg>
+                        </button>
+                      </div>
+                    </div>
+                    <div>
+                      <div className="label">Players</div>
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginTop: 4 }}>
+                        {playerOptions.map(n => {
+                          const active = Number(form.maxPlayers) === n;
+                          return (
+                            <button key={n} type="button" onClick={() => setForm({ ...form, maxPlayers: String(n) })}
+                              style={{ padding: "5px 11px", borderRadius: 0, fontSize: "0.82rem", fontWeight: active ? 800 : 600, background: active ? "var(--accent)" : "var(--surface-2)", color: active ? "#fff" : "var(--text-2)", border: active ? "1.5px solid var(--accent)" : "1.5px solid var(--border-2)" }}>
+                              {n}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="label">Visibility</div>
+                      <div style={{ display: "flex", gap: 6, marginTop: 4 }}>
+                        {([{ value: false, label: "Invite Only" }, { value: true, label: "Public" }] as const).map(({ value, label }) => {
+                          const active = form.isPublic === value;
+                          return (
+                            <button key={label} type="button" onClick={() => setForm({ ...form, isPublic: value })}
+                              style={{ flex: 1, padding: "8px", borderRadius: 0, fontSize: "0.82rem", fontWeight: active ? 800 : 600, background: active ? "var(--accent)" : "var(--surface-2)", color: active ? "#fff" : "var(--text-2)", border: active ? "1.5px solid var(--accent)" : "1.5px solid var(--border-2)" }}>
+                              {label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      <div style={{ fontSize: "0.68rem", color: "var(--text-3)", marginTop: 4, fontWeight: 600 }}>
+                        {form.isPublic ? "Anyone can join without an invite code" : "Members join via invite code; you approve requests"}
+                      </div>
+                    </div>
+                    {!form.isPublic && (
+                      <div>
+                        <div className="label">Max Public Fill Slots</div>
+                        <input type="number" min="0" max={Number(form.maxPlayers)} placeholder="0 = invite-only" value={form.maxPublicPlayers} onChange={e => setForm({ ...form, maxPublicPlayers: e.target.value })} />
+                        <div style={{ fontSize: "0.68rem", color: "var(--text-3)", marginTop: 4, fontWeight: 600 }}>Allow random players to fill remaining slots</div>
+                      </div>
+                    )}
+                    <div>
+                      <div className="label">Start Week</div>
+                      <input type="number" min="1" max="17" value={form.startWeek} onChange={e => setForm({ ...form, startWeek: e.target.value })} required />
+                      <div style={{ fontSize: "0.68rem", color: "var(--text-3)", marginTop: 4, fontWeight: 600 }}>NFL week your season begins</div>
+                    </div>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                      <div>
+                        <div className="label">Max Bets / Week</div>
+                        <input type="number" min="1" placeholder="No limit" value={form.maxBetsPerWeek} onChange={e => setForm({ ...form, maxBetsPerWeek: e.target.value })} />
+                      </div>
+                      <div>
+                        <div className="label">Max Stake / Bet</div>
+                        <input type="number" min="1" placeholder="No limit" value={form.maxStakePerBet} onChange={e => setForm({ ...form, maxStakePerBet: e.target.value })} />
+                      </div>
+                    </div>
+                    <div>
+                      <div className="label">Weekly Allowance ($)</div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <button type="button" onClick={() => setForm({ ...form, weeklyAllowance: String(Math.max(25, Number(form.weeklyAllowance) - 25)) })}
+                          style={{ width: 36, height: 36, padding: 0, fontSize: "1.2rem", fontWeight: 800, flexShrink: 0, borderRadius: 0 }}>−</button>
+                        <input type="text" inputMode="numeric" value={form.weeklyAllowance}
+                          onChange={e => setForm({ ...form, weeklyAllowance: e.target.value.replace(/[^0-9]/g, "") })}
+                          style={{ textAlign: "center", fontWeight: 800, fontSize: "1rem", fontVariantNumeric: "tabular-nums" }} required />
+                        <button type="button" onClick={() => setForm({ ...form, weeklyAllowance: String(Number(form.weeklyAllowance) + 25) })}
+                          style={{ width: 36, height: 36, padding: 0, fontSize: "1.2rem", fontWeight: 800, flexShrink: 0, borderRadius: 0 }}>+</button>
+                      </div>
+                    </div>
+                    {error && <p className="error">{error}</p>}
+                    <button type="submit" style={{ width: "100%", padding: "13px", fontSize: "0.9rem", fontWeight: 800, borderRadius: 0 }}>Create League</button>
+                  </form>
+                </>
+              )}
+            </div>
+
+            {/* Leagues list */}
+            {(memberships.length > 0 || pendingMemberships.length > 0) && (
+              <div style={{ width: "100%", marginTop: 24 }}>
+                {memberships.map((m: any) => (
+                  <Link key={m.id} href={`/leagues/${m.leagueId}`}>
+                    <div style={{ padding: "12px 2px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, cursor: "pointer", transition: "opacity 0.12s" }}
+                      onMouseEnter={e => e.currentTarget.style.opacity = "0.6"}
+                      onMouseLeave={e => e.currentTarget.style.opacity = "1"}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontWeight: 800, fontSize: "0.88rem", marginBottom: 4, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.league?.name}</div>
+                        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                          <span style={{ background: "var(--accent-dim)", color: "var(--accent)", borderRadius: 20, padding: "2px 9px", fontSize: "0.72rem", fontWeight: 800 }}>${m.balance.toLocaleString()}</span>
+                          <span style={{ color: "var(--text-3)", fontSize: "0.7rem", fontWeight: 700 }}>${m.league?.weeklyAllowance}/wk</span>
+                          {m.league?.isPublic && <span className="badge badge-blue">Public</span>}
+                        </div>
+                      </div>
+                      <span style={{ color: "var(--text-3)", fontSize: "1.1rem", fontWeight: 300, flexShrink: 0 }}>›</span>
+                    </div>
+                  </Link>
+                ))}
+                {pendingMemberships.map((m: any) => (
+                  <div key={m.id} style={{ padding: "12px 2px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, opacity: 0.55 }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontWeight: 800, fontSize: "0.88rem", marginBottom: 3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.league?.name}</div>
+                      <div style={{ fontSize: "0.7rem", color: "var(--text-3)", fontWeight: 700 }}>Waiting for commissioner</div>
+                    </div>
+                    <span className="badge badge-yellow">Pending</span>
+                  </div>
+                ))}
               </div>
-            ))}
+            )}
           </div>
-        )}
+
+          {/* ── NFL News ── */}
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontWeight: 800, fontSize: "0.78rem", color: "var(--text-3)", letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 14 }}>
+              NFL News
+            </div>
+            {newsLoading ? (
+              <div style={{ color: "var(--text-3)", fontSize: "0.82rem" }}>Loading…</div>
+            ) : news.length === 0 ? (
+              <div style={{ color: "var(--text-3)", fontSize: "0.82rem" }}>No news available.</div>
+            ) : (
+              news.map((article, i) => {
+                const tag = article.categories?.find(c => c.type === "topic")?.description;
+                return (
+                  <a
+                    key={i}
+                    href={article.links.web.href}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{ display: "block", padding: "11px 0", borderBottom: "1px solid var(--border)", textDecoration: "none", color: "inherit" }}
+                  >
+                    <div style={{ display: "flex", alignItems: "flex-start", gap: 7, marginBottom: 5 }}>
+                      {tag && (
+                        <span style={{
+                          fontSize: "0.58rem", fontWeight: 800, textTransform: "uppercase",
+                          letterSpacing: "0.07em", color: ACCENT, background: "var(--accent-dim)",
+                          padding: "2px 5px", flexShrink: 0, marginTop: 2,
+                        }}>
+                          {tag}
+                        </span>
+                      )}
+                      <div
+                        style={{ fontSize: "0.84rem", fontWeight: 700, lineHeight: 1.35, color: "var(--text)", transition: "color 0.1s" }}
+                        onMouseEnter={e => (e.currentTarget.style.color = ACCENT)}
+                        onMouseLeave={e => (e.currentTarget.style.color = "var(--text)")}
+                      >
+                        {article.headline}
+                      </div>
+                    </div>
+                    <div style={{ fontSize: "0.7rem", color: "var(--text-3)", fontWeight: 600 }}>
+                      {timeAgo(article.published)}
+                    </div>
+                  </a>
+                );
+              })
+            )}
+          </div>
+
+        </div>
       </div>
 
       {/* ── Auth Modal ── */}
