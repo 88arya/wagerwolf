@@ -3,6 +3,7 @@ import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import crypto from "crypto";
 import nodemailer from "nodemailer";
+import { OAuth2Client } from "google-auth-library";
 import { prisma } from "../db/prisma";
 import { requireAuth } from "../middleware/auth";
 
@@ -68,6 +69,7 @@ router.post("/login", async (req: any, res: any) => {
     const user = await prisma.user.findUnique({ where: { email } });
     if (!user) { res.status(401).json({ error: "Invalid email or password" }); return; }
 
+    if (!user.password) { res.status(401).json({ error: "This account uses Google Sign-In" }); return; }
     const valid = await bcrypt.compare(password, user.password);
     if (!valid) { res.status(401).json({ error: "Invalid email or password" }); return; }
 
@@ -77,6 +79,43 @@ router.post("/login", async (req: any, res: any) => {
       { expiresIn: "30d" }
     );
 
+    res.json({ token, userId: user.id, displayName: user.displayName });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post("/auth/google", async (req: any, res: any) => {
+  try {
+    const { credential } = req.body;
+    if (!credential) { res.status(400).json({ error: "Google credential required" }); return; }
+
+    const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
+    const ticket = await client.verifyIdToken({
+      idToken: credential,
+      audience: process.env.GOOGLE_CLIENT_ID,
+    });
+    const payload = ticket.getPayload();
+    if (!payload?.email) { res.status(400).json({ error: "Invalid Google token" }); return; }
+
+    const { sub: googleId, email, name, given_name } = payload;
+    const displayName = (given_name || name || "Player").slice(0, 20);
+
+    let user = await prisma.user.findFirst({
+      where: { OR: [{ googleId }, { email }] },
+    });
+
+    if (user) {
+      if (!user.googleId) {
+        user = await prisma.user.update({ where: { id: user.id }, data: { googleId } });
+      }
+    } else {
+      user = await prisma.user.create({
+        data: { email: email!, name: name || email!, displayName, googleId },
+      });
+    }
+
+    const token = jwt.sign({ userId: user.id }, process.env.JWT_SECRET!, { expiresIn: "30d" });
     res.json({ token, userId: user.id, displayName: user.displayName });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
