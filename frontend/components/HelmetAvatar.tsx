@@ -13,6 +13,8 @@ export const HELMET_COLORS = [
   "#fde68a", "#fbbf24", "#d97706", "#92400e",
   // Green
   "#86efac", "#4ade80", "#16a34a", "#14532d",
+  // Teal
+  "#5eead4", "#2dd4bf", "#0d9488", "#0f766e",
   // Blue
   "#93c5fd", "#60a5fa", "#2563eb", "#1e3a8a",
   // Purple

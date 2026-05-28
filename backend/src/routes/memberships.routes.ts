@@ -97,10 +97,8 @@ router.patch("/my-abbreviation", requireAuth, async (req: any, res: any) => {
   try {
     const { id: leagueId } = req.params;
     const { abbreviation } = req.body;
-    const trimmed = (abbreviation ?? "").trim().toUpperCase();
-    if (trimmed.length < 2 || trimmed.length > 3 || !/^[A-Z]+$/.test(trimmed)) {
-      res.status(400).json({ error: "Abbreviation must be 2–3 letters" }); return;
-    }
+    const trimmed = (abbreviation ?? "").trim();
+    if (!trimmed) { res.status(400).json({ error: "Abbreviation is required" }); return; }
     await prisma.membership.updateMany({
       where: { leagueId, userId: req.userId },
       data: { abbreviation: trimmed },
@@ -116,9 +114,7 @@ router.patch("/my-display-name", requireAuth, async (req: any, res: any) => {
   try {
     const { id: leagueId } = req.params;
     const { displayName } = req.body;
-    if (!displayName?.trim() || displayName.trim().length > 30) {
-      res.status(400).json({ error: "Display name must be 1–30 characters" }); return;
-    }
+    if (!displayName?.trim()) { res.status(400).json({ error: "Display name is required" }); return; }
     await prisma.membership.updateMany({
       where: { leagueId, userId: req.userId },
       data: { displayName: displayName.trim() },
