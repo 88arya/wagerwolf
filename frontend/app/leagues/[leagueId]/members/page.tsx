@@ -3,7 +3,9 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
-import HelmetAvatar from "@/components/HelmetAvatar";
+import HelmetAvatar, { HELMET_COLORS } from "@/components/HelmetAvatar";
+
+const ACCENT = "#0070EB";
 
 export default function MembersPage({ params }: PageProps<"/leagues/[leagueId]/members">) {
   const router = useRouter();
@@ -15,6 +17,11 @@ export default function MembersPage({ params }: PageProps<"/leagues/[leagueId]/m
   const [starting, setStarting] = useState(false);
   const [startError, setStartError] = useState("");
   const [copied, setCopied] = useState(false);
+
+  const [profile, setProfile] = useState({ displayName: "", abbreviation: "", helmetColor: "" });
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState("");
+  const [saved, setSaved] = useState(false);
 
   useEffect(() => {
     async function load() {
@@ -30,6 +37,11 @@ export default function MembersPage({ params }: PageProps<"/leagues/[leagueId]/m
       ]);
       setLeague(lg);
       setMembers(board ?? []);
+
+      const me = (board ?? []).find((m: any) => m.userId === id);
+      if (me) {
+        setProfile({ displayName: me.displayName ?? "", abbreviation: me.abbreviation ?? "", helmetColor: me.helmetColor ?? ACCENT });
+      }
 
       if (lg.creatorId === id && !lg.seasonStarted) {
         try { setPending(await api(`/leagues/${lid}/pending`)); } catch {}
@@ -68,6 +80,25 @@ export default function MembersPage({ params }: PageProps<"/leagues/[leagueId]/m
     }
   }
 
+  async function saveProfile() {
+    setSaveError(""); setSaving(true); setSaved(false);
+    if (!profile.displayName.trim()) { setSaveError("Display name is required."); setSaving(false); return; }
+    if (!profile.abbreviation.trim()) { setSaveError("Abbreviation is required."); setSaving(false); return; }
+    try {
+      await Promise.all([
+        api(`/leagues/${leagueId}/my-display-name`, { method: "PATCH", body: JSON.stringify({ displayName: profile.displayName.trim() }) }),
+        api(`/leagues/${leagueId}/my-abbreviation`, { method: "PATCH", body: JSON.stringify({ abbreviation: profile.abbreviation.trim() }) }),
+        api(`/leagues/${leagueId}/my-helmet`, { method: "PATCH", body: JSON.stringify({ helmetColor: profile.helmetColor }) }),
+      ]);
+      setMembers(await api(`/leagues/${leagueId}/leaderboard`));
+      window.dispatchEvent(new CustomEvent("league-profile-updated"));
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    } catch (err: any) {
+      try { setSaveError(JSON.parse(err.message).error); } catch { setSaveError(err.message); }
+    } finally { setSaving(false); }
+  }
+
   function copyCode() {
     navigator.clipboard.writeText(league.inviteCode);
     setCopied(true);
@@ -78,12 +109,14 @@ export default function MembersPage({ params }: PageProps<"/leagues/[leagueId]/m
 
   const isCreator = league.creatorId === userId;
   const canStart = members.length >= 2;
+  const myMember = members.find(m => m.userId === userId);
 
   return (
     <div className="page">
 
       {!league.seasonStarted && (
         <>
+          {/* Invite code */}
           <div className="section-title" style={{ marginBottom: 8 }}>Invite Code</div>
           <div className="card" style={{ marginBottom: 12 }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
@@ -94,6 +127,72 @@ export default function MembersPage({ params }: PageProps<"/leagues/[leagueId]/m
             </div>
           </div>
 
+          {/* My profile editor */}
+          {myMember && (
+            <>
+              <div className="section-title" style={{ marginBottom: 8 }}>Your Profile</div>
+              <div className="card" style={{ marginBottom: 12 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 18 }}>
+                  <HelmetAvatar color={profile.helmetColor || ACCENT} initials={(profile.abbreviation || "??")} size={44} />
+                  <div>
+                    <div style={{ fontWeight: 700, fontSize: "0.9rem" }}>{profile.displayName || "—"}</div>
+                    <div style={{ fontSize: "0.72rem", color: "var(--text-3)", fontWeight: 600, letterSpacing: "0.1em", marginTop: 2 }}>{profile.abbreviation || "—"}</div>
+                  </div>
+                </div>
+
+                <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+                  <div>
+                    <div className="label">Display Name</div>
+                    <input
+                      value={profile.displayName}
+                      onChange={e => setProfile(p => ({ ...p, displayName: e.target.value.slice(0, 30) }))}
+                      maxLength={30}
+                      placeholder="Your name in this league"
+                    />
+                  </div>
+
+                  <div>
+                    <div className="label">Abbreviation</div>
+                    <input
+                      value={profile.abbreviation}
+                      onChange={e => setProfile(p => ({ ...p, abbreviation: e.target.value }))}
+                      placeholder="e.g. JAY"
+                      style={{ fontWeight: 800, maxWidth: 100 }}
+                    />
+                  </div>
+
+                  <div>
+                    <div className="label">Helmet Color</div>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 6 }}>
+                      {HELMET_COLORS.map(color => (
+                        <button
+                          key={color}
+                          type="button"
+                          onClick={() => setProfile(p => ({ ...p, helmetColor: color }))}
+                          style={{
+                            width: 30, height: 30, borderRadius: "50%", background: color, padding: 0, cursor: "pointer", flexShrink: 0,
+                            border: profile.helmetColor === color ? "3px solid var(--text)" : "3px solid transparent",
+                          }}
+                        />
+                      ))}
+                    </div>
+                  </div>
+
+                  {saveError && <p className="error" style={{ margin: 0 }}>{saveError}</p>}
+
+                  <button
+                    onClick={saveProfile}
+                    disabled={saving}
+                    style={{ alignSelf: "flex-start", padding: "8px 20px", fontWeight: 700, fontSize: "0.85rem" }}
+                  >
+                    {saving ? "Saving…" : saved ? "✓ Saved" : "Save"}
+                  </button>
+                </div>
+              </div>
+            </>
+          )}
+
+          {/* Join requests (commissioner only) */}
           {isCreator && pending.length > 0 && (
             <>
               <div className="section-title" style={{ marginBottom: 8 }}>
@@ -118,7 +217,8 @@ export default function MembersPage({ params }: PageProps<"/leagues/[leagueId]/m
             </>
           )}
 
-          {isCreator && (
+          {/* Start league / waiting */}
+          {isCreator ? (
             <div className="card" style={{ marginBottom: 12 }}>
               <div style={{ fontSize: "0.8rem", color: "var(--text-2)", marginBottom: 10 }}>
                 {!canStart
@@ -134,9 +234,7 @@ export default function MembersPage({ params }: PageProps<"/leagues/[leagueId]/m
                 {starting ? "Starting…" : "Start League"}
               </button>
             </div>
-          )}
-
-          {!isCreator && (
+          ) : (
             <div className="card" style={{ marginBottom: 12, textAlign: "center", padding: "18px 16px" }}>
               <div style={{ fontSize: "0.82rem", color: "var(--text-2)" }}>
                 Waiting for the commissioner to start the league
@@ -169,7 +267,7 @@ export default function MembersPage({ params }: PageProps<"/leagues/[leagueId]/m
               onMouseEnter={e => { if (league.seasonStarted) e.currentTarget.style.background = "var(--surface-2)"; }}
               onMouseLeave={e => (e.currentTarget.style.background = "transparent")}
             >
-              <HelmetAvatar color={m.helmetColor ?? "#0070EB"} initials={(m.displayName ?? "?").slice(0, 2)} size={36} />
+              <HelmetAvatar color={m.helmetColor ?? ACCENT} initials={(m.displayName ?? "?").slice(0, 2)} size={36} />
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: "0.85rem", fontWeight: isMe ? 700 : 500, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                   {m.displayName}{isMe && <span style={{ fontSize: "0.65rem", color: "var(--text-3)", fontWeight: 400, marginLeft: 6 }}>you</span>}

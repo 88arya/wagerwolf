@@ -61,6 +61,18 @@ export default function LeagueNav({ leagueId }: { leagueId: string }) {
     return () => document.removeEventListener("mousedown", handleClick);
   }, []);
 
+  useEffect(() => {
+    function refetch() {
+      api("/memberships").then((ms: any[]) => {
+        setLeagues(ms);
+        const match = ms.find((m: any) => m.leagueId === leagueId) ?? null;
+        setCurrentLeague(match);
+      }).catch(() => {});
+    }
+    window.addEventListener("league-profile-updated", refetch);
+    return () => window.removeEventListener("league-profile-updated", refetch);
+  }, [leagueId]);
+
   function logout() {
     localStorage.removeItem("token");
     localStorage.removeItem("userId");
