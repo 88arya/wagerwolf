@@ -3,13 +3,13 @@ import "./globals.css";
 import GoogleProvider from "@/components/GoogleProvider";
 
 export const metadata: Metadata = {
-  title: "Playbook",
-  description: "NFL prop betting simulation",
+  title: "FanMark",
+  description: "Fantasy football format, NFL sportsbook scoring",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" style={{ colorScheme: "light" }}>
+    <html lang="en" style={{ colorScheme: "dark" }}>
       <body suppressHydrationWarning><GoogleProvider>{children}</GoogleProvider></body>
     </html>
   );

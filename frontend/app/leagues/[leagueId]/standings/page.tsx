@@ -14,7 +14,7 @@ export default function StandingsPage({ params }: PageProps<"/leagues/[leagueId]
   const [loaded, setLoaded] = useState(false);
 
   const helmetColors: Record<string, string> = {};
-  members.forEach((m) => { helmetColors[m.userId] = m.helmetColor ?? "#0070EB"; });
+  members.forEach((m) => { helmetColors[m.userId] = m.helmetColor ?? "#02D18A"; });
 
   useEffect(() => {
     async function load() {
@@ -36,14 +36,14 @@ export default function StandingsPage({ params }: PageProps<"/leagues/[leagueId]
 
   return (
     <div className="page">
-      <div className="card" style={{ padding: 0, overflow: "hidden", background: "#fff" }}>
-        <div style={{ padding: "10px 14px", background: "#fff", borderBottom: "1px solid var(--border)" }}>
+      <div className="card" style={{ padding: 0, overflow: "hidden", background: "var(--surface)" }}>
+        <div style={{ padding: "10px 14px", background: "var(--surface)", borderBottom: "1px solid var(--border)" }}>
           <span style={{ fontSize: "0.58rem", fontWeight: 800, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--text)" }}>Standings</span>
         </div>
         <div style={{
           display: "grid", gridTemplateColumns: RANK_COLS,
           padding: "6px 14px", gap: 6,
-          background: "#fff", borderBottom: "1px solid var(--border)",
+          background: "var(--surface)", borderBottom: "1px solid var(--border)",
         }}>
           {["#", "Player", "W", "L", "T", "GB"].map((h, i) => (
             <span key={h} style={{ fontSize: "0.58rem", fontWeight: 800, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--text)", textAlign: i >= 2 ? "center" : "left" }}>{h}</span>
@@ -65,7 +65,7 @@ export default function StandingsPage({ params }: PageProps<"/leagues/[leagueId]
             }}>
               <span style={{ fontWeight: 400, fontSize: "0.85rem", color: "var(--text)" }}>{m.rank}</span>
               <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
-                <HelmetAvatar color={helmetColors[m.userId] ?? "#0070EB"} initials={m.displayName.slice(0, 2)} size={26} />
+                <HelmetAvatar color={helmetColors[m.userId] ?? "#02D18A"} initials={m.displayName.slice(0, 2)} size={26} />
                 <span style={{ fontWeight: isMe ? 700 : 400, fontSize: "0.85rem", color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                   {m.displayName}
                 </span>

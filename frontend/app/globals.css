@@ -1,36 +1,36 @@
 :root {
   /* ── Backgrounds ── */
-  --bg:           #F5F7FA;
-  --surface:      #FFFFFF;
-  --surface-2:    #F0F2F5;
-  --surface-3:    #E8ECF0;
-  --surface-4:    #DDE2E8;
+  --bg:           #0D1015;
+  --surface:      #111519;
+  --surface-2:    #171C21;
+  --surface-3:    #1D2228;
+  --surface-4:    #252B32;
 
   /* ── Borders ── */
-  --border:       #E2E8F0;
-  --border-2:     #CBD5E1;
-  --border-3:     #94A3B8;
+  --border:       #1E242C;
+  --border-2:     #2C333C;
+  --border-3:     #3D4650;
 
-  /* ── Accent Blue ── */
-  --accent:       #0070EB;
-  --accent-hover: #005cc9;
-  --accent-muted: #3385ee;
-  --accent-dim:   rgba(0, 112, 235, 0.08);
-  --accent-glow:  rgba(0, 112, 235, 0.15);
+  /* ── Accent Green ── */
+  --accent:       #02D18A;
+  --accent-hover: #00b877;
+  --accent-muted: #33dca0;
+  --accent-dim:   rgba(2, 209, 138, 0.10);
+  --accent-glow:  rgba(2, 209, 138, 0.18);
 
   /* ── Header ── */
-  --navy:         #FFFFFF;
-  --navy-2:       #F5F7FA;
+  --navy:         #0D1015;
+  --navy-2:       #0D1015;
 
   /* ── Status ── */
   --win:          #16A34A;
-  --win-bg:       rgba(22, 163, 74, 0.08);
-  --win-border:   rgba(22, 163, 74, 0.22);
+  --win-bg:       rgba(22, 163, 74, 0.10);
+  --win-border:   rgba(22, 163, 74, 0.25);
   --loss:         #DC2626;
-  --loss-bg:      rgba(220, 38, 38, 0.08);
-  --loss-border:  rgba(220, 38, 38, 0.22);
+  --loss-bg:      rgba(220, 38, 38, 0.10);
+  --loss-border:  rgba(220, 38, 38, 0.25);
   --pending:      #D97706;
-  --pending-bg:   rgba(217, 119, 6, 0.08);
+  --pending-bg:   rgba(217, 119, 6, 0.10);
 
   /* ── Ranks ── */
   --gold:         #D97706;
@@ -38,10 +38,10 @@
   --bronze:       #B45309;
 
   /* ── Text ── */
-  --text:         #0F172A;
-  --text-2:       #475569;
-  --text-3:       #94A3B8;
-  --text-4:       #CBD5E1;
+  --text:         #E8ECF0;
+  --text-2:       #8896A4;
+  --text-3:       #546070;
+  --text-4:       #3A4A58;
 
   /* ── Shape ── */
   --radius:       8px;
@@ -50,10 +50,10 @@
   --radius-xl:    20px;
 
   /* ── Shadows ── */
-  --shadow-sm:    0 1px 3px rgba(0,0,0,0.08);
-  --shadow-md:    0 4px 16px rgba(0,0,0,0.10);
-  --shadow-lg:    0 8px 32px rgba(0,0,0,0.12);
-  --shadow-up:    0 -4px 16px rgba(0,0,0,0.08);
+  --shadow-sm:    0 1px 3px rgba(0,0,0,0.30);
+  --shadow-md:    0 4px 16px rgba(0,0,0,0.40);
+  --shadow-lg:    0 8px 32px rgba(0,0,0,0.50);
+  --shadow-up:    0 -4px 16px rgba(0,0,0,0.30);
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -262,7 +262,7 @@ h2 {
 }
 .card-accent {
   background: var(--accent-dim);
-  border: 1.5px solid rgba(56, 189, 248, 0.18);
+  border: 1.5px solid rgba(2, 209, 138, 0.18);
   border-radius: var(--radius);
   padding: 14px;
   margin-bottom: 8px;
@@ -314,7 +314,7 @@ h2 {
 }
 .badge-blue {
   background: var(--accent-dim);
-  border-color: rgba(56, 189, 248, 0.22);
+  border-color: rgba(2, 209, 138, 0.22);
   color: var(--accent);
 }
 
@@ -337,7 +337,7 @@ h2 {
   height: 34px;
   border-radius: 50%;
   background: var(--accent-dim);
-  border: 2px solid rgba(56, 189, 248, 0.2);
+  border: 2px solid rgba(2, 209, 138, 0.2);
   color: var(--accent);
   font-weight: 800;
   font-size: 0.75rem;
@@ -533,7 +533,7 @@ hr { border: none; border-top: 1px solid var(--border); margin: 14px 0; }
   font-weight: 700;
   box-shadow: var(--shadow-sm);
 }
-.segment-btn:hover:not(.active) { color: var(--text-2); background: rgba(0,0,0,0.04); }
+.segment-btn:hover:not(.active) { color: var(--text-2); background: rgba(255,255,255,0.05); }
 
 /* ── Underline tab bar (DK/ESPN style) ── */
 .tab-bar {
@@ -589,8 +589,8 @@ hr { border: none; border-top: 1px solid var(--border); margin: 14px 0; }
 
 /* ── League hero banner ── */
 .league-banner {
-  background: linear-gradient(135deg, #004b9e 0%, #0070EB 100%);
-  border: 1px solid rgba(0, 112, 235, 0.2);
+  background: linear-gradient(135deg, #009960 0%, #02D18A 100%);
+  border: 1px solid rgba(2, 209, 138, 0.2);
   border-radius: var(--radius-lg);
   padding: 18px 16px;
   color: #fff;
@@ -662,4 +662,4 @@ hr { border: none; border-top: 1px solid var(--border); margin: 14px 0; }
 .standings-row:last-child { border-bottom: none; }
 .standings-row:hover { background: var(--surface-2); }
 .standings-row.is-me { background: var(--accent-dim); }
-.standings-row.is-me:hover { background: rgba(56, 189, 248, 0.14); }
+.standings-row.is-me:hover { background: rgba(2, 209, 138, 0.14); }

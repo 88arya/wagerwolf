@@ -25,9 +25,9 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
   const [week, setWeek] = useState<any>(null);
   const [members, setMembers] = useState<any[]>([]);
   const [weekMatchups, setWeekMatchups] = useState<any[]>([]);
-  const [myHelmetColor, setMyHelmetColor] = useState("#0070EB");
+  const [myHelmetColor, setMyHelmetColor] = useState("#02D18A");
   const [showIdentityEditor, setShowIdentityEditor] = useState(false);
-  const [pendingColor, setPendingColor] = useState("#0070EB");
+  const [pendingColor, setPendingColor] = useState("#02D18A");
   const [nameInput, setNameInput] = useState("");
   const [abrInput, setAbrInput] = useState("");
   const [liveBetsCount, setLiveBetsCount] = useState(0);
@@ -204,7 +204,7 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
   const takenColors = new Set(members.filter(m => m.userId !== userId).map(m => m.helmetColor));
 
   const helmetColors: Record<string, string> = {};
-  members.forEach(m => { helmetColors[m.userId] = m.helmetColor ?? "#0070EB"; });
+  members.forEach(m => { helmetColors[m.userId] = m.helmetColor ?? "#02D18A"; });
 
   const myRecord = members.find((m) => m.userId === userId);
   const myRank = myRecord?.rank ?? 0;
@@ -247,7 +247,7 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
         }}>
           <span style={{ fontWeight: 400, fontSize: "0.8rem", color: "var(--text)" }}>{rank}</span>
           <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
-            <HelmetAvatar color={helmetColors[m.userId] ?? "#0070EB"} initials={m.displayName.slice(0, 2)} size={24} />
+            <HelmetAvatar color={helmetColors[m.userId] ?? "#02D18A"} initials={m.displayName.slice(0, 2)} size={24} />
             <span style={{ fontWeight: isMe ? 700 : 400, fontSize: "0.8rem", color: "var(--text)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 72 }}>
               {m.displayName.length > 7 ? m.displayName.slice(0, 7) + "…" : m.displayName}
             </span>
@@ -299,7 +299,7 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
 
           {/* COL 1 ROW 1: User card */}
           {myRecord && (
-            <div className="card" style={{ gridColumn: "1", gridRow: "1", padding: "14px 16px", background: "#fff", minHeight: 160, display: "flex", flexDirection: "column", justifyContent: "space-between", minWidth: 0 }}>
+            <div className="card" style={{ gridColumn: "1", gridRow: "1", padding: "14px 16px", background: "var(--surface)", minHeight: 160, display: "flex", flexDirection: "column", justifyContent: "space-between", minWidth: 0 }}>
               {/* Identity row */}
               <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12, marginTop: 10, paddingLeft: 10, paddingRight: 10 }}>
                 <HelmetAvatar color={myHelmetColor} initials={myRecord.displayName.slice(0, 2)} size={48} />
@@ -320,7 +320,7 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
                 </button>
               </div>
               {/* Stats */}
-              <div style={{ background: "#fff", border: "1px solid var(--border)", borderRadius: 8, boxShadow: "0 1px 4px rgba(0,0,0,0.08)" }}>
+              <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 8, boxShadow: "var(--shadow-sm)" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "7px 10px" }}>
                   <span style={{ fontSize: "0.8rem", fontWeight: 700, color: "var(--text)" }}>Balance</span>
                   <span style={{ fontSize: "0.72rem", color: "var(--text-3)", fontVariantNumeric: "tabular-nums" }}>${myRecord.balance.toLocaleString()}</span>
@@ -334,8 +334,8 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
           )}
 
           {/* COL 1 ROW 2-4: Matchups */}
-          <div className="card" style={{ gridColumn: "1", gridRow: "2 / 4", padding: 0, overflow: "hidden", background: "#fff", minWidth: 0 }}>
-              <div style={{ padding: "8px 10px", borderBottom: "1px solid var(--border)", background: "#fff" }}>
+          <div className="card" style={{ gridColumn: "1", gridRow: "2 / 4", padding: 0, overflow: "hidden", background: "var(--surface)", minWidth: 0 }}>
+              <div style={{ padding: "8px 10px", borderBottom: "1px solid var(--border)", background: "var(--surface)" }}>
                 <span style={{ fontSize: "0.58rem", fontWeight: 800, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--text)" }}>Matchups</span>
               </div>
               {(() => {
@@ -361,13 +361,13 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
                     }}>
                       <div style={{ display: "flex", flexDirection: "column", gap: 6, flex: 1, minWidth: 0 }}>
                         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                          <HelmetAvatar color={homeName === "Ghost" ? "#ffffff" : (helmetColors[matchup.homeUserId] ?? "#0070EB")} initials={homeName.slice(0, 2)} size={20} />
+                          <HelmetAvatar color={homeName === "Ghost" ? "#ffffff" : (helmetColors[matchup.homeUserId] ?? "#02D18A")} initials={homeName.slice(0, 2)} size={20} />
                           <span style={{ fontWeight: isHome ? 700 : 400, fontSize: "0.75rem", color: "var(--text)", fontStyle: homeName === "Ghost" ? "italic" : "normal", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                             {homeName}
                           </span>
                         </div>
                         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                          <HelmetAvatar color={awayName === "Ghost" ? "#ffffff" : (helmetColors[matchup.awayUserId] ?? "#0070EB")} initials={awayName.slice(0, 2)} size={20} />
+                          <HelmetAvatar color={awayName === "Ghost" ? "#ffffff" : (helmetColors[matchup.awayUserId] ?? "#02D18A")} initials={awayName.slice(0, 2)} size={20} />
                           <span style={{ fontWeight: isAway ? 700 : 400, fontSize: "0.75rem", color: "var(--text)", fontStyle: awayName === "Ghost" ? "italic" : "normal", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                             {awayName}
                           </span>
@@ -412,7 +412,7 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
 
           {/* CENTER ROW 2: Recent Activity */}
           <div style={{ gridColumn: "2", gridRow: "2" }}>
-            <div className="card" style={{ padding: 0, overflow: "hidden", background: "#fff" }}>
+            <div className="card" style={{ padding: 0, overflow: "hidden", background: "var(--surface)" }}>
               <div style={{ padding: "8px 12px", borderBottom: "1px solid var(--border)" }}>
                 <span style={{ fontSize: "0.58rem", fontWeight: 800, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--text)" }}>Recent Activity</span>
               </div>
@@ -424,7 +424,7 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
 
           {/* CENTER ROW 3: Power Rankings chart */}
           <div style={{ gridColumn: "2", gridRow: "3" }}>
-            <div className="card" style={{ padding: 0, overflow: "hidden", background: "#fff" }}>
+            <div className="card" style={{ padding: 0, overflow: "hidden", background: "var(--surface)" }}>
               <div style={{ padding: "8px 12px", borderBottom: "1px solid var(--border)" }}>
                 <span style={{ fontSize: "0.58rem", fontWeight: 800, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--text)" }}>Power Rankings</span>
               </div>
@@ -513,7 +513,7 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
                                 gap: 3,
                                 pointerEvents: "auto",
                               }}>
-                                <HelmetAvatar color={m.helmetColor ?? "#0070EB"} initials={abr} size={24} />
+                                <HelmetAvatar color={m.helmetColor ?? "#02D18A"} initials={abr} size={24} />
                                 <span style={{
                                   fontSize: "0.45rem",
                                   fontWeight: 800,
@@ -538,14 +538,14 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
 
           {/* RIGHT: Standings (spans both rows) */}
           <div style={{ gridColumn: "3", gridRow: "1 / 4", minWidth: 0 }}>
-            <div className="card" style={{ padding: 0, overflow: "hidden", background: "#fff" }}>
-              <div style={{ padding: "8px 12px", background: "#fff", borderBottom: "1px solid var(--border)" }}>
+            <div className="card" style={{ padding: 0, overflow: "hidden", background: "var(--surface)" }}>
+              <div style={{ padding: "8px 12px", background: "var(--surface)", borderBottom: "1px solid var(--border)" }}>
                 <span style={{ fontSize: "0.58rem", fontWeight: 800, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--text)" }}>Standings</span>
               </div>
               <div style={{
                 display: "grid", gridTemplateColumns: RANK_COLS,
                 padding: "6px 12px", gap: 6,
-                background: "#fff", borderBottom: "1px solid var(--border)",
+                background: "var(--surface)", borderBottom: "1px solid var(--border)",
               }}>
                 {["#", "Player", "W", "L", "T", "GB"].map((h, i) => (
                   <span key={h} style={{ fontSize: "0.58rem", fontWeight: 800, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--text)", textAlign: i >= 2 ? "center" : "left" }}>{h}</span>
@@ -567,8 +567,8 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
 
         {/* Horizontal games strip */}
         {week?.games?.length > 0 && (
-          <div style={{ marginTop: 14, display: "flex", border: "1px solid var(--border)", background: "#fff", overflow: "hidden", borderRadius: "var(--radius-lg)" }}>
-            <div onClick={() => { const el = gamesScrollRef.current; if (!el) return; const w = (el.firstElementChild as HTMLElement).getBoundingClientRect().width; el.scrollTo({ left: Math.round(el.scrollLeft / w - 1) * w, behavior: "smooth" }); }} onMouseEnter={e => (e.currentTarget.style.background = "#f4f6f9")} onMouseLeave={e => (e.currentTarget.style.background = "#fff")} style={{ flexShrink: 0, width: 28, background: "#fff", borderRight: "1px solid var(--border)", cursor: "pointer", color: "var(--text-3)", display: "flex", alignItems: "center", justifyContent: "center", userSelect: "none", transition: "background 0.12s" }}><svg width="6" height="10" viewBox="0 0 9 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="7,1 2,7 7,13" /></svg></div>
+          <div style={{ marginTop: 14, display: "flex", border: "1px solid var(--border)", background: "var(--surface)", overflow: "hidden", borderRadius: "var(--radius-lg)" }}>
+            <div onClick={() => { const el = gamesScrollRef.current; if (!el) return; const w = (el.firstElementChild as HTMLElement).getBoundingClientRect().width; el.scrollTo({ left: Math.round(el.scrollLeft / w - 1) * w, behavior: "smooth" }); }} onMouseEnter={e => (e.currentTarget.style.background = "var(--surface-2)")} onMouseLeave={e => (e.currentTarget.style.background = "var(--surface)")} style={{ flexShrink: 0, width: 28, background: "var(--surface)", borderRight: "1px solid var(--border)", cursor: "pointer", color: "var(--text-3)", display: "flex", alignItems: "center", justifyContent: "center", userSelect: "none", transition: "background 0.12s" }}><svg width="6" height="10" viewBox="0 0 9 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="7,1 2,7 7,13" /></svg></div>
             <div style={{ flex: 1, overflow: "hidden", position: "relative" }}>
               <div style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: 14, background: "linear-gradient(to right, rgba(0,0,0,0.07), transparent)", zIndex: 1, pointerEvents: "none" }} />
               <div style={{ position: "absolute", right: 0, top: 0, bottom: 0, width: 14, background: "linear-gradient(to left, rgba(0,0,0,0.07), transparent)", zIndex: 1, pointerEvents: "none" }} />
@@ -578,7 +578,7 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
                 const isLive = game.status === "IN_PROGRESS" ||
                   (game.status !== "FINAL" && game.status !== "CANCELLED" && game.gameDate && new Date(game.gameDate) <= now);
                 return (
-                  <div key={game.id} onClick={() => router.push(`/leagues/${leagueId}/bet?gameId=${game.id}`)} onMouseEnter={e => (e.currentTarget.style.background = "#f4f6f9")} onMouseLeave={e => (e.currentTarget.style.background = "#fff")} style={{
+                  <div key={game.id} onClick={() => router.push(`/leagues/${leagueId}/bet?gameId=${game.id}`)} onMouseEnter={e => (e.currentTarget.style.background = "var(--surface-2)")} onMouseLeave={e => (e.currentTarget.style.background = "var(--surface)")} style={{
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "space-between",
@@ -586,7 +586,7 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
                     gap: 16,
                     flex: "0 0 calc(100% / 8)",
                     boxSizing: "border-box",
-                    background: "#fff",
+                    background: "var(--surface)",
                     borderRight: "1px solid var(--border)",
                     transition: "background 0.12s",
                     cursor: "pointer",
@@ -643,7 +643,7 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
               })}
             </div>
             </div>
-            <div onClick={() => { const el = gamesScrollRef.current; if (!el) return; const w = (el.firstElementChild as HTMLElement).getBoundingClientRect().width; el.scrollTo({ left: Math.round(el.scrollLeft / w + 1) * w, behavior: "smooth" }); }} onMouseEnter={e => (e.currentTarget.style.background = "#f4f6f9")} onMouseLeave={e => (e.currentTarget.style.background = "#fff")} style={{ flexShrink: 0, width: 28, background: "#fff", borderLeft: "1px solid var(--border)", marginLeft: -1, cursor: "pointer", color: "var(--text-3)", display: "flex", alignItems: "center", justifyContent: "center", userSelect: "none", transition: "background 0.12s" }}><svg width="6" height="10" viewBox="0 0 9 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="2,1 7,7 2,13" /></svg></div>
+            <div onClick={() => { const el = gamesScrollRef.current; if (!el) return; const w = (el.firstElementChild as HTMLElement).getBoundingClientRect().width; el.scrollTo({ left: Math.round(el.scrollLeft / w + 1) * w, behavior: "smooth" }); }} onMouseEnter={e => (e.currentTarget.style.background = "var(--surface-2)")} onMouseLeave={e => (e.currentTarget.style.background = "var(--surface)")} style={{ flexShrink: 0, width: 28, background: "var(--surface)", borderLeft: "1px solid var(--border)", marginLeft: -1, cursor: "pointer", color: "var(--text-3)", display: "flex", alignItems: "center", justifyContent: "center", userSelect: "none", transition: "background 0.12s" }}><svg width="6" height="10" viewBox="0 0 9 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="2,1 7,7 2,13" /></svg></div>
           </div>
         )}
 
@@ -659,7 +659,7 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
           top: "50%",
           transform: "translateY(-50%)",
           transition: "right 0.25s cubic-bezier(0.4,0,0.2,1)",
-          background: "#fff",
+          background: "var(--surface)",
           border: "1px solid var(--border)",
           borderRight: "none",
           borderRadius: "8px 0 0 8px",
@@ -687,7 +687,7 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
         width: 320,
         transform: showChat ? "translateX(0)" : "translateX(320px)",
         transition: "transform 0.25s cubic-bezier(0.4,0,0.2,1)",
-        background: "#fff",
+        background: "var(--surface)",
         borderLeft: "1px solid var(--border)",
         display: "flex",
         flexDirection: "column",
@@ -759,7 +759,7 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
         <div
           style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.35)", zIndex: 50, display: "flex", alignItems: "center", justifyContent: "center" }}
         >
-          <div style={{ background: "#fff", borderRadius: 12, padding: 20, width: 300, boxShadow: "0 8px 32px rgba(0,0,0,0.18)", position: "relative" }}>
+          <div style={{ background: "var(--surface)", borderRadius: 12, padding: 20, width: 300, boxShadow: "0 8px 32px rgba(0,0,0,0.18)", position: "relative" }}>
             {/* X close */}
             <button
               onClick={() => setShowIdentityEditor(false)}

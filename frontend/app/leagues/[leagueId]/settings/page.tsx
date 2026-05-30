@@ -217,7 +217,7 @@ export default function LeagueSettingsPage({ params }: PageProps<"/leagues/[leag
                   borderBottom: idx < pendingMembers.length - 1 ? "1px solid var(--border)" : "none",
                 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
-                    <HelmetAvatar color={m.helmetColor ?? "#0070EB"} initials={m.user.displayName.slice(0, 2).toUpperCase()} size={30} />
+                    <HelmetAvatar color={m.helmetColor ?? "#02D18A"} initials={m.user.displayName.slice(0, 2).toUpperCase()} size={30} />
                     <span style={{ fontWeight: 600, fontSize: "0.88rem" }}>{m.user.displayName}</span>
                   </div>
                   <div style={{ display: "flex", gap: 6 }}>
@@ -243,7 +243,7 @@ export default function LeagueSettingsPage({ params }: PageProps<"/leagues/[leag
               borderBottom: idx < members.length - 1 ? "1px solid var(--border)" : "none",
             }}>
               <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
-                <HelmetAvatar color={m.helmetColor ?? "#0070EB"} initials={m.displayName.slice(0, 2).toUpperCase()} size={28} />
+                <HelmetAvatar color={m.helmetColor ?? "#02D18A"} initials={m.displayName.slice(0, 2).toUpperCase()} size={28} />
                 <span style={{ fontWeight: 600, fontSize: "0.88rem" }}>
                   {m.displayName}
                   {m.userId === userId && <span className="badge" style={{ marginLeft: 6 }}>you</span>}

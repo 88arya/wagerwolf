@@ -13,7 +13,7 @@ export default function ScoreboardPage({ params }: PageProps<"/leagues/[leagueId
   const [loaded, setLoaded] = useState(false);
 
   const helmetColors: Record<string, string> = {};
-  members.forEach((m) => { helmetColors[m.userId] = m.helmetColor ?? "#0070EB"; });
+  members.forEach((m) => { helmetColors[m.userId] = m.helmetColor ?? "#02D18A"; });
 
   useEffect(() => {
     async function load() {
@@ -44,8 +44,8 @@ export default function ScoreboardPage({ params }: PageProps<"/leagues/[leagueId
 
   return (
     <div className="page">
-      <div className="card" style={{ padding: 0, overflow: "hidden", background: "#fff" }}>
-        <div style={{ padding: "10px 14px", borderBottom: "1px solid var(--border)", background: "#fff" }}>
+      <div className="card" style={{ padding: 0, overflow: "hidden", background: "var(--surface)" }}>
+        <div style={{ padding: "10px 14px", borderBottom: "1px solid var(--border)", background: "var(--surface)" }}>
           <span style={{ fontSize: "0.58rem", fontWeight: 800, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--text)" }}>Matchups</span>
         </div>
         {weekMatchups.length === 0 ? (
@@ -70,13 +70,13 @@ export default function ScoreboardPage({ params }: PageProps<"/leagues/[leagueId
               }}>
                 <div style={{ display: "flex", flexDirection: "column", gap: 8, flex: 1, minWidth: 0 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <HelmetAvatar color={homeName === "Ghost" ? "#ffffff" : (helmetColors[matchup.homeUserId] ?? "#0070EB")} initials={homeName.slice(0, 2)} size={24} />
+                    <HelmetAvatar color={homeName === "Ghost" ? "#ffffff" : (helmetColors[matchup.homeUserId] ?? "#02D18A")} initials={homeName.slice(0, 2)} size={24} />
                     <span style={{ fontWeight: isHome ? 700 : 400, fontSize: "0.85rem", color: "var(--text)", fontStyle: homeName === "Ghost" ? "italic" : "normal", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                       {homeName}
                     </span>
                   </div>
                   <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <HelmetAvatar color={awayName === "Ghost" ? "#ffffff" : (helmetColors[matchup.awayUserId] ?? "#0070EB")} initials={awayName.slice(0, 2)} size={24} />
+                    <HelmetAvatar color={awayName === "Ghost" ? "#ffffff" : (helmetColors[matchup.awayUserId] ?? "#02D18A")} initials={awayName.slice(0, 2)} size={24} />
                     <span style={{ fontWeight: isAway ? 700 : 400, fontSize: "0.85rem", color: "var(--text)", fontStyle: awayName === "Ghost" ? "italic" : "normal", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                       {awayName}
                     </span>

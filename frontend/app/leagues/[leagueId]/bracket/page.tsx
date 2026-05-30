@@ -10,11 +10,11 @@ function BracketSlot({ name, score, winner, helmetColor }: { name?: string; scor
     <div style={{
       display: "flex", alignItems: "center", gap: 8,
       padding: "7px 10px",
-      background: winner ? "var(--surface-2)" : "#fff",
+      background: winner ? "var(--surface-2)" : "var(--surface)",
       borderBottom: "1px solid var(--border)",
     }}>
       {name
-        ? <HelmetAvatar color={helmetColor ?? "#0070EB"} initials={name.slice(0, 2)} size={20} />
+        ? <HelmetAvatar color={helmetColor ?? "#02D18A"} initials={name.slice(0, 2)} size={20} />
         : <div style={{ width: 20, height: 20, borderRadius: 4, background: "var(--surface-3)", flexShrink: 0 }} />
       }
       <span style={{ flex: 1, fontSize: "0.8rem", fontWeight: winner ? 700 : 400, color: name ? "var(--text)" : "var(--text-3)" }}>
@@ -84,7 +84,7 @@ export default function BracketPage({ params }: PageProps<"/leagues/[leagueId]/b
   const [loaded, setLoaded] = useState(false);
 
   const helmetColors: Record<string, string> = {};
-  members.forEach((m) => { helmetColors[m.userId] = m.helmetColor ?? "#0070EB"; });
+  members.forEach((m) => { helmetColors[m.userId] = m.helmetColor ?? "#02D18A"; });
 
   useEffect(() => {
     async function load() {
