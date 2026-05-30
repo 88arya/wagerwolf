@@ -18,7 +18,7 @@ export default function HowToPlayPage() {
       <div style={{ maxWidth: 560 }}>
         <h1 style={{ marginBottom: 6 }}>How to Play</h1>
         <p style={{ color: "var(--text-2)", fontSize: "0.88rem", marginBottom: 36 }}>
-          Playbook is a fantasy football prop betting game. You bet fake money on real NFL player stats every week and compete against friends in a league.
+          FanMark is a fantasy football prop betting game. You bet fake money on real NFL player stats every week and compete against friends in a league.
         </p>
 
         <Section n="1" title="Join or Create a League">

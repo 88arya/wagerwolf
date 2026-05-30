@@ -45,7 +45,7 @@ app.use("/gamepicks", gamePickRoutes);
 app.use("/parlays", parlayRoutes);
 
 app.get("/", (req, res) => {
-  res.json({ status: "Playbook backend running" });
+  res.json({ status: "FanMark backend running" });
 });
 
 const PORT = process.env.PORT || 5000;
