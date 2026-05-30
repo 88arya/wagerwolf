@@ -27,7 +27,7 @@ export async function startLeagueSeason(leagueId: string): Promise<{ weeks: numb
   if (league.seasonStarted) throw new Error("Season already started");
 
   const members = league.memberships;
-  if (members.length < 2) throw new Error("Need at least 2 members to start");
+  if (members.length < 1) throw new Error("Need at least 1 member to start");
 
   let userIds: string[] = members.map((m: any) => m.userId);
   let hasGhost = false;

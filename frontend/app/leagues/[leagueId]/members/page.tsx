@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import HelmetAvatar, { HELMET_COLORS } from "@/components/HelmetAvatar";
 
-const ACCENT = "#0070EB";
+const ACCENT = "#02D18A";
 
 export default function MembersPage({ params }: PageProps<"/leagues/[leagueId]/members">) {
   const router = useRouter();
@@ -53,6 +53,13 @@ export default function MembersPage({ params }: PageProps<"/leagues/[leagueId]/m
   async function startLeague() {
     setStartError(""); setStarting(true);
     try {
+      if (myMember) {
+        await Promise.all([
+          api(`/leagues/${leagueId}/my-display-name`, { method: "PATCH", body: JSON.stringify({ displayName: profile.displayName.trim() }) }),
+          api(`/leagues/${leagueId}/my-abbreviation`, { method: "PATCH", body: JSON.stringify({ abbreviation: profile.abbreviation.trim() }) }),
+          api(`/leagues/${leagueId}/my-helmet`, { method: "PATCH", body: JSON.stringify({ helmetColor: profile.helmetColor }) }),
+        ]);
+      }
       await api(`/leagues/${leagueId}/season/start`, { method: "POST", body: JSON.stringify({}) });
       router.push(`/leagues/${leagueId}`);
     } catch (err: any) {
@@ -108,7 +115,7 @@ export default function MembersPage({ params }: PageProps<"/leagues/[leagueId]/m
   if (!league) return <div className="loading">Loading…</div>;
 
   const isCreator = league.creatorId === userId;
-  const canStart = members.length >= 2;
+  const canStart = members.length >= 1;
   const myMember = members.find(m => m.userId === userId);
 
   return (
@@ -222,7 +229,7 @@ export default function MembersPage({ params }: PageProps<"/leagues/[leagueId]/m
             <div className="card" style={{ marginBottom: 12 }}>
               <div style={{ fontSize: "0.8rem", color: "var(--text-2)", marginBottom: 10 }}>
                 {!canStart
-                  ? "Need at least 2 members to start"
+                  ? "Need at least 1 member to start"
                   : `${members.length} member${members.length !== 1 ? "s" : ""} ready — start the season when everyone has joined`}
               </div>
               {startError && <p className="error" style={{ marginBottom: 10 }}>{startError}</p>}
@@ -248,7 +255,7 @@ export default function MembersPage({ params }: PageProps<"/leagues/[leagueId]/m
         Members
         <span style={{ color: "var(--text-3)", fontWeight: 500, fontSize: "0.78rem", marginLeft: 6 }}>({members.length})</span>
       </div>
-      <div className="card" style={{ padding: 0, overflow: "hidden", background: "#fff" }}>
+      <div className="card" style={{ padding: 0, overflow: "hidden", background: "var(--surface)" }}>
         {members.length === 0 && (
           <div style={{ padding: "20px 0", textAlign: "center", color: "var(--text-3)", fontSize: "0.82rem" }}>No members yet</div>
         )}
