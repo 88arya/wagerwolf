@@ -1,15 +1,15 @@
 :root {
   /* ── Backgrounds ── */
-  --bg:           #0D1015;
-  --surface:      #111519;
-  --surface-2:    #171C21;
-  --surface-3:    #1D2228;
-  --surface-4:    #252B32;
+  --bg:           #121212;
+  --surface:      #202020;
+  --surface-2:    #292929;
+  --surface-3:    #333333;
+  --surface-4:    #3D3D3D;
 
   /* ── Borders ── */
-  --border:       #1E242C;
-  --border-2:     #2C333C;
-  --border-3:     #3D4650;
+  --border:       #3C3C3C;
+  --border-2:     #4A4A4A;
+  --border-3:     #585858;
 
   /* ── Accent Green ── */
   --accent:       #02D18A;
@@ -19,8 +19,8 @@
   --accent-glow:  rgba(2, 209, 138, 0.18);
 
   /* ── Header ── */
-  --navy:         #0D1015;
-  --navy-2:       #0D1015;
+  --navy:         #121212;
+  --navy-2:       #121212;
 
   /* ── Status ── */
   --win:          #16A34A;

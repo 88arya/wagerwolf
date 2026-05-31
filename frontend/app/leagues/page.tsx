@@ -204,22 +204,39 @@ export default function LeaguesPage() {
             {memberships.map((m: any) => (
               <Link key={m.id} href={`/leagues/${m.leagueId}`} style={{ textDecoration: "none" }}>
                 <div
-                  style={{ padding: "13px 16px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, cursor: "pointer", transition: "background 0.1s" }}
+                  style={{ padding: "12px 16px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: 12, cursor: "pointer", transition: "background 0.1s" }}
                   onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.background = "var(--surface-2)"; }}
                   onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.background = ""; }}
                 >
+                  <HelmetAvatar color={m.helmetColor ?? "#02D18A"} initials={m.abbreviation || (m.displayName ?? "?").slice(0, 2)} size={38} />
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontWeight: 700, fontSize: "0.88rem", marginBottom: 4, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "var(--text)" }}>
+                    <div style={{ fontWeight: 700, fontSize: "0.88rem", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "var(--text)" }}>
                       {m.league?.name}
                     </div>
-                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                      <span style={{ background: "var(--accent-dim)", color: "var(--accent)", borderRadius: 20, padding: "2px 9px", fontSize: "0.72rem", fontWeight: 800, fontVariantNumeric: "tabular-nums" }}>
-                        ${m.balance.toLocaleString()}
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 3 }}>
+                      <span style={{ fontSize: "0.72rem", color: "var(--text-3)", fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {m.displayName || "—"}
+                        {m.abbreviation ? ` · ${m.abbreviation}` : ""}
                       </span>
-                      <span style={{ color: "var(--text-3)", fontSize: "0.7rem", fontWeight: 600 }}>
-                        ${m.league?.weeklyAllowance}/wk
-                      </span>
-                      {m.league?.isPublic && <span className="badge badge-blue">Public</span>}
+                    </div>
+                    <div style={{ marginTop: 4 }}>
+                      {(() => {
+                        const ctx = m.weekContext;
+                        if (!ctx || ctx.phase === "waiting") return (
+                          <span style={{ fontSize: "0.68rem", color: "var(--text-3)", fontWeight: 600 }}>Waiting Room</span>
+                        );
+                        if (ctx.phase === "ended") return (
+                          <span style={{ fontSize: "0.68rem", color: "var(--text-3)", fontWeight: 600 }}>Season Complete</span>
+                        );
+                        const label = ctx.phase === "playoffs" ? "Playoffs" : "Regular Season";
+                        const weekStr = ctx.week != null ? `Week ${ctx.week} of ${ctx.total}` : "In Season";
+                        return (
+                          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                            <span style={{ fontSize: "0.68rem", color: "var(--text-3)", fontWeight: 600 }}>{weekStr} · {label}</span>
+                            <span style={{ fontSize: "0.68rem", fontWeight: 700, color: "var(--accent)", fontVariantNumeric: "tabular-nums" }}>${m.balance.toLocaleString()}</span>
+                          </div>
+                        );
+                      })()}
                     </div>
                   </div>
                   <span style={{ color: "var(--text-3)", fontSize: "1.1rem", fontWeight: 300, flexShrink: 0 }}>›</span>

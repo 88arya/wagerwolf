@@ -165,6 +165,7 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
       nameChanged ? api(`/leagues/${lId}/my-display-name`, { method: "PATCH", body: JSON.stringify({ displayName: trimmedName }) }) : Promise.resolve(),
       abrChanged ? api(`/leagues/${lId}/my-abbreviation`, { method: "PATCH", body: JSON.stringify({ abbreviation: trimmedAbr }) }) : Promise.resolve(),
     ]);
+    window.dispatchEvent(new Event("league-profile-updated"));
   }
 
 
@@ -385,8 +386,8 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
 
           {/* CENTER TOP: League Banner */}
           <div style={{ gridColumn: "2", gridRow: "1" }}>
-            <div style={{ background: "linear-gradient(135deg, #0f172a 0%, #1e3a5f 100%)", borderRadius: 8, overflow: "hidden", position: "relative", minHeight: 160 }}>
-              <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 8, background: "var(--accent)" }} />
+            <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 8, overflow: "hidden", position: "relative", minHeight: 160 }}>
+              <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 8, background: myHelmetColor }} />
               {/* Banner body */}
               <div style={{ padding: "20px 20px 20px", position: "relative" }}>
                 <div style={{ fontSize: "1.5rem", fontWeight: 800, letterSpacing: "-0.03em", color: "#fff", lineHeight: 1.15 }}>
@@ -577,13 +578,13 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
                 const now = new Date();
                 const isLive = game.status === "IN_PROGRESS" ||
                   (game.status !== "FINAL" && game.status !== "CANCELLED" && game.gameDate && new Date(game.gameDate) <= now);
+                const isScheduled = !isLive && game.status !== "FINAL" && game.status !== "CANCELLED";
                 return (
                   <div key={game.id} onClick={() => router.push(`/leagues/${leagueId}/bet?gameId=${game.id}`)} onMouseEnter={e => (e.currentTarget.style.background = "var(--surface-2)")} onMouseLeave={e => (e.currentTarget.style.background = "var(--surface)")} style={{
                     display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
+                    flexDirection: "column",
                     padding: "9px 14px",
-                    gap: 16,
+                    gap: 6,
                     flex: "0 0 calc(100% / 8)",
                     boxSizing: "border-box",
                     background: "var(--surface)",
@@ -591,52 +592,51 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
                     transition: "background 0.12s",
                     cursor: "pointer",
                   }}>
-                    {/* Teams stacked: away top, home bottom */}
-                    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
-                        <TeamLogo team={game.awayTeam} size={20} plain />
-                        <span style={{ fontWeight: 700, fontSize: "0.75rem", color: "var(--text)" }}>{game.awayTeam}</span>
-                      </div>
-                      <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
-                        <TeamLogo team={game.homeTeam} size={20} plain />
-                        <span style={{ fontWeight: 700, fontSize: "0.75rem", color: "var(--text)" }}>{game.homeTeam}</span>
-                      </div>
-                    </div>
-                    {/* Score / time */}
-                    <div style={{ textAlign: "right", flexShrink: 0, display: "flex", flexDirection: "column", gap: 3, alignItems: "flex-end" }}>
-                      {game.status === "FINAL" ? (
-                        <>
-                          <span style={{ fontSize: "0.7rem", fontWeight: 800, color: "var(--text-2)", fontVariantNumeric: "tabular-nums" }}>{game.awayScore}</span>
-                          <span style={{ fontSize: "0.7rem", fontWeight: 800, color: "var(--text-2)", fontVariantNumeric: "tabular-nums" }}>{game.homeScore}</span>
-                        </>
-                      ) : isLive ? (
-                        <>
-                          {game.awayScore != null && game.homeScore != null && (
-                            <>
-                              <span style={{ fontSize: "0.7rem", fontWeight: 800, color: "var(--text)", fontVariantNumeric: "tabular-nums" }}>{game.awayScore}</span>
-                              <span style={{ fontSize: "0.7rem", fontWeight: 800, color: "var(--text)", fontVariantNumeric: "tabular-nums" }}>{game.homeScore}</span>
-                            </>
-                          )}
-                          <div style={{ display: "flex", alignItems: "center", gap: 3 }}>
+                    {/* Top row */}
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      {/* Left: LIVE badge or date/time or status */}
+                      <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                        {isLive ? (
+                          <>
                             <div style={{ width: 5, height: 5, borderRadius: "50%", background: "var(--win)", flexShrink: 0 }} />
-                            <span style={{ fontSize: "0.52rem", color: "var(--win)", fontWeight: 800, letterSpacing: "0.04em" }}>LIVE</span>
-                          </div>
-                          {game.statusDetail ? (
-                            <span style={{ fontSize: "0.48rem", color: "var(--text-3)", fontWeight: 600, whiteSpace: "nowrap" }}>{game.statusDetail}</span>
-                          ) : null}
-                        </>
-                      ) : game.status === "CANCELLED" ? (
-                        <span style={{ fontSize: "0.52rem", color: "var(--loss)", fontWeight: 800 }}>CANC</span>
-                      ) : game.gameDate ? (
-                        <>
-                          <span style={{ fontSize: "0.68rem", fontWeight: 700, color: "var(--text-3)" }}>
-                            {new Date(game.gameDate).toLocaleDateString("en-US", { weekday: "short", timeZone: "America/New_York" })}
-                          </span>
-                          <span style={{ fontSize: "0.65rem", fontWeight: 600, color: "var(--text-3)" }}>
-                            {new Date(game.gameDate).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: "America/New_York" })}
-                          </span>
-                        </>
+                            <span style={{ fontSize: "0.62rem", color: "var(--win)", fontWeight: 700, letterSpacing: "0.04em" }}>LIVE</span>
+                          </>
+                        ) : isScheduled && game.gameDate ? (
+                          <>
+                            <span style={{ fontSize: "0.62rem", fontWeight: 700, color: "var(--text-3)" }}>{new Date(game.gameDate).toLocaleDateString("en-US", { weekday: "short", timeZone: "America/New_York" })}</span>
+                            <span style={{ fontSize: "0.62rem", fontWeight: 700, color: "var(--text-3)" }}>{new Date(game.gameDate).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: "America/New_York" })}</span>
+                          </>
+                        ) : game.status === "CANCELLED" ? (
+                          <span style={{ fontSize: "0.62rem", color: "var(--loss)", fontWeight: 700 }}>CANCELLED</span>
+                        ) : (
+                          <span style={{ fontSize: "0.62rem", fontWeight: 700, color: "var(--text-3)" }}>FINAL</span>
+                        )}
+                      </div>
+                      {/* Right: game clock when live, redirect arrow when scheduled, nothing when ended */}
+                      {isLive ? (
+                        game.statusDetail && <span style={{ fontSize: "0.62rem", color: "var(--text-3)", fontWeight: 700, whiteSpace: "nowrap" }}>{game.statusDetail}</span>
+                      ) : isScheduled ? (
+                        <svg width="9" height="9" viewBox="0 0 10 10" fill="none" stroke="var(--text-3)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M3 1h6v6M9 1L1 9" />
+                        </svg>
                       ) : null}
+                    </div>
+                    {/* Teams + scores */}
+                    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 7 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+                          <TeamLogo team={game.awayTeam} size={20} plain />
+                          <span style={{ fontWeight: 700, fontSize: "0.75rem", color: "var(--text)" }}>{game.awayTeam}</span>
+                        </div>
+                        {(isLive || game.status === "FINAL") && <span style={{ fontSize: "0.75rem", fontWeight: 700, fontVariantNumeric: "tabular-nums", color: "var(--text)" }}>{game.awayScore}</span>}
+                      </div>
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 7 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+                          <TeamLogo team={game.homeTeam} size={20} plain />
+                          <span style={{ fontWeight: 700, fontSize: "0.75rem", color: "var(--text)" }}>{game.homeTeam}</span>
+                        </div>
+                        {(isLive || game.status === "FINAL") && <span style={{ fontSize: "0.75rem", fontWeight: 700, fontVariantNumeric: "tabular-nums", color: "var(--text)" }}>{game.homeScore}</span>}
+                      </div>
                     </div>
                   </div>
                 );
