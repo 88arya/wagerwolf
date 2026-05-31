@@ -51,14 +51,36 @@ async function ensureOpenPublicLeague(creatorId: string) {
 // Active memberships only (shown in "My Leagues" list)
 router.get("/", requireAuth, async (req: any, res: any) => {
   try {
-    const memberships = await prisma.membership.findMany({
-      where: { userId: req.userId, status: "ACTIVE" },
-      include: { league: true, user: { select: { displayName: true, name: true } } },
+    const [memberships, currentWeek] = await Promise.all([
+      prisma.membership.findMany({
+        where: { userId: req.userId, status: "ACTIVE" },
+        include: { league: true, user: { select: { displayName: true, name: true } } },
+      }),
+      prisma.week.findFirst({ where: { resolved: false }, orderBy: { number: "asc" } }),
+    ]);
+
+    const enriched = memberships.map((m: any) => {
+      const league = m.league;
+      const nflWeek = currentWeek?.number ?? null;
+      const weekOffset = nflWeek != null ? nflWeek - league.startWeek + 1 : null;
+      const regularSeasonWeeks: number = league.regularSeasonWeeks;
+      const playoffWeeks: number = league.playoffWeeks;
+      const isPlayoffs = weekOffset != null && weekOffset > regularSeasonWeeks;
+      const phaseWeek = isPlayoffs ? weekOffset - regularSeasonWeeks : weekOffset;
+      const phaseTotal = isPlayoffs ? playoffWeeks : regularSeasonWeeks;
+
+      return {
+        ...m,
+        displayName: m.displayName || m.user?.displayName || m.user?.name || "",
+        weekContext: !league.seasonStarted
+          ? { phase: "waiting" }
+          : league.seasonEnded
+          ? { phase: "ended" }
+          : weekOffset != null && weekOffset >= 1
+          ? { phase: isPlayoffs ? "playoffs" : "regular", week: phaseWeek, total: phaseTotal }
+          : { phase: "active" },
+      };
     });
-    const enriched = memberships.map((m: any) => ({
-      ...m,
-      displayName: m.displayName || m.user?.displayName || m.user?.name || "",
-    }));
     res.json(enriched);
   } catch (err: any) {
     res.status(500).json({ error: err.message });

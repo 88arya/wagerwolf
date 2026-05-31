@@ -88,11 +88,12 @@ export async function syncOdds(weekId: string): Promise<{ games: number; lines: 
   if (!week) throw new Error("Week not found");
 
   const allData = await getNFLWeekData();
+  const now = new Date();
   const start = new Date(week.startDate);
   const end = new Date(week.endDate);
   const inRange = allData.filter(({ commenceTime }: any) => {
     const d = new Date(commenceTime);
-    return d >= start && d <= end;
+    return d >= start && d <= end && d > now;
   });
 
   let gamesSynced = 0, linesSynced = 0, propsSynced = 0;
