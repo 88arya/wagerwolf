@@ -6,6 +6,7 @@ import { GoogleLogin } from "@react-oauth/google";
 import { api } from "@/lib/api";
 
 const ACCENT = "#02D18A";
+const NAV_H = 56;
 
 const STEPS = [
   { n: "01", title: "Join a League", desc: "Create a private league and invite friends, or drop into a public one. Leagues run the full NFL season." },
@@ -18,14 +19,17 @@ const STEPS = [
 
 export default function HomePage() {
   const router = useRouter();
-
   const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [displayName, setDisplayName] = useState("");
   const [modal, setModal] = useState(false);
   const [modalError, setModalError] = useState("");
-  const [modalLoading, setModalLoading] = useState(false);
 
   useEffect(() => {
-    if (localStorage.getItem("token")) setIsLoggedIn(true);
+    const token = localStorage.getItem("token");
+    if (token) {
+      setIsLoggedIn(true);
+      setDisplayName(localStorage.getItem("displayName") || "");
+    }
   }, []);
 
   function logout() {
@@ -33,73 +37,121 @@ export default function HomePage() {
     localStorage.removeItem("userId");
     localStorage.removeItem("displayName");
     setIsLoggedIn(false);
+    setDisplayName("");
   }
 
   function openModal() {
-    setModalError(""); setModalLoading(false);
+    setModalError("");
     setModal(true);
   }
 
   async function handleGoogleSuccess(credentialResponse: any) {
-    setModalError(""); setModalLoading(true);
+    setModalError("");
     try {
       const res = await api("/users/auth/google", { method: "POST", body: JSON.stringify({ credential: credentialResponse.credential }) });
       localStorage.setItem("token", res.token);
       localStorage.setItem("userId", res.userId);
       localStorage.setItem("displayName", res.displayName);
       setIsLoggedIn(true);
+      setDisplayName(res.displayName || "");
       setModal(false);
       router.push("/leagues");
     } catch (err: any) {
       try { setModalError(JSON.parse(err.message).error); } catch { setModalError(err.message); }
-      setModalLoading(false);
     }
   }
+
+  const initials = displayName
+    ? displayName.split(" ").map((w: string) => w[0]).join("").toUpperCase().slice(0, 2)
+    : "?";
 
   return (
     <div style={{ flex: 1, minHeight: 0, overflowY: "auto" }}>
 
-      {/* ── Hero ── */}
-      <div style={{ minHeight: "70vh", display: "flex", flexDirection: "column", justifyContent: "center", padding: "80px 32px 72px", background: "var(--bg)" }}>
-        <div style={{ maxWidth: 1040, margin: "0 auto", width: "100%" }}>
-        <div style={{ maxWidth: 560 }}>
+      {/* ── Navbar ── */}
+      <nav style={{
+        position: "sticky",
+        top: 0,
+        zIndex: 50,
+        height: NAV_H,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        padding: "0 24px",
+        background: "var(--bg)",
+        borderBottom: "1px solid var(--border)",
+      }}>
+        <div
+          style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }}
+          onClick={() => router.push("/")}
+        >
+          <img src="/grH9m01.svg" alt="FanMark" style={{ height: 26, width: 26, objectFit: "contain" }} />
+          <span style={{ fontSize: "0.9rem", fontWeight: 900, letterSpacing: "-0.02em", color: "var(--text)" }}>FANMARK</span>
+        </div>
 
-          <div style={{ display: "flex", alignItems: "center", gap: 20, marginBottom: 24 }}>
-            <img src="/grH9m01.svg" alt="FanMark" style={{ height: "clamp(3rem, 8vw, 5.5rem)", width: "clamp(3rem, 8vw, 5.5rem)", objectFit: "contain", flexShrink: 0, objectFit: "contain" }} />
-            <div style={{ fontSize: "clamp(3rem, 8vw, 5.5rem)", fontWeight: 900, letterSpacing: "-0.04em", color: "var(--text)", lineHeight: 1 }}>
-              FANMARK
-            </div>
+        {!isLoggedIn ? (
+          <div style={{ display: "flex", gap: 8 }}>
+            <button type="button" className="ghost" onClick={openModal} style={{ padding: "7px 16px", fontSize: "0.82rem" }}>Log In</button>
+            <button type="button" onClick={openModal} style={{ padding: "7px 16px", fontSize: "0.82rem" }}>Sign Up</button>
           </div>
-
-          <p style={{ fontSize: "1rem", color: "var(--text-2)", lineHeight: 1.75, fontWeight: 500, maxWidth: 420, margin: "0 0 40px" }}>
-The new way to play Fantasy Football. Score points by hitting on your bets.
-          </p>
-
-          {!isLoggedIn ? (
-            <div style={{ display: "flex", gap: 10, justifyContent: "center" }}>
-              <button type="button" onClick={openModal}
-                style={{ padding: "11px 32px", fontSize: "0.92rem", fontWeight: 600 }}>
-                Log In
-              </button>
-              <button type="button" onClick={openModal}
-                style={{ padding: "11px 32px", fontSize: "0.92rem", fontWeight: 700 }}>
-                Sign Up
-              </button>
+        ) : (
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <div
+              className="avatar"
+              onClick={() => router.push("/settings")}
+              style={{ cursor: "pointer", width: 30, height: 30, fontSize: "0.65rem" }}
+            >
+              {initials}
             </div>
-          ) : (
-            <div style={{ display: "flex", gap: 10, justifyContent: "center" }}>
-              <button type="button" onClick={() => router.push("/leagues")}
-                style={{ padding: "11px 32px", fontSize: "0.92rem", fontWeight: 700 }}>
+            <span
+              style={{ fontSize: "0.85rem", fontWeight: 600, color: "var(--text)", cursor: "pointer" }}
+              onClick={() => router.push("/settings")}
+            >
+              {displayName}
+            </span>
+            <button type="button" className="ghost" onClick={logout} style={{ padding: "6px 12px", fontSize: "0.8rem" }}>Log Out</button>
+          </div>
+        )}
+      </nav>
+
+      {/* ── Hero (fills remaining viewport) ── */}
+      <div style={{
+        height: `calc(100dvh - ${NAV_H}px)`,
+        display: "flex",
+        flexDirection: "column",
+        justifyContent: "center",
+        padding: "0 32px",
+        background: "var(--bg)",
+      }}>
+        <div style={{ maxWidth: 1040, margin: "0 auto", width: "100%" }}>
+          <div style={{ maxWidth: 560 }}>
+
+            <div style={{ display: "flex", alignItems: "center", gap: 20, marginBottom: 24 }}>
+              <img
+                src="/grH9m01.svg"
+                alt="FanMark"
+                style={{ height: "clamp(3rem, 8vw, 5.5rem)", width: "clamp(3rem, 8vw, 5.5rem)", objectFit: "contain", flexShrink: 0 }}
+              />
+              <div style={{ fontSize: "clamp(3rem, 8vw, 5.5rem)", fontWeight: 900, letterSpacing: "-0.04em", color: "var(--text)", lineHeight: 1 }}>
+                FANMARK
+              </div>
+            </div>
+
+            <p style={{ fontSize: "1rem", color: "var(--text-2)", lineHeight: 1.75, fontWeight: 500, maxWidth: 420, margin: "0 0 40px" }}>
+              The new way to play Fantasy Football. Score points by hitting on your bets.
+            </p>
+
+            {!isLoggedIn ? (
+              <button type="button" onClick={openModal} style={{ padding: "13px 36px", fontSize: "1rem", fontWeight: 700 }}>
+                Play Now
+              </button>
+            ) : (
+              <button type="button" onClick={() => router.push("/leagues")} style={{ padding: "13px 36px", fontSize: "1rem", fontWeight: 700 }}>
                 My Leagues →
               </button>
-              <button type="button" onClick={logout} className="ghost"
-                style={{ padding: "11px 32px", fontSize: "0.92rem", fontWeight: 600 }}>
-                Log Out
-              </button>
-            </div>
-          )}
+            )}
 
-        </div>
+          </div>
         </div>
       </div>
 
@@ -137,9 +189,18 @@ The new way to play Fantasy Football. Score points by hitting on your bets.
 
       {/* ── Auth Modal ── */}
       {modal && (
-        <div onClick={() => setModal(false)} style={{ position: "fixed", inset: 0, zIndex: 100, background: "rgba(0,0,0,0.55)", backdropFilter: "blur(8px)", display: "flex", alignItems: "center", justifyContent: "center", padding: "32px 24px" }}>
-          <div onClick={e => e.stopPropagation()} style={{ width: 360, background: "var(--surface)", borderRadius: "var(--radius-lg)", border: "1px solid var(--border-2)", overflow: "hidden", position: "relative" }}>
-            <button onClick={() => setModal(false)} style={{ position: "absolute", top: 14, right: 16, background: "none", border: "none", cursor: "pointer", fontSize: "1.1rem", color: "var(--text-3)", lineHeight: 1, padding: 4 }}>✕</button>
+        <div
+          onClick={() => setModal(false)}
+          style={{ position: "fixed", inset: 0, zIndex: 100, background: "rgba(0,0,0,0.55)", backdropFilter: "blur(8px)", display: "flex", alignItems: "center", justifyContent: "center", padding: "32px 24px" }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{ width: 360, background: "var(--surface)", borderRadius: "var(--radius-lg)", border: "1px solid var(--border-2)", overflow: "hidden", position: "relative" }}
+          >
+            <button
+              onClick={() => setModal(false)}
+              style={{ position: "absolute", top: 14, right: 16, background: "none", border: "none", cursor: "pointer", fontSize: "1.1rem", color: "var(--text-3)", lineHeight: 1, padding: 4 }}
+            >✕</button>
             <div style={{ padding: "36px 28px 32px", display: "flex", flexDirection: "column", alignItems: "center", gap: 20 }}>
               <img src="/grH9m01.svg" alt="FanMark" style={{ width: 64, height: 64, objectFit: "contain" }} />
               {modalError && <p className="error" style={{ width: "100%", textAlign: "center", margin: 0 }}>{modalError}</p>}
