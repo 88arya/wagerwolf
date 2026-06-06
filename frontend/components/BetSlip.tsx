@@ -97,6 +97,16 @@ function getAdjustedOdds(leg: SlipLeg, currentLine: number): number {
   return Math.max(-500, Math.min(500, leg.odds - Math.round(favSteps * 15)));
 }
 
+function getCombinations<T>(arr: T[], size: number): T[][] {
+  if (size === 0) return [[]];
+  if (arr.length < size) return [];
+  const [first, ...rest] = arr;
+  return [
+    ...getCombinations(rest, size - 1).map((c) => [first, ...c]),
+    ...getCombinations(rest, size),
+  ];
+}
+
 function CloseIcon() {
   return (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
@@ -116,6 +126,8 @@ export default function BetSlip({ leagueId }: { leagueId: string }) {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [msg, setMsg] = useState("");
+  const [rrMode, setRrMode] = useState(false);
+  const [rrSize, setRrSize] = useState(2);
 
   const refresh = useCallback(() => setLegs(getBetSlip()), []);
 
@@ -258,6 +270,49 @@ export default function BetSlip({ leagueId }: { leagueId: string }) {
       setOpen(false);
       window.dispatchEvent(new Event("bet-placed"));
       setTimeout(() => setMsg(""), 4000);
+    } catch (err: any) {
+      try { setError(JSON.parse(err.message).error); } catch { setError(err.message); }
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  const rrCombos = rrMode && legs.length >= 3 ? getCombinations(legs, rrSize).length : 0;
+  const rrTotalStake = rrCombos * (Number(parlayStake) || 0);
+
+  async function submitRoundRobin() {
+    if (legs.length < 3) { setError("Round robin requires at least 3 legs"); return; }
+    if (!parlayStakeNum || parlayStakeNum <= 0) { setError("Enter a stake per combo"); return; }
+    setSubmitting(true);
+    setError("");
+    try {
+      const result = await api("/parlays/round-robin", {
+        method: "POST",
+        body: JSON.stringify({
+          leagueId,
+          size: rrSize,
+          stakePerParlay: parlayStakeNum,
+          legs: legs.map((l) => {
+            const currentLine = getCurrentLine(l);
+            const altLine = (currentLine != null && l.line != null && currentLine !== l.line) ? currentLine : undefined;
+            return {
+              propId: l.type === "prop" ? l.id : undefined,
+              gameLineId: l.type === "gameline" ? l.id : undefined,
+              direction: l.direction,
+              ...(altLine != null ? { altLine } : {}),
+            };
+          }),
+        }),
+      });
+      const n = result.combos ?? rrCombos;
+      setMsg(`${n} round robin combos placed! Total: $${result.totalStake?.toLocaleString()}`);
+      setParlayStake("");
+      setRrMode(false);
+      clearSlip();
+      setLegLines({});
+      setOpen(false);
+      window.dispatchEvent(new Event("bet-placed"));
+      setTimeout(() => setMsg(""), 5000);
     } catch (err: any) {
       try { setError(JSON.parse(err.message).error); } catch { setError(err.message); }
     } finally {
@@ -593,7 +648,7 @@ export default function BetSlip({ leagueId }: { leagueId: string }) {
             })}
           </div>
 
-          {/* Parlay section */}
+          {/* Parlay / Round Robin section */}
           {legs.length >= 2 && (
             <div style={{
               padding: "14px 14px",
@@ -601,65 +656,85 @@ export default function BetSlip({ leagueId }: { leagueId: string }) {
               borderTop: "2px solid var(--border-2)",
               flexShrink: 0,
             }}>
+              {/* Header row */}
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-                <div>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                   <span style={{ fontWeight: 800, fontSize: "0.88rem", color: "var(--text)" }}>
-                    {legs.length}-Leg Parlay
+                    {rrMode ? "Round Robin" : `${legs.length}-Leg Parlay`}
                   </span>
+                  {legs.length >= 3 && (
+                    <button
+                      onClick={() => { setRrMode((v) => !v); setError(""); }}
+                      style={{
+                        fontSize: "0.65rem", fontWeight: 800, padding: "2px 7px",
+                        borderRadius: 4, border: `1px solid ${rrMode ? "var(--accent)" : "var(--border-2)"}`,
+                        background: rrMode ? "var(--accent)" : "transparent",
+                        color: rrMode ? "#fff" : "var(--text-3)",
+                        cursor: "pointer", letterSpacing: "0.05em",
+                      }}
+                    >RR</button>
+                  )}
                 </div>
-                <span style={{
-                  fontWeight: 900,
-                  fontSize: "1rem",
-                  color: "var(--accent)",
-                  fontVariantNumeric: "tabular-nums",
-                }}>
-                  {fmtOdds(totalOdds)}
-                </span>
+                {!rrMode && (
+                  <span style={{ fontWeight: 900, fontSize: "1rem", color: "var(--accent)", fontVariantNumeric: "tabular-nums" }}>
+                    {fmtOdds(totalOdds)}
+                  </span>
+                )}
+                {rrMode && (
+                  <div style={{ display: "flex", gap: 4 }}>
+                    {[2, 3].filter((s) => s < legs.length).map((s) => (
+                      <button
+                        key={s}
+                        onClick={() => setRrSize(s)}
+                        style={{
+                          fontSize: "0.7rem", fontWeight: 700, padding: "3px 9px", borderRadius: 4,
+                          border: `1px solid ${rrSize === s ? "var(--accent)" : "var(--border-2)"}`,
+                          background: rrSize === s ? "var(--accent)" : "transparent",
+                          color: rrSize === s ? "#fff" : "var(--text-3)",
+                          cursor: "pointer",
+                        }}
+                      >{s}-team</button>
+                    ))}
+                  </div>
+                )}
               </div>
+
+              {rrMode && (
+                <div style={{ fontSize: "0.72rem", color: "var(--text-3)", marginBottom: 8 }}>
+                  {rrCombos} combo{rrCombos !== 1 ? "s" : ""}
+                  {rrTotalStake > 0 && <span style={{ color: "var(--text-2)", fontWeight: 600 }}> · Total: ${rrTotalStake.toLocaleString()}</span>}
+                </div>
+              )}
 
               <div style={{ display: "flex", gap: 6 }}>
                 <div style={{ flex: 1, position: "relative" }}>
                   <span style={{
                     position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)",
-                    color: "var(--text-3)", fontSize: "0.88rem", fontWeight: 600,
-                    pointerEvents: "none",
+                    color: "var(--text-3)", fontSize: "0.88rem", fontWeight: 600, pointerEvents: "none",
                   }}>$</span>
                   <input
                     type="number"
-                    placeholder="0"
+                    placeholder={rrMode ? "per combo" : "0"}
                     min="1"
                     value={parlayStake}
                     onChange={(e) => { setParlayStake(e.target.value); setError(""); }}
-                    style={{
-                      fontSize: "0.88rem",
-                      padding: "8px 10px 8px 22px",
-                      fontVariantNumeric: "tabular-nums",
-                    }}
+                    style={{ fontSize: "0.88rem", padding: "8px 10px 8px 22px", fontVariantNumeric: "tabular-nums" }}
                   />
                 </div>
                 <button
-                  onClick={submitParlay}
+                  onClick={rrMode ? submitRoundRobin : submitParlay}
                   disabled={submitting || !parlayStake || Number(parlayStake) <= 0}
                   style={{
-                    flexShrink: 0,
-                    fontSize: "0.82rem",
-                    padding: "8px 16px",
-                    fontWeight: 700,
+                    flexShrink: 0, fontSize: "0.82rem", padding: "8px 16px", fontWeight: 700,
                     opacity: (submitting || !parlayStake || Number(parlayStake) <= 0) ? 0.45 : 1,
                   }}
                 >
-                  {submitting ? "Placing…" : "Parlay"}
+                  {submitting ? "Placing…" : rrMode ? "Round Robin" : "Parlay"}
                 </button>
               </div>
 
-              {parlayPayout > 0 && (
-                <div style={{
-                  display: "flex",
-                  gap: 12,
-                  marginTop: 8,
-                  fontSize: "0.75rem",
-                  color: "var(--text-3)",
-                }}>
+              {!rrMode && parlayPayout > 0 && (
+                <div style={{ display: "flex", gap: 12, marginTop: 8, fontSize: "0.75rem", color: "var(--text-3)" }}>
                   <span>To win <span style={{ color: "var(--win)", fontWeight: 700, fontSize: "0.85rem" }}>${parlayProfit.toLocaleString()}</span></span>
                   <span>Payout <span style={{ fontWeight: 600, color: "var(--text-2)" }}>${parlayPayout.toLocaleString()}</span></span>
                 </div>

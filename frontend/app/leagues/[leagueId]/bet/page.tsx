@@ -55,13 +55,14 @@ const PR_BOX_W = 110;
 const PR_BOX_H = 42;
 const PR_BOX_GAP = 2;
 
-function PropPlayerRow({ prop, slipLegs, submittedPropIds, pendingPropDirs, weekLocked, onBet }: {
+function PropPlayerRow({ prop, slipLegs, submittedPropIds, pendingPropDirs, weekLocked, onBet, hitRate }: {
   prop: any;
   slipLegs: any[];
   submittedPropIds: Set<string>;
   pendingPropDirs: Map<string, string>;
   weekLocked: boolean;
   onBet: (prop: any, direction: "OVER" | "UNDER", blockLine: number) => void;
+  hitRate?: { overPct: number; sampleSize: number };
 }) {
   const [scrollIdx, setScrollIdx] = useState(1);
   const [hoveredBoxIdx, setHoveredBoxIdx] = useState<number | null>(null);
@@ -107,6 +108,14 @@ function PropPlayerRow({ prop, slipLegs, submittedPropIds, pendingPropDirs, week
         <div style={{ flex: 1, minWidth: 0, fontWeight: 400, fontSize: "0.8rem", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
           {prop.player?.name}{prop.player?.position && <span style={{ color: "var(--text-3)", marginLeft: 4 }}>· {prop.player.position}</span>}
           {placed && <span style={{ marginLeft: 5, fontSize: "0.6rem", color: "var(--win)", fontWeight: 700 }}>✓</span>}
+          {hitRate && hitRate.sampleSize >= 3 && (
+            <span style={{
+              marginLeft: 6, fontSize: "0.58rem", fontWeight: 700,
+              color: hitRate.overPct >= 55 ? "var(--win)" : hitRate.overPct <= 45 ? "var(--loss)" : "var(--text-3)",
+            }}>
+              O {hitRate.overPct}%
+            </span>
+          )}
         </div>
       </div>
 
@@ -250,6 +259,7 @@ export default function BetPage({ params }: PageProps<"/leagues/[leagueId]/bet">
   const [isCreator, setIsCreator] = useState(false);
   const [altSpreadIdx, setAltSpreadIdx] = useState(0);
   const [altTotalIdx, setAltTotalIdx] = useState(0);
+  const [hitRates, setHitRates] = useState<Record<string, { overPct: number; sampleSize: number }>>({});
   const altSpreadScrollRef = useRef<HTMLDivElement | null>(null);
   const altTotalScrollRef = useRef<HTMLDivElement | null>(null);
 
@@ -324,6 +334,11 @@ export default function BetPage({ params }: PageProps<"/leagues/[leagueId]/bet">
           weekGamesRef = weekGames;
           setGames(weekGames);
           await loadSubmitted(leagueId, weekGames);
+
+          try {
+            const hr = await api("/props/hit-rates");
+            setHitRates(hr ?? {});
+          } catch {}
 
           const gid = searchParams.get("gameId");
           if (gid) {
@@ -432,6 +447,7 @@ export default function BetPage({ params }: PageProps<"/leagues/[leagueId]/bet">
                   pendingPropDirs={pendingPropDirs}
                   weekLocked={weekLocked}
                   onBet={toggleBlockInSlip}
+                  hitRate={hitRates[`${prop.player?.id}:${prop.statType}`]}
                 />
               ))}
             </div>
