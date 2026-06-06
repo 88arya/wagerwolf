@@ -118,41 +118,48 @@ export default function HomePage() {
       <div style={{
         height: `calc(100dvh - ${NAV_H}px)`,
         display: "flex",
-        flexDirection: "column",
-        justifyContent: "center",
-        padding: "0 32px",
+        alignItems: "center",
+        paddingLeft: 48,
         background: "var(--bg)",
+        overflow: "hidden",
       }}>
-        <div style={{ maxWidth: 1040, margin: "0 auto", width: "100%" }}>
-          <div style={{ maxWidth: 560 }}>
-
-            <div style={{ display: "flex", alignItems: "center", gap: 20, marginBottom: 24 }}>
-              <img
-                src="/grH9m01.svg"
-                alt="FanMark"
-                style={{ height: "clamp(3rem, 8vw, 5.5rem)", width: "clamp(3rem, 8vw, 5.5rem)", objectFit: "contain", flexShrink: 0 }}
-              />
-              <div style={{ fontSize: "clamp(3rem, 8vw, 5.5rem)", fontWeight: 900, letterSpacing: "-0.04em", color: "var(--text)", lineHeight: 1 }}>
-                FANMARK
-              </div>
+        {/* Left — text + CTA, fixed width so image can't encroach */}
+        <div style={{ flex: "0 0 400px", zIndex: 1 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 20, marginBottom: 24 }}>
+            <img
+              src="/grH9m01.svg"
+              alt="FanMark"
+              style={{ height: "clamp(3rem, 8vw, 5.5rem)", width: "clamp(3rem, 8vw, 5.5rem)", objectFit: "contain", flexShrink: 0 }}
+            />
+            <div style={{ fontSize: "clamp(3rem, 8vw, 5.5rem)", fontWeight: 900, letterSpacing: "-0.04em", color: "var(--text)", lineHeight: 1 }}>
+              FANMARK
             </div>
-
-            <p style={{ fontSize: "1rem", color: "var(--text-2)", lineHeight: 1.75, fontWeight: 500, maxWidth: 420, margin: "0 0 40px" }}>
-              The new way to play Fantasy Football. Score points by hitting on your bets.
-            </p>
-
-            {!isLoggedIn ? (
-              <button type="button" onClick={openModal} style={{ padding: "13px 36px", fontSize: "1rem", fontWeight: 700 }}>
-                Play Now
-              </button>
-            ) : (
-              <button type="button" onClick={() => router.push("/leagues")} style={{ padding: "13px 36px", fontSize: "1rem", fontWeight: 700 }}>
-                My Leagues →
-              </button>
-            )}
-
           </div>
+
+          <p style={{ fontSize: "1rem", color: "var(--text-2)", lineHeight: 1.75, fontWeight: 500, maxWidth: 340, margin: "0 0 40px" }}>
+            The new way to play Fantasy Football. Score points by hitting on your bets.
+          </p>
+
+          {!isLoggedIn ? (
+            <button type="button" onClick={openModal} style={{ padding: "13px 36px", fontSize: "1rem", fontWeight: 700 }}>
+              Play Now
+            </button>
+          ) : (
+            <button type="button" onClick={() => router.push("/leagues")} style={{ padding: "13px 36px", fontSize: "1rem", fontWeight: 700 }}>
+              My Leagues →
+            </button>
+          )}
         </div>
+
+        {/* Right — device mockup, sized to full hero height */}
+        <div style={{ flex: 1, minWidth: 0, display: "flex", justifyContent: "flex-end", alignItems: "center", height: "100%" }}>
+          <img
+            src="/device-mockup.png"
+            alt="FanMark app"
+            style={{ height: "100%", width: "auto", objectFit: "contain", display: "block" }}
+          />
+        </div>
+
       </div>
 
       {/* ── How to Play ── */}
