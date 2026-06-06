@@ -497,7 +497,7 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
                           bottom: `${mb / H * 100}%`,
                         }}>
                           {powerRankings.map((m: any) => {
-                            const rankChange = 0;
+                            const rankChange = m.prevRank != null ? m.prevRank - m.powerRank : 0;
                             const xp = xPctPlot(m.powerRank);
                             const yp = yPctPlot(rankChange);
                             const isMe = m.userId === userId;
