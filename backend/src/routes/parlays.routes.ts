@@ -5,6 +5,26 @@ import { calcParlayOdds, calcParlayPayout } from "../lib/payout";
 
 const router = Router();
 
+function getCombinations<T>(arr: T[], size: number): T[][] {
+  if (size === 0) return [[]];
+  if (arr.length < size) return [];
+  const [first, ...rest] = arr;
+  return [
+    ...getCombinations(rest, size - 1).map((c) => [first, ...c]),
+    ...getCombinations(rest, size),
+  ];
+}
+
+interface ResolvedLeg {
+  propId?: string;
+  gameLineId?: string;
+  direction?: string;
+  odds: number;
+  altLine?: number;
+  gameId: string;
+  market?: string;
+}
+
 const OPPOSITE: Record<string, string> = {
   MONEYLINE_HOME: "MONEYLINE_AWAY",
   MONEYLINE_AWAY: "MONEYLINE_HOME",
@@ -211,6 +231,150 @@ router.post("/", requireAuth, async (req: any, res: any) => {
     });
 
     res.status(201).json(parlay);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post("/round-robin", requireAuth, async (req: any, res: any) => {
+  try {
+    const { leagueId, legs, size, stakePerParlay } = req.body as {
+      leagueId: string; legs: LegInput[]; size: number; stakePerParlay: number;
+    };
+    const userId = req.userId;
+
+    if (!leagueId || !Array.isArray(legs) || legs.length < 3 || !size || size < 2 || size >= legs.length || !stakePerParlay) {
+      res.status(400).json({ error: "Requires leagueId, 3+ legs, size (2 to legs-1), and stakePerParlay" }); return;
+    }
+
+    const league = await prisma.league.findUnique({
+      where: { id: leagueId },
+      select: { maxStakePerBet: true, maxBetsPerWeek: true, maxParlayLegs: true },
+    });
+    if (league?.maxStakePerBet && Number(stakePerParlay) > league.maxStakePerBet) {
+      res.status(400).json({ error: `Max stake per bet is $${league.maxStakePerBet}` }); return;
+    }
+
+    const membership = await prisma.membership.findUnique({
+      where: { userId_leagueId: { userId, leagueId } },
+    });
+    if (!membership) { res.status(404).json({ error: "Not a member of this league" }); return; }
+
+    // Resolve every leg individually (validate + compute odds)
+    const resolved: ResolvedLeg[] = [];
+    let firstWeekId: string | null = null;
+    for (const leg of legs) {
+      if (!leg.propId && !leg.gameLineId) {
+        res.status(400).json({ error: "Each leg must have propId or gameLineId" }); return;
+      }
+      if (leg.propId) {
+        if (!leg.direction) { res.status(400).json({ error: "Prop legs require a direction" }); return; }
+        const prop = await prisma.prop.findUnique({
+          where: { id: leg.propId },
+          include: { game: { include: { week: true } } },
+        }) as any;
+        if (!prop) { res.status(404).json({ error: `Prop ${leg.propId} not found` }); return; }
+        if (prop.game.status === "CANCELLED") { res.status(400).json({ error: "Cannot include cancelled game" }); return; }
+        if (prop.game.week.locked || prop.game.week.resolved) { res.status(400).json({ error: "Cannot include locked/resolved props" }); return; }
+        if (new Date(prop.game.gameDate) <= new Date()) { res.status(400).json({ error: "Game has already kicked off" }); return; }
+        const odds = leg.altLine != null && prop.line != null
+          ? calcPropAltOdds(prop.odds, prop.line, leg.altLine, prop.statType, leg.direction!)
+          : prop.odds;
+        if (!firstWeekId) firstWeekId = prop.game.week.id;
+        resolved.push({ propId: leg.propId, direction: leg.direction, odds, altLine: leg.altLine, gameId: prop.game.id });
+      } else if (leg.gameLineId) {
+        const gameLine = await prisma.gameLine.findUnique({
+          where: { id: leg.gameLineId },
+          include: { game: { include: { week: true } } },
+        }) as any;
+        if (!gameLine) { res.status(404).json({ error: `GameLine ${leg.gameLineId} not found` }); return; }
+        if (gameLine.game.status === "CANCELLED") { res.status(400).json({ error: "Cannot include cancelled game" }); return; }
+        if (gameLine.game.week.locked || gameLine.game.week.resolved) { res.status(400).json({ error: "Cannot include locked/resolved game lines" }); return; }
+        if (new Date(gameLine.game.gameDate) <= new Date()) { res.status(400).json({ error: "Game has already kicked off" }); return; }
+        if (leg.altLine != null && gameLine.market.startsWith("MONEYLINE")) { res.status(400).json({ error: "Cannot rotate moneyline" }); return; }
+        const odds = leg.altLine != null && gameLine.line != null
+          ? calcGameLineAltOdds(gameLine.odds, gameLine.line, leg.altLine, gameLine.market)
+          : gameLine.odds;
+        if (!firstWeekId) firstWeekId = gameLine.game.week.id;
+        resolved.push({ gameLineId: leg.gameLineId, odds, altLine: leg.altLine, gameId: gameLine.game.id, market: gameLine.market });
+      }
+    }
+
+    const combos = getCombinations(resolved, size);
+    const totalStake = Number(stakePerParlay) * combos.length;
+
+    if (membership.balance < totalStake) {
+      res.status(400).json({ error: `Insufficient balance — need $${totalStake} for ${combos.length} combos` }); return;
+    }
+
+    // Validate each combo for internal conflicts
+    for (const combo of combos) {
+      const propDirs = new Map<string, string>();
+      const gameMarkets = new Map<string, Set<string>>();
+      for (const leg of combo) {
+        if (leg.propId && leg.direction) {
+          const existing = propDirs.get(leg.propId);
+          if (existing && existing !== leg.direction) {
+            res.status(409).json({ error: "Conflicting legs — OVER and UNDER on the same prop cannot both be in a combo" }); return;
+          }
+          propDirs.set(leg.propId, leg.direction);
+        }
+        if (leg.gameLineId && leg.market) {
+          const markets = gameMarkets.get(leg.gameId) ?? new Set<string>();
+          const opp = OPPOSITE[leg.market];
+          if (opp && markets.has(opp)) {
+            res.status(409).json({ error: `Conflicting game lines in combo: ${leg.market} vs ${opp}` }); return;
+          }
+          markets.add(leg.market);
+          gameMarkets.set(leg.gameId, markets);
+        }
+      }
+    }
+
+    if (league?.maxBetsPerWeek && firstWeekId) {
+      const weekId = firstWeekId;
+      const [weekPicks, weekGamePicks, weekParlays] = await Promise.all([
+        prisma.pick.count({ where: { userId, leagueId, prop: { game: { weekId } } } }),
+        prisma.gamePick.count({ where: { userId, leagueId, gameLine: { game: { weekId } } } }),
+        prisma.parlay.count({ where: { userId, leagueId, legs: { some: { OR: [{ prop: { game: { weekId } } }, { gameLine: { game: { weekId } } }] } } } }),
+      ]);
+      if (weekPicks + weekGamePicks + weekParlays + combos.length > league.maxBetsPerWeek) {
+        res.status(400).json({ error: `Would exceed max ${league.maxBetsPerWeek} bets per week` }); return;
+      }
+    }
+
+    const parlays = await prisma.$transaction(async (tx) => {
+      const created = [];
+      for (const combo of combos) {
+        const totalOdds = calcParlayOdds(combo.map((l) => l.odds));
+        const payout = calcParlayPayout(Number(stakePerParlay), totalOdds);
+        const parlay = await tx.parlay.create({
+          data: {
+            userId, leagueId,
+            stake: Number(stakePerParlay),
+            totalOdds, payout,
+            legs: {
+              create: combo.map((l) => ({
+                propId: l.propId ?? null,
+                gameLineId: l.gameLineId ?? null,
+                direction: l.direction as any ?? null,
+                odds: l.odds,
+                altLine: l.altLine ?? null,
+              })),
+            },
+          },
+          include: { legs: true },
+        });
+        created.push(parlay);
+      }
+      await tx.membership.update({
+        where: { userId_leagueId: { userId, leagueId } },
+        data: { balance: { decrement: totalStake } },
+      });
+      return created;
+    });
+
+    res.status(201).json({ parlays, combos: parlays.length, totalStake });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
