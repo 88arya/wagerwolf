@@ -86,6 +86,33 @@ router.get("/leaderboard", requireAuth, async (req: any, res: any) => {
       .sort((a: any, b: any) => b.wins - a.wins || b.ties - a.ties || b.balance - a.balance)
       .map((entry: any, i: number) => ({ rank: i + 1, ...entry }));
 
+    // Compute previous week standings (exclude most recent resolved week)
+    const weekNumbers = matchups.map((m: any) => m.weekNumber as number);
+    const latestWeekNumber = weekNumbers.length ? Math.max(...weekNumbers) : null;
+    if (latestWeekNumber !== null) {
+      const prevRecords: Record<string, { wins: number; losses: number; ties: number }> = {};
+      for (const m of memberships as any[]) prevRecords[m.user.id] = { wins: 0, losses: 0, ties: 0 };
+      for (const matchup of matchups as any[]) {
+        if (matchup.weekNumber === latestWeekNumber) continue;
+        if (matchup.isTie) {
+          if (prevRecords[matchup.homeUserId]) prevRecords[matchup.homeUserId].ties++;
+          if (prevRecords[matchup.awayUserId]) prevRecords[matchup.awayUserId].ties++;
+        } else if (matchup.winnerId) {
+          const loserId = matchup.winnerId === matchup.homeUserId ? matchup.awayUserId : matchup.homeUserId;
+          if (prevRecords[matchup.winnerId]) prevRecords[matchup.winnerId].wins++;
+          if (prevRecords[loserId]) prevRecords[loserId].losses++;
+        }
+      }
+      const prevRankMap: Record<string, number> = {};
+      [...(memberships as any[])]
+        .map((m: any) => ({ userId: m.user.id, balance: m.balance, ...prevRecords[m.user.id] }))
+        .sort((a: any, b: any) => b.wins - a.wins || b.ties - a.ties || b.balance - a.balance)
+        .forEach((entry: any, i: number) => { prevRankMap[entry.userId] = i + 1; });
+      for (const entry of leaderboard) {
+        (entry as any).prevRank = prevRankMap[entry.userId] ?? entry.rank;
+      }
+    }
+
     res.json(leaderboard);
   } catch (err: any) {
     res.status(500).json({ error: err.message });

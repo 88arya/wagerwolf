@@ -36,7 +36,7 @@ export async function runStartupSeed() {
       end.setDate(end.getDate() + 6);
       end.setHours(23, 59, 59, 999);
       const lastWeek = await prisma.week.findFirst({ orderBy: { number: "desc" } });
-      const weekNumber = (lastWeek?.number ?? 1);
+      const weekNumber = (lastWeek?.number ?? 0) + 1;
       const week = await prisma.week.create({
         data: { number: weekNumber, startDate: base, endDate: end },
       });
