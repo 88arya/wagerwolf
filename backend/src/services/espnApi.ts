@@ -64,9 +64,23 @@ export interface PlayerGameStats {
 }
 
 // NFL seasons span two calendar years — Jan/Feb/Mar belong to the previous season
-function nflYear(date: Date): number {
+export function nflYear(date: Date): number {
   const month = date.getMonth() + 1;
   return month <= 3 ? date.getFullYear() - 1 : date.getFullYear();
+}
+
+export async function getNFLWeekDates(weekNumber: number, year: number): Promise<{ startDate: Date; endDate: Date } | null> {
+  const url = `${SITE}/scoreboard?dates=${year}&seasontype=2&week=${weekNumber}`;
+  const res = await fetch(url);
+  if (!res.ok) return null;
+  const data = await res.json();
+  const events: any[] = data.events ?? [];
+  if (!events.length) return null;
+  const times = events.map((e: any) => new Date(e.date).getTime());
+  const startDate = new Date(Math.min(...times));
+  const endDate = new Date(Math.max(...times));
+  endDate.setHours(endDate.getHours() + 18); // buffer after last kickoff
+  return { startDate, endDate };
 }
 
 export async function getNFLWeekGames(weekStartDate: Date, weekNumber: number): Promise<ESPNGame[]> {

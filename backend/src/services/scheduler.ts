@@ -2,6 +2,7 @@ import cron from "node-cron";
 import { prisma } from "../db/prisma";
 import { resolveWeekById } from "./resolveWeek";
 import { syncESPNGames, syncOdds, syncScores } from "./syncWeek";
+import { getNFLWeekDates, nflYear } from "./espnApi";
 import { distributeWeeklyAllowances } from "./distributeAllowances";
 import { startLeagueSeason } from "./startSeason";
 
@@ -65,19 +66,50 @@ async function runAutoStartLeagues(weekNumber: number) {
   }
 }
 
+const MAX_NFL_WEEK = 17;
+
 async function runESPNGameSync() {
   const now = new Date();
+
+  // Determine which week to sync: existing upcoming week, or next after the latest in DB
   const upcoming = await prisma.week.findFirst({
     where: { startDate: { gt: now } },
     orderBy: { number: "asc" },
   });
-  if (!upcoming) { console.log("[cron] No upcoming week to sync"); return; }
-  try {
-    await syncESPNGames(upcoming.id);
-  } catch (err) {
-    console.error(`[cron] ESPN game sync failed for week ${upcoming.number}:`, err);
+
+  let weekNumber: number;
+  if (upcoming) {
+    weekNumber = upcoming.number;
+  } else {
+    const latest = await prisma.week.findFirst({ orderBy: { number: "desc" } });
+    weekNumber = latest ? latest.number + 1 : 1;
   }
-  await runAutoStartLeagues(upcoming.number);
+
+  if (weekNumber > MAX_NFL_WEEK) {
+    console.log("[cron] Season complete, no weeks to sync");
+    return;
+  }
+
+  // Fetch week date range from ESPN and upsert the Week row
+  const year = nflYear(now);
+  const weekDates = await getNFLWeekDates(weekNumber, year);
+  if (!weekDates) {
+    console.log(`[cron] ESPN returned no games for week ${weekNumber} ${year}`);
+    return;
+  }
+
+  const week = await prisma.week.upsert({
+    where: { number: weekNumber },
+    update: { startDate: weekDates.startDate, endDate: weekDates.endDate },
+    create: { number: weekNumber, startDate: weekDates.startDate, endDate: weekDates.endDate },
+  });
+
+  try {
+    await syncESPNGames(week.id);
+  } catch (err) {
+    console.error(`[cron] ESPN game sync failed for week ${week.number}:`, err);
+  }
+  await runAutoStartLeagues(week.number);
 }
 
 async function runOddsSync() {
