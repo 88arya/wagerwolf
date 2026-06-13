@@ -1,5 +1,7 @@
 import { Router } from "express";
-import { prisma } from "../db/prisma";
+import { db } from "../db/db";
+import { eq, and, inArray, count, sql } from "drizzle-orm";
+import { leagues, memberships, weeks, parlays, parlayLegs, gamePicks, picks, matchups } from "../db/schema";
 import { requireAuth } from "../middleware/auth";
 import { getNearestTuesdayNoon } from "../services/scheduleMatchups";
 
@@ -44,42 +46,44 @@ router.post("/", requireAuth, async (req: any, res: any) => {
         res.status(400).json({ error: `Start week must be between 1 and ${MAX_NFL_WEEK}` }); return;
       }
     } else {
-      const firstUnresolved = await prisma.week.findFirst({ where: { resolved: false }, orderBy: { number: "asc" } });
+      const firstUnresolved = await db.query.weeks.findFirst({
+        where: eq(weeks.resolved, false),
+      });
       sw = firstUnresolved ? firstUnresolved.number : 1;
     }
 
     const rsw = Math.max(1, MAX_NFL_WEEK - sw - pw + 1);
 
     let inviteCode = generateInviteCode();
-    while (await prisma.league.findUnique({ where: { inviteCode } })) {
+    while (await db.query.leagues.findFirst({ where: eq(leagues.inviteCode, inviteCode) })) {
       inviteCode = generateInviteCode();
     }
 
-    const startWeekRecord = startWeek !== undefined ? await prisma.week.findFirst({ where: { number: sw } }) : null;
+    const startWeekRecord = startWeek !== undefined
+      ? await db.query.weeks.findFirst({ where: eq(weeks.number, sw) })
+      : null;
     const autoStartAt = startWeekRecord
       ? startWeekRecord.startDate
       : Boolean(isPublic) ? getNearestTuesdayNoon(new Date()) : null;
 
-    const league = await prisma.league.create({
-      data: {
-        name,
-        weeklyAllowance: Number(weeklyAllowance),
-        inviteCode,
-        creatorId: req.userId,
-        isPublic: Boolean(isPublic),
-        maxPublicPlayers: Boolean(isPublic) ? 0 : Math.max(0, Number(maxPublicPlayers ?? 0)),
-        maxBetsPerWeek: maxBetsPerWeek ? Number(maxBetsPerWeek) : null,
-        maxStakePerBet: maxStakePerBet ? Number(maxStakePerBet) : null,
-        maxPlayers: mp,
-        startWeek: sw,
-        regularSeasonWeeks: rsw,
-        playoffWeeks: pw,
-        playoffSize: ps,
-        consolationTeams,
-        consolationWeeks: 2,
-        autoStartAt,
-      },
-    });
+    const [league] = await db.insert(leagues).values({
+      name,
+      weeklyAllowance: Number(weeklyAllowance),
+      inviteCode,
+      creatorId: req.userId,
+      isPublic: Boolean(isPublic),
+      maxPublicPlayers: Boolean(isPublic) ? 0 : Math.max(0, Number(maxPublicPlayers ?? 0)),
+      maxBetsPerWeek: maxBetsPerWeek ? Number(maxBetsPerWeek) : null,
+      maxStakePerBet: maxStakePerBet ? Number(maxStakePerBet) : null,
+      maxPlayers: mp,
+      startWeek: sw,
+      regularSeasonWeeks: rsw,
+      playoffWeeks: pw,
+      playoffSize: ps,
+      consolationTeams,
+      consolationWeeks: 2,
+      autoStartAt: autoStartAt ?? undefined,
+    }).returning();
 
     res.status(201).json(league);
   } catch (err: any) {
@@ -91,7 +95,7 @@ router.post("/", requireAuth, async (req: any, res: any) => {
 // Accepts any playoff size ≥ 2 (non-power-of-2 handled by bye bracket system)
 router.patch("/:id", requireAuth, async (req: any, res: any) => {
   try {
-    const league = await prisma.league.findUnique({ where: { id: req.params.id } });
+    const [league] = await db.select().from(leagues).where(eq(leagues.id, req.params.id)).limit(1);
     if (!league) { res.status(404).json({ error: "League not found" }); return; }
     if (league.creatorId !== req.userId) { res.status(403).json({ error: "Commissioner only" }); return; }
     if (league.seasonStarted) { res.status(400).json({ error: "Cannot change settings after season has started" }); return; }
@@ -130,29 +134,29 @@ router.patch("/:id", requireAuth, async (req: any, res: any) => {
 
     let autoStartAt: Date | null | undefined = undefined;
     if (startWeek !== undefined && sw !== league.startWeek) {
-      const startWeekRecord = await prisma.week.findFirst({ where: { number: sw } });
+      const startWeekRecord = await db.query.weeks.findFirst({ where: eq(weeks.number, sw) });
       autoStartAt = startWeekRecord ? startWeekRecord.startDate : null;
     }
 
-    const updated = await prisma.league.update({
-      where: { id: req.params.id },
-      data: {
-        ...(name !== undefined ? { name: String(name).trim() } : {}),
-        ...(weeklyAllowance !== undefined ? { weeklyAllowance: Number(weeklyAllowance) } : {}),
-        ...(isPublic !== undefined
-          ? { isPublic: Boolean(isPublic), maxPublicPlayers: Boolean(isPublic) ? 0 : Math.max(0, Number(maxPublicPlayers ?? league.maxPublicPlayers)) }
-          : maxPublicPlayers !== undefined
-          ? { maxPublicPlayers: Math.max(0, Number(maxPublicPlayers)) }
-          : {}),
-        startWeek: sw,
-        regularSeasonWeeks: rsw,
-        playoffWeeks: pw,
-        playoffSize: ps,
-        consolationTeams: league.maxPlayers - ps,
-        consolationWeeks: cw,
-        ...(autoStartAt !== undefined ? { autoStartAt } : {}),
-      },
-    });
+    const updateData: Record<string, any> = {
+      startWeek: sw,
+      regularSeasonWeeks: rsw,
+      playoffWeeks: pw,
+      playoffSize: ps,
+      consolationTeams: league.maxPlayers - ps,
+      consolationWeeks: cw,
+    };
+    if (name !== undefined) updateData.name = String(name).trim();
+    if (weeklyAllowance !== undefined) updateData.weeklyAllowance = Number(weeklyAllowance);
+    if (isPublic !== undefined) {
+      updateData.isPublic = Boolean(isPublic);
+      updateData.maxPublicPlayers = Boolean(isPublic) ? 0 : Math.max(0, Number(maxPublicPlayers ?? league.maxPublicPlayers));
+    } else if (maxPublicPlayers !== undefined) {
+      updateData.maxPublicPlayers = Math.max(0, Number(maxPublicPlayers));
+    }
+    if (autoStartAt !== undefined) updateData.autoStartAt = autoStartAt;
+
+    const [updated] = await db.update(leagues).set(updateData).where(eq(leagues.id, req.params.id)).returning();
 
     res.json(updated);
   } catch (err: any) {
@@ -162,20 +166,22 @@ router.patch("/:id", requireAuth, async (req: any, res: any) => {
 
 router.patch("/:id/limits", requireAuth, async (req: any, res: any) => {
   try {
-    const league = await prisma.league.findUnique({ where: { id: req.params.id } });
+    const [league] = await db.select().from(leagues).where(eq(leagues.id, req.params.id)).limit(1);
     if (!league) { res.status(404).json({ error: "League not found" }); return; }
     if (league.creatorId !== req.userId) { res.status(403).json({ error: "Commissioner only" }); return; }
 
     const { maxStakePerBet, maxBetsPerWeek, maxParlayLegs, feedVisibility } = req.body;
-    const updated = await prisma.league.update({
-      where: { id: req.params.id },
-      data: {
-        maxStakePerBet: maxStakePerBet === "" || maxStakePerBet == null ? null : Number(maxStakePerBet),
-        maxBetsPerWeek: maxBetsPerWeek === "" || maxBetsPerWeek == null ? null : Number(maxBetsPerWeek),
-        maxParlayLegs: maxParlayLegs === "" || maxParlayLegs == null ? null : Number(maxParlayLegs),
-        ...(feedVisibility === "AFTER_KICKOFF" || feedVisibility === "AFTER_RESOLVE" ? { feedVisibility } : {}),
-      },
-    });
+
+    const updateData: Record<string, any> = {
+      maxStakePerBet: maxStakePerBet === "" || maxStakePerBet == null ? null : Number(maxStakePerBet),
+      maxBetsPerWeek: maxBetsPerWeek === "" || maxBetsPerWeek == null ? null : Number(maxBetsPerWeek),
+      maxParlayLegs: maxParlayLegs === "" || maxParlayLegs == null ? null : Number(maxParlayLegs),
+    };
+    if (feedVisibility === "AFTER_KICKOFF" || feedVisibility === "AFTER_RESOLVE") {
+      updateData.feedVisibility = feedVisibility;
+    }
+
+    const [updated] = await db.update(leagues).set(updateData).where(eq(leagues.id, req.params.id)).returning();
     res.json(updated);
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -184,9 +190,9 @@ router.patch("/:id/limits", requireAuth, async (req: any, res: any) => {
 
 router.get("/by-code/:code", requireAuth, async (req: any, res: any) => {
   try {
-    const league = await prisma.league.findUnique({
-      where: { inviteCode: req.params.code.toUpperCase() },
-    });
+    const [league] = await db.select().from(leagues)
+      .where(eq(leagues.inviteCode, req.params.code.toUpperCase()))
+      .limit(1);
     if (!league) { res.status(404).json({ error: "Invalid invite code" }); return; }
     res.json(league);
   } catch (err: any) {
@@ -196,7 +202,7 @@ router.get("/by-code/:code", requireAuth, async (req: any, res: any) => {
 
 router.get("/:id", requireAuth, async (req: any, res: any) => {
   try {
-    const league = await prisma.league.findUnique({ where: { id: req.params.id } });
+    const [league] = await db.select().from(leagues).where(eq(leagues.id, req.params.id)).limit(1);
     if (!league) { res.status(404).json({ error: "League not found" }); return; }
     res.json(league);
   } catch (err: any) {
@@ -206,28 +212,34 @@ router.get("/:id", requireAuth, async (req: any, res: any) => {
 
 router.delete("/:id", requireAuth, async (req: any, res: any) => {
   try {
-    const league = await prisma.league.findUnique({ where: { id: req.params.id } });
+    const [league] = await db.select().from(leagues).where(eq(leagues.id, req.params.id)).limit(1);
     if (!league) { res.status(404).json({ error: "League not found" }); return; }
 
     if (league.creatorId !== req.userId) {
       res.status(403).json({ error: "Only the commissioner can delete a league" }); return;
     }
 
-    const memberCount = await prisma.membership.count({ where: { leagueId: req.params.id } });
+    const [{ value: memberCount }] = await db.select({ value: count() })
+      .from(memberships)
+      .where(eq(memberships.leagueId, req.params.id));
     if (memberCount > 1) {
       res.status(400).json({ error: "Cannot delete a league with other members" }); return;
     }
 
-    const parlays = await prisma.parlay.findMany({ where: { leagueId: req.params.id }, select: { id: true } });
-    const parlayIds = parlays.map((p) => p.id);
+    const leagueParlays = await db.select({ id: parlays.id })
+      .from(parlays)
+      .where(eq(parlays.leagueId, req.params.id));
+    const parlayIds = leagueParlays.map((p) => p.id);
 
-    await prisma.parlayLeg.deleteMany({ where: { parlayId: { in: parlayIds } } });
-    await prisma.parlay.deleteMany({ where: { leagueId: req.params.id } });
-    await prisma.gamePick.deleteMany({ where: { leagueId: req.params.id } });
-    await prisma.pick.deleteMany({ where: { leagueId: req.params.id } });
-    await prisma.matchup.deleteMany({ where: { leagueId: req.params.id } });
-    await prisma.membership.deleteMany({ where: { leagueId: req.params.id } });
-    await prisma.league.delete({ where: { id: req.params.id } });
+    if (parlayIds.length > 0) {
+      await db.delete(parlayLegs).where(inArray(parlayLegs.parlayId, parlayIds));
+    }
+    await db.delete(parlays).where(eq(parlays.leagueId, req.params.id));
+    await db.delete(gamePicks).where(eq(gamePicks.leagueId, req.params.id));
+    await db.delete(picks).where(eq(picks.leagueId, req.params.id));
+    await db.delete(matchups).where(eq(matchups.leagueId, req.params.id));
+    await db.delete(memberships).where(eq(memberships.leagueId, req.params.id));
+    await db.delete(leagues).where(eq(leagues.id, req.params.id));
 
     res.json({ message: "League deleted" });
   } catch (err: any) {

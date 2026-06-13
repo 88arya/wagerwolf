@@ -1,5 +1,6 @@
-import { StatType } from "@prisma/client";
-import { prisma } from "../db/prisma";
+import { db } from "../db/db";
+import { eq, and } from "drizzle-orm";
+import { weeks, games, gameLines, players, props } from "../db/schema";
 
 export const FAKE_PLAYERS: Array<{ name: string; team: string; position: string }> = [
   // QBs
@@ -172,61 +173,63 @@ export const FAKE_PLAYERS: Array<{ name: string; team: string; position: string 
   { name: "Tyler Sievert", team: "WSH", position: "K" },
 ];
 
-const QB_PROPS: Array<{ statType: StatType; line: number; odds: number }> = [
-  { statType: StatType.PASSING_YARDS, line: 245.5, odds: -110 },
-  { statType: StatType.PASSING_TOUCHDOWNS, line: 1.5, odds: -130 },
-  { statType: StatType.PASSING_COMPLETIONS, line: 23.5, odds: -110 },
-  { statType: StatType.PASSING_ATTEMPTS, line: 35.5, odds: -110 },
-  { statType: StatType.PASSING_INTERCEPTIONS, line: 0.5, odds: -145 },
-  { statType: StatType.PASSING_LONGEST, line: 42.5, odds: -110 },
-  { statType: StatType.RUSHING_YARDS, line: 22.5, odds: -110 },
+type PropTemplate = { statType: string; line: number; odds: number };
+
+const QB_PROPS: PropTemplate[] = [
+  { statType: "PASSING_YARDS", line: 245.5, odds: -110 },
+  { statType: "PASSING_TOUCHDOWNS", line: 1.5, odds: -130 },
+  { statType: "PASSING_COMPLETIONS", line: 23.5, odds: -110 },
+  { statType: "PASSING_ATTEMPTS", line: 35.5, odds: -110 },
+  { statType: "PASSING_INTERCEPTIONS", line: 0.5, odds: -145 },
+  { statType: "PASSING_LONGEST", line: 42.5, odds: -110 },
+  { statType: "RUSHING_YARDS", line: 22.5, odds: -110 },
 ];
 
-const RB_PROPS: Array<{ statType: StatType; line: number; odds: number }> = [
-  { statType: StatType.RUSHING_YARDS, line: 72.5, odds: -110 },
-  { statType: StatType.RUSHING_TOUCHDOWNS, line: 0.5, odds: -145 },
-  { statType: StatType.RUSHING_ATTEMPTS, line: 14.5, odds: -110 },
-  { statType: StatType.RUSHING_LONGEST, line: 18.5, odds: -110 },
-  { statType: StatType.RECEIVING_YARDS, line: 22.5, odds: -110 },
-  { statType: StatType.RECEPTIONS, line: 3.5, odds: -110 },
-  { statType: StatType.RECEIVING_TARGETS, line: 4.5, odds: -110 },
+const RB_PROPS: PropTemplate[] = [
+  { statType: "RUSHING_YARDS", line: 72.5, odds: -110 },
+  { statType: "RUSHING_TOUCHDOWNS", line: 0.5, odds: -145 },
+  { statType: "RUSHING_ATTEMPTS", line: 14.5, odds: -110 },
+  { statType: "RUSHING_LONGEST", line: 18.5, odds: -110 },
+  { statType: "RECEIVING_YARDS", line: 22.5, odds: -110 },
+  { statType: "RECEPTIONS", line: 3.5, odds: -110 },
+  { statType: "RECEIVING_TARGETS", line: 4.5, odds: -110 },
 ];
 
-const WR_PROPS: Array<{ statType: StatType; line: number; odds: number }> = [
-  { statType: StatType.RECEIVING_YARDS, line: 62.5, odds: -110 },
-  { statType: StatType.RECEIVING_TOUCHDOWNS, line: 0.5, odds: -140 },
-  { statType: StatType.RECEPTIONS, line: 5.5, odds: -110 },
-  { statType: StatType.RECEIVING_TARGETS, line: 7.5, odds: -110 },
-  { statType: StatType.RECEIVING_LONGEST, line: 28.5, odds: -110 },
+const WR_PROPS: PropTemplate[] = [
+  { statType: "RECEIVING_YARDS", line: 62.5, odds: -110 },
+  { statType: "RECEIVING_TOUCHDOWNS", line: 0.5, odds: -140 },
+  { statType: "RECEPTIONS", line: 5.5, odds: -110 },
+  { statType: "RECEIVING_TARGETS", line: 7.5, odds: -110 },
+  { statType: "RECEIVING_LONGEST", line: 28.5, odds: -110 },
 ];
 
-const TE_PROPS: Array<{ statType: StatType; line: number; odds: number }> = [
-  { statType: StatType.RECEIVING_YARDS, line: 42.5, odds: -110 },
-  { statType: StatType.RECEIVING_TOUCHDOWNS, line: 0.5, odds: -140 },
-  { statType: StatType.RECEPTIONS, line: 3.5, odds: -110 },
-  { statType: StatType.RECEIVING_TARGETS, line: 5.5, odds: -110 },
-  { statType: StatType.RECEIVING_LONGEST, line: 22.5, odds: -110 },
+const TE_PROPS: PropTemplate[] = [
+  { statType: "RECEIVING_YARDS", line: 42.5, odds: -110 },
+  { statType: "RECEIVING_TOUCHDOWNS", line: 0.5, odds: -140 },
+  { statType: "RECEPTIONS", line: 3.5, odds: -110 },
+  { statType: "RECEIVING_TARGETS", line: 5.5, odds: -110 },
+  { statType: "RECEIVING_LONGEST", line: 22.5, odds: -110 },
 ];
 
-const DE_PROPS: Array<{ statType: StatType; line: number; odds: number }> = [
-  { statType: StatType.SACKS, line: 0.5, odds: -145 },
-  { statType: StatType.TACKLES_ASSISTS, line: 4.5, odds: -110 },
+const DE_PROPS: PropTemplate[] = [
+  { statType: "SACKS", line: 0.5, odds: -145 },
+  { statType: "TACKLES_ASSISTS", line: 4.5, odds: -110 },
 ];
 
-const LB_PROPS: Array<{ statType: StatType; line: number; odds: number }> = [
-  { statType: StatType.SACKS, line: 0.5, odds: -165 },
-  { statType: StatType.TACKLES_ASSISTS, line: 6.5, odds: -110 },
-  { statType: StatType.DEFENSIVE_INTERCEPTIONS, line: 0.5, odds: 180 },
+const LB_PROPS: PropTemplate[] = [
+  { statType: "SACKS", line: 0.5, odds: -165 },
+  { statType: "TACKLES_ASSISTS", line: 6.5, odds: -110 },
+  { statType: "DEFENSIVE_INTERCEPTIONS", line: 0.5, odds: 180 },
 ];
 
-const K_PROPS: Array<{ statType: StatType; line: number; odds: number }> = [
-  { statType: StatType.FIELD_GOALS_MADE, line: 1.5, odds: -145 },
-  { statType: StatType.KICKING_POINTS, line: 7.5, odds: -110 },
-  { statType: StatType.EXTRA_POINTS_MADE, line: 1.5, odds: -110 },
-  { statType: StatType.FIELD_GOAL_LONGEST, line: 48.5, odds: -110 },
+const K_PROPS: PropTemplate[] = [
+  { statType: "FIELD_GOALS_MADE", line: 1.5, odds: -145 },
+  { statType: "KICKING_POINTS", line: 7.5, odds: -110 },
+  { statType: "EXTRA_POINTS_MADE", line: 1.5, odds: -110 },
+  { statType: "FIELD_GOAL_LONGEST", line: 48.5, odds: -110 },
 ];
 
-const POSITION_PROPS: Record<string, Array<{ statType: StatType; line: number; odds: number }>> = {
+const POSITION_PROPS: Record<string, PropTemplate[]> = {
   QB: QB_PROPS, RB: RB_PROPS, WR: WR_PROPS, TE: TE_PROPS, DE: DE_PROPS, LB: LB_PROPS, K: K_PROPS,
 };
 
@@ -286,19 +289,23 @@ export function fakeLinesForGame(homeTeam: string, awayTeam: string) {
 }
 
 export async function seedFakePropsForWeek(weekId: string): Promise<{ lines: number; props: number }> {
-  const week = await prisma.week.findUnique({ where: { id: weekId }, include: { games: true } });
+  const week = await db.query.weeks.findFirst({
+    where: eq(weeks.id, weekId),
+    with: { games: true },
+  });
   if (!week) throw new Error("Week not found");
 
   let linesSynced = 0, propsSynced = 0;
 
-  for (const game of week.games) {
+  for (const game of (week as any).games) {
     const gameLineData = fakeLinesForGame(game.homeTeam, game.awayTeam);
     for (const gl of gameLineData) {
-      await prisma.gameLine.upsert({
-        where: { gameId_market: { gameId: game.id, market: gl.market } },
-        update: { label: gl.label, odds: gl.odds, line: gl.line },
-        create: { gameId: game.id, market: gl.market, label: gl.label, odds: gl.odds, line: gl.line },
-      });
+      await db.insert(gameLines)
+        .values({ gameId: game.id, market: gl.market, label: gl.label, odds: gl.odds, line: gl.line })
+        .onConflictDoUpdate({
+          target: [gameLines.gameId, gameLines.market],
+          set: { label: gl.label, odds: gl.odds, line: gl.line },
+        });
       linesSynced++;
     }
 
@@ -307,11 +314,12 @@ export async function seedFakePropsForWeek(weekId: string): Promise<{ lines: num
     if (mainHomeSpread?.line != null && mainTotalOver?.line != null) {
       const altGameLines = fakeAltGameLines(game.homeTeam, game.awayTeam, mainHomeSpread.line, mainTotalOver.line);
       for (const al of altGameLines) {
-        await prisma.gameLine.upsert({
-          where: { gameId_market: { gameId: game.id, market: al.market } },
-          update: { label: al.label, odds: al.odds, line: al.line },
-          create: { gameId: game.id, market: al.market, label: al.label, odds: al.odds, line: al.line },
-        });
+        await db.insert(gameLines)
+          .values({ gameId: game.id, market: al.market, label: al.label, odds: al.odds, line: al.line })
+          .onConflictDoUpdate({
+            target: [gameLines.gameId, gameLines.market],
+            set: { label: al.label, odds: al.odds, line: al.line },
+          });
         linesSynced++;
       }
     }
@@ -321,24 +329,30 @@ export async function seedFakePropsForWeek(weekId: string): Promise<{ lines: num
 
     for (const team of teamNames) {
       const teamPlayers = gamePlayers.filter((p) => p.team === team);
-      for (const [pos, count] of Object.entries(SLOTS)) {
-        const posPlayers = teamPlayers.filter((p) => p.position === pos).slice(0, count);
+      for (const [pos, slotCount] of Object.entries(SLOTS)) {
+        const posPlayers = teamPlayers.filter((p) => p.position === pos).slice(0, slotCount);
         const propTemplate = POSITION_PROPS[pos];
         if (!propTemplate) continue;
 
         for (const fp of posPlayers) {
-          let player = await prisma.player.findFirst({ where: { name: fp.name } });
+          let player = await db.query.players.findFirst({ where: eq(players.name, fp.name) });
           if (!player) {
-            player = await prisma.player.create({ data: { name: fp.name, team: fp.team, position: fp.position } });
+            [player] = await db.insert(players)
+              .values({ name: fp.name, team: fp.team, position: fp.position })
+              .returning();
           }
 
           for (const { statType, line, odds } of propTemplate) {
             const variedLine = fakeVariant(line);
-            const existing = await prisma.prop.findFirst({ where: { gameId: game.id, playerId: player.id, statType } });
+            const existing = await db.query.props.findFirst({
+              where: (p, { and, eq }) => and(eq(p.gameId, game.id), eq(p.playerId, player!.id), eq(p.statType, statType as any)),
+            });
             if (existing) {
-              await prisma.prop.update({ where: { id: existing.id }, data: { line: variedLine, odds } });
+              await db.update(props)
+                .set({ line: variedLine, odds })
+                .where(eq(props.id, existing.id));
             } else {
-              await prisma.prop.create({ data: { gameId: game.id, playerId: player.id, statType, line: variedLine, odds } });
+              await db.insert(props).values({ gameId: game.id, playerId: player!.id, statType: statType as any, line: variedLine, odds });
             }
             propsSynced++;
           }

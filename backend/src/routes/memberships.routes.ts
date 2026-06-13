@@ -1,5 +1,12 @@
-﻿import { Router } from "express";
-import { prisma } from "../db/prisma";
+import { Router } from "express";
+import { db } from "../db/db";
+import {
+  eq, and, inArray, or, isNotNull, ne, gte, lte, desc, asc,
+} from "drizzle-orm";
+import {
+  users, leagues, memberships, weeks, games, props, picks,
+  gameLines, gamePicks, parlays, leagueMessages, matchups,
+} from "../db/schema";
 import { requireAuth } from "../middleware/auth";
 import { scheduleMatchups } from "../services/scheduleMatchups";
 import { pickHelmetColor } from "../services/helmetColor";
@@ -13,30 +20,36 @@ router.post("/join", requireAuth, async (req: any, res: any) => {
     const { id: leagueId } = req.params;
     const userId = req.userId;
 
-    const league = await prisma.league.findUnique({ where: { id: leagueId } });
+    const league = await db.query.leagues.findFirst({ where: eq(leagues.id, leagueId) });
     if (!league) { res.status(404).json({ error: "League not found" }); return; }
 
     const maxWeek = league.startWeek + league.regularSeasonWeeks + league.playoffWeeks - 1;
-    const activeWeek = await prisma.week.findFirst({
-      where: { resolved: false, number: { gte: league.startWeek, lte: maxWeek } },
-      orderBy: { number: "asc" },
-    });
-    const initialBalance = activeWeek ? league.weeklyAllowance : 0;
+    const [firstActiveWeek] = await db.select().from(weeks)
+      .where(and(eq(weeks.resolved, false), gte(weeks.number, league.startWeek), lte(weeks.number, maxWeek)))
+      .orderBy(asc(weeks.number))
+      .limit(1);
+    const initialBalance = firstActiveWeek ? league.weeklyAllowance : 0;
 
     const [helmetColor, user] = await Promise.all([
       pickHelmetColor(leagueId),
-      prisma.user.findUnique({ where: { id: userId }, select: { displayName: true } }),
+      db.query.users.findFirst({ where: eq(users.id, userId) }),
     ]);
     const abbreviation = generateAbbreviation(user?.displayName ?? "");
-    const membership = await prisma.membership.create({
-      data: { userId, leagueId, balance: initialBalance, status: "ACTIVE", helmetColor, abbreviation, displayName: user?.displayName ?? "" },
-    });
+    const [membership] = await db.insert(memberships).values({
+      userId,
+      leagueId,
+      balance: initialBalance,
+      status: "ACTIVE",
+      helmetColor,
+      abbreviation,
+      displayName: user?.displayName ?? "",
+    }).returning();
 
     await scheduleMatchups(leagueId);
 
     res.status(201).json(membership);
   } catch (err: any) {
-    if (err.code === "P2002") {
+    if (err.code === "23505") {
       res.status(409).json({ error: "Already a member of this league" });
     } else {
       res.status(500).json({ error: err.message });
@@ -48,21 +61,24 @@ router.get("/leaderboard", requireAuth, async (req: any, res: any) => {
   try {
     const { id: leagueId } = req.params;
 
-    const [memberships, matchups] = await Promise.all([
-      prisma.membership.findMany({
-        where: { leagueId, status: "ACTIVE" },
-        include: { user: { select: { id: true, displayName: true } } },
-      }) as any,
-      prisma.matchup.findMany({
-        where: { leagueId, OR: [{ winnerId: { not: null } }, { isTie: true }] },
-      }) as any,
+    const [memberRows, matchupRows] = await Promise.all([
+      db.query.memberships.findMany({
+        where: and(eq(memberships.leagueId, leagueId), eq(memberships.status, "ACTIVE")),
+        with: { user: true },
+      }),
+      db.select().from(matchups).where(
+        and(
+          eq(matchups.leagueId, leagueId),
+          or(isNotNull(matchups.winnerId), eq(matchups.isTie, true)),
+        )
+      ),
     ]);
 
     const records: Record<string, { wins: number; losses: number; ties: number }> = {};
-    for (const m of memberships) {
+    for (const m of memberRows) {
       records[m.user.id] = { wins: 0, losses: 0, ties: 0 };
     }
-    for (const matchup of matchups) {
+    for (const matchup of matchupRows) {
       if (matchup.isTie) {
         if (records[matchup.homeUserId]) records[matchup.homeUserId].ties++;
         if (records[matchup.awayUserId]) records[matchup.awayUserId].ties++;
@@ -73,7 +89,7 @@ router.get("/leaderboard", requireAuth, async (req: any, res: any) => {
       }
     }
 
-    const leaderboard = (memberships as any[])
+    const leaderboard = memberRows
       .map((m: any) => ({
         userId: m.user.id,
         displayName: m.displayName || m.user.displayName,
@@ -87,12 +103,12 @@ router.get("/leaderboard", requireAuth, async (req: any, res: any) => {
       .map((entry: any, i: number) => ({ rank: i + 1, ...entry }));
 
     // Compute previous week standings (exclude most recent resolved week)
-    const weekNumbers = matchups.map((m: any) => m.weekNumber as number);
+    const weekNumbers = matchupRows.map((m) => m.weekNumber);
     const latestWeekNumber = weekNumbers.length ? Math.max(...weekNumbers) : null;
     if (latestWeekNumber !== null) {
       const prevRecords: Record<string, { wins: number; losses: number; ties: number }> = {};
-      for (const m of memberships as any[]) prevRecords[m.user.id] = { wins: 0, losses: 0, ties: 0 };
-      for (const matchup of matchups as any[]) {
+      for (const m of memberRows) prevRecords[m.user.id] = { wins: 0, losses: 0, ties: 0 };
+      for (const matchup of matchupRows) {
         if (matchup.weekNumber === latestWeekNumber) continue;
         if (matchup.isTie) {
           if (prevRecords[matchup.homeUserId]) prevRecords[matchup.homeUserId].ties++;
@@ -104,7 +120,7 @@ router.get("/leaderboard", requireAuth, async (req: any, res: any) => {
         }
       }
       const prevRankMap: Record<string, number> = {};
-      [...(memberships as any[])]
+      [...memberRows]
         .map((m: any) => ({ userId: m.user.id, balance: m.balance, ...prevRecords[m.user.id] }))
         .sort((a: any, b: any) => b.wins - a.wins || b.ties - a.ties || b.balance - a.balance)
         .forEach((entry: any, i: number) => { prevRankMap[entry.userId] = i + 1; });
@@ -126,10 +142,9 @@ router.patch("/my-abbreviation", requireAuth, async (req: any, res: any) => {
     const { abbreviation } = req.body;
     const trimmed = (abbreviation ?? "").trim();
     if (!trimmed) { res.status(400).json({ error: "Abbreviation is required" }); return; }
-    await prisma.membership.updateMany({
-      where: { leagueId, userId: req.userId },
-      data: { abbreviation: trimmed },
-    });
+    await db.update(memberships)
+      .set({ abbreviation: trimmed })
+      .where(and(eq(memberships.leagueId, leagueId), eq(memberships.userId, req.userId)));
     res.json({ abbreviation: trimmed });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -142,10 +157,9 @@ router.patch("/my-display-name", requireAuth, async (req: any, res: any) => {
     const { id: leagueId } = req.params;
     const { displayName } = req.body;
     if (!displayName?.trim()) { res.status(400).json({ error: "Display name is required" }); return; }
-    await prisma.membership.updateMany({
-      where: { leagueId, userId: req.userId },
-      data: { displayName: displayName.trim() },
-    });
+    await db.update(memberships)
+      .set({ displayName: displayName.trim() })
+      .where(and(eq(memberships.leagueId, leagueId), eq(memberships.userId, req.userId)));
     res.json({ displayName: displayName.trim() });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -160,16 +174,20 @@ router.patch("/my-helmet", requireAuth, async (req: any, res: any) => {
     if (!helmetColor || !/^#[0-9a-fA-F]{6}$/.test(helmetColor)) {
       res.status(400).json({ error: "Invalid color" }); return;
     }
-    const taken = await prisma.membership.findFirst({
-      where: { leagueId, helmetColor, userId: { not: req.userId }, status: "ACTIVE" },
+    const taken = await db.query.memberships.findFirst({
+      where: and(
+        eq(memberships.leagueId, leagueId),
+        eq(memberships.helmetColor, helmetColor),
+        ne(memberships.userId, req.userId),
+        eq(memberships.status, "ACTIVE"),
+      ),
     });
     if (taken) {
       res.status(409).json({ error: "Another member is already using that color" }); return;
     }
-    await prisma.membership.updateMany({
-      where: { leagueId, userId: req.userId },
-      data: { helmetColor },
-    });
+    await db.update(memberships)
+      .set({ helmetColor })
+      .where(and(eq(memberships.leagueId, leagueId), eq(memberships.userId, req.userId)));
     res.json({ helmetColor });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -180,13 +198,13 @@ router.patch("/my-helmet", requireAuth, async (req: any, res: any) => {
 router.get("/pending", requireAuth, async (req: any, res: any) => {
   try {
     const { id: leagueId } = req.params;
-    const league = await prisma.league.findUnique({ where: { id: leagueId } });
+    const league = await db.query.leagues.findFirst({ where: eq(leagues.id, leagueId) });
     if (!league) { res.status(404).json({ error: "League not found" }); return; }
     if (league.creatorId !== req.userId) { res.status(403).json({ error: "Commissioner only" }); return; }
 
-    const pending = await prisma.membership.findMany({
-      where: { leagueId, status: "PENDING" },
-      include: { user: { select: { id: true, displayName: true } } },
+    const pending = await db.query.memberships.findMany({
+      where: and(eq(memberships.leagueId, leagueId), eq(memberships.status, "PENDING")),
+      with: { user: true },
     });
     res.json(pending);
   } catch (err: any) {
@@ -198,7 +216,7 @@ router.get("/pending", requireAuth, async (req: any, res: any) => {
 router.post("/members/:memberId/accept", requireAuth, async (req: any, res: any) => {
   try {
     const { id: leagueId, memberId } = req.params;
-    const league = await prisma.league.findUnique({ where: { id: leagueId } });
+    const league = await db.query.leagues.findFirst({ where: eq(leagues.id, leagueId) });
     if (!league) { res.status(404).json({ error: "League not found" }); return; }
     if (league.creatorId !== req.userId) { res.status(403).json({ error: "Commissioner only" }); return; }
     if (league.seasonStarted) {
@@ -206,22 +224,26 @@ router.post("/members/:memberId/accept", requireAuth, async (req: any, res: any)
     }
 
     const maxWeek = league.startWeek + league.regularSeasonWeeks + league.playoffWeeks - 1;
-    const activeWeek = await prisma.week.findFirst({
-      where: { resolved: false, number: { gte: league.startWeek, lte: maxWeek } },
-      orderBy: { number: "asc" },
-    });
-    const initialBalance = activeWeek ? league.weeklyAllowance : 0;
+    const [firstActiveWeek] = await db.select().from(weeks)
+      .where(and(eq(weeks.resolved, false), gte(weeks.number, league.startWeek), lte(weeks.number, maxWeek)))
+      .orderBy(asc(weeks.number))
+      .limit(1);
+    const initialBalance = firstActiveWeek ? league.weeklyAllowance : 0;
 
     const [helmetColor, acceptedUser] = await Promise.all([
       pickHelmetColor(leagueId),
-      prisma.user.findUnique({ where: { id: memberId }, select: { displayName: true } }),
+      db.query.users.findFirst({ where: eq(users.id, memberId) }),
     ]);
     const abbreviation = generateAbbreviation(acceptedUser?.displayName ?? "");
-    const result = await prisma.membership.updateMany({
-      where: { userId: memberId, leagueId, status: "PENDING" },
-      data: { status: "ACTIVE", balance: initialBalance, helmetColor, abbreviation },
-    });
-    if (result.count === 0) { res.status(404).json({ error: "No pending request found" }); return; }
+    const result = await db.update(memberships)
+      .set({ status: "ACTIVE", balance: initialBalance, helmetColor, abbreviation })
+      .where(and(
+        eq(memberships.userId, memberId),
+        eq(memberships.leagueId, leagueId),
+        eq(memberships.status, "PENDING"),
+      ))
+      .returning();
+    if (result.length === 0) { res.status(404).json({ error: "No pending request found" }); return; }
 
     await scheduleMatchups(leagueId);
 
@@ -236,7 +258,7 @@ router.delete("/members/:memberId", requireAuth, async (req: any, res: any) => {
   try {
     const { id: leagueId, memberId } = req.params;
 
-    const league = await prisma.league.findUnique({ where: { id: leagueId } });
+    const league = await db.query.leagues.findFirst({ where: eq(leagues.id, leagueId) });
     if (!league) { res.status(404).json({ error: "League not found" }); return; }
     if (league.creatorId !== req.userId) {
       res.status(403).json({ error: "Only the league creator can remove members" }); return;
@@ -248,7 +270,9 @@ router.delete("/members/:memberId", requireAuth, async (req: any, res: any) => {
       res.status(400).json({ error: "Cannot remove members after season has started" }); return;
     }
 
-    await prisma.membership.deleteMany({ where: { userId: memberId, leagueId } });
+    await db.delete(memberships).where(
+      and(eq(memberships.userId, memberId), eq(memberships.leagueId, leagueId))
+    );
     res.json({ message: "Member removed" });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -261,13 +285,15 @@ router.post("/leave", requireAuth, async (req: any, res: any) => {
     const { id: leagueId } = req.params;
     const userId = req.userId;
 
-    const league = await prisma.league.findUnique({ where: { id: leagueId } });
+    const league = await db.query.leagues.findFirst({ where: eq(leagues.id, leagueId) });
     if (!league) { res.status(404).json({ error: "League not found" }); return; }
     if (league.creatorId === userId) { res.status(400).json({ error: "Commissioner cannot leave the league" }); return; }
     if (league.seasonStarted) { res.status(400).json({ error: "Cannot leave after season has started" }); return; }
 
-    const deleted = await prisma.membership.deleteMany({ where: { userId, leagueId } });
-    if (deleted.count === 0) { res.status(404).json({ error: "Not a member of this league" }); return; }
+    const deleted = await db.delete(memberships)
+      .where(and(eq(memberships.userId, userId), eq(memberships.leagueId, leagueId)))
+      .returning();
+    if (deleted.length === 0) { res.status(404).json({ error: "Not a member of this league" }); return; }
 
     res.json({ message: "Left league" });
   } catch (err: any) {
@@ -284,96 +310,186 @@ router.get("/feed", requireAuth, async (req: any, res: any) => {
     const weekNumber = req.query.weekNumber ? Number(req.query.weekNumber) : undefined;
 
     const [league, membership] = await Promise.all([
-      prisma.league.findUnique({ where: { id: leagueId } }),
-      prisma.membership.findFirst({ where: { leagueId, userId: req.userId, status: "ACTIVE" } }),
+      db.query.leagues.findFirst({ where: eq(leagues.id, leagueId) }),
+      db.query.memberships.findFirst({
+        where: and(
+          eq(memberships.leagueId, leagueId),
+          eq(memberships.userId, req.userId),
+          eq(memberships.status, "ACTIVE"),
+        ),
+      }),
     ]);
     if (!league) { res.status(404).json({ error: "League not found" }); return; }
     if (!membership) { res.status(403).json({ error: "Not a member" }); return; }
 
-    const weekFilter = weekNumber
-      ? { week: { number: weekNumber } }
-      : { week: { resolved: false } };
-
     const now = new Date();
 
     if (league.feedVisibility === "AFTER_RESOLVE") {
-      // Only show if week is resolved
-      const week = await prisma.week.findFirst({
-        where: weekNumber ? { number: weekNumber } : { resolved: false },
-        orderBy: { number: "asc" },
+      const week = await db.query.weeks.findFirst({
+        where: weekNumber ? eq(weeks.number, weekNumber) : eq(weeks.resolved, false),
+        // If no weekNumber, we want the current (unresolved) week — if it's not resolved, show nothing
       });
       if (!week?.resolved) { res.json([]); return; }
     }
 
-    const leagueMembers = await prisma.membership.findMany({
-      where: { leagueId, status: "ACTIVE" },
-      include: { user: { select: { id: true, displayName: true } } },
+    // Resolve the target week to get game IDs for filtering
+    let targetWeekGameIds: string[] | null = null;
+    {
+      const targetWeek = await db.query.weeks.findFirst({
+        where: weekNumber ? eq(weeks.number, weekNumber) : eq(weeks.resolved, false),
+      });
+      if (targetWeek) {
+        const weekGames = await db.select({ id: games.id }).from(games).where(eq(games.weekId, targetWeek.id));
+        targetWeekGameIds = weekGames.map((g) => g.id);
+      }
+    }
+
+    if (!targetWeekGameIds || targetWeekGameIds.length === 0) {
+      res.json([]); return;
+    }
+
+    const leagueMembers = await db.query.memberships.findMany({
+      where: and(eq(memberships.leagueId, leagueId), eq(memberships.status, "ACTIVE")),
+      with: { user: true },
     });
     const nameMap: Record<string, string> = {};
-    for (const m of leagueMembers as any[]) nameMap[m.userId] = m.displayName || m.user.displayName;
+    for (const m of leagueMembers) nameMap[m.userId] = m.displayName || m.user.displayName;
 
-    const [picks, gamePicks, parlays] = await Promise.all([
-      prisma.pick.findMany({
-        where: {
-          leagueId,
-          prop: { game: { ...weekFilter, ...(league.feedVisibility === "AFTER_KICKOFF" ? { gameDate: { lt: now } } : {}) } },
-        },
-        include: {
-          user: { select: { id: true, displayName: true } },
-          prop: {
-            include: {
-              player: { select: { id: true, name: true, position: true, team: true } },
-              game: { select: { id: true, homeTeam: true, awayTeam: true, gameDate: true, status: true } },
-            },
-          },
-        },
-        orderBy: { createdAt: "desc" },
-      }),
-      prisma.gamePick.findMany({
-        where: {
-          leagueId,
-          gameLine: { game: { ...weekFilter, ...(league.feedVisibility === "AFTER_KICKOFF" ? { gameDate: { lt: now } } : {}) } },
-        },
-        include: {
-          user: { select: { id: true, displayName: true } },
-          gameLine: {
-            include: {
-              game: { select: { id: true, homeTeam: true, awayTeam: true, gameDate: true, status: true } },
-            },
-          },
-        },
-        orderBy: { createdAt: "desc" },
-      }),
-      prisma.parlay.findMany({
-        where: {
-          leagueId,
-          ...(league.feedVisibility === "AFTER_KICKOFF" ? {} : {}),
-        },
-        include: {
-          user: { select: { id: true, displayName: true } },
-          legs: {
-            include: {
-              prop: { include: { game: { select: { gameDate: true, status: true, homeTeam: true, awayTeam: true } }, player: { select: { name: true } } } },
-              gameLine: { include: { game: { select: { gameDate: true, status: true, homeTeam: true, awayTeam: true } } } },
-            },
-          },
-        },
-        orderBy: { createdAt: "desc" },
-      }),
+    // Narrow game IDs further by kickoff time if AFTER_KICKOFF
+    let visibleGameIds: string[] = targetWeekGameIds;
+    if (league.feedVisibility === "AFTER_KICKOFF") {
+      const kickedOffGames = await db.select({ id: games.id }).from(games)
+        .where(and(inArray(games.id, targetWeekGameIds), lte(games.gameDate, now)));
+      visibleGameIds = kickedOffGames.map((g) => g.id);
+    }
+
+    if (visibleGameIds.length === 0 && league.feedVisibility === "AFTER_KICKOFF") {
+      res.json([]); return;
+    }
+
+    // Resolve propIds and gameLineIds for the visible games
+    const [visibleProps, visibleGameLines] = await Promise.all([
+      db.select({ id: props.id }).from(props).where(inArray(props.gameId, visibleGameIds)),
+      db.select({ id: gameLines.id }).from(gameLines).where(inArray(gameLines.gameId, visibleGameIds)),
     ]);
+    const visiblePropIds = visibleProps.map((p) => p.id);
+    const visibleGameLineIds = visibleGameLines.map((gl) => gl.id);
 
-    // Filter parlays: show only if at least one leg's game has kicked off
+    // Fetch picks: filtered to visible propIds
+    const picksRows = visiblePropIds.length > 0
+      ? await db.query.picks.findMany({
+          where: and(
+            eq(picks.leagueId, leagueId),
+            inArray(picks.propId, visiblePropIds),
+          ),
+          with: {
+            prop: {
+              with: {
+                player: true,
+                game: true,
+              },
+            },
+          },
+        })
+      : [];
+
+    // Fetch gamePicks: filtered to visible gameLineIds
+    const gamePicksRows = visibleGameLineIds.length > 0
+      ? await db.query.gamePicks.findMany({
+          where: and(
+            eq(gamePicks.leagueId, leagueId),
+            inArray(gamePicks.gameLineId, visibleGameLineIds),
+          ),
+          with: {
+            gameLine: {
+              with: { game: true },
+            },
+          },
+        })
+      : [];
+
+    // Fetch parlays for this league
+    const parlaysRows = await db.query.parlays.findMany({
+      where: eq(parlays.leagueId, leagueId),
+      with: {
+        legs: {
+          with: {
+            prop: {
+              with: {
+                game: true,
+                player: true,
+              },
+            },
+            gameLine: {
+              with: { game: true },
+            },
+          },
+        },
+      },
+    });
+
+    // Filter parlays to those with at least one leg in this week's games
+    const weekGameIdSet = new Set(targetWeekGameIds);
+    const weekParlays = parlaysRows.filter((p) =>
+      p.legs.some((l) => {
+        const gid = l.prop?.gameId ?? l.gameLine?.gameId;
+        return gid && weekGameIdSet.has(gid);
+      })
+    );
+
+    // Filter parlays by kickoff if AFTER_KICKOFF
     const visibleParlays = league.feedVisibility === "AFTER_KICKOFF"
-      ? parlays.filter((p) => p.legs.some((l) => {
-          const gameDate = l.prop?.game?.gameDate ?? l.gameLine?.game?.gameDate;
-          return gameDate && new Date(gameDate) < now;
-        }))
-      : parlays;
+      ? weekParlays.filter((p) =>
+          p.legs.some((l) => {
+            const gameDate = (l.prop?.game as any)?.gameDate ?? (l.gameLine?.game as any)?.gameDate;
+            return gameDate && new Date(gameDate) < now;
+          })
+        )
+      : weekParlays;
+
+    // We need user info for picks/gamePicks/parlays — fetch user rows for userId lookups
+    const allUserIds = Array.from(new Set([
+      ...picksRows.map((p) => p.userId),
+      ...gamePicksRows.map((p) => p.userId),
+      ...visibleParlays.map((p) => p.userId),
+    ]));
+    const userRows = allUserIds.length > 0
+      ? await db.select().from(users).where(inArray(users.id, allUserIds))
+      : [];
+    const userMap: Record<string, typeof userRows[0]> = {};
+    for (const u of userRows) userMap[u.id] = u;
 
     const feed = [
-      ...picks.map((p) => ({ type: "pick" as const, createdAt: p.createdAt, userId: p.user.id, displayName: nameMap[p.user.id] ?? p.user.displayName, pick: p })),
-      ...gamePicks.map((p) => ({ type: "gamepick" as const, createdAt: p.createdAt, userId: p.user.id, displayName: nameMap[p.user.id] ?? p.user.displayName, pick: p })),
-      ...visibleParlays.map((p) => ({ type: "parlay" as const, createdAt: p.createdAt, userId: p.user.id, displayName: nameMap[p.user.id] ?? p.user.displayName, pick: p })),
+      ...picksRows.map((p) => ({
+        type: "pick" as const,
+        createdAt: p.createdAt,
+        userId: p.userId,
+        displayName: nameMap[p.userId] ?? userMap[p.userId]?.displayName ?? "",
+        pick: {
+          ...p,
+          user: { id: p.userId, displayName: userMap[p.userId]?.displayName ?? "" },
+        },
+      })),
+      ...gamePicksRows.map((p) => ({
+        type: "gamepick" as const,
+        createdAt: p.createdAt,
+        userId: p.userId,
+        displayName: nameMap[p.userId] ?? userMap[p.userId]?.displayName ?? "",
+        pick: {
+          ...p,
+          user: { id: p.userId, displayName: userMap[p.userId]?.displayName ?? "" },
+        },
+      })),
+      ...visibleParlays.map((p) => ({
+        type: "parlay" as const,
+        createdAt: p.createdAt,
+        userId: p.userId,
+        displayName: nameMap[p.userId] ?? userMap[p.userId]?.displayName ?? "",
+        pick: {
+          ...p,
+          user: { id: p.userId, displayName: userMap[p.userId]?.displayName ?? "" },
+        },
+      })),
     ].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
     res.json(feed);
@@ -386,25 +502,36 @@ router.get("/feed", requireAuth, async (req: any, res: any) => {
 router.get("/messages", requireAuth, async (req: any, res: any) => {
   try {
     const { id: leagueId } = req.params;
-    const membership = await prisma.membership.findFirst({ where: { leagueId, userId: req.userId, status: "ACTIVE" } });
+    const membership = await db.query.memberships.findFirst({
+      where: and(
+        eq(memberships.leagueId, leagueId),
+        eq(memberships.userId, req.userId),
+        eq(memberships.status, "ACTIVE"),
+      ),
+    });
     if (!membership) { res.status(403).json({ error: "Not a member" }); return; }
 
-    const [rawMessages, memberships] = await Promise.all([
-      prisma.leagueMessage.findMany({
-        where: { leagueId },
-        include: { user: { select: { id: true, displayName: true } } },
-        orderBy: { createdAt: "desc" },
-        take: 50,
+    const [rawMessages, memberRows] = await Promise.all([
+      db.query.leagueMessages.findMany({
+        where: eq(leagueMessages.leagueId, leagueId),
+        with: { user: true },
+        // orderBy desc, take 50, then reverse for chronological
       }),
-      prisma.membership.findMany({
-        where: { leagueId, status: "ACTIVE" },
-        select: { userId: true, displayName: true, user: { select: { displayName: true } } },
+      db.query.memberships.findMany({
+        where: and(eq(memberships.leagueId, leagueId), eq(memberships.status, "ACTIVE")),
+        with: { user: true },
       }),
     ]);
-    const chatNameMap: Record<string, string> = {};
-    for (const m of memberships as any[]) chatNameMap[m.userId] = m.displayName || m.user.displayName;
 
-    const messages = (rawMessages as any[]).map((msg) => ({
+    // Take last 50 ordered by createdAt desc then reverse
+    const sortedMessages = [...rawMessages]
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+      .slice(0, 50);
+
+    const chatNameMap: Record<string, string> = {};
+    for (const m of memberRows) chatNameMap[m.userId] = m.displayName || m.user.displayName;
+
+    const messages = sortedMessages.map((msg) => ({
       ...msg,
       user: { ...msg.user, displayName: chatNameMap[msg.user.id] ?? msg.user.displayName },
     }));
@@ -422,22 +549,29 @@ router.post("/messages", requireAuth, async (req: any, res: any) => {
     if (!body?.trim()) { res.status(400).json({ error: "Message cannot be empty" }); return; }
     if (body.trim().length > 500) { res.status(400).json({ error: "Message too long (500 chars max)" }); return; }
 
-    const membership = await prisma.membership.findFirst({ where: { leagueId, userId: req.userId, status: "ACTIVE" } });
+    const membership = await db.query.memberships.findFirst({
+      where: and(
+        eq(memberships.leagueId, leagueId),
+        eq(memberships.userId, req.userId),
+        eq(memberships.status, "ACTIVE"),
+      ),
+    });
     if (!membership) { res.status(403).json({ error: "Not a member" }); return; }
 
     const [message, senderMembership] = await Promise.all([
-      prisma.leagueMessage.create({
-        data: { leagueId, userId: req.userId, body: body.trim() },
-        include: { user: { select: { id: true, displayName: true } } },
-      }),
-      prisma.membership.findFirst({
-        where: { leagueId, userId: req.userId },
-        select: { displayName: true },
+      db.insert(leagueMessages).values({ leagueId, userId: req.userId, body: body.trim() }).returning(),
+      db.query.memberships.findFirst({
+        where: and(eq(memberships.leagueId, leagueId), eq(memberships.userId, req.userId)),
       }),
     ]);
-    const leagueName = (senderMembership as any)?.displayName || (message as any).user.displayName;
+    const [createdMsg] = message;
+    const msgUser = await db.query.users.findFirst({ where: eq(users.id, req.userId) });
+    const leagueName = senderMembership?.displayName || msgUser?.displayName || "";
 
-    res.status(201).json({ ...message, user: { ...(message as any).user, displayName: leagueName } });
+    res.status(201).json({
+      ...createdMsg,
+      user: { id: req.userId, displayName: leagueName },
+    });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
@@ -447,8 +581,8 @@ router.delete("/messages/:msgId", requireAuth, async (req: any, res: any) => {
   try {
     const { id: leagueId, msgId } = req.params;
     const [msg, league] = await Promise.all([
-      prisma.leagueMessage.findUnique({ where: { id: msgId } }),
-      prisma.league.findUnique({ where: { id: leagueId } }),
+      db.query.leagueMessages.findFirst({ where: eq(leagueMessages.id, msgId) }),
+      db.query.leagues.findFirst({ where: eq(leagues.id, leagueId) }),
     ]);
     if (!msg || msg.leagueId !== leagueId) { res.status(404).json({ error: "Message not found" }); return; }
 
@@ -456,7 +590,7 @@ router.delete("/messages/:msgId", requireAuth, async (req: any, res: any) => {
     const isCommissioner = league?.creatorId === req.userId;
     if (!isAuthor && !isCommissioner) { res.status(403).json({ error: "Cannot delete this message" }); return; }
 
-    await prisma.leagueMessage.delete({ where: { id: msgId } });
+    await db.delete(leagueMessages).where(eq(leagueMessages.id, msgId));
     res.json({ message: "Deleted" });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -468,40 +602,66 @@ router.get("/members/:targetUserId/stats", requireAuth, async (req: any, res: an
   try {
     const { id: leagueId, targetUserId } = req.params;
 
-    const [membership, targetMembership, leaderboard] = await Promise.all([
-      prisma.membership.findFirst({ where: { leagueId, userId: req.userId, status: "ACTIVE" } }),
-      prisma.membership.findFirst({
-        where: { leagueId, userId: targetUserId, status: "ACTIVE" },
-        include: { user: { select: { id: true, displayName: true } } },
+    const [membership, targetMembership, leaderboardMembers] = await Promise.all([
+      db.query.memberships.findFirst({
+        where: and(
+          eq(memberships.leagueId, leagueId),
+          eq(memberships.userId, req.userId),
+          eq(memberships.status, "ACTIVE"),
+        ),
       }),
-      prisma.membership.findMany({
-        where: { leagueId, status: "ACTIVE" },
-        include: { user: { select: { id: true } } },
+      db.query.memberships.findFirst({
+        where: and(
+          eq(memberships.leagueId, leagueId),
+          eq(memberships.userId, targetUserId),
+          eq(memberships.status, "ACTIVE"),
+        ),
+        with: { user: true },
+      }),
+      db.query.memberships.findMany({
+        where: and(eq(memberships.leagueId, leagueId), eq(memberships.status, "ACTIVE")),
+        with: { user: true },
       }),
     ]);
     if (!membership) { res.status(403).json({ error: "Not a member" }); return; }
     if (!targetMembership) { res.status(404).json({ error: "Member not found" }); return; }
 
-    const [picks, gamePicks, parlays, matchups] = await Promise.all([
-      prisma.pick.findMany({
-        where: { leagueId, userId: targetUserId },
-        include: { prop: { include: { player: { select: { name: true } }, game: { select: { gameDate: true, weekId: true } } } } },
-        orderBy: { createdAt: "desc" },
+    const [picksRows, gamePicksRows, parlaysRows, matchupRows] = await Promise.all([
+      db.query.picks.findMany({
+        where: and(eq(picks.leagueId, leagueId), eq(picks.userId, targetUserId)),
+        with: {
+          prop: {
+            with: {
+              player: true,
+              game: true,
+            },
+          },
+        },
       }),
-      prisma.gamePick.findMany({
-        where: { leagueId, userId: targetUserId },
-        include: { gameLine: { include: { game: { select: { gameDate: true, weekId: true } } } } },
-        orderBy: { createdAt: "desc" },
+      db.query.gamePicks.findMany({
+        where: and(eq(gamePicks.leagueId, leagueId), eq(gamePicks.userId, targetUserId)),
+        with: {
+          gameLine: {
+            with: { game: true },
+          },
+        },
       }),
-      prisma.parlay.findMany({
-        where: { leagueId, userId: targetUserId },
-        include: { legs: true },
-        orderBy: { createdAt: "desc" },
+      db.query.parlays.findMany({
+        where: and(eq(parlays.leagueId, leagueId), eq(parlays.userId, targetUserId)),
+        with: { legs: true },
       }),
-      prisma.matchup.findMany({
-        where: { leagueId, OR: [{ homeUserId: targetUserId }, { awayUserId: targetUserId }] },
-      }),
+      db.select().from(matchups).where(
+        and(
+          eq(matchups.leagueId, leagueId),
+          or(eq(matchups.homeUserId, targetUserId), eq(matchups.awayUserId, targetUserId)),
+        )
+      ),
     ]);
+
+    // Sort by createdAt desc
+    picksRows.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    gamePicksRows.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    parlaysRows.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
     function calcProfit(stake: number, odds: number, outcome: string): number {
       if (outcome === "WIN") return odds > 0 ? Math.round(stake * (odds / 100)) : Math.round(stake * (100 / Math.abs(odds)));
@@ -509,11 +669,11 @@ router.get("/members/:targetUserId/stats", requireAuth, async (req: any, res: an
       return 0;
     }
 
-    const settledPicks = [...picks, ...gamePicks].filter((p) => p.outcome !== "PENDING");
+    const settledPicks = [...picksRows, ...gamePicksRows].filter((p) => p.outcome !== "PENDING");
     const allSettled = settledPicks.map((p) => ({ outcome: p.outcome, profit: calcProfit(p.stake, p.odds, p.outcome) }));
 
     let totalStaked = 0, totalProfit = 0, wonCount = 0, lostCount = 0;
-    for (const p of [...picks, ...gamePicks, ...parlays]) {
+    for (const p of [...picksRows, ...gamePicksRows, ...parlaysRows]) {
       totalStaked += p.stake;
       if (p.outcome === "WIN") wonCount++;
       if (p.outcome === "LOSS") lostCount++;
@@ -531,7 +691,7 @@ router.get("/members/:targetUserId/stats", requireAuth, async (req: any, res: an
 
     // Hit rates and profit per stat type
     const statTypeStats: Record<string, { won: number; total: number; profit: number }> = {};
-    for (const p of picks) {
+    for (const p of picksRows) {
       if (p.outcome === "PENDING") continue;
       const st = p.prop.statType;
       if (!statTypeStats[st]) statTypeStats[st] = { won: 0, total: 0, profit: 0 };
@@ -552,12 +712,12 @@ router.get("/members/:targetUserId/stats", requireAuth, async (req: any, res: an
 
     // Avg weekly winnings across weeks with settled bets
     const weekProfits: Record<string, number> = {};
-    for (const p of picks) {
+    for (const p of picksRows) {
       if (p.outcome === "PENDING") continue;
       const wid = p.prop.game.weekId;
       weekProfits[wid] = (weekProfits[wid] ?? 0) + calcProfit(p.stake, p.odds, p.outcome);
     }
-    for (const p of gamePicks) {
+    for (const p of gamePicksRows) {
       if (p.outcome === "PENDING") continue;
       const wid = p.gameLine.game.weekId;
       weekProfits[wid] = (weekProfits[wid] ?? 0) + calcProfit(p.stake, p.odds, p.outcome);
@@ -567,17 +727,14 @@ router.get("/members/:targetUserId/stats", requireAuth, async (req: any, res: an
 
     // Matchup record
     let wins = 0, losses = 0, ties = 0;
-    for (const m of matchups) {
+    for (const m of matchupRows) {
       if (!m.winnerId && !m.isTie) continue;
       if (m.isTie) { ties++; continue; }
       if (m.winnerId === targetUserId) wins++; else losses++;
     }
 
-    // Rank
-    const sorted = leaderboard
-      .map((m) => m.userId)
-      .sort(); // rough sort; real rank needs full leaderboard — just count members with higher balance
-    const rank = leaderboard.filter((m) => m.balance > targetMembership.balance).length + 1;
+    // Rank by balance
+    const rank = leaderboardMembers.filter((m) => m.balance > targetMembership.balance).length + 1;
 
     res.json({
       userId: targetUserId,
@@ -589,10 +746,10 @@ router.get("/members/:targetUserId/stats", requireAuth, async (req: any, res: an
       wins,
       losses,
       ties,
-      totalPicks: picks.length + gamePicks.length + parlays.length,
+      totalPicks: picksRows.length + gamePicksRows.length + parlaysRows.length,
       wonPicks: wonCount,
       lostPicks: lostCount,
-      pendingPicks: picks.length + gamePicks.length + parlays.length - wonCount - lostCount,
+      pendingPicks: picksRows.length + gamePicksRows.length + parlaysRows.length - wonCount - lostCount,
       totalStaked,
       totalProfit,
       roi: totalStaked > 0 ? Math.round((totalProfit / totalStaked) * 1000) / 10 : 0,
@@ -601,7 +758,7 @@ router.get("/members/:targetUserId/stats", requireAuth, async (req: any, res: an
       bestStatType: statEntries[0] ? { statType: statEntries[0][0], profit: statEntries[0][1] } : null,
       worstStatType: statEntries.length > 1 ? { statType: statEntries[statEntries.length - 1][0], profit: statEntries[statEntries.length - 1][1] } : null,
       statTypeHitRates,
-      recentPicks: picks.slice(0, 10).map((p) => ({
+      recentPicks: picksRows.slice(0, 10).map((p) => ({
         id: p.id,
         playerName: p.prop.player.name,
         statType: p.prop.statType,
@@ -625,43 +782,86 @@ router.get("/recap", requireAuth, async (req: any, res: any) => {
     const { id: leagueId } = req.params;
     const weekNumber = req.query.weekNumber ? Number(req.query.weekNumber) : undefined;
 
-    const membership = await prisma.membership.findFirst({ where: { leagueId, userId: req.userId, status: "ACTIVE" } });
+    const membership = await db.query.memberships.findFirst({
+      where: and(
+        eq(memberships.leagueId, leagueId),
+        eq(memberships.userId, req.userId),
+        eq(memberships.status, "ACTIVE"),
+      ),
+    });
     if (!membership) { res.status(403).json({ error: "Not a member" }); return; }
 
-    const week = await prisma.week.findFirst({
-      where: weekNumber ? { number: weekNumber } : { resolved: true },
-      orderBy: weekNumber ? undefined : { number: "desc" },
-      include: { games: { select: { id: true } } },
-    });
-    if (!week?.resolved) { res.json(null); return; }
+    // For "most recently resolved", we need desc ordering
+    const resolvedWeek = weekNumber
+      ? await db.query.weeks.findFirst({ where: eq(weeks.number, weekNumber) })
+      : (await db.select().from(weeks).where(eq(weeks.resolved, true)).orderBy(desc(weeks.number)).limit(1))[0];
 
-    const gameIds = week.games.map((g) => g.id);
+    if (!resolvedWeek?.resolved) { res.json(null); return; }
 
-    const [picks, gamePicks, parlays, matchups] = await Promise.all([
-      prisma.pick.findMany({
-        where: { leagueId, userId: req.userId, prop: { gameId: { in: gameIds } } },
-        include: { prop: { include: { player: { select: { name: true } } } } },
-      }),
-      prisma.gamePick.findMany({
-        where: { leagueId, userId: req.userId, gameLine: { gameId: { in: gameIds } } },
-        include: { gameLine: true },
-      }),
-      prisma.parlay.findMany({
-        where: { leagueId, userId: req.userId },
-        include: { legs: { include: { prop: { include: { game: true } }, gameLine: { include: { game: true } } } } },
-      }),
-      prisma.matchup.findMany({
-        where: { leagueId, weekNumber: week.number, OR: [{ homeUserId: req.userId }, { awayUserId: req.userId }] },
-        include: {
-          homeUser: { select: { displayName: true } },
-          awayUser: { select: { displayName: true } },
+    const weekGames = await db.select({ id: games.id }).from(games).where(eq(games.weekId, resolvedWeek.id));
+    const gameIds = weekGames.map((g) => g.id);
+
+    // Get propIds for games in this week
+    const weekProps = gameIds.length > 0
+      ? await db.select({ id: props.id }).from(props).where(inArray(props.gameId, gameIds))
+      : [];
+    const propIds = weekProps.map((p) => p.id);
+
+    // Get gameLineIds for games in this week
+    const weekGameLines = gameIds.length > 0
+      ? await db.select({ id: gameLines.id }).from(gameLines).where(inArray(gameLines.gameId, gameIds))
+      : [];
+    const gameLineIds = weekGameLines.map((gl) => gl.id);
+
+    const [picksRows, gamePicksRows, parlaysRows, matchupRows] = await Promise.all([
+      propIds.length > 0
+        ? db.query.picks.findMany({
+            where: and(
+              eq(picks.leagueId, leagueId),
+              eq(picks.userId, req.userId),
+              inArray(picks.propId, propIds),
+            ),
+            with: { prop: { with: { player: true } } },
+          })
+        : Promise.resolve([]),
+      gameLineIds.length > 0
+        ? db.query.gamePicks.findMany({
+            where: and(
+              eq(gamePicks.leagueId, leagueId),
+              eq(gamePicks.userId, req.userId),
+              inArray(gamePicks.gameLineId, gameLineIds),
+            ),
+            with: { gameLine: true },
+          })
+        : Promise.resolve([]),
+      db.query.parlays.findMany({
+        where: and(eq(parlays.leagueId, leagueId), eq(parlays.userId, req.userId)),
+        with: {
+          legs: {
+            with: {
+              prop: { with: { game: true } },
+              gameLine: { with: { game: true } },
+            },
+          },
         },
+      }),
+      db.query.matchups.findMany({
+        where: and(
+          eq(matchups.leagueId, leagueId),
+          eq(matchups.weekNumber, resolvedWeek.number),
+          or(eq(matchups.homeUserId, req.userId), eq(matchups.awayUserId, req.userId)),
+        ),
+        with: { homeUser: true, awayUser: true },
       }),
     ]);
 
     // Filter parlays to ones with at least one leg in this week's games
-    const weekParlays = parlays.filter((p) =>
-      p.legs.some((l) => gameIds.includes(l.prop?.game?.id ?? "") || gameIds.includes(l.gameLine?.game?.id ?? ""))
+    const gameIdSet = new Set(gameIds);
+    const weekParlays = parlaysRows.filter((p) =>
+      p.legs.some((l) => {
+        const gid = l.prop?.gameId ?? l.gameLine?.gameId;
+        return gid && gameIdSet.has(gid);
+      })
     );
 
     function calcProfit(stake: number, odds: number, outcome: string): number {
@@ -671,12 +871,12 @@ router.get("/recap", requireAuth, async (req: any, res: any) => {
     }
 
     const allBets = [
-      ...picks.map((p) => ({
+      ...picksRows.map((p) => ({
         label: `${p.prop.player.name} ${p.direction} ${p.altLine ?? p.prop.line} ${p.prop.statType.split("_").join(" ")}`,
         stake: p.stake, odds: p.odds, outcome: p.outcome,
         profit: calcProfit(p.stake, p.odds, p.outcome),
       })),
-      ...gamePicks.map((p) => ({
+      ...gamePicksRows.map((p) => ({
         label: p.gameLine.label,
         stake: p.stake, odds: p.odds, outcome: p.outcome,
         profit: calcProfit(p.stake, p.odds, p.outcome),
@@ -693,14 +893,14 @@ router.get("/recap", requireAuth, async (req: any, res: any) => {
     const pending = allBets.filter((b) => b.outcome === "PENDING").length;
     const totalProfit = allBets.reduce((s, b) => s + b.profit, 0);
 
-    const settled = allBets.filter((b) => b.outcome !== "PENDING");
+    const settled = [...allBets].filter((b) => b.outcome !== "PENDING");
     const bestBet = settled.sort((a, b) => b.profit - a.profit)[0] ?? null;
-    const worstBet = settled.sort((a, b) => a.profit - b.profit)[0] ?? null;
+    const worstBet = [...settled].sort((a, b) => a.profit - b.profit)[0] ?? null;
 
-    const matchup = matchups[0] ?? null;
+    const matchup = matchupRows[0] ?? null;
 
     res.json({
-      weekNumber: week.number,
+      weekNumber: resolvedWeek.number,
       totalBets: allBets.length,
       won, lost, pending,
       totalProfit,

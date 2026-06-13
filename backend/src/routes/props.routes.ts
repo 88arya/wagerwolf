@@ -1,5 +1,7 @@
 import { Router } from "express";
-import { prisma } from "../db/prisma";
+import { db } from "../db/db";
+import { eq, inArray, isNotNull } from "drizzle-orm";
+import { props, games } from "../db/schema";
 import { requireAuth, requireCron } from "../middleware/auth";
 
 const router = Router();
@@ -11,9 +13,7 @@ router.post("/", requireAuth, requireCron, async (req: any, res: any) => {
       res.status(400).json({ error: "gameId, playerId, statType, and line are required" });
       return;
     }
-    const prop = await prisma.prop.create({
-      data: { gameId, playerId, statType, line: Number(line) },
-    });
+    const [prop] = await db.insert(props).values({ gameId, playerId, statType, line: Number(line) }).returning();
     res.status(201).json(prop);
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -22,13 +22,15 @@ router.post("/", requireAuth, requireCron, async (req: any, res: any) => {
 
 router.get("/hit-rates", requireAuth, async (req: any, res: any) => {
   try {
-    const props = await prisma.prop.findMany({
-      where: { result: { not: null } },
-      select: { playerId: true, statType: true, line: true, result: true },
-    });
+    const resolvedProps = await db.select({
+      playerId: props.playerId,
+      statType: props.statType,
+      line: props.line,
+      result: props.result,
+    }).from(props).where(isNotNull(props.result));
 
     const counts: Record<string, { over: number; under: number }> = {};
-    for (const p of props) {
+    for (const p of resolvedProps) {
       const key = `${p.playerId}:${p.statType}`;
       if (!counts[key]) counts[key] = { over: 0, under: 0 };
       if (p.result! > p.line) counts[key].over++;
@@ -51,11 +53,21 @@ router.get("/hit-rates", requireAuth, async (req: any, res: any) => {
 router.get("/", requireAuth, async (req: any, res: any) => {
   try {
     const { weekId } = req.query;
-    const props = await prisma.prop.findMany({
-      where: weekId ? { game: { weekId: String(weekId) } } : undefined,
-      include: { player: true, game: true },
-    });
-    res.json(props);
+    if (weekId) {
+      const weekGames = await db.select({ id: games.id }).from(games).where(eq(games.weekId, String(weekId)));
+      const gameIds = weekGames.map((g) => g.id);
+      if (gameIds.length === 0) { res.json([]); return; }
+      const rows = await db.query.props.findMany({
+        where: inArray(props.gameId, gameIds),
+        with: { player: true, game: true },
+      });
+      res.json(rows);
+    } else {
+      const rows = await db.query.props.findMany({
+        with: { player: true, game: true },
+      });
+      res.json(rows);
+    }
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }

@@ -1,5 +1,7 @@
 import { Router } from "express";
-import { prisma } from "../db/prisma";
+import { db } from "../db/db";
+import { eq, and, inArray, sql } from "drizzle-orm";
+import { leagues, memberships, weeks, games, props, picks, gameLines, gamePicks, parlays, parlayLegs } from "../db/schema";
 import { requireAuth } from "../middleware/auth";
 import { calcParlayOdds, calcParlayPayout } from "../lib/payout";
 
@@ -59,6 +61,58 @@ interface LegInput {
   altLine?: number;
 }
 
+// Helper: count bets for a user+league scoped to a specific weekId
+async function countWeekBets(userId: string, leagueId: string, weekId: string): Promise<number> {
+  // picks: join prop → game where game.weekId = weekId
+  const weekPickRows = await db
+    .select({ id: picks.id })
+    .from(picks)
+    .innerJoin(props, eq(picks.propId, props.id))
+    .innerJoin(games, eq(props.gameId, games.id))
+    .where(and(eq(picks.userId, userId), eq(picks.leagueId, leagueId), eq(games.weekId, weekId)));
+
+  // gamePicks: join gameLine → game where game.weekId = weekId
+  const weekGamePickRows = await db
+    .select({ id: gamePicks.id })
+    .from(gamePicks)
+    .innerJoin(gameLines, eq(gamePicks.gameLineId, gameLines.id))
+    .innerJoin(games, eq(gameLines.gameId, games.id))
+    .where(and(eq(gamePicks.userId, userId), eq(gamePicks.leagueId, leagueId), eq(games.weekId, weekId)));
+
+  // parlays: a parlay counts if it has at least one leg touching this week
+  // find parlayIds for this user+league, then check if any of their legs touch this week
+  const userParlayRows = await db
+    .select({ id: parlays.id })
+    .from(parlays)
+    .where(and(eq(parlays.userId, userId), eq(parlays.leagueId, leagueId)));
+
+  let weekParlayCount = 0;
+  if (userParlayRows.length > 0) {
+    const parlayIds = userParlayRows.map((p) => p.id);
+    // legs via props
+    const legViaPropRows = await db
+      .select({ parlayId: parlayLegs.parlayId })
+      .from(parlayLegs)
+      .innerJoin(props, eq(parlayLegs.propId, props.id))
+      .innerJoin(games, eq(props.gameId, games.id))
+      .where(and(inArray(parlayLegs.parlayId, parlayIds), eq(games.weekId, weekId)));
+    // legs via gameLines
+    const legViaGLRows = await db
+      .select({ parlayId: parlayLegs.parlayId })
+      .from(parlayLegs)
+      .innerJoin(gameLines, eq(parlayLegs.gameLineId, gameLines.id))
+      .innerJoin(games, eq(gameLines.gameId, games.id))
+      .where(and(inArray(parlayLegs.parlayId, parlayIds), eq(games.weekId, weekId)));
+
+    const touchingParlayIds = new Set<string>();
+    for (const r of legViaPropRows) touchingParlayIds.add(r.parlayId);
+    for (const r of legViaGLRows) touchingParlayIds.add(r.parlayId);
+    weekParlayCount = touchingParlayIds.size;
+  }
+
+  return weekPickRows.length + weekGamePickRows.length + weekParlayCount;
+}
+
 router.post("/", requireAuth, async (req: any, res: any) => {
   try {
     const { leagueId, stake, legs } = req.body as {
@@ -77,10 +131,11 @@ router.post("/", requireAuth, async (req: any, res: any) => {
       return;
     }
 
-    const league = await prisma.league.findUnique({
-      where: { id: leagueId },
-      select: { maxStakePerBet: true, maxBetsPerWeek: true, maxParlayLegs: true },
-    });
+    const [league] = await db
+      .select({ maxStakePerBet: leagues.maxStakePerBet, maxBetsPerWeek: leagues.maxBetsPerWeek, maxParlayLegs: leagues.maxParlayLegs })
+      .from(leagues)
+      .where(eq(leagues.id, leagueId))
+      .limit(1);
 
     if (league?.maxParlayLegs && legs.length > league.maxParlayLegs) {
       res.status(400).json({ error: `Maximum ${league.maxParlayLegs} legs per parlay` }); return;
@@ -89,9 +144,11 @@ router.post("/", requireAuth, async (req: any, res: any) => {
       res.status(400).json({ error: `Max stake per bet is $${league.maxStakePerBet}` }); return;
     }
 
-    const membership = await prisma.membership.findUnique({
-      where: { userId_leagueId: { userId, leagueId } },
-    });
+    const [membership] = await db
+      .select()
+      .from(memberships)
+      .where(and(eq(memberships.userId, userId), eq(memberships.leagueId, leagueId)))
+      .limit(1);
     if (!membership) { res.status(404).json({ error: "Not a member of this league" }); return; }
     if (membership.balance < Number(stake)) {
       res.status(400).json({ error: "Insufficient balance" });
@@ -114,9 +171,9 @@ router.post("/", requireAuth, async (req: any, res: any) => {
       if (leg.propId) {
         if (!leg.direction) { res.status(400).json({ error: "Prop legs require a direction" }); return; }
 
-        const prop = await prisma.prop.findUnique({
-          where: { id: leg.propId },
-          include: { game: { include: { week: true } } },
+        const prop = await db.query.props.findFirst({
+          where: eq(props.id, leg.propId),
+          with: { game: { with: { week: true } } },
         }) as any;
         if (!prop) { res.status(404).json({ error: `Prop ${leg.propId} not found` }); return; }
         if (prop.game.status === "CANCELLED") { res.status(400).json({ error: "Cannot include bets on cancelled games in parlay" }); return; }
@@ -129,7 +186,6 @@ router.post("/", requireAuth, async (req: any, res: any) => {
         }
 
         // Anti-arbitrage within legs: no OVER and UNDER on same prop
-        const conflictKey = `prop:${leg.propId}`;
         const oppositeDir = leg.direction === "OVER" ? "UNDER" : "OVER";
         if (seenPropIds.has(`${leg.propId}:${oppositeDir}`)) {
           res.status(409).json({ error: "Cannot include both OVER and UNDER on same prop in one parlay" });
@@ -143,9 +199,9 @@ router.post("/", requireAuth, async (req: any, res: any) => {
           : prop.odds;
         resolvedLegs.push({ propId: leg.propId, direction: leg.direction, odds: propOdds, altLine: leg.altLine });
       } else if (leg.gameLineId) {
-        const gameLine = await prisma.gameLine.findUnique({
-          where: { id: leg.gameLineId },
-          include: { game: { include: { week: true } } },
+        const gameLine = await db.query.gameLines.findFirst({
+          where: eq(gameLines.id, leg.gameLineId),
+          with: { game: { with: { week: true } } },
         }) as any;
         if (!gameLine) { res.status(404).json({ error: `GameLine ${leg.gameLineId} not found` }); return; }
         if (gameLine.game.status === "CANCELLED") { res.status(400).json({ error: "Cannot include bets on cancelled games in parlay" }); return; }
@@ -185,15 +241,8 @@ router.post("/", requireAuth, async (req: any, res: any) => {
     }
 
     if (league?.maxBetsPerWeek && firstWeekId) {
-      const weekId = firstWeekId;
-      const [weekPicks, weekGamePicks, weekParlays] = await Promise.all([
-        prisma.pick.count({ where: { userId, leagueId, prop: { game: { weekId } } } }),
-        prisma.gamePick.count({ where: { userId, leagueId, gameLine: { game: { weekId } } } }),
-        prisma.parlay.count({
-          where: { userId, leagueId, legs: { some: { OR: [{ prop: { game: { weekId } } }, { gameLine: { game: { weekId } } }] } } },
-        }),
-      ]);
-      if (weekPicks + weekGamePicks + weekParlays >= league.maxBetsPerWeek) {
+      const totalWeekBets = await countWeekBets(userId, leagueId, firstWeekId);
+      if (totalWeekBets >= league.maxBetsPerWeek) {
         res.status(400).json({ error: `Maximum ${league.maxBetsPerWeek} bets per week` }); return;
       }
     }
@@ -201,33 +250,31 @@ router.post("/", requireAuth, async (req: any, res: any) => {
     const totalOdds = calcParlayOdds(resolvedLegs.map((l) => l.odds));
     const payout = calcParlayPayout(Number(stake), totalOdds);
 
-    const parlay = await prisma.$transaction(async (tx) => {
-      const created = await tx.parlay.create({
-        data: {
-          userId,
-          leagueId,
-          stake: Number(stake),
-          totalOdds,
-          payout,
-          legs: {
-            create: resolvedLegs.map((l) => ({
-              propId: l.propId ?? null,
-              gameLineId: l.gameLineId ?? null,
-              direction: l.direction as any ?? null,
-              odds: l.odds,
-              altLine: l.altLine ?? null,
-            })),
-          },
-        },
-        include: { legs: true },
-      });
+    const parlay = await db.transaction(async (tx) => {
+      const [created] = await tx.insert(parlays).values({
+        userId,
+        leagueId,
+        stake: Number(stake),
+        totalOdds,
+        payout,
+      }).returning();
 
-      await tx.membership.update({
-        where: { userId_leagueId: { userId, leagueId } },
-        data: { balance: { decrement: Number(stake) } },
-      });
+      const legRows = resolvedLegs.map((l) => ({
+        parlayId: created.id,
+        propId: l.propId ?? null,
+        gameLineId: l.gameLineId ?? null,
+        direction: (l.direction as any) ?? null,
+        odds: l.odds,
+        altLine: l.altLine ?? null,
+      }));
+      const createdLegs = await tx.insert(parlayLegs).values(legRows).returning();
 
-      return created;
+      await tx
+        .update(memberships)
+        .set({ balance: sql`${memberships.balance} - ${Number(stake)}` })
+        .where(and(eq(memberships.userId, userId), eq(memberships.leagueId, leagueId)));
+
+      return { ...created, legs: createdLegs };
     });
 
     res.status(201).json(parlay);
@@ -247,17 +294,20 @@ router.post("/round-robin", requireAuth, async (req: any, res: any) => {
       res.status(400).json({ error: "Requires leagueId, 3+ legs, size (2 to legs-1), and stakePerParlay" }); return;
     }
 
-    const league = await prisma.league.findUnique({
-      where: { id: leagueId },
-      select: { maxStakePerBet: true, maxBetsPerWeek: true, maxParlayLegs: true },
-    });
+    const [league] = await db
+      .select({ maxStakePerBet: leagues.maxStakePerBet, maxBetsPerWeek: leagues.maxBetsPerWeek, maxParlayLegs: leagues.maxParlayLegs })
+      .from(leagues)
+      .where(eq(leagues.id, leagueId))
+      .limit(1);
     if (league?.maxStakePerBet && Number(stakePerParlay) > league.maxStakePerBet) {
       res.status(400).json({ error: `Max stake per bet is $${league.maxStakePerBet}` }); return;
     }
 
-    const membership = await prisma.membership.findUnique({
-      where: { userId_leagueId: { userId, leagueId } },
-    });
+    const [membership] = await db
+      .select()
+      .from(memberships)
+      .where(and(eq(memberships.userId, userId), eq(memberships.leagueId, leagueId)))
+      .limit(1);
     if (!membership) { res.status(404).json({ error: "Not a member of this league" }); return; }
 
     // Resolve every leg individually (validate + compute odds)
@@ -269,9 +319,9 @@ router.post("/round-robin", requireAuth, async (req: any, res: any) => {
       }
       if (leg.propId) {
         if (!leg.direction) { res.status(400).json({ error: "Prop legs require a direction" }); return; }
-        const prop = await prisma.prop.findUnique({
-          where: { id: leg.propId },
-          include: { game: { include: { week: true } } },
+        const prop = await db.query.props.findFirst({
+          where: eq(props.id, leg.propId),
+          with: { game: { with: { week: true } } },
         }) as any;
         if (!prop) { res.status(404).json({ error: `Prop ${leg.propId} not found` }); return; }
         if (prop.game.status === "CANCELLED") { res.status(400).json({ error: "Cannot include cancelled game" }); return; }
@@ -283,9 +333,9 @@ router.post("/round-robin", requireAuth, async (req: any, res: any) => {
         if (!firstWeekId) firstWeekId = prop.game.week.id;
         resolved.push({ propId: leg.propId, direction: leg.direction, odds, altLine: leg.altLine, gameId: prop.game.id });
       } else if (leg.gameLineId) {
-        const gameLine = await prisma.gameLine.findUnique({
-          where: { id: leg.gameLineId },
-          include: { game: { include: { week: true } } },
+        const gameLine = await db.query.gameLines.findFirst({
+          where: eq(gameLines.id, leg.gameLineId),
+          with: { game: { with: { week: true } } },
         }) as any;
         if (!gameLine) { res.status(404).json({ error: `GameLine ${leg.gameLineId} not found` }); return; }
         if (gameLine.game.status === "CANCELLED") { res.status(400).json({ error: "Cannot include cancelled game" }); return; }
@@ -332,49 +382,42 @@ router.post("/round-robin", requireAuth, async (req: any, res: any) => {
     }
 
     if (league?.maxBetsPerWeek && firstWeekId) {
-      const weekId = firstWeekId;
-      const [weekPicks, weekGamePicks, weekParlays] = await Promise.all([
-        prisma.pick.count({ where: { userId, leagueId, prop: { game: { weekId } } } }),
-        prisma.gamePick.count({ where: { userId, leagueId, gameLine: { game: { weekId } } } }),
-        prisma.parlay.count({ where: { userId, leagueId, legs: { some: { OR: [{ prop: { game: { weekId } } }, { gameLine: { game: { weekId } } }] } } } }),
-      ]);
-      if (weekPicks + weekGamePicks + weekParlays + combos.length > league.maxBetsPerWeek) {
+      const totalWeekBets = await countWeekBets(userId, leagueId, firstWeekId);
+      if (totalWeekBets + combos.length > league.maxBetsPerWeek) {
         res.status(400).json({ error: `Would exceed max ${league.maxBetsPerWeek} bets per week` }); return;
       }
     }
 
-    const parlays = await prisma.$transaction(async (tx) => {
+    const createdParlays = await db.transaction(async (tx) => {
       const created = [];
       for (const combo of combos) {
         const totalOdds = calcParlayOdds(combo.map((l) => l.odds));
         const payout = calcParlayPayout(Number(stakePerParlay), totalOdds);
-        const parlay = await tx.parlay.create({
-          data: {
-            userId, leagueId,
-            stake: Number(stakePerParlay),
-            totalOdds, payout,
-            legs: {
-              create: combo.map((l) => ({
-                propId: l.propId ?? null,
-                gameLineId: l.gameLineId ?? null,
-                direction: l.direction as any ?? null,
-                odds: l.odds,
-                altLine: l.altLine ?? null,
-              })),
-            },
-          },
-          include: { legs: true },
-        });
-        created.push(parlay);
+        const [parlay] = await tx.insert(parlays).values({
+          userId, leagueId,
+          stake: Number(stakePerParlay),
+          totalOdds, payout,
+        }).returning();
+
+        const legRows = combo.map((l) => ({
+          parlayId: parlay.id,
+          propId: l.propId ?? null,
+          gameLineId: l.gameLineId ?? null,
+          direction: (l.direction as any) ?? null,
+          odds: l.odds,
+          altLine: l.altLine ?? null,
+        }));
+        const createdLegs = await tx.insert(parlayLegs).values(legRows).returning();
+        created.push({ ...parlay, legs: createdLegs });
       }
-      await tx.membership.update({
-        where: { userId_leagueId: { userId, leagueId } },
-        data: { balance: { decrement: totalStake } },
-      });
+      await tx
+        .update(memberships)
+        .set({ balance: sql`${memberships.balance} - ${totalStake}` })
+        .where(and(eq(memberships.userId, userId), eq(memberships.leagueId, leagueId)));
       return created;
     });
 
-    res.status(201).json({ parlays, combos: parlays.length, totalStake });
+    res.status(201).json({ parlays: createdParlays, combos: createdParlays.length, totalStake });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
@@ -383,13 +426,13 @@ router.post("/round-robin", requireAuth, async (req: any, res: any) => {
 // Cashout a pending parlay before all games have started — full stake refund
 router.post("/:id/cashout", requireAuth, async (req: any, res: any) => {
   try {
-    const parlay = await prisma.parlay.findUnique({
-      where: { id: req.params.id },
-      include: {
+    const parlay = await db.query.parlays.findFirst({
+      where: eq(parlays.id, req.params.id),
+      with: {
         legs: {
-          include: {
-            prop: { include: { game: true } },
-            gameLine: { include: { game: true } },
+          with: {
+            prop: { with: { game: true } },
+            gameLine: { with: { game: true } },
           },
         },
       },
@@ -409,13 +452,16 @@ router.post("/:id/cashout", requireAuth, async (req: any, res: any) => {
       }
     }
 
-    await prisma.$transaction([
-      prisma.parlay.update({ where: { id: parlay.id }, data: { outcome: "VOID", cashedOut: true } }),
-      prisma.membership.updateMany({
-        where: { userId: parlay.userId, leagueId: parlay.leagueId },
-        data: { balance: { increment: parlay.stake } },
-      }),
-    ]);
+    await db.transaction(async (tx) => {
+      await tx
+        .update(parlays)
+        .set({ outcome: "VOID", cashedOut: true })
+        .where(eq(parlays.id, parlay.id));
+      await tx
+        .update(memberships)
+        .set({ balance: sql`${memberships.balance} + ${parlay.stake}` })
+        .where(and(eq(memberships.userId, parlay.userId), eq(memberships.leagueId, parlay.leagueId)));
+    });
 
     res.json({ message: "Cashed out", refunded: parlay.stake });
   } catch (err: any) {
@@ -427,23 +473,22 @@ router.get("/", requireAuth, async (req: any, res: any) => {
   try {
     const { leagueId } = req.query;
 
-    const parlays = await prisma.parlay.findMany({
-      where: {
-        userId: req.userId,
-        ...(leagueId ? { leagueId: String(leagueId) } : {}),
-      },
-      include: {
+    const rows = await db.query.parlays.findMany({
+      where: leagueId
+        ? and(eq(parlays.userId, req.userId), eq(parlays.leagueId, String(leagueId)))
+        : eq(parlays.userId, req.userId),
+      with: {
         legs: {
-          include: {
-            prop: { include: { player: true, game: { include: { week: true } } } },
-            gameLine: { include: { game: { include: { week: true } } } },
+          with: {
+            prop: { with: { player: true, game: { with: { week: true } } } },
+            gameLine: { with: { game: { with: { week: true } } } },
           },
         },
       },
-      orderBy: { createdAt: "desc" },
+      orderBy: (parlays, { desc }) => [desc(parlays.createdAt)],
     });
 
-    res.json(parlays);
+    res.json(rows);
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }

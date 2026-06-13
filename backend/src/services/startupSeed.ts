@@ -1,4 +1,6 @@
-import { prisma } from "../db/prisma";
+import { db } from "../db/db";
+import { eq, and, lte } from "drizzle-orm";
+import { weeks, games, leagues, memberships } from "../db/schema";
 import { seedFakePropsForWeek, FAKE_PLAYERS } from "./fakeSync";
 import { scheduleMatchups } from "./scheduleMatchups";
 import { pickHelmetColor } from "./helmetColor";
@@ -25,9 +27,9 @@ export async function runStartupSeed() {
     base.setHours(0, 0, 0, 0);
 
     // Find all unresolved weeks and seed any that are missing new stat types or alt lines
-    const unresolvedWeeks = await prisma.week.findMany({
-      where: { resolved: false },
-      include: { games: { include: { props: true, gameLines: true } } },
+    const unresolvedWeeks = await db.query.weeks.findMany({
+      where: eq(weeks.resolved, false),
+      with: { games: { with: { props: true, gameLines: true } } },
     });
 
     // If no weeks exist at all, create one
@@ -35,18 +37,20 @@ export async function runStartupSeed() {
       const end = new Date(base);
       end.setDate(end.getDate() + 6);
       end.setHours(23, 59, 59, 999);
-      const lastWeek = await prisma.week.findFirst({ orderBy: { number: "desc" } });
-      const weekNumber = (lastWeek?.number ?? 0) + 1;
-      const week = await prisma.week.create({
-        data: { number: weekNumber, startDate: base, endDate: end },
+
+      const lastWeek = await db.query.weeks.findFirst({
+        where: undefined,
+        orderBy: (w, { desc }) => [desc(w.number)],
       });
+      const weekNumber = (lastWeek?.number ?? 0) + 1;
+      const [week] = await db.insert(weeks)
+        .values({ number: weekNumber, startDate: base, endDate: end })
+        .returning();
       for (const g of FAKE_GAMES) {
         const gameDate = new Date(base);
         gameDate.setDate(gameDate.getDate() + g.offsetDays);
         gameDate.setHours(g.hour, 0, 0, 0);
-        await prisma.game.create({
-          data: { weekId: week.id, homeTeam: g.homeTeam, awayTeam: g.awayTeam, gameDate },
-        });
+        await db.insert(games).values({ weekId: week.id, homeTeam: g.homeTeam, awayTeam: g.awayTeam, gameDate });
       }
       const result = await seedFakePropsForWeek(week.id);
       console.log(`[seed] Created week ${weekNumber} with ${result.props} props`);
@@ -55,67 +59,74 @@ export async function runStartupSeed() {
 
     // For each existing unresolved week, ensure it has new prop types
     for (const week of unresolvedWeeks) {
-      const hasNewProps = week.games.some((g) =>
-        g.props.some((p) => NEW_STAT_TYPES.has(p.statType as string))
+      const weekGames = (week as any).games as any[];
+      const hasNewProps = weekGames.some((g: any) =>
+        (g.props as any[]).some((p: any) => NEW_STAT_TYPES.has(p.statType as string))
       );
-      const hasAltLines = week.games.some((g) =>
-        g.gameLines.some((l) => (l.market as string).startsWith("ALT_"))
+      const hasAltLines = weekGames.some((g: any) =>
+        (g.gameLines as any[]).some((l: any) => (l.market as string).startsWith("ALT_"))
       );
 
       // Check if any team in the week has a FAKE_PLAYER with no prop yet
-      const teamsInWeek = new Set(week.games.flatMap((g) => [g.homeTeam, g.awayTeam]));
-      const playersWithProps = await prisma.player.findMany({
-        where: { props: { some: { gameId: { in: week.games.map((g) => g.id) } } } },
-        select: { name: true },
+      const teamsInWeek = new Set(weekGames.flatMap((g: any) => [g.homeTeam, g.awayTeam]));
+      const playersWithProps = await db.query.players.findMany({
+        where: (pl, { inArray }) =>
+          inArray(
+            pl.id,
+            // sub-select: get player IDs that have props for these games
+            weekGames.flatMap((g: any) => (g.props as any[]).map((p: any) => p.playerId))
+          ),
       });
       const namesWithProps = new Set(playersWithProps.map((p) => p.name));
       const missingPlayer = FAKE_PLAYERS.some((fp) => teamsInWeek.has(fp.team) && !namesWithProps.has(fp.name));
 
       if (!hasNewProps || !hasAltLines || missingPlayer) {
         // Add games if the week has none
-        if (week.games.length === 0) {
+        if (weekGames.length === 0) {
           for (const g of FAKE_GAMES) {
             const gameDate = new Date(base);
             gameDate.setDate(gameDate.getDate() + g.offsetDays);
             gameDate.setHours(g.hour, 0, 0, 0);
-            await prisma.game.create({
-              data: { weekId: week.id, homeTeam: g.homeTeam, awayTeam: g.awayTeam, gameDate },
-            });
+            await db.insert(games).values({ weekId: week.id, homeTeam: g.homeTeam, awayTeam: g.awayTeam, gameDate });
           }
         }
         const result = await seedFakePropsForWeek(week.id);
         console.log(`[seed] Seeded week ${week.number}: ${result.props} props`);
       }
     }
+
     // Repair unstarted leagues with ≥2 members but missing matchups
-    const unstartedLeagues = await prisma.league.findMany({
-      where: { seasonStarted: false },
-      include: {
-        memberships: { where: { status: "ACTIVE" }, select: { id: true } },
-        matchups: { where: { isPlayoff: false, isConsolation: false }, select: { id: true }, take: 1 },
+    const unstartedLeagues = await db.query.leagues.findMany({
+      where: eq(leagues.seasonStarted, false),
+      with: {
+        memberships: true,
+        matchups: true,
       },
-    }) as any[];
+    });
 
     for (const league of unstartedLeagues) {
-      if (league.memberships.length >= 2 && league.matchups.length === 0) {
+      const activeMembers = (league.memberships as any[]).filter((m: any) => m.status === "ACTIVE");
+      const regularMatchups = (league.matchups as any[]).filter(
+        (m: any) => !m.isPlayoff && !m.isConsolation
+      );
+      if (activeMembers.length >= 2 && regularMatchups.length === 0) {
         await scheduleMatchups(league.id);
         console.log(`[seed] Repaired matchups for league ${league.id}`);
       }
     }
 
     // Fix duplicate helmet colors within leagues
-    const allLeagues = await prisma.league.findMany({ select: { id: true } });
+    const allLeagues = await db.query.leagues.findMany();
     for (const league of allLeagues) {
-      const members = await prisma.membership.findMany({
-        where: { leagueId: league.id },
-        select: { id: true, helmetColor: true },
-        orderBy: { createdAt: "asc" },
+      const members = await db.query.memberships.findMany({
+        where: eq(memberships.leagueId, league.id),
+        orderBy: (m, { asc }) => [asc(m.createdAt)],
       });
       const seen = new Set<string>();
       for (const m of members) {
         if (seen.has(m.helmetColor)) {
           const newColor = await pickHelmetColor(league.id);
-          await prisma.membership.update({ where: { id: m.id }, data: { helmetColor: newColor } });
+          await db.update(memberships).set({ helmetColor: newColor }).where(eq(memberships.id, m.id));
           console.log(`[seed] Reassigned helmet color for membership ${m.id}: ${m.helmetColor} → ${newColor}`);
         } else {
           seen.add(m.helmetColor);
@@ -124,15 +135,17 @@ export async function runStartupSeed() {
     }
 
     // Auto-start leagues whose autoStartAt has passed
-    const leaguesToStart = await prisma.league.findMany({
-      where: { autoStartAt: { lte: new Date() }, seasonStarted: false },
-      include: { memberships: { where: { status: "ACTIVE" }, select: { id: true } } },
-    }) as any[];
+    const leaguesToStart = await db.query.leagues.findMany({
+      where: (l, { and, eq, lte, isNotNull }) =>
+        and(eq(l.seasonStarted, false), isNotNull(l.autoStartAt), lte(l.autoStartAt, new Date())),
+      with: { memberships: true },
+    });
 
     for (const league of leaguesToStart) {
-      if (league.memberships.length >= 2) {
+      const activeMembers = (league.memberships as any[]).filter((m: any) => m.status === "ACTIVE");
+      if (activeMembers.length >= 2) {
         await scheduleMatchups(league.id);
-        await prisma.league.update({ where: { id: league.id }, data: { seasonStarted: true } });
+        await db.update(leagues).set({ seasonStarted: true }).where(eq(leagues.id, league.id));
         console.log(`[seed] Auto-started league ${league.id}`);
       }
     }

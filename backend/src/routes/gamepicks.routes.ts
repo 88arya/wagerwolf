@@ -1,5 +1,7 @@
 import { Router } from "express";
-import { prisma } from "../db/prisma";
+import { db } from "../db/db";
+import { eq, and, inArray, count, sql } from "drizzle-orm";
+import { gamePicks, gameLines, games, memberships, leagues, picks, props } from "../db/schema";
 import { requireAuth } from "../middleware/auth";
 import { calcProfit } from "../lib/payout";
 
@@ -34,9 +36,9 @@ router.post("/", requireAuth, async (req: any, res: any) => {
       return;
     }
 
-    const gameLine = await prisma.gameLine.findUnique({
-      where: { id: gameLineId },
-      include: { game: { include: { week: true } } },
+    const gameLine = await db.query.gameLines.findFirst({
+      where: eq(gameLines.id, gameLineId),
+      with: { game: { with: { week: true } } },
     }) as any;
 
     if (!gameLine) { res.status(404).json({ error: "Game line not found" }); return; }
@@ -49,25 +51,58 @@ router.post("/", requireAuth, async (req: any, res: any) => {
       res.status(400).json({ error: "This game has already kicked off — bets are locked" }); return;
     }
 
-    const membership = await prisma.membership.findUnique({
-      where: { userId_leagueId: { userId, leagueId } },
-    });
+    const [membership] = await db.select().from(memberships)
+      .where(and(eq(memberships.userId, userId), eq(memberships.leagueId, leagueId)))
+      .limit(1);
     if (!membership) { res.status(404).json({ error: "Not a member of this league" }); return; }
     if (membership.balance < Number(stake)) {
       res.status(400).json({ error: "Insufficient balance" });
       return;
     }
 
-    const league = await prisma.league.findUnique({ where: { id: leagueId }, select: { maxStakePerBet: true, maxBetsPerWeek: true } });
+    const [league] = await db.select({
+      maxStakePerBet: leagues.maxStakePerBet,
+      maxBetsPerWeek: leagues.maxBetsPerWeek,
+    }).from(leagues).where(eq(leagues.id, leagueId)).limit(1);
+
     if (league?.maxStakePerBet && Number(stake) > league.maxStakePerBet) {
       res.status(400).json({ error: `Max stake per bet is $${league.maxStakePerBet}` }); return;
     }
     if (league?.maxBetsPerWeek) {
-      const [weekPicks, weekGamePicks] = await Promise.all([
-        prisma.pick.count({ where: { userId, leagueId, prop: { game: { weekId: gameLine.game.weekId } } } }),
-        prisma.gamePick.count({ where: { userId, leagueId, gameLine: { game: { weekId: gameLine.game.weekId } } } }),
-      ]);
-      if (weekPicks + weekGamePicks >= league.maxBetsPerWeek) {
+      // Get all game IDs for this week
+      const weekGames = await db.select({ id: games.id })
+        .from(games)
+        .where(eq(games.weekId, gameLine.game.weekId));
+      const weekGameIds = weekGames.map((g: any) => g.id);
+
+      // Get all prop IDs for games in this week
+      const weekProps = weekGameIds.length > 0
+        ? await db.select({ id: props.id }).from(props).where(inArray(props.gameId, weekGameIds))
+        : [];
+      const weekPropIds = weekProps.map((p: any) => p.id);
+
+      // Get all game line IDs for games in this week
+      const weekGameLines = weekGameIds.length > 0
+        ? await db.select({ id: gameLines.id }).from(gameLines).where(inArray(gameLines.gameId, weekGameIds))
+        : [];
+      const weekGameLineIds = weekGameLines.map((gl: any) => gl.id);
+
+      const [{ value: weekPickCount }] = await db.select({ value: count() })
+        .from(picks)
+        .where(and(
+          eq(picks.userId, userId),
+          eq(picks.leagueId, leagueId),
+          weekPropIds.length > 0 ? inArray(picks.propId, weekPropIds) : sql`false`,
+        ));
+      const [{ value: weekGamePickCount }] = await db.select({ value: count() })
+        .from(gamePicks)
+        .where(and(
+          eq(gamePicks.userId, userId),
+          eq(gamePicks.leagueId, leagueId),
+          weekGameLineIds.length > 0 ? inArray(gamePicks.gameLineId, weekGameLineIds) : sql`false`,
+        ));
+
+      if (weekPickCount + weekGamePickCount >= league.maxBetsPerWeek) {
         res.status(400).json({ error: `Maximum ${league.maxBetsPerWeek} bets per week` }); return;
       }
     }
@@ -80,12 +115,17 @@ router.post("/", requireAuth, async (req: any, res: any) => {
     // Anti-arbitrage: check for opposite market on same game
     const oppositeMarket = OPPOSITE[gameLine.market];
     if (oppositeMarket) {
-      const opposingLine = await prisma.gameLine.findUnique({
-        where: { gameId_market: { gameId: gameLine.gameId, market: oppositeMarket } },
-      });
+      const [opposingLine] = await db.select().from(gameLines)
+        .where(and(eq(gameLines.gameId, gameLine.gameId), eq(gameLines.market, oppositeMarket)))
+        .limit(1);
       if (opposingLine) {
-        const oppositePick = await prisma.gamePick.findFirst({
-          where: { userId, leagueId, gameLineId: opposingLine.id, outcome: "PENDING" },
+        const oppositePick = await db.query.gamePicks.findFirst({
+          where: and(
+            eq(gamePicks.userId, userId),
+            eq(gamePicks.leagueId, leagueId),
+            eq(gamePicks.gameLineId, opposingLine.id),
+            eq(gamePicks.outcome, "PENDING"),
+          ),
         });
         if (oppositePick) {
           res.status(409).json({ error: `Cannot bet both ${gameLine.market} and ${oppositeMarket} on the same game` });
@@ -98,19 +138,15 @@ router.post("/", requireAuth, async (req: any, res: any) => {
       ? calcGameLineAltOdds(gameLine.odds, gameLine.line, Number(altLine), gameLine.market)
       : gameLine.odds;
 
-    const [gamePick] = await prisma.$transaction([
-      prisma.gamePick.create({
-        data: {
-          userId, leagueId, gameLineId, stake: Number(stake),
-          odds: effectiveOdds,
-          altLine: altLine != null ? Number(altLine) : null,
-        },
-      }),
-      prisma.membership.update({
-        where: { userId_leagueId: { userId, leagueId } },
-        data: { balance: { decrement: Number(stake) } },
-      }),
-    ]);
+    const [gamePick] = await db.insert(gamePicks).values({
+      userId, leagueId, gameLineId, stake: Number(stake),
+      odds: effectiveOdds,
+      altLine: altLine != null ? Number(altLine) : null,
+    }).returning();
+
+    await db.update(memberships)
+      .set({ balance: sql`${memberships.balance} - ${Number(stake)}` })
+      .where(and(eq(memberships.userId, userId), eq(memberships.leagueId, leagueId)));
 
     res.status(201).json(gamePick);
   } catch (err: any) {
@@ -122,18 +158,17 @@ router.get("/", requireAuth, async (req: any, res: any) => {
   try {
     const { leagueId } = req.query;
 
-    const gamePicks = await prisma.gamePick.findMany({
-      where: {
-        userId: req.userId,
-        ...(leagueId ? { leagueId: String(leagueId) } : {}),
-      },
-      include: {
-        gameLine: { include: { game: { include: { week: true } } } },
-      },
-      orderBy: { createdAt: "desc" },
+    const whereClause = leagueId
+      ? and(eq(gamePicks.userId, req.userId), eq(gamePicks.leagueId, String(leagueId)))
+      : eq(gamePicks.userId, req.userId);
+
+    const rows = await db.query.gamePicks.findMany({
+      where: whereClause,
+      with: { gameLine: { with: { game: { with: { week: true } } } } },
+      orderBy: (gamePicks, { desc }) => [desc(gamePicks.createdAt)],
     });
 
-    res.json(gamePicks);
+    res.json(rows);
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
@@ -142,9 +177,9 @@ router.get("/", requireAuth, async (req: any, res: any) => {
 // Cashout a pending game pick before kickoff — full stake refund
 router.post("/:id/cashout", requireAuth, async (req: any, res: any) => {
   try {
-    const gp = await prisma.gamePick.findUnique({
-      where: { id: req.params.id },
-      include: { gameLine: { include: { game: true } } },
+    const gp = await db.query.gamePicks.findFirst({
+      where: eq(gamePicks.id, req.params.id),
+      with: { gameLine: { with: { game: true } } },
     }) as any;
 
     if (!gp) { res.status(404).json({ error: "Game pick not found" }); return; }
@@ -155,13 +190,13 @@ router.post("/:id/cashout", requireAuth, async (req: any, res: any) => {
       res.status(400).json({ error: "Cannot cash out after game has started" }); return;
     }
 
-    await prisma.$transaction([
-      prisma.gamePick.update({ where: { id: gp.id }, data: { outcome: "VOID", cashedOut: true } }),
-      prisma.membership.updateMany({
-        where: { userId: gp.userId, leagueId: gp.leagueId },
-        data: { balance: { increment: gp.stake } },
-      }),
-    ]);
+    await db.update(gamePicks)
+      .set({ outcome: "VOID", cashedOut: true })
+      .where(eq(gamePicks.id, gp.id));
+
+    await db.update(memberships)
+      .set({ balance: sql`${memberships.balance} + ${gp.stake}` })
+      .where(and(eq(memberships.userId, gp.userId), eq(memberships.leagueId, gp.leagueId)));
 
     res.json({ message: "Cashed out", refunded: gp.stake });
   } catch (err: any) {
@@ -171,9 +206,9 @@ router.post("/:id/cashout", requireAuth, async (req: any, res: any) => {
 
 // Internal helper for resolution
 export async function settleGamePick(gamePickId: string) {
-  const gp = await prisma.gamePick.findUnique({
-    where: { id: gamePickId },
-    include: { gameLine: { include: { game: true } } },
+  const gp = await db.query.gamePicks.findFirst({
+    where: eq(gamePicks.id, gamePickId),
+    with: { gameLine: { with: { game: true } } },
   }) as any;
   if (!gp || gp.outcome !== "PENDING") return;
 
@@ -194,15 +229,22 @@ export async function settleGamePick(gamePickId: string) {
   }
   const profit = won ? calcProfit(gp.stake, gp.odds) : 0;
 
-  await prisma.$transaction([
-    prisma.gamePick.update({ where: { id: gp.id }, data: { outcome: won ? "WIN" : "LOSS" } }),
-    prisma.membership.updateMany({
-      where: { userId: gp.userId, leagueId: gp.leagueId },
-      data: won
-        ? { balance: { increment: gp.stake + profit }, weeklyWinnings: { increment: profit } }
-        : { weeklyWinnings: { decrement: gp.stake } },
-    }),
-  ]);
+  await db.update(gamePicks)
+    .set({ outcome: won ? "WIN" : "LOSS" })
+    .where(eq(gamePicks.id, gp.id));
+
+  if (won) {
+    await db.update(memberships)
+      .set({
+        balance: sql`${memberships.balance} + ${gp.stake + profit}`,
+        weeklyWinnings: sql`${memberships.weeklyWinnings} + ${profit}`,
+      })
+      .where(and(eq(memberships.userId, gp.userId), eq(memberships.leagueId, gp.leagueId)));
+  } else {
+    await db.update(memberships)
+      .set({ weeklyWinnings: sql`${memberships.weeklyWinnings} - ${gp.stake}` })
+      .where(and(eq(memberships.userId, gp.userId), eq(memberships.leagueId, gp.leagueId)));
+  }
 }
 
 export default router;

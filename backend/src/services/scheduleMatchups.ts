@@ -1,4 +1,6 @@
-import { prisma } from "../db/prisma";
+import { db } from "../db/db";
+import { eq, and } from "drizzle-orm";
+import { leagues, matchups, users } from "../db/schema";
 
 function generateRoundRobin(userIds: string[]): Array<[string, string][]> {
   const n = userIds.length;
@@ -33,17 +35,20 @@ export function getNearestTuesdayNoon(from: Date): Date {
 }
 
 export async function scheduleMatchups(leagueId: string): Promise<void> {
-  const league = await prisma.league.findUnique({
-    where: { id: leagueId },
-    include: { memberships: { where: { status: "ACTIVE" }, select: { userId: true } } },
-  }) as any;
+  const league = await db.query.leagues.findFirst({
+    where: eq(leagues.id, leagueId),
+    with: { memberships: true },
+  });
 
   if (!league || league.seasonStarted) return;
 
-  let userIds: string[] = league.memberships.map((m: any) => m.userId);
+  const activeMembers = (league.memberships as any[]).filter((m: any) => m.status === "ACTIVE");
+  let userIds: string[] = activeMembers.map((m: any) => m.userId);
 
   if (userIds.length < 2) {
-    await prisma.matchup.deleteMany({ where: { leagueId, isPlayoff: false, isConsolation: false } });
+    await db.delete(matchups).where(
+      and(eq(matchups.leagueId, leagueId), eq(matchups.isPlayoff, false), eq(matchups.isConsolation, false))
+    );
     return;
   }
 
@@ -52,18 +57,20 @@ export async function scheduleMatchups(leagueId: string): Promise<void> {
 
   if (userIds.length % 2 !== 0) {
     hasGhost = true;
-    let ghost = await prisma.user.findUnique({ where: { email: "ghost@system.internal" } });
+    let ghost = await db.query.users.findFirst({ where: eq(users.email, "ghost@system.internal") });
     if (!ghost) {
-      ghost = await prisma.user.create({
-        data: { email: "ghost@system.internal", password: "", name: "Ghost", displayName: "Ghost" },
-      });
+      [ghost] = await db.insert(users).values({
+        email: "ghost@system.internal", password: "", name: "Ghost", displayName: "Ghost",
+      }).returning();
     }
-    ghostUserId = ghost.id;
+    ghostUserId = ghost!.id;
     userIds = [...userIds, ghostUserId];
   }
 
   // Delete all existing pre-season regular matchups
-  await prisma.matchup.deleteMany({ where: { leagueId, isPlayoff: false, isConsolation: false } });
+  await db.delete(matchups).where(
+    and(eq(matchups.leagueId, leagueId), eq(matchups.isPlayoff, false), eq(matchups.isConsolation, false))
+  );
 
   const rounds = generateRoundRobin(userIds);
   const totalRounds = Math.min(rounds.length, league.regularSeasonWeeks);
@@ -72,13 +79,11 @@ export async function scheduleMatchups(leagueId: string): Promise<void> {
     const weekNumber = league.startWeek + i;
     for (const [homeUserId, awayUserId] of rounds[i]) {
       const isGhostMatchup = homeUserId === ghostUserId || awayUserId === ghostUserId;
-      await prisma.matchup.create({
-        data: { leagueId, weekNumber, homeUserId, awayUserId, isGhostMatchup },
-      });
+      await db.insert(matchups).values({ leagueId, weekNumber, homeUserId, awayUserId, isGhostMatchup });
     }
   }
 
   if (hasGhost !== league.hasGhost) {
-    await prisma.league.update({ where: { id: leagueId }, data: { hasGhost } });
+    await db.update(leagues).set({ hasGhost }).where(eq(leagues.id, leagueId));
   }
 }

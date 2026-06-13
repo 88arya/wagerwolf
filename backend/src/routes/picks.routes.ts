@@ -1,5 +1,7 @@
 import { Router } from "express";
-import { prisma } from "../db/prisma";
+import { db } from "../db/db";
+import { eq, and, inArray, count, sql } from "drizzle-orm";
+import { picks, memberships, leagues, props, games, gamePicks, gameLines } from "../db/schema";
 import { requireAuth } from "../middleware/auth";
 import { calcProfit } from "../lib/payout";
 
@@ -31,9 +33,9 @@ router.post("/", requireAuth, async (req: any, res: any) => {
       return;
     }
 
-    const prop = await prisma.prop.findUnique({
-      where: { id: propId },
-      include: { game: { include: { week: true } } },
+    const prop = await db.query.props.findFirst({
+      where: eq(props.id, propId),
+      with: { game: { with: { week: true } } },
     }) as any;
 
     if (!prop) { res.status(404).json({ error: "Prop not found" }); return; }
@@ -46,9 +48,9 @@ router.post("/", requireAuth, async (req: any, res: any) => {
       res.status(400).json({ error: "This game has already kicked off — bets are locked" }); return;
     }
 
-    const membership = await prisma.membership.findUnique({
-      where: { userId_leagueId: { userId, leagueId } },
-    });
+    const [membership] = await db.select().from(memberships)
+      .where(and(eq(memberships.userId, userId), eq(memberships.leagueId, leagueId)))
+      .limit(1);
     if (!membership) { res.status(404).json({ error: "Not a member of this league" }); return; }
     if (membership.balance < Number(stake)) {
       res.status(400).json({ error: "Insufficient balance" });
@@ -57,19 +59,60 @@ router.post("/", requireAuth, async (req: any, res: any) => {
 
     // Rule 2: cannot bet opposite direction while a pending pick exists on same prop
     const oppositeDir = direction === "OVER" ? "UNDER" : "OVER";
-    const pendingOpposite = await prisma.pick.findFirst({ where: { userId, leagueId, propId, direction: oppositeDir, outcome: "PENDING" } });
+    const pendingOpposite = await db.query.picks.findFirst({
+      where: and(
+        eq(picks.userId, userId),
+        eq(picks.leagueId, leagueId),
+        eq(picks.propId, propId),
+        eq(picks.direction, oppositeDir as any),
+        eq(picks.outcome, "PENDING"),
+      ),
+    });
     if (pendingOpposite) { res.status(409).json({ error: "You have an active bet on the opposite side — cash out first" }); return; }
 
-    const league = await prisma.league.findUnique({ where: { id: leagueId }, select: { maxStakePerBet: true, maxBetsPerWeek: true } });
+    const [league] = await db.select({
+      maxStakePerBet: leagues.maxStakePerBet,
+      maxBetsPerWeek: leagues.maxBetsPerWeek,
+    }).from(leagues).where(eq(leagues.id, leagueId)).limit(1);
+
     if (league?.maxStakePerBet && Number(stake) > league.maxStakePerBet) {
       res.status(400).json({ error: `Max stake per bet is $${league.maxStakePerBet}` }); return;
     }
     if (league?.maxBetsPerWeek) {
-      const [weekPicks, weekGamePicks] = await Promise.all([
-        prisma.pick.count({ where: { userId, leagueId, prop: { game: { weekId: prop.game.weekId } } } }),
-        prisma.gamePick.count({ where: { userId, leagueId, gameLine: { game: { weekId: prop.game.weekId } } } }),
-      ]);
-      if (weekPicks + weekGamePicks >= league.maxBetsPerWeek) {
+      // Get all game IDs for this week
+      const weekGames = await db.select({ id: games.id })
+        .from(games)
+        .where(eq(games.weekId, prop.game.weekId));
+      const weekGameIds = weekGames.map((g: any) => g.id);
+
+      // Get all prop IDs for games in this week
+      const weekProps = weekGameIds.length > 0
+        ? await db.select({ id: props.id }).from(props).where(inArray(props.gameId, weekGameIds))
+        : [];
+      const weekPropIds = weekProps.map((p: any) => p.id);
+
+      // Get all game line IDs for games in this week
+      const weekGameLines = weekGameIds.length > 0
+        ? await db.select({ id: gameLines.id }).from(gameLines).where(inArray(gameLines.gameId, weekGameIds))
+        : [];
+      const weekGameLineIds = weekGameLines.map((gl: any) => gl.id);
+
+      const [{ value: weekPickCount }] = await db.select({ value: count() })
+        .from(picks)
+        .where(and(
+          eq(picks.userId, userId),
+          eq(picks.leagueId, leagueId),
+          weekPropIds.length > 0 ? inArray(picks.propId, weekPropIds) : sql`false`,
+        ));
+      const [{ value: weekGamePickCount }] = await db.select({ value: count() })
+        .from(gamePicks)
+        .where(and(
+          eq(gamePicks.userId, userId),
+          eq(gamePicks.leagueId, leagueId),
+          weekGameLineIds.length > 0 ? inArray(gamePicks.gameLineId, weekGameLineIds) : sql`false`,
+        ));
+
+      if (weekPickCount + weekGamePickCount >= league.maxBetsPerWeek) {
         res.status(400).json({ error: `Maximum ${league.maxBetsPerWeek} bets per week` }); return;
       }
     }
@@ -78,19 +121,15 @@ router.post("/", requireAuth, async (req: any, res: any) => {
       ? calcPropAltOdds(prop.odds, prop.line, Number(altLine), prop.statType, direction)
       : prop.odds;
 
-    const [pick] = await prisma.$transaction([
-      prisma.pick.create({
-        data: {
-          userId, leagueId, propId, direction, stake: Number(stake),
-          odds: effectiveOdds,
-          altLine: altLine != null ? Number(altLine) : null,
-        },
-      }),
-      prisma.membership.update({
-        where: { userId_leagueId: { userId, leagueId } },
-        data: { balance: { decrement: Number(stake) } },
-      }),
-    ]);
+    const [pick] = await db.insert(picks).values({
+      userId, leagueId, propId, direction, stake: Number(stake),
+      odds: effectiveOdds,
+      altLine: altLine != null ? Number(altLine) : null,
+    }).returning();
+
+    await db.update(memberships)
+      .set({ balance: sql`${memberships.balance} - ${Number(stake)}` })
+      .where(and(eq(memberships.userId, userId), eq(memberships.leagueId, leagueId)));
 
     res.status(201).json(pick);
   } catch (err: any) {
@@ -102,16 +141,17 @@ router.get("/", requireAuth, async (req: any, res: any) => {
   try {
     const { leagueId } = req.query;
 
-    const picks = await prisma.pick.findMany({
-      where: {
-        userId: req.userId,
-        ...(leagueId ? { leagueId: String(leagueId) } : {}),
-      },
-      include: { prop: { include: { player: true, game: { include: { week: true } } } } },
-      orderBy: { createdAt: "desc" },
+    const whereClause = leagueId
+      ? and(eq(picks.userId, req.userId), eq(picks.leagueId, String(leagueId)))
+      : eq(picks.userId, req.userId);
+
+    const rows = await db.query.picks.findMany({
+      where: whereClause,
+      with: { prop: { with: { player: true, game: { with: { week: true } } } } },
+      orderBy: (picks, { desc }) => [desc(picks.createdAt)],
     });
 
-    res.json(picks);
+    res.json(rows);
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
@@ -120,9 +160,9 @@ router.get("/", requireAuth, async (req: any, res: any) => {
 // Cashout a pending prop pick before kickoff — full stake refund
 router.post("/:id/cashout", requireAuth, async (req: any, res: any) => {
   try {
-    const pick = await prisma.pick.findUnique({
-      where: { id: req.params.id },
-      include: { prop: { include: { game: true } } },
+    const pick = await db.query.picks.findFirst({
+      where: eq(picks.id, req.params.id),
+      with: { prop: { with: { game: true } } },
     }) as any;
 
     if (!pick) { res.status(404).json({ error: "Pick not found" }); return; }
@@ -133,13 +173,13 @@ router.post("/:id/cashout", requireAuth, async (req: any, res: any) => {
       res.status(400).json({ error: "Cannot cash out after game has started" }); return;
     }
 
-    await prisma.$transaction([
-      prisma.pick.update({ where: { id: pick.id }, data: { outcome: "VOID", cashedOut: true } }),
-      prisma.membership.updateMany({
-        where: { userId: pick.userId, leagueId: pick.leagueId },
-        data: { balance: { increment: pick.stake } },
-      }),
-    ]);
+    await db.update(picks)
+      .set({ outcome: "VOID", cashedOut: true })
+      .where(eq(picks.id, pick.id));
+
+    await db.update(memberships)
+      .set({ balance: sql`${memberships.balance} + ${pick.stake}` })
+      .where(and(eq(memberships.userId, pick.userId), eq(memberships.leagueId, pick.leagueId)));
 
     res.json({ message: "Cashed out", refunded: pick.stake });
   } catch (err: any) {
@@ -149,9 +189,9 @@ router.post("/:id/cashout", requireAuth, async (req: any, res: any) => {
 
 // Internal helper exported for use in resolution routes
 export async function settlePick(pickId: string) {
-  const pick = await prisma.pick.findUnique({
-    where: { id: pickId },
-    include: { prop: true },
+  const pick = await db.query.picks.findFirst({
+    where: eq(picks.id, pickId),
+    with: { prop: true },
   }) as any;
   if (!pick || pick.outcome !== "PENDING" || pick.prop.result == null) return;
 
@@ -161,15 +201,22 @@ export async function settlePick(pickId: string) {
 
   const profit = won ? calcProfit(pick.stake, pick.odds) : 0;
 
-  await prisma.$transaction([
-    prisma.pick.update({ where: { id: pick.id }, data: { outcome: won ? "WIN" : "LOSS" } }),
-    prisma.membership.updateMany({
-      where: { userId: pick.userId, leagueId: pick.leagueId },
-      data: won
-        ? { balance: { increment: pick.stake + profit }, weeklyWinnings: { increment: profit } }
-        : { weeklyWinnings: { decrement: pick.stake } },
-    }),
-  ]);
+  await db.update(picks)
+    .set({ outcome: won ? "WIN" : "LOSS" })
+    .where(eq(picks.id, pick.id));
+
+  if (won) {
+    await db.update(memberships)
+      .set({
+        balance: sql`${memberships.balance} + ${pick.stake + profit}`,
+        weeklyWinnings: sql`${memberships.weeklyWinnings} + ${profit}`,
+      })
+      .where(and(eq(memberships.userId, pick.userId), eq(memberships.leagueId, pick.leagueId)));
+  } else {
+    await db.update(memberships)
+      .set({ weeklyWinnings: sql`${memberships.weeklyWinnings} - ${pick.stake}` })
+      .where(and(eq(memberships.userId, pick.userId), eq(memberships.leagueId, pick.leagueId)));
+  }
 }
 
 export default router;

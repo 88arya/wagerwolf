@@ -1,5 +1,7 @@
 import { Router } from "express";
-import { prisma } from "../db/prisma";
+import { db } from "../db/db";
+import { eq, and, asc } from "drizzle-orm";
+import { leagues, memberships, weeks, matchups, users } from "../db/schema";
 import { requireAuth } from "../middleware/auth";
 import { generateLeagueName } from "../services/leagueName";
 import { startLeagueSeason } from "../services/startSeason";
@@ -7,41 +9,41 @@ import { startLeagueSeason } from "../services/startSeason";
 const MAX_NFL_WEEK = 17;
 
 async function ensureOpenPublicLeague(creatorId: string) {
-  const open = await prisma.league.findFirst({
-    where: { isPublic: true, seasonStarted: false },
-    include: { memberships: { where: { status: "ACTIVE" }, select: { id: true } } },
+  const open = await db.query.leagues.findFirst({
+    where: and(eq(leagues.isPublic, true), eq(leagues.seasonStarted, false)),
+    with: { memberships: true },
   }) as any;
-  if (open && open.memberships.length < open.maxPlayers) return;
+  if (open && open.memberships.filter((m: any) => m.status === "ACTIVE").length < open.maxPlayers) return;
 
   const playoffSize = 6;
   const playoffWeeks = Math.ceil(Math.log2(playoffSize));
   const maxPlayers = 10;
 
-  const firstUnresolved = await prisma.week.findFirst({ where: { resolved: false }, orderBy: { number: "asc" } });
+  const firstUnresolved = await db.query.weeks.findFirst({
+    where: eq(weeks.resolved, false),
+  });
   let startWeek = 1;
   if (firstUnresolved) startWeek = firstUnresolved.number === 1 ? 2 : firstUnresolved.number;
   const regularSeasonWeeks = Math.max(1, MAX_NFL_WEEK - startWeek - playoffWeeks + 1);
 
   let inviteCode = Math.random().toString(36).substring(2, 8).toUpperCase();
-  while (await prisma.league.findUnique({ where: { inviteCode } })) {
+  while (await db.query.leagues.findFirst({ where: eq(leagues.inviteCode, inviteCode) })) {
     inviteCode = Math.random().toString(36).substring(2, 8).toUpperCase();
   }
 
-  await prisma.league.create({
-    data: {
-      name: generateLeagueName(),
-      weeklyAllowance: 300,
-      inviteCode,
-      creatorId,
-      isPublic: true,
-      maxPlayers,
-      startWeek,
-      regularSeasonWeeks,
-      playoffWeeks,
-      playoffSize,
-      consolationTeams: 0,
-      consolationWeeks: 0,
-    },
+  await db.insert(leagues).values({
+    name: generateLeagueName(),
+    weeklyAllowance: 300,
+    inviteCode,
+    creatorId,
+    isPublic: true,
+    maxPlayers,
+    startWeek,
+    regularSeasonWeeks,
+    playoffWeeks,
+    playoffSize,
+    consolationTeams: 0,
+    consolationWeeks: 0,
   });
 }
 
@@ -51,10 +53,9 @@ router.post("/:leagueId/season/start", requireAuth, async (req: any, res: any) =
   try {
     const { leagueId } = req.params;
 
-    const league = await prisma.league.findUnique({
-      where: { id: leagueId },
-      select: { creatorId: true, seasonStarted: true, isPublic: true },
-    }) as any;
+    const league = await db.query.leagues.findFirst({
+      where: eq(leagues.id, leagueId),
+    });
 
     if (!league) { res.status(404).json({ error: "League not found" }); return; }
     if (league.creatorId !== req.userId) { res.status(403).json({ error: "Only the league creator can start the season" }); return; }
@@ -80,27 +81,36 @@ router.get("/:leagueId/matchups", requireAuth, async (req: any, res: any) => {
     const { leagueId } = req.params;
     const { weekNumber } = req.query;
 
-    const [matchups, memberships] = await Promise.all([
-      prisma.matchup.findMany({
-        where: { leagueId, ...(weekNumber ? { weekNumber: Number(weekNumber) } : {}) },
-        include: {
-          homeUser: { select: { id: true, displayName: true, email: true } },
-          awayUser: { select: { id: true, displayName: true, email: true } },
+    const whereClause = weekNumber
+      ? and(eq(matchups.leagueId, leagueId), eq(matchups.weekNumber, Number(weekNumber)))
+      : eq(matchups.leagueId, leagueId);
+
+    const [matchupRows, membershipRows] = await Promise.all([
+      db.query.matchups.findMany({
+        where: whereClause,
+        with: {
+          homeUser: true,
+          awayUser: true,
         },
-        orderBy: { weekNumber: "asc" },
+        orderBy: [asc(matchups.weekNumber)],
       }),
-      prisma.membership.findMany({
-        where: { leagueId, status: "ACTIVE" },
-        select: { userId: true, displayName: true, user: { select: { displayName: true } } },
+      db.query.memberships.findMany({
+        where: and(eq(memberships.leagueId, leagueId), eq(memberships.status, "ACTIVE")),
+        with: { user: true },
       }),
     ]);
-    const nameMap: Record<string, string> = {};
-    for (const m of memberships as any[]) nameMap[m.userId] = m.displayName || m.user.displayName;
 
-    const augmented = (matchups as any[]).map((mu) => ({
+    const nameMap: Record<string, string> = {};
+    for (const m of membershipRows as any[]) nameMap[m.userId] = m.displayName || m.user.displayName;
+
+    const augmented = (matchupRows as any[]).map((mu) => ({
       ...mu,
-      homeUser: { ...mu.homeUser, displayName: nameMap[mu.homeUser?.id] ?? mu.homeUser?.displayName },
-      awayUser: { ...mu.awayUser, displayName: nameMap[mu.awayUser?.id] ?? mu.awayUser?.displayName },
+      homeUser: mu.homeUser
+        ? { ...mu.homeUser, displayName: nameMap[mu.homeUser.id] ?? mu.homeUser.displayName }
+        : mu.homeUser,
+      awayUser: mu.awayUser
+        ? { ...mu.awayUser, displayName: nameMap[mu.awayUser.id] ?? mu.awayUser.displayName }
+        : mu.awayUser,
     }));
 
     res.json(augmented);

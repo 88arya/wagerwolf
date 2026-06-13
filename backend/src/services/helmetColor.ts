@@ -1,4 +1,6 @@
-import { prisma } from "../db/prisma";
+import { db } from "../db/db";
+import { eq } from "drizzle-orm";
+import { memberships } from "../db/schema";
 
 const HELMET_COLORS = [
   "#fca5a5", "#f87171", "#dc2626", "#7f1d1d",
@@ -14,11 +16,10 @@ const HELMET_COLORS = [
 export async function pickHelmetColor(leagueId: string): Promise<string> {
   console.log("[helmetColor] called for leagueId:", leagueId);
   try {
-    const taken = await prisma.membership.findMany({
-      where: { leagueId, status: { in: ["ACTIVE", "PENDING"] } },
-      select: { helmetColor: true },
+    const taken = await db.query.memberships.findMany({
+      where: eq(memberships.leagueId, leagueId),
     });
-    const takenSet = new Set(taken.map((m: any) => m.helmetColor));
+    const takenSet = new Set(taken.map((m) => m.helmetColor));
     const available = HELMET_COLORS.filter(c => !takenSet.has(c));
     const pool = available.length > 0 ? available : HELMET_COLORS;
     const picked = pool[Math.floor(Math.random() * pool.length)];
