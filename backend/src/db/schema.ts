@@ -124,7 +124,9 @@ export const players = pgTable("Player", {
   position: text("position").notNull(),
   espnId:   text("espnId").unique(),
   imageUrl: text("imageUrl"),
-});
+}, (t) => ({
+  nameTeamUniq: uniqueIndex("Player_name_team_key").on(t.name, t.team),
+}));
 
 export const props = pgTable("Prop", {
   id:       text("id").primaryKey().$defaultFn(() => randomUUID()),
@@ -134,7 +136,9 @@ export const props = pgTable("Prop", {
   line:     real("line").notNull(),
   odds:     integer("odds").default(-110).notNull(),
   result:   real("result"),
-});
+}, (t) => ({
+  gamePlayerStatUniq: uniqueIndex("Prop_gameId_playerId_statType_key").on(t.gameId, t.playerId, t.statType),
+}));
 
 export const picks = pgTable("Pick", {
   id:        text("id").primaryKey().$defaultFn(() => randomUUID()),
