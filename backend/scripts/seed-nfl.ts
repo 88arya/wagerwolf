@@ -1,11 +1,6 @@
-import { PrismaPg } from "@prisma/adapter-pg";
-import { PrismaClient } from "@prisma/client";
-import * as dotenv from "dotenv";
-
-dotenv.config();
-
-const adapter = new PrismaPg({ connectionString: process.env.DATABASE_DIRECT_URL! });
-const prisma = new PrismaClient({ adapter } as any);
+import { db } from "../src/db/db";
+import { eq, count, and } from "drizzle-orm";
+import { weeks, games, players, props, gameLines } from "../src/db/schema";
 
 // ─── Player roster ──────────────────────────────────────────────────────────
 const PLAYERS = [
@@ -582,7 +577,7 @@ const NFL_SEASON: WeekData[] = [
 
 // ─── Seed ────────────────────────────────────────────────────────────────────
 async function main() {
-  const existingCount = await prisma.week.count();
+  const [{ value: existingCount }] = await db.select({ value: count() }).from(weeks);
   if (existingCount >= 18) {
     console.log(`Already have ${existingCount} weeks — skipping seed`);
     return;
@@ -591,44 +586,39 @@ async function main() {
   console.log("Seeding players...");
   const playerMap = new Map<string, string>(); // name → id
   for (const p of PLAYERS) {
-    let player = await prisma.player.findFirst({ where: { name: p.name } });
+    let player = await db.query.players.findFirst({ where: eq(players.name, p.name) });
     if (!player) {
-      player = await prisma.player.create({ data: p });
+      [player] = await db.insert(players).values(p).returning();
     }
-    playerMap.set(p.name, player.id);
+    playerMap.set(p.name, player!.id);
   }
   console.log(`  ${playerMap.size} players ready`);
 
   let totalGames = 0, totalLines = 0, totalProps = 0;
 
   for (const weekData of NFL_SEASON) {
-    const existing = await prisma.week.findFirst({ where: { number: weekData.number } });
+    const existing = await db.query.weeks.findFirst({ where: eq(weeks.number, weekData.number) });
     if (existing) { console.log(`  Week ${weekData.number} already exists — skipping`); continue; }
 
     const startDate = new Date(weekData.startDate);
     const endDate   = new Date(weekData.endDate);
 
-    const week = await prisma.week.create({
-      data: { number: weekData.number, startDate, endDate },
-    });
+    const [week] = await db.insert(weeks).values({ number: weekData.number, startDate, endDate }).returning();
 
     for (const gameData of weekData.games) {
       const gameDate = new Date(startDate);
       gameDate.setDate(gameDate.getDate() + gameData.gameDayOffset);
-      gameDate.setHours(20, 25, 0, 0); // ~8:25 PM ET
+      gameDate.setHours(20, 25, 0, 0);
 
-      const game = await prisma.game.create({
-        data: {
-          weekId: week.id,
-          homeTeam: gameData.homeTeam,
-          awayTeam: gameData.awayTeam,
-          gameDate,
-          homeScore: gameData.homeScore,
-          awayScore: gameData.awayScore,
-        },
-      });
+      const [game] = await db.insert(games).values({
+        weekId: week.id,
+        homeTeam: gameData.homeTeam,
+        awayTeam: gameData.awayTeam,
+        gameDate,
+        homeScore: gameData.homeScore,
+        awayScore: gameData.awayScore,
+      }).returning();
 
-      // Compute game line results from stored scores
       const { homeScore: hs, awayScore: as_, spread, total, homeMoneyline, awayMoneyline } = gameData;
 
       const lines = [
@@ -641,30 +631,26 @@ async function main() {
       ];
 
       for (const l of lines) {
-        await prisma.gameLine.create({
-          data: { gameId: game.id, market: l.market, label: l.label, odds: l.odds, line: l.line, result: l.result },
-        });
+        await db.insert(gameLines).values({ gameId: game.id, market: l.market, label: l.label, odds: l.odds, line: l.line, result: l.result });
       }
       totalLines += lines.length;
 
-      // Create props
       for (const propData of gameData.props) {
         const playerId = playerMap.get(propData.playerName);
         if (!playerId) { console.warn(`  Player not found: ${propData.playerName}`); continue; }
 
-        // Skip duplicate (same player + statType in same game — edge case with Lamar/Allen having two props)
-        const dup = await prisma.prop.findFirst({ where: { gameId: game.id, playerId, statType: propData.statType } });
+        const dup = await db.query.props.findFirst({
+          where: and(eq(props.gameId, game.id), eq(props.playerId, playerId), eq(props.statType, propData.statType as any)),
+        });
         if (dup) continue;
 
-        await prisma.prop.create({
-          data: {
-            gameId: game.id,
-            playerId,
-            statType: propData.statType,
-            line: propData.line,
-            odds: propData.odds ?? -110,
-            result: propData.result,
-          },
+        await db.insert(props).values({
+          gameId: game.id,
+          playerId,
+          statType: propData.statType as any,
+          line: propData.line,
+          odds: propData.odds ?? -110,
+          result: propData.result,
         });
         totalProps++;
       }
@@ -677,4 +663,4 @@ async function main() {
   console.log(`\nDone — ${NFL_SEASON.length} weeks, ${totalGames} games, ${totalLines} game lines, ${totalProps} props`);
 }
 
-main().catch(console.error).finally(() => prisma.$disconnect());
+main().catch(console.error).finally(() => process.exit(0));

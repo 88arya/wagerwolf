@@ -1,15 +1,16 @@
-import { prisma } from "../src/db/prisma";
+import { db } from "../src/db/db";
+import { parlayLegs, parlays, gamePicks, picks, leagueMessages, matchups, memberships, leagues } from "../src/db/schema";
 
 async function main() {
-  const pl = await prisma.parlayLeg.deleteMany();
-  const pa = await prisma.parlay.deleteMany();
-  const gp = await prisma.gamePick.deleteMany();
-  const pi = await prisma.pick.deleteMany();
-  const ms = await prisma.leagueMessage.deleteMany();
-  const ma = await prisma.matchup.deleteMany();
-  const me = await prisma.membership.deleteMany();
-  const le = await prisma.league.deleteMany();
-  console.log("Deleted:", { parlayLegs: pl.count, parlays: pa.count, gamePicks: gp.count, picks: pi.count, messages: ms.count, matchups: ma.count, memberships: me.count, leagues: le.count });
+  await db.delete(parlayLegs);
+  await db.delete(parlays);
+  await db.delete(gamePicks);
+  await db.delete(picks);
+  await db.delete(leagueMessages);
+  await db.delete(matchups);
+  await db.delete(memberships);
+  const deleted = await db.delete(leagues).returning();
+  console.log("Deleted:", { leagues: deleted.length });
 }
 
 main().then(() => process.exit(0)).catch((e) => { console.error(e); process.exit(1); });

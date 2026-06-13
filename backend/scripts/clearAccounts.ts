@@ -1,20 +1,21 @@
-import { prisma } from "../src/db/prisma";
+import { db } from "../src/db/db";
+import { passwordResetTokens, parlayLegs, parlays, gamePicks, picks, leagueMessages, matchups, memberships, leagues, users } from "../src/db/schema";
+import { count } from "drizzle-orm";
 
 async function main() {
-  await prisma.passwordResetToken.deleteMany({});
-  await prisma.parlayLeg.deleteMany({});
-  await prisma.parlay.deleteMany({});
-  await prisma.gamePick.deleteMany({});
-  await prisma.pick.deleteMany({});
-  await prisma.leagueMessage.deleteMany({});
-  await prisma.matchup.deleteMany({});
-  await prisma.membership.deleteMany({});
-  await prisma.league.deleteMany({});
-  await prisma.user.deleteMany({});
-  const users = await prisma.user.count();
-  const leagues = await prisma.league.count();
-  console.log(`Done. Users: ${users}, Leagues: ${leagues}`);
-  await prisma.$disconnect();
+  await db.delete(passwordResetTokens);
+  await db.delete(parlayLegs);
+  await db.delete(parlays);
+  await db.delete(gamePicks);
+  await db.delete(picks);
+  await db.delete(leagueMessages);
+  await db.delete(matchups);
+  await db.delete(memberships);
+  await db.delete(leagues);
+  await db.delete(users);
+  const [{ value: userCount }] = await db.select({ value: count() }).from(users);
+  const [{ value: leagueCount }] = await db.select({ value: count() }).from(leagues);
+  console.log(`Done. Users: ${userCount}, Leagues: ${leagueCount}`);
 }
 
 main().catch(e => { console.error(e); process.exit(1); });

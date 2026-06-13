@@ -1,15 +1,18 @@
-import { prisma } from "../src/db/prisma";
+import { db } from "../src/db/db";
+import { asc, count, eq } from "drizzle-orm";
+import { weeks, games, props } from "../src/db/schema";
 
 async function main() {
-  const weeks = await prisma.week.findMany({
-    orderBy: { number: "asc" },
-    include: { games: { select: { homeTeam: true, _count: { select: { props: true } } } } }
-  });
-  for (const w of weeks) {
-    const totalProps = w.games.reduce((s: number, g: any) => s + g._count.props, 0);
-    const sample = w.games[0]?.homeTeam ?? "-";
-    console.log(`Week ${String(w.number).padStart(2)}: games=${w.games.length} props=${totalProps} sample=${sample}`);
+  const allWeeks = await db.query.weeks.findMany({ orderBy: [asc(weeks.number)] });
+  for (const w of allWeeks) {
+    const weekGames = await db.query.games.findMany({ where: eq(games.weekId, w.id) });
+    let totalProps = 0;
+    for (const g of weekGames) {
+      const [{ value }] = await db.select({ value: count() }).from(props).where(eq(props.gameId, g.id));
+      totalProps += value;
+    }
+    const sample = weekGames[0]?.homeTeam ?? "-";
+    console.log(`Week ${String(w.number).padStart(2)}: games=${weekGames.length} props=${totalProps} sample=${sample}`);
   }
-  await prisma.$disconnect();
 }
-main().catch(console.error);
+main().catch(console.error).finally(() => process.exit(0));

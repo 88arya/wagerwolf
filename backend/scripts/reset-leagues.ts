@@ -1,21 +1,15 @@
-import { PrismaPg } from "@prisma/adapter-pg";
-import { PrismaClient } from "@prisma/client";
-import * as dotenv from "dotenv";
-
-dotenv.config();
-
-const adapter = new PrismaPg({ connectionString: process.env.DATABASE_DIRECT_URL! });
-const prisma = new PrismaClient({ adapter } as any);
+import { db } from "../src/db/db";
+import { parlayLegs, parlays, gamePicks, picks, matchups, memberships, leagues } from "../src/db/schema";
 
 async function main() {
-  await prisma.parlayLeg.deleteMany({});
-  await prisma.parlay.deleteMany({});
-  await prisma.gamePick.deleteMany({});
-  await prisma.pick.deleteMany({});
-  await prisma.matchup.deleteMany({});
-  await prisma.membership.deleteMany({});
-  await prisma.league.deleteMany({});
+  await db.delete(parlayLegs);
+  await db.delete(parlays);
+  await db.delete(gamePicks);
+  await db.delete(picks);
+  await db.delete(matchups);
+  await db.delete(memberships);
+  await db.delete(leagues);
   console.log("Done — all leagues deleted");
 }
 
-main().catch(console.error).finally(() => prisma.$disconnect());
+main().catch(console.error).finally(() => process.exit(0));

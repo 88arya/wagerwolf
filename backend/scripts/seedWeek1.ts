@@ -1,18 +1,21 @@
-import { prisma } from "../src/db/prisma";
+import { db } from "../src/db/db";
+import { eq } from "drizzle-orm";
+import { weeks, games } from "../src/db/schema";
 import { seedFakePropsForWeek } from "../src/services/fakeSync";
 
 async function main() {
-  // Upsert week 1
-  const week = await prisma.week.upsert({
-    where: { number: 1 },
-    update: {},
-    create: {
+  const existing = await db.query.weeks.findFirst({ where: eq(weeks.number, 1) });
+  let week: { id: string; number: number; startDate: Date; endDate: Date };
+  if (existing) {
+    week = existing;
+  } else {
+    const [inserted] = await db.insert(weeks).values({
       number: 1,
       startDate: new Date("2025-09-04T00:00:00Z"),
-      endDate:   new Date("2025-09-09T23:59:59Z"),
-    },
-    include: { games: true },
-  });
+      endDate: new Date("2025-09-09T23:59:59Z"),
+    }).returning();
+    week = inserted;
+  }
   console.log(`Week 1 id: ${week.id}`);
 
   const GAMES = [
@@ -21,12 +24,11 @@ async function main() {
     { awayTeam: "GB",  homeTeam: "DET", gameDate: new Date("2025-09-07T20:20:00Z") },
   ];
 
+  const existingGames = await db.query.games.findMany({ where: eq(games.weekId, week.id) });
   for (const g of GAMES) {
-    const existing = week.games.find(
-      (wg) => wg.awayTeam === g.awayTeam && wg.homeTeam === g.homeTeam
-    );
-    if (!existing) {
-      await prisma.game.create({ data: { weekId: week.id, ...g, status: "SCHEDULED" } });
+    const found = existingGames.find(wg => wg.awayTeam === g.awayTeam && wg.homeTeam === g.homeTeam);
+    if (!found) {
+      await db.insert(games).values({ weekId: week.id, ...g, status: "SCHEDULED" });
       console.log(`Created game: ${g.awayTeam} @ ${g.homeTeam}`);
     } else {
       console.log(`Game already exists: ${g.awayTeam} @ ${g.homeTeam}`);

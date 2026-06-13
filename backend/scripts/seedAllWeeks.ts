@@ -1,4 +1,6 @@
-import { prisma } from "../src/db/prisma";
+import { db } from "../src/db/db";
+import { eq, count } from "drizzle-orm";
+import { weeks, games } from "../src/db/schema";
 import { syncESPNGames } from "../src/services/syncWeek";
 import { seedFakePropsForWeek } from "../src/services/fakeSync";
 
@@ -19,7 +21,7 @@ async function main() {
   const fromArg = process.argv.find((a) => a.startsWith("--from="));
   const fromWeek = fromArg ? parseInt(fromArg.split("=")[1]) : 2;
 
-  const week1 = await prisma.week.findUnique({ where: { number: 1 } });
+  const week1 = await db.query.weeks.findFirst({ where: eq(weeks.number, 1) });
   if (!week1) { console.error("Week 1 not found"); process.exit(1); }
 
   const week1Start = new Date(week1.startDate);
@@ -32,15 +34,18 @@ async function main() {
     endDate.setUTCDate(startDate.getUTCDate() + 6);
     endDate.setUTCHours(23, 59, 59, 999);
 
-    const week = await prisma.week.upsert({
-      where: { number: weekNum },
-      update: { startDate, endDate },
-      create: { number: weekNum, startDate, endDate },
-    });
+    const existing = await db.query.weeks.findFirst({ where: eq(weeks.number, weekNum) });
+    let week: typeof existing & { id: string };
+    if (existing) {
+      week = existing;
+    } else {
+      const [inserted] = await db.insert(weeks).values({ number: weekNum, startDate, endDate }).returning();
+      week = inserted;
+    }
 
     console.log(`Week ${weekNum}: ${startDate.toISOString().slice(0, 10)} – ${endDate.toISOString().slice(0, 10)}`);
 
-    const existingCount = await prisma.game.count({ where: { weekId: week.id } });
+    const [{ value: existingCount }] = await db.select({ value: count() }).from(games).where(eq(games.weekId, week.id));
     if (existingCount === 0) {
       try {
         const result = await syncESPNGames(week.id);
@@ -52,15 +57,13 @@ async function main() {
       console.log(`  Skipped (${existingCount} games already exist)`);
     }
 
-    const gameCount = await prisma.game.count({ where: { weekId: week.id } });
+    const [{ value: gameCount }] = await db.select({ value: count() }).from(games).where(eq(games.weekId, week.id));
     if (gameCount === 0) {
       for (const g of FAKE_GAMES) {
         const gameDate = new Date(startDate);
         gameDate.setUTCDate(startDate.getUTCDate() + g.offsetDays);
         gameDate.setUTCHours(g.hour, 0, 0, 0);
-        await prisma.game.create({
-          data: { weekId: week.id, homeTeam: g.homeTeam, awayTeam: g.awayTeam, gameDate },
-        });
+        await db.insert(games).values({ weekId: week.id, homeTeam: g.homeTeam, awayTeam: g.awayTeam, gameDate });
       }
       const result = await seedFakePropsForWeek(week.id);
       console.log(`  Fake fallback: ${FAKE_GAMES.length} games, ${result.props} props`);
@@ -68,7 +71,7 @@ async function main() {
   }
 
   console.log("All weeks seeded.");
-  await prisma.$disconnect();
+  process.exit(0);
 }
 
 main().catch((e) => { console.error(e); process.exit(1); });
