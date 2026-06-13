@@ -9,7 +9,7 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" style={{ colorScheme: "dark" }}>
+    <html lang="en" style={{ colorScheme: "light" }}>
       <body suppressHydrationWarning><GoogleProvider>{children}</GoogleProvider></body>
     </html>
   );

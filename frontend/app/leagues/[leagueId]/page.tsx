@@ -390,22 +390,22 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
               <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 8, background: myHelmetColor }} />
               {/* Banner body */}
               <div style={{ padding: "20px 20px 20px", position: "relative" }}>
-                <div style={{ fontSize: "1.5rem", fontWeight: 800, letterSpacing: "-0.03em", color: "#fff", lineHeight: 1.15 }}>
+                <div style={{ fontSize: "1.5rem", fontWeight: 800, letterSpacing: "-0.03em", color: "var(--text)", lineHeight: 1.15 }}>
                   {league.name.endsWith(" League")
-                    ? <>{league.name.slice(0, -7)}<br /><span style={{ color: "rgba(255,255,255,0.55)" }}>League</span></>
+                    ? <>{league.name.slice(0, -7)}<br /><span style={{ color: "var(--text-3)" }}>League</span></>
                     : league.name}
                 </div>
               </div>
               {/* Right panel: stats */}
               <div style={{ position: "absolute", top: 20, right: 14, display: "flex", flexDirection: "column", gap: 5 }}>
-                <span style={{ fontSize: "0.72rem", color: "rgba(255,255,255,0.65)" }}>
-                  <span style={{ fontWeight: 700, color: "rgba(255,255,255,0.4)" }}>Format:</span> Standard
+                <span style={{ fontSize: "0.72rem", color: "var(--text-2)" }}>
+                  <span style={{ fontWeight: 700, color: "var(--text-3)" }}>Format:</span> Standard
                 </span>
-                <span style={{ fontSize: "0.72rem", color: "rgba(255,255,255,0.65)" }}>
-                  <span style={{ fontWeight: 700, color: "rgba(255,255,255,0.4)" }}>Allowance:</span> ${league.weeklyAllowance}
+                <span style={{ fontSize: "0.72rem", color: "var(--text-2)" }}>
+                  <span style={{ fontWeight: 700, color: "var(--text-3)" }}>Allowance:</span> ${league.weeklyAllowance}
                 </span>
-                <span style={{ fontSize: "0.72rem", color: "rgba(255,255,255,0.65)" }}>
-                  <span style={{ fontWeight: 700, color: "rgba(255,255,255,0.4)" }}>Teams:</span> {members.length}
+                <span style={{ fontSize: "0.72rem", color: "var(--text-2)" }}>
+                  <span style={{ fontWeight: 700, color: "var(--text-3)" }}>Teams:</span> {members.length}
                 </span>
               </div>
             </div>

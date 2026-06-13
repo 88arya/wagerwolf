@@ -1,15 +1,15 @@
 :root {
   /* ── Backgrounds ── */
-  --bg:           #121212;
-  --surface:      #202020;
-  --surface-2:    #292929;
-  --surface-3:    #333333;
-  --surface-4:    #3D3D3D;
+  --bg:           #F5F7FA;
+  --surface:      #FFFFFF;
+  --surface-2:    #F0F2F5;
+  --surface-3:    #E8ECF0;
+  --surface-4:    #DDE2E8;
 
   /* ── Borders ── */
-  --border:       #3C3C3C;
-  --border-2:     #4A4A4A;
-  --border-3:     #585858;
+  --border:       #E2E8F0;
+  --border-2:     #CBD5E1;
+  --border-3:     #94A3B8;
 
   /* ── Accent Green ── */
   --accent:       #02D18A;
@@ -19,8 +19,8 @@
   --accent-glow:  rgba(2, 209, 138, 0.18);
 
   /* ── Header ── */
-  --navy:         #121212;
-  --navy-2:       #121212;
+  --navy:         #FFFFFF;
+  --navy-2:       #F5F7FA;
 
   /* ── Status ── */
   --win:          #16A34A;
@@ -38,10 +38,10 @@
   --bronze:       #B45309;
 
   /* ── Text ── */
-  --text:         #E8ECF0;
-  --text-2:       #8896A4;
-  --text-3:       #546070;
-  --text-4:       #3A4A58;
+  --text:         #0F172A;
+  --text-2:       #475569;
+  --text-3:       #94A3B8;
+  --text-4:       #CBD5E1;
 
   /* ── Shape ── */
   --radius:       8px;
@@ -50,10 +50,10 @@
   --radius-xl:    20px;
 
   /* ── Shadows ── */
-  --shadow-sm:    0 1px 3px rgba(0,0,0,0.30);
-  --shadow-md:    0 4px 16px rgba(0,0,0,0.40);
-  --shadow-lg:    0 8px 32px rgba(0,0,0,0.50);
-  --shadow-up:    0 -4px 16px rgba(0,0,0,0.30);
+  --shadow-sm:    0 1px 3px rgba(0,0,0,0.08);
+  --shadow-md:    0 4px 16px rgba(0,0,0,0.10);
+  --shadow-lg:    0 8px 32px rgba(0,0,0,0.12);
+  --shadow-up:    0 -4px 16px rgba(0,0,0,0.08);
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -533,7 +533,7 @@ hr { border: none; border-top: 1px solid var(--border); margin: 14px 0; }
   font-weight: 700;
   box-shadow: var(--shadow-sm);
 }
-.segment-btn:hover:not(.active) { color: var(--text-2); background: rgba(255,255,255,0.05); }
+.segment-btn:hover:not(.active) { color: var(--text-2); background: rgba(0,0,0,0.04); }
 
 /* ── Underline tab bar (DK/ESPN style) ── */
 .tab-bar {

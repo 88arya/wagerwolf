@@ -594,9 +594,9 @@ export default function BetPage({ params }: PageProps<"/leagues/[leagueId]/bet">
                     </div>
                   </div>
                   <div style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)", pointerEvents: "none" }}>
-                    <div style={{ background: "rgba(13,16,21,0.80)", borderRadius: 8, padding: "6px 12px", display: "flex", flexDirection: "column", alignItems: "center", gap: 3 }}>
-                      <div style={{ fontSize: "0.55rem", fontWeight: 600, color: "rgba(255,255,255,0.9)", letterSpacing: "0.08em" }}>{fmtCountdown(selectedGame.gameDate)}</div>
-                      <div style={{ fontSize: "0.55rem", color: "rgba(255,255,255,0.45)", textAlign: "center", whiteSpace: "nowrap", lineHeight: 1.4 }}>{fmtGameTime(selectedGame.gameDate)}</div>
+                    <div style={{ background: "rgba(255,255,255,0.92)", borderRadius: 8, padding: "6px 12px", display: "flex", flexDirection: "column", alignItems: "center", gap: 3 }}>
+                      <div style={{ fontSize: "0.55rem", fontWeight: 600, color: "rgba(0,0,0,0.9)", letterSpacing: "0.08em" }}>{fmtCountdown(selectedGame.gameDate)}</div>
+                      <div style={{ fontSize: "0.55rem", color: "rgba(0,0,0,0.4)", textAlign: "center", whiteSpace: "nowrap", lineHeight: 1.4 }}>{fmtGameTime(selectedGame.gameDate)}</div>
                     </div>
                   </div>
                 </div>
