@@ -1,5 +1,5 @@
 import { db } from "../db/db";
-import { eq, and } from "drizzle-orm";
+import { eq, inArray, sql } from "drizzle-orm";
 import { weeks, games, gameLines, players, props } from "../db/schema";
 
 export const FAKE_PLAYERS: Array<{ name: string; team: string; position: string }> = [
@@ -295,71 +295,95 @@ export async function seedFakePropsForWeek(weekId: string): Promise<{ lines: num
   });
   if (!week) throw new Error("Week not found");
 
-  let linesSynced = 0, propsSynced = 0;
+  const weekGames = (week as any).games as Array<{ id: string; homeTeam: string; awayTeam: string }>;
 
-  for (const game of (week as any).games) {
-    const gameLineData = fakeLinesForGame(game.homeTeam, game.awayTeam);
-    for (const gl of gameLineData) {
-      await db.insert(gameLines)
-        .values({ gameId: game.id, market: gl.market, label: gl.label, odds: gl.odds, line: gl.line })
-        .onConflictDoUpdate({
-          target: [gameLines.gameId, gameLines.market],
-          set: { label: gl.label, odds: gl.odds, line: gl.line },
-        });
-      linesSynced++;
+  // Build all game line records in memory
+  const allGameLineValues: Array<{ gameId: string; market: string; label: string; odds: number; line: number | null }> = [];
+  for (const game of weekGames) {
+    const baseLines = fakeLinesForGame(game.homeTeam, game.awayTeam);
+    for (const gl of baseLines) {
+      allGameLineValues.push({ gameId: game.id, ...gl });
     }
-
-    const mainHomeSpread = gameLineData.find((l) => l.market === "SPREAD_HOME");
-    const mainTotalOver  = gameLineData.find((l) => l.market === "TOTAL_OVER");
+    const mainHomeSpread = baseLines.find((l) => l.market === "SPREAD_HOME");
+    const mainTotalOver  = baseLines.find((l) => l.market === "TOTAL_OVER");
     if (mainHomeSpread?.line != null && mainTotalOver?.line != null) {
-      const altGameLines = fakeAltGameLines(game.homeTeam, game.awayTeam, mainHomeSpread.line, mainTotalOver.line);
-      for (const al of altGameLines) {
-        await db.insert(gameLines)
-          .values({ gameId: game.id, market: al.market, label: al.label, odds: al.odds, line: al.line })
-          .onConflictDoUpdate({
-            target: [gameLines.gameId, gameLines.market],
-            set: { label: al.label, odds: al.odds, line: al.line },
-          });
-        linesSynced++;
+      for (const al of fakeAltGameLines(game.homeTeam, game.awayTeam, mainHomeSpread.line, mainTotalOver.line)) {
+        allGameLineValues.push({ gameId: game.id, ...al });
       }
     }
+  }
 
+  // Determine which FAKE_PLAYERS are needed for this week's games
+  const teamSet = new Set(weekGames.flatMap((g) => [g.homeTeam, g.awayTeam]));
+  const neededPlayers = FAKE_PLAYERS.filter((p) => teamSet.has(p.team));
+
+  // Pre-fetch all known players in one query, key by "name:team"
+  const allExisting = neededPlayers.length > 0
+    ? await db.select().from(players).where(
+        inArray(players.name, [...new Set(neededPlayers.map((p) => p.name))])
+      )
+    : [];
+  const playerByKey = new Map(allExisting.map((p) => [`${p.name}:${p.team}`, p]));
+
+  // Insert any missing players in one bulk call
+  const toInsert = neededPlayers.filter((p) => !playerByKey.has(`${p.name}:${p.team}`));
+  const uniqueToInsert = [...new Map(toInsert.map((p) => [`${p.name}:${p.team}`, p])).values()];
+  if (uniqueToInsert.length > 0) {
+    const inserted = await db.insert(players)
+      .values(uniqueToInsert.map((p) => ({ name: p.name, team: p.team, position: p.position })))
+      .onConflictDoNothing()
+      .returning();
+    for (const p of inserted) playerByKey.set(`${p.name}:${p.team}`, p);
+    // Re-fetch any that were skipped by onConflictDoNothing
+    const stillMissing = uniqueToInsert.filter((p) => !playerByKey.has(`${p.name}:${p.team}`));
+    if (stillMissing.length > 0) {
+      const refetched = await db.select().from(players)
+        .where(inArray(players.name, stillMissing.map((p) => p.name)));
+      for (const p of refetched) playerByKey.set(`${p.name}:${p.team}`, p);
+    }
+  }
+
+  // Build all prop records in memory
+  const allPropValues: Array<{ gameId: string; playerId: string; statType: any; line: number; odds: number }> = [];
+  for (const game of weekGames) {
     const teamNames = [game.homeTeam, game.awayTeam];
-    const gamePlayers = FAKE_PLAYERS.filter((p) => teamNames.includes(p.team));
-
+    const gamePlayers = neededPlayers.filter((p) => teamNames.includes(p.team));
     for (const team of teamNames) {
       const teamPlayers = gamePlayers.filter((p) => p.team === team);
       for (const [pos, slotCount] of Object.entries(SLOTS)) {
         const posPlayers = teamPlayers.filter((p) => p.position === pos).slice(0, slotCount);
         const propTemplate = POSITION_PROPS[pos];
         if (!propTemplate) continue;
-
         for (const fp of posPlayers) {
-          let player = await db.query.players.findFirst({ where: eq(players.name, fp.name) });
-          if (!player) {
-            [player] = await db.insert(players)
-              .values({ name: fp.name, team: fp.team, position: fp.position })
-              .returning();
-          }
-
+          const player = playerByKey.get(`${fp.name}:${fp.team}`);
+          if (!player) continue;
           for (const { statType, line, odds } of propTemplate) {
-            const variedLine = fakeVariant(line);
-            const existing = await db.query.props.findFirst({
-              where: (p, { and, eq }) => and(eq(p.gameId, game.id), eq(p.playerId, player!.id), eq(p.statType, statType as any)),
-            });
-            if (existing) {
-              await db.update(props)
-                .set({ line: variedLine, odds })
-                .where(eq(props.id, existing.id));
-            } else {
-              await db.insert(props).values({ gameId: game.id, playerId: player!.id, statType: statType as any, line: variedLine, odds });
-            }
-            propsSynced++;
+            allPropValues.push({ gameId: game.id, playerId: player.id, statType: statType as any, line: fakeVariant(line), odds });
           }
         }
       }
     }
   }
 
-  return { lines: linesSynced, props: propsSynced };
+  // Bulk upsert game lines (unique on gameId+market)
+  if (allGameLineValues.length > 0) {
+    await db.insert(gameLines)
+      .values(allGameLineValues)
+      .onConflictDoUpdate({
+        target: [gameLines.gameId, gameLines.market],
+        set: { label: sql`excluded.label`, odds: sql`excluded.odds`, line: sql`excluded.line` },
+      });
+  }
+
+  // Bulk upsert props (unique on gameId+playerId+statType)
+  if (allPropValues.length > 0) {
+    await db.insert(props)
+      .values(allPropValues)
+      .onConflictDoUpdate({
+        target: [props.gameId, props.playerId, props.statType],
+        set: { line: sql`excluded.line`, odds: sql`excluded.odds` },
+      });
+  }
+
+  return { lines: allGameLineValues.length, props: allPropValues.length };
 }

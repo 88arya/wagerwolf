@@ -1,6 +1,6 @@
 import { db } from "../db/db";
-import { eq, and, lte } from "drizzle-orm";
-import { weeks, games, leagues, memberships } from "../db/schema";
+import { eq, and, lte, inArray } from "drizzle-orm";
+import { weeks, games, props, gameLines, leagues, memberships, players } from "../db/schema";
 import { seedFakePropsForWeek, FAKE_PLAYERS } from "./fakeSync";
 import { scheduleMatchups } from "./scheduleMatchups";
 import { pickHelmetColor } from "./helmetColor";
@@ -20,80 +20,88 @@ const FAKE_GAMES: Array<{ homeTeam: string; awayTeam: string; offsetDays: number
 
 const NEW_STAT_TYPES = new Set(["SACKS", "FIELD_GOALS_MADE", "TACKLES_ASSISTS", "PASSING_COMPLETIONS"]);
 
-export async function runStartupSeed() {
-  try {
-    const now = new Date();
-    const base = new Date(now);
-    base.setHours(0, 0, 0, 0);
+async function doRunStartupSeed() {
+  const now = new Date();
+  const base = new Date(now);
+  base.setHours(0, 0, 0, 0);
 
-    // Find all unresolved weeks and seed any that are missing new stat types or alt lines
-    const unresolvedWeeks = await db.query.weeks.findMany({
-      where: eq(weeks.resolved, false),
-      with: { games: { with: { props: true, gameLines: true } } },
+  // Fetch unresolved weeks without nested relations to keep query small
+  const unresolvedWeeks = await db.select().from(weeks).where(eq(weeks.resolved, false));
+
+  // If no weeks exist at all, create one
+  if (unresolvedWeeks.length === 0) {
+    const end = new Date(base);
+    end.setDate(end.getDate() + 6);
+    end.setHours(23, 59, 59, 999);
+
+    const lastWeek = await db.query.weeks.findFirst({
+      where: undefined,
+      orderBy: (w, { desc }) => [desc(w.number)],
     });
+    const weekNumber = (lastWeek?.number ?? 0) + 1;
+    const [week] = await db.insert(weeks)
+      .values({ number: weekNumber, startDate: base, endDate: end })
+      .returning();
+    for (const g of FAKE_GAMES) {
+      const gameDate = new Date(base);
+      gameDate.setDate(gameDate.getDate() + g.offsetDays);
+      gameDate.setHours(g.hour, 0, 0, 0);
+      await db.insert(games).values({ weekId: week.id, homeTeam: g.homeTeam, awayTeam: g.awayTeam, gameDate });
+    }
+    const result = await seedFakePropsForWeek(week.id);
+    console.log(`[seed] Created week ${weekNumber} with ${result.props} props`);
+    return;
+  }
 
-    // If no weeks exist at all, create one
-    if (unresolvedWeeks.length === 0) {
-      const end = new Date(base);
-      end.setDate(end.getDate() + 6);
-      end.setHours(23, 59, 59, 999);
+  // For each existing unresolved week, check with small queries if it needs seeding
+  for (const week of unresolvedWeeks) {
+    const weekGames = await db.select().from(games).where(eq(games.weekId, week.id));
 
-      const lastWeek = await db.query.weeks.findFirst({
-        where: undefined,
-        orderBy: (w, { desc }) => [desc(w.number)],
-      });
-      const weekNumber = (lastWeek?.number ?? 0) + 1;
-      const [week] = await db.insert(weeks)
-        .values({ number: weekNumber, startDate: base, endDate: end })
-        .returning();
+    const needsGames = weekGames.length === 0;
+    if (needsGames) {
       for (const g of FAKE_GAMES) {
         const gameDate = new Date(base);
         gameDate.setDate(gameDate.getDate() + g.offsetDays);
         gameDate.setHours(g.hour, 0, 0, 0);
         await db.insert(games).values({ weekId: week.id, homeTeam: g.homeTeam, awayTeam: g.awayTeam, gameDate });
       }
+    }
+
+    const gameIds = weekGames.map((g) => g.id);
+    if (gameIds.length === 0) continue;
+
+    // Check if week has new stat types
+    const sampleNewProp = await db.query.props.findFirst({
+      where: (p, { and, inArray }) => and(
+        inArray(p.gameId, gameIds),
+        inArray(p.statType, Array.from(NEW_STAT_TYPES) as any[]),
+      ),
+    });
+    const hasNewProps = !!sampleNewProp;
+
+    // Check if week has alt lines
+    const sampleAltLine = await db.query.gameLines.findFirst({
+      where: (gl, { and, inArray, like }) => and(
+        inArray(gl.gameId, gameIds),
+        like(gl.market, "ALT_%"),
+      ),
+    });
+    const hasAltLines = !!sampleAltLine;
+
+    // Check if any FAKE_PLAYER is missing props for this week
+    const teamsInWeek = new Set(weekGames.flatMap((g) => [g.homeTeam, g.awayTeam]));
+    const propPlayerIds = (await db.select({ playerId: props.playerId }).from(props).where(inArray(props.gameId, gameIds))).map(r => r.playerId);
+    const playersWithProps = propPlayerIds.length > 0
+      ? await db.select({ name: players.name }).from(players).where(inArray(players.id, propPlayerIds))
+      : [];
+    const namesWithProps = new Set(playersWithProps.map((p) => p.name));
+    const missingPlayer = FAKE_PLAYERS.some((fp) => teamsInWeek.has(fp.team) && !namesWithProps.has(fp.name));
+
+    if (!hasNewProps || !hasAltLines || missingPlayer) {
       const result = await seedFakePropsForWeek(week.id);
-      console.log(`[seed] Created week ${weekNumber} with ${result.props} props`);
-      return;
+      console.log(`[seed] Seeded week ${week.number}: ${result.props} props`);
     }
-
-    // For each existing unresolved week, ensure it has new prop types
-    for (const week of unresolvedWeeks) {
-      const weekGames = (week as any).games as any[];
-      const hasNewProps = weekGames.some((g: any) =>
-        (g.props as any[]).some((p: any) => NEW_STAT_TYPES.has(p.statType as string))
-      );
-      const hasAltLines = weekGames.some((g: any) =>
-        (g.gameLines as any[]).some((l: any) => (l.market as string).startsWith("ALT_"))
-      );
-
-      // Check if any team in the week has a FAKE_PLAYER with no prop yet
-      const teamsInWeek = new Set(weekGames.flatMap((g: any) => [g.homeTeam, g.awayTeam]));
-      const playersWithProps = await db.query.players.findMany({
-        where: (pl, { inArray }) =>
-          inArray(
-            pl.id,
-            // sub-select: get player IDs that have props for these games
-            weekGames.flatMap((g: any) => (g.props as any[]).map((p: any) => p.playerId))
-          ),
-      });
-      const namesWithProps = new Set(playersWithProps.map((p) => p.name));
-      const missingPlayer = FAKE_PLAYERS.some((fp) => teamsInWeek.has(fp.team) && !namesWithProps.has(fp.name));
-
-      if (!hasNewProps || !hasAltLines || missingPlayer) {
-        // Add games if the week has none
-        if (weekGames.length === 0) {
-          for (const g of FAKE_GAMES) {
-            const gameDate = new Date(base);
-            gameDate.setDate(gameDate.getDate() + g.offsetDays);
-            gameDate.setHours(g.hour, 0, 0, 0);
-            await db.insert(games).values({ weekId: week.id, homeTeam: g.homeTeam, awayTeam: g.awayTeam, gameDate });
-          }
-        }
-        const result = await seedFakePropsForWeek(week.id);
-        console.log(`[seed] Seeded week ${week.number}: ${result.props} props`);
-      }
-    }
+  }
 
     // Repair unstarted leagues with ≥2 members but missing matchups
     const unstartedLeagues = await db.query.leagues.findMany({
@@ -149,7 +157,23 @@ export async function runStartupSeed() {
         console.log(`[seed] Auto-started league ${league.id}`);
       }
     }
-  } catch (err) {
-    console.error("[seed] Startup seed failed:", err);
+}
+
+export async function runStartupSeed() {
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      await doRunStartupSeed();
+      return;
+    } catch (err: any) {
+      const errStr = String(err?.message ?? "") + String(err?.cause?.message ?? "") + String(err?.cause?.code ?? "") + String(err?.code ?? "");
+      const isConnErr = errStr.includes("terminated") || errStr.includes("ECONNREFUSED");
+      if (attempt < 3 && isConnErr) {
+        console.log(`[seed] Attempt ${attempt} failed (connection), retrying in 3s...`);
+        await new Promise((r) => setTimeout(r, 3000));
+      } else {
+        console.error("[seed] Startup seed failed:", err);
+        return;
+      }
+    }
   }
 }

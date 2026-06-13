@@ -74,8 +74,10 @@ router.get("/leaderboard", requireAuth, async (req: any, res: any) => {
       ),
     ]);
 
+    const validMembers = memberRows.filter((m) => m.user != null);
+
     const records: Record<string, { wins: number; losses: number; ties: number }> = {};
-    for (const m of memberRows) {
+    for (const m of validMembers) {
       records[m.user.id] = { wins: 0, losses: 0, ties: 0 };
     }
     for (const matchup of matchupRows) {
@@ -89,7 +91,7 @@ router.get("/leaderboard", requireAuth, async (req: any, res: any) => {
       }
     }
 
-    const leaderboard = memberRows
+    const leaderboard = validMembers
       .map((m: any) => ({
         userId: m.user.id,
         displayName: m.displayName || m.user.displayName,
@@ -107,7 +109,7 @@ router.get("/leaderboard", requireAuth, async (req: any, res: any) => {
     const latestWeekNumber = weekNumbers.length ? Math.max(...weekNumbers) : null;
     if (latestWeekNumber !== null) {
       const prevRecords: Record<string, { wins: number; losses: number; ties: number }> = {};
-      for (const m of memberRows) prevRecords[m.user.id] = { wins: 0, losses: 0, ties: 0 };
+      for (const m of validMembers) prevRecords[m.user.id] = { wins: 0, losses: 0, ties: 0 };
       for (const matchup of matchupRows) {
         if (matchup.weekNumber === latestWeekNumber) continue;
         if (matchup.isTie) {
@@ -120,7 +122,7 @@ router.get("/leaderboard", requireAuth, async (req: any, res: any) => {
         }
       }
       const prevRankMap: Record<string, number> = {};
-      [...memberRows]
+      [...validMembers]
         .map((m: any) => ({ userId: m.user.id, balance: m.balance, ...prevRecords[m.user.id] }))
         .sort((a: any, b: any) => b.wins - a.wins || b.ties - a.ties || b.balance - a.balance)
         .forEach((entry: any, i: number) => { prevRankMap[entry.userId] = i + 1; });
@@ -353,7 +355,7 @@ router.get("/feed", requireAuth, async (req: any, res: any) => {
       with: { user: true },
     });
     const nameMap: Record<string, string> = {};
-    for (const m of leagueMembers) nameMap[m.userId] = m.displayName || m.user.displayName;
+    for (const m of leagueMembers) if (m.user) nameMap[m.userId] = m.displayName || m.user.displayName;
 
     // Narrow game IDs further by kickoff time if AFTER_KICKOFF
     let visibleGameIds: string[] = targetWeekGameIds;
@@ -529,7 +531,7 @@ router.get("/messages", requireAuth, async (req: any, res: any) => {
       .slice(0, 50);
 
     const chatNameMap: Record<string, string> = {};
-    for (const m of memberRows) chatNameMap[m.userId] = m.displayName || m.user.displayName;
+    for (const m of memberRows) if (m.user) chatNameMap[m.userId] = m.displayName || m.user.displayName;
 
     const messages = sortedMessages.map((msg) => ({
       ...msg,
