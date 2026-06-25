@@ -6,7 +6,7 @@ import dotenv from "dotenv";
 dotenv.config();
 
 const pool = new Pool({
-  connectionString: process.env.DATABASE_DIRECT_URL,
+  connectionString: process.env.DATABASE_URL,
   max: 10,
   idleTimeoutMillis: 500,
   connectionTimeoutMillis: 10000,

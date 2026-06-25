@@ -12,9 +12,6 @@
   "license": "ISC",
   "dependencies": {
     "@paralleldrive/cuid2": "^3.3.0",
-    "@prisma/adapter-pg": "^7.8.0",
-    "@prisma/client": "^7.8.0",
-    "@prisma/extension-accelerate": "^3.0.1",
     "@types/node-cron": "^3.0.11",
     "@types/nodemailer": "^8.0.0",
     "bcrypt": "^6.0.0",
@@ -37,7 +34,6 @@
     "@types/node": "^25.6.0",
     "@types/pg": "^8.20.0",
     "nodemon": "^3.1.14",
-    "prisma": "^7.8.0",
     "ts-node": "^10.9.2",
     "typescript": "^6.0.3"
   },
