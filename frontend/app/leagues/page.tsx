@@ -37,34 +37,11 @@ function UserIcon() {
     </svg>
   );
 }
-function PlusIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
-      <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
-    </svg>
-  );
-}
-function LockIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-      <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
-      <path d="M7 11V7a5 5 0 0110 0v4"/>
-    </svg>
-  );
-}
-function PenIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-      <path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/>
-    </svg>
-  );
-}
 
 export default function LeaguesPage() {
   const router = useRouter();
   const [memberships, setMemberships] = useState<any[]>([]);
   const [pendingMemberships, setPendingMemberships] = useState<any[]>([]);
-  const [displayName, setDisplayName] = useState("");
   const [form, setForm] = useState({ name: "", weeklyAllowance: "300", maxPlayers: "10", isPublic: false, maxPublicPlayers: "0", maxBetsPerWeek: "", maxStakePerBet: "", startWeek: "1" });
   const [joinCode, setJoinCode] = useState("");
   const [error, setError] = useState("");
@@ -81,7 +58,6 @@ export default function LeaguesPage() {
   useEffect(() => {
     const token = localStorage.getItem("token");
     if (!token) { router.replace("/"); return; }
-    setDisplayName(localStorage.getItem("displayName") ?? "");
     setForm(f => ({ ...f, name: randomLeagueName() }));
     loadMemberships();
   }, []);
@@ -215,27 +191,50 @@ export default function LeaguesPage() {
       {/* Content */}
       <div className="page-wide" style={{ display: "flex", flexDirection: "column", alignItems: "center", paddingTop: "5vh" }}>
 
-        <div style={{ width: "100%", marginBottom: 16 }}>
-          <div style={{ fontWeight: 900, fontSize: "1.1rem", letterSpacing: "-0.01em", color: "var(--text)" }}>My Leagues</div>
-          {displayName && <div style={{ fontSize: "0.8rem", color: "var(--text-3)", fontWeight: 500, marginTop: 2 }}>{displayName}</div>}
+        <div style={{ width: "100%", marginBottom: 16, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <div style={{ fontWeight: 900, fontSize: "1.1rem", letterSpacing: "-0.01em", color: "var(--text)" }}>Leagues</div>
+          <div style={{ display: "flex", gap: 6 }}>
+            {([
+              { label: "Join Public", onClick: () => { joinPublic(); } },
+              { label: "Private", onClick: () => { setView(view === "private" ? "menu" : "private"); setJoinError(""); setJoinSuccess(""); } },
+              { label: "Create", onClick: () => { setView(view === "create" ? "menu" : "create"); setError(""); } },
+            ] as const).map(({ label, onClick }) => (
+              <button key={label} type="button" onClick={onClick}
+                style={{ padding: "5px 12px", borderRadius: "var(--radius-sm)", fontSize: "0.78rem", fontWeight: 700, background: "none", border: "1px solid var(--border-2)", cursor: "pointer", color: "var(--text-2)", boxShadow: "none" }}
+                onMouseEnter={e => { e.currentTarget.style.borderColor = "var(--text-3)"; e.currentTarget.style.color = "var(--text)"; }}
+                onMouseLeave={e => { e.currentTarget.style.borderColor = "var(--border-2)"; e.currentTarget.style.color = "var(--text-2)"; }}>
+                {label}
+              </button>
+            ))}
+          </div>
         </div>
 
         {/* Leagues table + actions */}
         {(() => {
-          const COLS = "2fr 1.5fr 0.85fr 1fr 0.6fr 1.1fr 0.75fr 0.65fr 0.75fr";
-          const headers = ["League", "Your team", "Phase", "Balance", "Bets", "Standing", "Record", "Streak", "Win %"];
           const rows = [...memberships, ...pendingMemberships.map((m: any) => ({ ...m, _pending: true }))];
           const dash = <span style={{ color: "var(--text-3)" }}>—</span>;
+          const TH = { fontSize: "0.65rem", fontWeight: 500, color: "var(--text-3)", padding: "10px 12px 8px", borderBottom: "1px solid var(--border-2)", whiteSpace: "nowrap" as const };
+          const TD = { fontSize: "0.78rem", fontWeight: 600, color: "var(--text)", padding: "10px 12px", borderTop: "1px solid var(--border)", fontVariantNumeric: "tabular-nums" as const, whiteSpace: "nowrap" as const };
 
           return (
-            <div style={{ width: "100%", marginBottom: 24, border: "1px solid var(--border)", borderRadius: "var(--radius)", overflow: "hidden" }}>
+            <div style={{ width: "100%", marginBottom: 24 }}>
               {rows.length > 0 && (
-                <>
-                  <div style={{ display: "grid", gridTemplateColumns: COLS, alignItems: "center", gap: 8, padding: "10px 20px 8px", borderBottom: "1px solid var(--border-2)" }}>
-                    {headers.map((h, i) => (
-                      <span key={h} style={{ fontSize: "0.65rem", fontWeight: 500, color: "var(--text-3)", textAlign: i >= 3 ? "right" : "left" }}>{h}</span>
-                    ))}
-                  </div>
+                <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "auto" }}>
+                  <thead style={{ boxShadow: "0 4px 4px -2px rgba(0,0,0,0.08)" }}>
+                    <tr>
+                      <th style={{ ...TH, textAlign: "left" }}>LEAGUE</th>
+                      <th style={{ ...TH, textAlign: "left" }}>YOU</th>
+                      <th style={{ ...TH, textAlign: "right" }}>BALANCE</th>
+                      <th style={{ ...TH, textAlign: "right" }}>BETS</th>
+                      <th style={{ ...TH, textAlign: "left" }}>PHASE</th>
+                      <th style={{ ...TH, textAlign: "right" }}>STANDING</th>
+                      <th style={{ ...TH, textAlign: "right" }}>RECORD</th>
+                      <th style={{ ...TH, textAlign: "right" }}>STREAK</th>
+                      <th style={{ ...TH, textAlign: "right" }}>WIN %</th>
+                      <th style={{ ...TH }} />
+                    </tr>
+                  </thead>
+                  <tbody>
                   {rows.map((m: any) => {
                     const isPending = !!m._pending;
                     const ctx = m.weekContext;
@@ -249,104 +248,83 @@ export default function LeaguesPage() {
                     const playoffSize: number = m.league?.playoffSize ?? 999;
                     const inConsolation = ctx?.phase === "playoffs" && m.rank != null && m.rank > playoffSize;
 
-                    let phaseText: string;
+                    let phaseState: string;
+                    let phaseWeek: string | null;
                     let phaseColor: string;
-                    if (isPending) { phaseText = "Pending"; phaseColor = "var(--pending)"; }
-                    else if (!ctx || ctx.phase === "waiting") { phaseText = "Lobby"; phaseColor = "var(--text-3)"; }
-                    else if (ctx.phase === "ended") { phaseText = "Complete"; phaseColor = "var(--text-3)"; }
-                    else if (inConsolation) { phaseText = "Consolation"; phaseColor = "var(--text-3)"; }
-                    else if (ctx.phase === "playoffs") { phaseText = ctx.week != null ? `Playoffs · Wk ${ctx.week}` : "Playoffs"; phaseColor = "var(--pending)"; }
-                    else { phaseText = ctx.week != null ? `Regular · Wk ${ctx.week}` : "Regular"; phaseColor = "var(--accent)"; }
+                    if (isPending) { phaseState = "Pending"; phaseWeek = null; phaseColor = "var(--pending)"; }
+                    else if (!ctx || ctx.phase === "waiting") { phaseState = "Lobby"; phaseWeek = null; phaseColor = "var(--text-3)"; }
+                    else if (ctx.phase === "ended") { phaseState = "Complete"; phaseWeek = null; phaseColor = "var(--text-3)"; }
+                    else if (inConsolation) { phaseState = "Consolation"; phaseWeek = ctx.week != null ? `Wk ${ctx.week}` : null; phaseColor = "var(--text-3)"; }
+                    else if (ctx.phase === "playoffs") { phaseState = "Playoffs"; phaseWeek = ctx.week != null ? `Wk ${ctx.week}` : null; phaseColor = "var(--pending)"; }
+                    else { phaseState = "Regular"; phaseWeek = ctx.week != null ? `Wk ${ctx.week}` : null; phaseColor = "var(--accent)"; }
 
                     return (
-                      <div
+                      <tr
                         key={m.id}
                         onClick={isPending ? undefined : () => router.push(`/leagues/${m.leagueId}`)}
-                        style={{ display: "grid", gridTemplateColumns: COLS, alignItems: "center", gap: 8, padding: "10px 20px", borderBottom: "1px solid var(--border)", cursor: isPending ? "default" : "pointer", transition: "background 0.08s", opacity: isPending ? 0.6 : 1 }}
-                        onMouseEnter={isPending ? undefined : e => { (e.currentTarget as HTMLDivElement).style.background = "var(--surface-2)"; }}
-                        onMouseLeave={isPending ? undefined : e => { (e.currentTarget as HTMLDivElement).style.background = "transparent"; }}
+                        style={{ cursor: isPending ? "default" : "pointer", opacity: isPending ? 0.6 : 1, transition: "background 0.08s" }}
+                        onMouseEnter={isPending ? undefined : e => { (e.currentTarget as HTMLTableRowElement).style.background = "var(--surface-2)"; }}
+                        onMouseLeave={isPending ? undefined : e => { (e.currentTarget as HTMLTableRowElement).style.background = "transparent"; }}
                       >
                         {/* League */}
-                        <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
-                          <div style={{ width: 3, height: 30, borderRadius: 2, background: m.helmetColor ?? "var(--border-2)", flexShrink: 0 }} />
-                          <div style={{ fontWeight: 600, fontSize: "0.82rem", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "var(--text)" }}>
-                            {m.league?.name}
+                        <td style={{ ...TD, textAlign: "left" }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                            <div style={{ width: 5, height: 30, background: m.helmetColor ?? "var(--border-2)", flexShrink: 0 }} />
+                            <span style={{ fontWeight: 600, fontSize: "0.82rem", color: "var(--text)" }}>{m.league?.name}</span>
                           </div>
-                        </div>
-                        {/* Your team */}
-                        <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
-                          <HelmetAvatar color={m.helmetColor ?? "#02D18A"} initials={m.abbreviation || (m.displayName ?? "?").slice(0, 2)} size={26} />
-                          <div style={{ minWidth: 0 }}>
-                            <div style={{ fontSize: "0.78rem", fontWeight: 600, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                              {m.displayName || "—"}
-                            </div>
-                            {m.abbreviation && (
-                              <div style={{ fontSize: "0.6rem", color: "var(--text-3)", fontWeight: 700, letterSpacing: "0.1em" }}>{m.abbreviation}</div>
-                            )}
-                          </div>
-                        </div>
-                        {/* Phase */}
-                        <div style={{ fontSize: "0.78rem", fontWeight: 600, color: phaseColor, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                          {phaseText}
-                        </div>
+                        </td>
+                        {/* You */}
+                        <td style={{ ...TD, textAlign: "left" }}>
+                          {m.abbreviation && <div style={{ fontSize: "0.6rem", color: "var(--text-3)", fontWeight: 700, letterSpacing: "0.1em" }}>{m.abbreviation}</div>}
+                          <div style={{ fontSize: "0.78rem", fontWeight: 600, color: "var(--text)" }}>{m.displayName || "—"}</div>
+                        </td>
                         {/* Balance */}
-                        <div style={{ display: "flex", justifyContent: isPending ? "center" : "flex-end", fontSize: "0.82rem", fontWeight: 600, color: isPending ? "var(--text-3)" : "var(--text)", fontVariantNumeric: "tabular-nums" }}>
+                        <td style={{ ...TD, textAlign: "right", color: isPending ? "var(--text-3)" : "var(--text)" }}>
                           {isPending ? dash : `$${(m.balance ?? 0).toLocaleString()}`}
-                        </div>
+                        </td>
                         {/* Bets */}
-                        <div style={{ display: "flex", justifyContent: isPending ? "center" : "flex-end", fontSize: "0.82rem", fontWeight: 600, color: "var(--text)", fontVariantNumeric: "tabular-nums" }}>
+                        <td style={{ ...TD, textAlign: "right" }}>
                           {isPending ? dash : (m.betsThisWeek ?? 0)}
-                        </div>
+                        </td>
+                        {/* Phase */}
+                        <td style={{ ...TD, textAlign: "left" }}>
+                          {phaseWeek && <div style={{ fontSize: "0.6rem", color: "var(--text-3)", fontWeight: 700, letterSpacing: "0.05em" }}>{phaseWeek}</div>}
+                          <div style={{ fontSize: "0.78rem", fontWeight: 600, color: phaseColor }}>{phaseState}</div>
+                        </td>
                         {/* Standing */}
-                        <div style={{ display: "flex", justifyContent: (isPending || !m.rank) ? "center" : "flex-end", fontSize: "0.82rem", fontVariantNumeric: "tabular-nums" }}>
+                        <td style={{ ...TD, textAlign: "right" }}>
                           {isPending || !m.rank ? dash : (
                             <span>
-                              <span style={{ fontWeight: 700, color: "var(--text)" }}>#{m.rank}</span>
+                              <span style={{ fontWeight: 700 }}>#{m.rank}</span>
                               <span style={{ fontWeight: 400, color: "var(--text-3)", fontSize: "0.72rem" }}> / {m.totalMembers}</span>
                             </span>
                           )}
-                        </div>
+                        </td>
                         {/* Record */}
-                        <div style={{ display: "flex", justifyContent: (isPending || total === 0) ? "center" : "flex-end", fontSize: "0.82rem", fontWeight: 600, color: total > 0 ? "var(--text)" : "var(--text-3)", fontVariantNumeric: "tabular-nums" }}>
-                          {isPending || total === 0 ? dash : `${wins}-${losses}${ties > 0 ? `-${ties}` : ""}`}
-                        </div>
+                        <td style={{ ...TD, textAlign: "right", color: "var(--text)" }}>
+                          {isPending ? dash : `${wins}-${losses}${ties > 0 ? `-${ties}` : ""}`}
+                        </td>
                         {/* Streak */}
-                        <div style={{ display: "flex", justifyContent: (isPending || !streak) ? "center" : "flex-end", fontSize: "0.82rem", fontWeight: 700, color: streakColor, fontVariantNumeric: "tabular-nums" }}>
-                          {isPending || !streak ? dash : streak}
-                        </div>
+                        <td style={{ ...TD, textAlign: "right", color: streakColor }}>
+                          {isPending ? dash : (streak ?? "—")}
+                        </td>
                         {/* Win % */}
-                        <div style={{ display: "flex", justifyContent: (isPending || winPct == null) ? "center" : "flex-end", fontSize: "0.82rem", fontWeight: 600, color: winPct != null ? "var(--text)" : "var(--text-3)", fontVariantNumeric: "tabular-nums" }}>
-                          {isPending || winPct == null ? dash : `${winPct}%`}
-                        </div>
-                      </div>
+                        <td style={{ ...TD, textAlign: "right", color: "var(--text)" }}>
+                          {isPending ? dash : `${winPct ?? 0}%`}
+                        </td>
+                        <td style={{ ...TD, textAlign: "right", color: "var(--text-3)", paddingLeft: 4 }}>
+                          {!isPending && "›"}
+                        </td>
+                      </tr>
                     );
                   })}
-                </>
+                  </tbody>
+                </table>
               )}
-
-              {/* Action row */}
-              <div style={{ display: "flex", borderTop: rows.length > 0 ? "1px solid var(--border-2)" : undefined }}>
-                {([
-                  { icon: <PlusIcon />, label: "Join Public", onClick: () => { joinPublic(); } },
-                  { icon: <LockIcon />, label: "Join with Code", onClick: () => { setView(view === "private" ? "menu" : "private"); setJoinError(""); setJoinSuccess(""); } },
-                  { icon: <PenIcon />, label: "Create League", onClick: () => { setView(view === "create" ? "menu" : "create"); setError(""); } },
-                ] as const).map(({ icon, label, onClick }, idx) => (
-                  <button
-                    key={label}
-                    onClick={onClick}
-                    style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 5, padding: "14px 12px", background: "none", border: "none", borderLeft: idx > 0 ? "1px solid var(--border)" : "none", cursor: "pointer", color: "var(--text-3)", fontSize: "0.72rem", fontWeight: 600, letterSpacing: "0.01em", boxShadow: "none", borderRadius: 0, transition: "color 0.1s, background 0.1s" }}
-                    onMouseEnter={e => { e.currentTarget.style.background = "var(--surface-2)"; e.currentTarget.style.color = "var(--text)"; }}
-                    onMouseLeave={e => { e.currentTarget.style.background = "none"; e.currentTarget.style.color = "var(--text-3)"; }}
-                  >
-                    {icon}
-                    {label}
-                  </button>
-                ))}
-              </div>
 
               {/* Join with code form */}
               {view === "private" && (
-                <div style={{ borderTop: "1px solid var(--border)", padding: "16px 20px" }}>
+                <div style={{ padding: "16px 20px" }}>
                   <form onSubmit={joinPrivate} style={{ display: "flex", gap: 8, alignItems: "center" }}>
                     <input
                       placeholder="INVITE CODE"
@@ -366,7 +344,7 @@ export default function LeaguesPage() {
 
               {/* Join public feedback */}
               {view === "menu" && (joinError || joinSuccess) && (
-                <div style={{ borderTop: "1px solid var(--border)", padding: "10px 20px" }}>
+                <div style={{ padding: "10px 20px" }}>
                   {joinError && <p className="error" style={{ margin: 0 }}>{joinError}</p>}
                   {joinSuccess && <div style={{ background: "var(--win-bg)", border: "1px solid var(--win-border)", borderRadius: "var(--radius-sm)", padding: "8px 12px", color: "var(--win)", fontSize: "0.82rem", fontWeight: 700 }}>{joinSuccess}</div>}
                 </div>
