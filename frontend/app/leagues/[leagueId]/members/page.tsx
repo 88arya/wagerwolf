@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import HelmetAvatar, { HELMET_COLORS } from "@/components/HelmetAvatar";
 
-const ACCENT = "#02D18A";
+const ACCENT = "#0E92EB";
 
 export default function MembersPage({ params }: PageProps<"/leagues/[leagueId]/members">) {
   const router = useRouter();

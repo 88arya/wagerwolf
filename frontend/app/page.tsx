@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { GoogleLogin } from "@react-oauth/google";
 import { api } from "@/lib/api";
 
-const ACCENT = "#02D18A";
+const ACCENT = "#0E92EB";
 const NAV_H = 56;
 
 const STEPS = [

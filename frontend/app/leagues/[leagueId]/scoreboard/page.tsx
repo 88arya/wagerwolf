@@ -13,7 +13,7 @@ export default function ScoreboardPage({ params }: PageProps<"/leagues/[leagueId
   const [loaded, setLoaded] = useState(false);
 
   const helmetColors: Record<string, string> = {};
-  members.forEach((m) => { helmetColors[m.userId] = m.helmetColor ?? "#02D18A"; });
+  members.forEach((m) => { helmetColors[m.userId] = m.helmetColor ?? "#0E92EB"; });
 
   useEffect(() => {
     async function load() {
@@ -70,13 +70,13 @@ export default function ScoreboardPage({ params }: PageProps<"/leagues/[leagueId
               }}>
                 <div style={{ display: "flex", flexDirection: "column", gap: 8, flex: 1, minWidth: 0 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <HelmetAvatar color={homeName === "Ghost" ? "#ffffff" : (helmetColors[matchup.homeUserId] ?? "#02D18A")} initials={homeName.slice(0, 2)} size={24} />
+                    <HelmetAvatar color={homeName === "Ghost" ? "#ffffff" : (helmetColors[matchup.homeUserId] ?? "#0E92EB")} initials={homeName.slice(0, 2)} size={24} />
                     <span style={{ fontWeight: isHome ? 700 : 400, fontSize: "0.85rem", color: "var(--text)", fontStyle: homeName === "Ghost" ? "italic" : "normal", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                       {homeName}
                     </span>
                   </div>
                   <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <HelmetAvatar color={awayName === "Ghost" ? "#ffffff" : (helmetColors[matchup.awayUserId] ?? "#02D18A")} initials={awayName.slice(0, 2)} size={24} />
+                    <HelmetAvatar color={awayName === "Ghost" ? "#ffffff" : (helmetColors[matchup.awayUserId] ?? "#0E92EB")} initials={awayName.slice(0, 2)} size={24} />
                     <span style={{ fontWeight: isAway ? 700 : 400, fontSize: "0.85rem", color: "var(--text)", fontStyle: awayName === "Ghost" ? "italic" : "normal", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                       {awayName}
                     </span>

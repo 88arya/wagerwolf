@@ -25,9 +25,9 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
   const [week, setWeek] = useState<any>(null);
   const [members, setMembers] = useState<any[]>([]);
   const [weekMatchups, setWeekMatchups] = useState<any[]>([]);
-  const [myHelmetColor, setMyHelmetColor] = useState("#02D18A");
+  const [myHelmetColor, setMyHelmetColor] = useState("#0E92EB");
   const [showIdentityEditor, setShowIdentityEditor] = useState(false);
-  const [pendingColor, setPendingColor] = useState("#02D18A");
+  const [pendingColor, setPendingColor] = useState("#0E92EB");
   const [nameInput, setNameInput] = useState("");
   const [abrInput, setAbrInput] = useState("");
   const [liveBetsCount, setLiveBetsCount] = useState(0);
@@ -205,7 +205,7 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
   const takenColors = new Set(members.filter(m => m.userId !== userId).map(m => m.helmetColor));
 
   const helmetColors: Record<string, string> = {};
-  members.forEach(m => { helmetColors[m.userId] = m.helmetColor ?? "#02D18A"; });
+  members.forEach(m => { helmetColors[m.userId] = m.helmetColor ?? "#0E92EB"; });
 
   const myRecord = members.find((m) => m.userId === userId);
   const myRank = myRecord?.rank ?? 0;
@@ -248,7 +248,7 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
         }}>
           <span style={{ fontWeight: 400, fontSize: "0.8rem", color: "var(--text)" }}>{rank}</span>
           <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
-            <HelmetAvatar color={helmetColors[m.userId] ?? "#02D18A"} initials={m.displayName.slice(0, 2)} size={24} />
+            <HelmetAvatar color={helmetColors[m.userId] ?? "#0E92EB"} initials={m.displayName.slice(0, 2)} size={24} />
             <span style={{ fontWeight: isMe ? 700 : 400, fontSize: "0.8rem", color: "var(--text)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 72 }}>
               {m.displayName.length > 7 ? m.displayName.slice(0, 7) + "…" : m.displayName}
             </span>
@@ -362,13 +362,13 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
                     }}>
                       <div style={{ display: "flex", flexDirection: "column", gap: 6, flex: 1, minWidth: 0 }}>
                         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                          <HelmetAvatar color={homeName === "Ghost" ? "#ffffff" : (helmetColors[matchup.homeUserId] ?? "#02D18A")} initials={homeName.slice(0, 2)} size={20} />
+                          <HelmetAvatar color={homeName === "Ghost" ? "#ffffff" : (helmetColors[matchup.homeUserId] ?? "#0E92EB")} initials={homeName.slice(0, 2)} size={20} />
                           <span style={{ fontWeight: isHome ? 700 : 400, fontSize: "0.75rem", color: "var(--text)", fontStyle: homeName === "Ghost" ? "italic" : "normal", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                             {homeName}
                           </span>
                         </div>
                         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                          <HelmetAvatar color={awayName === "Ghost" ? "#ffffff" : (helmetColors[matchup.awayUserId] ?? "#02D18A")} initials={awayName.slice(0, 2)} size={20} />
+                          <HelmetAvatar color={awayName === "Ghost" ? "#ffffff" : (helmetColors[matchup.awayUserId] ?? "#0E92EB")} initials={awayName.slice(0, 2)} size={20} />
                           <span style={{ fontWeight: isAway ? 700 : 400, fontSize: "0.75rem", color: "var(--text)", fontStyle: awayName === "Ghost" ? "italic" : "normal", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                             {awayName}
                           </span>
@@ -514,7 +514,7 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
                                 gap: 3,
                                 pointerEvents: "auto",
                               }}>
-                                <HelmetAvatar color={m.helmetColor ?? "#02D18A"} initials={abr} size={24} />
+                                <HelmetAvatar color={m.helmetColor ?? "#0E92EB"} initials={abr} size={24} />
                                 <span style={{
                                   fontSize: "0.45rem",
                                   fontWeight: 800,

@@ -23,7 +23,7 @@ function UserIcon() {
   );
 }
 
-const ACCENT = "#02D18A";
+const ACCENT = "#0E92EB";
 
 export default function LeagueNav({ leagueId }: { leagueId: string }) {
   const pathname = usePathname();

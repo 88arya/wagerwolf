@@ -12,7 +12,7 @@
   --border-3:     #94A3B8;
 
   /* ── Accent Green ── */
-  --accent:       #02D18A;
+  --accent:       #0E92EB;
   --accent-hover: #00b877;
   --accent-muted: #33dca0;
   --accent-dim:   rgba(2, 209, 138, 0.10);
@@ -589,7 +589,7 @@ hr { border: none; border-top: 1px solid var(--border); margin: 14px 0; }
 
 /* ── League hero banner ── */
 .league-banner {
-  background: linear-gradient(135deg, #009960 0%, #02D18A 100%);
+  background: linear-gradient(135deg, #009960 0%, #0E92EB 100%);
   border: 1px solid rgba(2, 209, 138, 0.2);
   border-radius: var(--radius-lg);
   padding: 18px 16px;
