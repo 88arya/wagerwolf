@@ -11,12 +11,12 @@
   --border-2:     #CBD5E1;
   --border-3:     #94A3B8;
 
-  /* ── Accent Green ── */
-  --accent:       #0E92EB;
-  --accent-hover: #00b877;
-  --accent-muted: #33dca0;
-  --accent-dim:   rgba(2, 209, 138, 0.10);
-  --accent-glow:  rgba(2, 209, 138, 0.18);
+  /* ── Accent Blue ── */
+  --accent:       #1A2A6E;
+  --accent-hover: #141f54;
+  --accent-muted: #2d47b8;
+  --accent-dim:   rgba(26, 42, 110, 0.10);
+  --accent-glow:  rgba(26, 42, 110, 0.18);
 
   /* ── Header ── */
   --navy:         #FFFFFF;
@@ -406,6 +406,10 @@ h2 {
 .under-btn:hover { background: rgba(239, 68, 68, 0.16); color: var(--loss); opacity: 1; }
 .under-btn.active { background: var(--loss); border-color: var(--loss); color: #fff; opacity: 1; }
 
+/* ── Scrollbar-less scroll container ── */
+.no-scrollbar { scrollbar-width: none; -ms-overflow-style: none; }
+.no-scrollbar::-webkit-scrollbar { display: none; }
+
 /* ── Divider ── */
 hr { border: none; border-top: 1px solid var(--border); margin: 14px 0; }
 
@@ -589,7 +593,7 @@ hr { border: none; border-top: 1px solid var(--border); margin: 14px 0; }
 
 /* ── League hero banner ── */
 .league-banner {
-  background: linear-gradient(135deg, #009960 0%, #0E92EB 100%);
+  background: linear-gradient(135deg, #009960 0%, var(--accent) 100%);
   border: 1px solid rgba(2, 209, 138, 0.2);
   border-radius: var(--radius-lg);
   padding: 18px 16px;
