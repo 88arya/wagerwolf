@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import HelmetAvatar from "@/components/HelmetAvatar";
+import { ACCENT } from "@/lib/constants";
 
 function ChevronDown() {
   return (
@@ -22,8 +23,6 @@ function UserIcon() {
     </svg>
   );
 }
-
-const ACCENT = "#0E92EB";
 
 export default function LeagueNav({ leagueId }: { leagueId: string }) {
   const pathname = usePathname();
@@ -124,7 +123,7 @@ export default function LeagueNav({ leagueId }: { leagueId: string }) {
 
         {/* Logo */}
         <div style={{ display: "flex", alignItems: "center", paddingRight: 16, marginRight: 4 }}>
-          <img src="/grH9m01.svg" alt="FanMark" style={{ width: 28, height: 28, flexShrink: 0, objectFit: "contain", objectFit: "contain" }} />
+          <img src="/grH9m01.svg" alt="FanMark" style={{ width: 28, height: 28, flexShrink: 0, objectFit: "contain" }} />
         </div>
 
         {seasonStarted ? (
@@ -209,10 +208,10 @@ export default function LeagueNav({ leagueId }: { leagueId: string }) {
       </div>
 
       {/* Right: profile + league dropdown */}
-      <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8 }}>
+      <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8, alignSelf: "stretch" }}>
 
         {/* League name + dropdown */}
-        <div ref={dropdownRef} style={{ position: "relative" }} onMouseEnter={() => setOpen(true)} onMouseLeave={() => setOpen(false)}>
+        <div ref={dropdownRef} style={{ position: "relative", alignSelf: "stretch", display: "flex", alignItems: "center" }} onMouseEnter={() => setOpen(true)} onMouseLeave={() => setOpen(false)}>
           <button
             type="button"
             style={{ display: "flex", alignItems: "center", gap: 5, background: "none", border: "none", padding: "5px 8px", cursor: "pointer", color: "var(--text)", fontWeight: 500, fontSize: "0.82rem", borderRadius: 0, boxShadow: "none" }}

@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import TeamLogo from "@/components/TeamLogo";
+import { ACCENT } from "@/lib/constants";
 import { api } from "@/lib/api";
 import HelmetAvatar, { HELMET_COLORS } from "@/components/HelmetAvatar";
 
@@ -25,51 +25,16 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
   const [week, setWeek] = useState<any>(null);
   const [members, setMembers] = useState<any[]>([]);
   const [weekMatchups, setWeekMatchups] = useState<any[]>([]);
-  const [myHelmetColor, setMyHelmetColor] = useState("#0E92EB");
+  const [myHelmetColor, setMyHelmetColor] = useState(ACCENT);
   const [showIdentityEditor, setShowIdentityEditor] = useState(false);
-  const [pendingColor, setPendingColor] = useState("#0E92EB");
+  const [pendingColor, setPendingColor] = useState(ACCENT);
   const [nameInput, setNameInput] = useState("");
   const [abrInput, setAbrInput] = useState("");
   const [liveBetsCount, setLiveBetsCount] = useState(0);
   const [showChat, setShowChat] = useState(false);
   const [chatMessages, setChatMessages] = useState<any[]>([]);
   const [chatInput, setChatInput] = useState("");
-  const gamesScrollRef = useRef<HTMLDivElement>(null);
   const chatBottomRef = useRef<HTMLDivElement>(null);
-
-
-  useEffect(() => {
-    const games: any[] = week?.games ?? [];
-    if (!games.length) return;
-    const el = gamesScrollRef.current;
-    if (!el) return;
-
-    const now = new Date();
-    const firstUpcoming = games.findIndex(
-      (g) => g.status !== "FINAL" && g.status !== "CANCELLED" && new Date(g.gameDate) > now
-    );
-    // All games done → anchor to last 8; otherwise anchor to first upcoming, capped so 8 always fill
-    const rawIndex = firstUpcoming === -1 ? games.length : firstUpcoming;
-    const targetIndex = Math.min(rawIndex, Math.max(0, games.length - 8));
-
-    requestAnimationFrame(() => {
-      const cardWidth = el.scrollWidth / games.length;
-      el.scrollLeft = targetIndex * cardWidth;
-    });
-  }, [week]);
-
-  // Poll every 60s when any game is live
-  useEffect(() => {
-    const hasLive = week?.games?.some((g: any) => g.status === "IN_PROGRESS");
-    if (!hasLive || !leagueId) return;
-    const interval = setInterval(async () => {
-      try {
-        const weeks = await api(`/weeks?current=true&leagueId=${leagueId}`);
-        if (weeks?.[0]) setWeek(weeks[0]);
-      } catch {}
-    }, 60000);
-    return () => clearInterval(interval);
-  }, [week, leagueId]);
 
   useEffect(() => {
     async function load() {
@@ -205,7 +170,7 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
   const takenColors = new Set(members.filter(m => m.userId !== userId).map(m => m.helmetColor));
 
   const helmetColors: Record<string, string> = {};
-  members.forEach(m => { helmetColors[m.userId] = m.helmetColor ?? "#0E92EB"; });
+  members.forEach(m => { helmetColors[m.userId] = m.helmetColor ?? ACCENT; });
 
   const myRecord = members.find((m) => m.userId === userId);
   const myRank = myRecord?.rank ?? 0;
@@ -248,15 +213,15 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
         }}>
           <span style={{ fontWeight: 400, fontSize: "0.8rem", color: "var(--text)" }}>{rank}</span>
           <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
-            <HelmetAvatar color={helmetColors[m.userId] ?? "#0E92EB"} initials={m.displayName.slice(0, 2)} size={24} />
+            <HelmetAvatar color={helmetColors[m.userId] ?? ACCENT} initials={m.displayName.slice(0, 2)} size={24} />
             <span style={{ fontWeight: isMe ? 700 : 400, fontSize: "0.8rem", color: "var(--text)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 72 }}>
               {m.displayName.length > 7 ? m.displayName.slice(0, 7) + "…" : m.displayName}
             </span>
           </div>
-          <span style={{ fontSize: "0.72rem", fontWeight: 600, color: "var(--text-2)", textAlign: "center", fontVariantNumeric: "tabular-nums", fontWeight: 400 }}>{m.wins}</span>
-          <span style={{ fontSize: "0.72rem", fontWeight: 600, color: "var(--text-2)", textAlign: "center", fontVariantNumeric: "tabular-nums", fontWeight: 400 }}>{m.losses}</span>
-          <span style={{ fontSize: "0.72rem", fontWeight: 600, color: "var(--text-2)", textAlign: "center", fontVariantNumeric: "tabular-nums", fontWeight: 400 }}>{m.ties}</span>
-          <span style={{ fontSize: "0.72rem", fontWeight: 600, color: "var(--text-2)", textAlign: "center", fontVariantNumeric: "tabular-nums", fontWeight: 400 }}>{gbStr}</span>
+          <span style={{ fontSize: "0.72rem", fontWeight: 400, color: "var(--text-2)", textAlign: "center", fontVariantNumeric: "tabular-nums" }}>{m.wins}</span>
+          <span style={{ fontSize: "0.72rem", fontWeight: 400, color: "var(--text-2)", textAlign: "center", fontVariantNumeric: "tabular-nums" }}>{m.losses}</span>
+          <span style={{ fontSize: "0.72rem", fontWeight: 400, color: "var(--text-2)", textAlign: "center", fontVariantNumeric: "tabular-nums" }}>{m.ties}</span>
+          <span style={{ fontSize: "0.72rem", fontWeight: 400, color: "var(--text-2)", textAlign: "center", fontVariantNumeric: "tabular-nums" }}>{gbStr}</span>
         </div>
     );
   };
@@ -362,13 +327,13 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
                     }}>
                       <div style={{ display: "flex", flexDirection: "column", gap: 6, flex: 1, minWidth: 0 }}>
                         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                          <HelmetAvatar color={homeName === "Ghost" ? "#ffffff" : (helmetColors[matchup.homeUserId] ?? "#0E92EB")} initials={homeName.slice(0, 2)} size={20} />
+                          <HelmetAvatar color={homeName === "Ghost" ? "#ffffff" : (helmetColors[matchup.homeUserId] ?? ACCENT)} initials={homeName.slice(0, 2)} size={20} />
                           <span style={{ fontWeight: isHome ? 700 : 400, fontSize: "0.75rem", color: "var(--text)", fontStyle: homeName === "Ghost" ? "italic" : "normal", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                             {homeName}
                           </span>
                         </div>
                         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                          <HelmetAvatar color={awayName === "Ghost" ? "#ffffff" : (helmetColors[matchup.awayUserId] ?? "#0E92EB")} initials={awayName.slice(0, 2)} size={20} />
+                          <HelmetAvatar color={awayName === "Ghost" ? "#ffffff" : (helmetColors[matchup.awayUserId] ?? ACCENT)} initials={awayName.slice(0, 2)} size={20} />
                           <span style={{ fontWeight: isAway ? 700 : 400, fontSize: "0.75rem", color: "var(--text)", fontStyle: awayName === "Ghost" ? "italic" : "normal", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                             {awayName}
                           </span>
@@ -514,7 +479,7 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
                                 gap: 3,
                                 pointerEvents: "auto",
                               }}>
-                                <HelmetAvatar color={m.helmetColor ?? "#0E92EB"} initials={abr} size={24} />
+                                <HelmetAvatar color={m.helmetColor ?? ACCENT} initials={abr} size={24} />
                                 <span style={{
                                   fontSize: "0.45rem",
                                   fontWeight: 800,
@@ -565,88 +530,6 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
           </div>
 
         </div>
-
-        {/* Horizontal games strip */}
-        {week?.games?.length > 0 && (
-          <div style={{ marginTop: 14, display: "flex", border: "1px solid var(--border)", background: "var(--surface)", overflow: "hidden", borderRadius: "var(--radius-lg)" }}>
-            <div onClick={() => { const el = gamesScrollRef.current; if (!el) return; const w = (el.firstElementChild as HTMLElement).getBoundingClientRect().width; el.scrollTo({ left: Math.round(el.scrollLeft / w - 1) * w, behavior: "smooth" }); }} onMouseEnter={e => (e.currentTarget.style.background = "var(--surface-2)")} onMouseLeave={e => (e.currentTarget.style.background = "var(--surface)")} style={{ flexShrink: 0, width: 28, background: "var(--surface)", borderRight: "1px solid var(--border)", cursor: "pointer", color: "var(--text-3)", display: "flex", alignItems: "center", justifyContent: "center", userSelect: "none", transition: "background 0.12s" }}><svg width="6" height="10" viewBox="0 0 9 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="7,1 2,7 7,13" /></svg></div>
-            <div style={{ flex: 1, overflow: "hidden", position: "relative" }}>
-              <div style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: 14, background: "linear-gradient(to right, rgba(0,0,0,0.07), transparent)", zIndex: 1, pointerEvents: "none" }} />
-              <div style={{ position: "absolute", right: 0, top: 0, bottom: 0, width: 14, background: "linear-gradient(to left, rgba(0,0,0,0.07), transparent)", zIndex: 1, pointerEvents: "none" }} />
-            <div ref={gamesScrollRef} style={{ display: "flex", overflowX: "auto", scrollbarWidth: "none" }}>
-              {week.games.map((game: any, idx: number) => {
-                const now = new Date();
-                const isLive = game.status === "IN_PROGRESS" ||
-                  (game.status !== "FINAL" && game.status !== "CANCELLED" && game.gameDate && new Date(game.gameDate) <= now);
-                const isScheduled = !isLive && game.status !== "FINAL" && game.status !== "CANCELLED";
-                return (
-                  <div key={game.id} onClick={() => router.push(`/leagues/${leagueId}/bet?gameId=${game.id}`)} onMouseEnter={e => (e.currentTarget.style.background = "var(--surface-2)")} onMouseLeave={e => (e.currentTarget.style.background = "var(--surface)")} style={{
-                    display: "flex",
-                    flexDirection: "column",
-                    padding: "9px 14px",
-                    gap: 6,
-                    flex: "0 0 calc(100% / 8)",
-                    boxSizing: "border-box",
-                    background: "var(--surface)",
-                    borderRight: "1px solid var(--border)",
-                    transition: "background 0.12s",
-                    cursor: "pointer",
-                  }}>
-                    {/* Top row */}
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                      {/* Left: LIVE badge or date/time or status */}
-                      <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                        {isLive ? (
-                          <>
-                            <div style={{ width: 5, height: 5, borderRadius: "50%", background: "var(--win)", flexShrink: 0 }} />
-                            <span style={{ fontSize: "0.62rem", color: "var(--win)", fontWeight: 700, letterSpacing: "0.04em" }}>LIVE</span>
-                          </>
-                        ) : isScheduled && game.gameDate ? (
-                          <>
-                            <span style={{ fontSize: "0.62rem", fontWeight: 700, color: "var(--text-3)" }}>{new Date(game.gameDate).toLocaleDateString("en-US", { weekday: "short", timeZone: "America/New_York" })}</span>
-                            <span style={{ fontSize: "0.62rem", fontWeight: 700, color: "var(--text-3)" }}>{new Date(game.gameDate).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: "America/New_York" })}</span>
-                          </>
-                        ) : game.status === "CANCELLED" ? (
-                          <span style={{ fontSize: "0.62rem", color: "var(--loss)", fontWeight: 700 }}>CANCELLED</span>
-                        ) : (
-                          <span style={{ fontSize: "0.62rem", fontWeight: 700, color: "var(--text-3)" }}>FINAL</span>
-                        )}
-                      </div>
-                      {/* Right: game clock when live, redirect arrow when scheduled, nothing when ended */}
-                      {isLive ? (
-                        game.statusDetail && <span style={{ fontSize: "0.62rem", color: "var(--text-3)", fontWeight: 700, whiteSpace: "nowrap" }}>{game.statusDetail}</span>
-                      ) : isScheduled ? (
-                        <svg width="9" height="9" viewBox="0 0 10 10" fill="none" stroke="var(--text-3)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                          <path d="M3 1h6v6M9 1L1 9" />
-                        </svg>
-                      ) : null}
-                    </div>
-                    {/* Teams + scores */}
-                    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 7 }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
-                          <TeamLogo team={game.awayTeam} size={20} plain />
-                          <span style={{ fontWeight: 700, fontSize: "0.75rem", color: "var(--text)" }}>{game.awayTeam}</span>
-                        </div>
-                        {(isLive || game.status === "FINAL") && <span style={{ fontSize: "0.75rem", fontWeight: 700, fontVariantNumeric: "tabular-nums", color: "var(--text)" }}>{game.awayScore}</span>}
-                      </div>
-                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 7 }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
-                          <TeamLogo team={game.homeTeam} size={20} plain />
-                          <span style={{ fontWeight: 700, fontSize: "0.75rem", color: "var(--text)" }}>{game.homeTeam}</span>
-                        </div>
-                        {(isLive || game.status === "FINAL") && <span style={{ fontSize: "0.75rem", fontWeight: 700, fontVariantNumeric: "tabular-nums", color: "var(--text)" }}>{game.homeScore}</span>}
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-            </div>
-            <div onClick={() => { const el = gamesScrollRef.current; if (!el) return; const w = (el.firstElementChild as HTMLElement).getBoundingClientRect().width; el.scrollTo({ left: Math.round(el.scrollLeft / w + 1) * w, behavior: "smooth" }); }} onMouseEnter={e => (e.currentTarget.style.background = "var(--surface-2)")} onMouseLeave={e => (e.currentTarget.style.background = "var(--surface)")} style={{ flexShrink: 0, width: 28, background: "var(--surface)", borderLeft: "1px solid var(--border)", marginLeft: -1, cursor: "pointer", color: "var(--text-3)", display: "flex", alignItems: "center", justifyContent: "center", userSelect: "none", transition: "background 0.12s" }}><svg width="6" height="10" viewBox="0 0 9 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="2,1 7,7 2,13" /></svg></div>
-          </div>
-        )}
-
 
       </div>
 
@@ -757,76 +640,93 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
 
       {showIdentityEditor && (
         <div
-          style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.35)", zIndex: 50, display: "flex", alignItems: "center", justifyContent: "center" }}
+          onClick={() => setShowIdentityEditor(false)}
+          style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}
         >
-          <div style={{ background: "var(--surface)", borderRadius: 12, padding: 20, width: 300, boxShadow: "0 8px 32px rgba(0,0,0,0.18)", position: "relative" }}>
-            {/* X close */}
-            <button
-              onClick={() => setShowIdentityEditor(false)}
-              style={{ position: "absolute", top: 10, right: 12, background: "none", border: "none", cursor: "pointer", color: "var(--text)", fontSize: "1.1rem", lineHeight: 1, padding: 2 }}
-            >✕</button>
-
-            {/* Helmet preview */}
-            <div style={{ display: "flex", justifyContent: "center", marginBottom: 14 }}>
-              <HelmetAvatar color={pendingColor} initials={(nameInput || myRecord?.displayName || "").slice(0, 2)} size={52} />
+          <div className="card" onClick={e => e.stopPropagation()} style={{ width: "100%", maxWidth: 380, padding: 24 }}>
+            {/* Header */}
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
+              <div style={{ fontWeight: 800, fontSize: "1rem", color: "var(--text)" }}>League Profile</div>
+              <button onClick={() => setShowIdentityEditor(false)} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-3)", padding: 4, display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "none", borderRadius: "var(--radius-sm)", lineHeight: 1 }}
+                onMouseEnter={e => { e.currentTarget.style.color = "var(--text)"; e.currentTarget.style.background = "var(--surface-2)"; }}
+                onMouseLeave={e => { e.currentTarget.style.color = "var(--text-3)"; e.currentTarget.style.background = "none"; }}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                </svg>
+              </button>
             </div>
 
-            {/* Color grid */}
-            <div style={{ fontSize: "0.62rem", fontWeight: 800, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--text)", marginBottom: 8 }}>Helmet color</div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 8, marginBottom: 16 }}>
-              {HELMET_COLORS.map(c => {
-                const taken = takenColors.has(c);
-                const selected = pendingColor === c;
-                return (
-                  <div
-                    key={c}
-                    onClick={() => !taken && setPendingColor(c)}
-                    style={{
-                      width: 36, height: 36, borderRadius: 6, background: c,
-                      cursor: taken ? "not-allowed" : "pointer",
-                      opacity: taken ? 0.25 : 1,
-                      outline: selected ? "3px solid var(--accent)" : "2px solid transparent",
-                      outlineOffset: 2,
-                      transition: "transform 0.1s",
-                    }}
-                  />
-                );
-              })}
+            {/* Preview row */}
+            <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 18 }}>
+              <HelmetAvatar color={pendingColor} initials={(abrInput || nameInput || myRecord?.displayName || "").slice(0, 2)} size={44} />
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontWeight: 700, fontSize: "0.9rem", color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {nameInput || myRecord?.displayName || "—"}
+                </div>
+                <div style={{ fontSize: "0.62rem", color: "var(--text)", fontWeight: 700, fontStyle: "italic", letterSpacing: "0.1em", marginTop: 1 }}>
+                  {abrInput || "—"}
+                </div>
+              </div>
             </div>
 
-            {/* Display name */}
-            <div style={{ fontSize: "0.62rem", fontWeight: 800, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--text)", marginBottom: 6 }}>Display name</div>
-            <input
-              autoFocus
-              value={nameInput}
-              onChange={e => setNameInput(e.target.value.replace(/[^A-Za-z ]/g, "").replace(/ {2,}/g, " ").slice(0, 20))}
-              onKeyDown={e => { if (e.key === "Escape") setShowIdentityEditor(false); }}
-              minLength={3}
-              maxLength={20}
-              placeholder="Your name in this league"
-              style={{ width: "100%", boxSizing: "border-box", fontSize: "0.85rem", fontWeight: 600, color: "var(--text)", border: "1px solid var(--border-2)", borderRadius: 6, padding: "7px 10px", outline: "none", marginBottom: 12 }}
-            />
+            <div className="form">
+              <div>
+                <div className="label">Display Name</div>
+                <input
+                  autoFocus
+                  value={nameInput}
+                  onChange={e => setNameInput(e.target.value.replace(/[^A-Za-z ]/g, "").replace(/ {2,}/g, " ").slice(0, 20))}
+                  onKeyDown={e => { if (e.key === "Escape") setShowIdentityEditor(false); }}
+                  minLength={3}
+                  maxLength={20}
+                  placeholder="Your name in this league"
+                />
+              </div>
 
-            {/* Abbreviation */}
-            <div style={{ fontSize: "0.62rem", fontWeight: 800, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--text)", marginBottom: 6 }}>Abbreviation</div>
-            <input
-              value={abrInput}
-              onChange={e => setAbrInput(e.target.value.toUpperCase().replace(/[^A-Z]/g, "").slice(0, 3))}
-              onKeyDown={e => { if (e.key === "Enter") saveIdentity(); if (e.key === "Escape") setShowIdentityEditor(false); }}
-              minLength={3}
-              maxLength={3}
-              placeholder="e.g. NYG"
-              style={{ width: "100%", boxSizing: "border-box", fontSize: "0.85rem", fontWeight: 700, color: "var(--text)", border: "1px solid var(--border-2)", borderRadius: 6, padding: "7px 10px", outline: "none", marginBottom: 16, letterSpacing: "0.08em" }}
-            />
+              <div>
+                <div className="label">Abbreviation (2–3 letters)</div>
+                <input
+                  value={abrInput}
+                  onChange={e => setAbrInput(e.target.value.toUpperCase().replace(/[^A-Z]/g, "").slice(0, 3))}
+                  onKeyDown={e => { if (e.key === "Enter") saveIdentity(); if (e.key === "Escape") setShowIdentityEditor(false); }}
+                  minLength={3}
+                  maxLength={3}
+                  placeholder="e.g. NYG"
+                  style={{ letterSpacing: "0.2em", fontWeight: 800, textTransform: "uppercase", maxWidth: 120 }}
+                />
+              </div>
 
-            {/* Actions */}
-            <button
-              onClick={saveIdentity}
-              className="btn btn-primary"
-              style={{ width: "100%", fontSize: "0.82rem", padding: "8px" }}
-            >
-              Save
-            </button>
+              <div>
+                <div className="label">Helmet Color</div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 6 }}>
+                  {HELMET_COLORS.map(c => {
+                    const taken = takenColors.has(c);
+                    const selected = pendingColor === c;
+                    return (
+                      <button
+                        key={c}
+                        type="button"
+                        onClick={() => !taken && setPendingColor(c)}
+                        style={{
+                          width: 28, height: 28, borderRadius: 6, background: c, padding: 0, border: "none",
+                          cursor: taken ? "not-allowed" : "pointer",
+                          opacity: taken ? 0.25 : 1,
+                          outline: selected ? "2.5px solid var(--accent)" : "2px solid transparent",
+                          outlineOffset: 2, flexShrink: 0,
+                        }}
+                      />
+                    );
+                  })}
+                </div>
+              </div>
+
+              <button
+                onClick={saveIdentity}
+                style={{ width: "100%", padding: "11px", fontSize: "0.9rem", fontWeight: 700 }}
+              >
+                Save Profile
+              </button>
+            </div>
           </div>
         </div>
       )}
