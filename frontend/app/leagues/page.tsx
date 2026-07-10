@@ -1,9 +1,11 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { Globe, Lock, Plus } from "lucide-react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { api } from "@/lib/api";
+import GamesStrip from "@/components/GamesStrip";
 import HelmetAvatar, { HELMET_COLORS } from "@/components/HelmetAvatar";
 
 const NFL_LOCATIONS = [
@@ -42,6 +44,7 @@ export default function LeaguesPage() {
   const router = useRouter();
   const [memberships, setMemberships] = useState<any[]>([]);
   const [pendingMemberships, setPendingMemberships] = useState<any[]>([]);
+  const [weekLeagueId, setWeekLeagueId] = useState("");
   const [form, setForm] = useState({ name: "", weeklyAllowance: "300", maxPlayers: "10", isPublic: false, maxPublicPlayers: "0", maxBetsPerWeek: "", maxStakePerBet: "", startWeek: "1" });
   const [joinCode, setJoinCode] = useState("");
   const [error, setError] = useState("");
@@ -71,7 +74,12 @@ export default function LeaguesPage() {
   }, []);
 
   async function loadMemberships() {
-    try { setMemberships(await api("/memberships")); } catch {}
+    try {
+      const ms = await api("/memberships");
+      setMemberships(ms);
+      const started = ms.find((m: any) => m.league?.seasonStarted);
+      if (started) setWeekLeagueId(started.leagueId);
+    } catch {}
     try { setPendingMemberships(await api("/memberships/pending")); } catch {}
   }
 
@@ -156,10 +164,13 @@ export default function LeaguesPage() {
 
   return (
     <>
+      {/* Games strip */}
+      <GamesStrip leagueId={weekLeagueId} />
+
       {/* Nav */}
-      <nav className="nav" style={{ padding: "0 24px" }}>
+      <nav className="nav" style={{ padding: "0 300px", background: "var(--bg)" }}>
         <Link href="/" style={{ display: "flex", alignItems: "center", flexShrink: 0 }}>
-          <img src="/grH9m01.svg" alt="FanMark" style={{ height: 28, width: 28, objectFit: "contain", objectFit: "contain" }} />
+          <img src="/grH9m01.svg" alt="FanMark" style={{ height: 28, width: 28, objectFit: "contain" }} />
         </Link>
         <div style={{ marginLeft: "auto", display: "flex", alignItems: "center" }}>
           <div ref={profileRef} style={{ position: "relative" }}>
@@ -195,42 +206,88 @@ export default function LeaguesPage() {
           <div style={{ fontWeight: 900, fontSize: "1.1rem", letterSpacing: "-0.01em", color: "var(--text)" }}>Leagues</div>
           <div style={{ display: "flex", gap: 6 }}>
             {([
-              { label: "Join Public", onClick: () => { joinPublic(); } },
-              { label: "Private", onClick: () => { setView(view === "private" ? "menu" : "private"); setJoinError(""); setJoinSuccess(""); } },
-              { label: "Create", onClick: () => { setView(view === "create" ? "menu" : "create"); setError(""); } },
-            ] as const).map(({ label, onClick }) => (
+              { label: "Create League", icon: <Plus size={13} />, accent: true, onClick: () => { setView(view === "create" ? "menu" : "create"); setError(""); } },
+              { label: "Join Public", icon: <Globe size={13} />, accent: false, onClick: () => { joinPublic(); } },
+              { label: "Join Private", icon: <Lock size={13} />, accent: false, onClick: () => { setView(view === "private" ? "menu" : "private"); setJoinError(""); setJoinSuccess(""); } },
+            ] as const).map(({ label, icon, accent, onClick }) => (
               <button key={label} type="button" onClick={onClick}
-                style={{ padding: "5px 12px", borderRadius: "var(--radius-sm)", fontSize: "0.78rem", fontWeight: 700, background: "none", border: "1px solid var(--border-2)", cursor: "pointer", color: "var(--text-2)", boxShadow: "none" }}
-                onMouseEnter={e => { e.currentTarget.style.borderColor = "var(--text-3)"; e.currentTarget.style.color = "var(--text)"; }}
-                onMouseLeave={e => { e.currentTarget.style.borderColor = "var(--border-2)"; e.currentTarget.style.color = "var(--text-2)"; }}>
-                {label}
+                style={{ padding: "5px 12px", borderRadius: "var(--radius-sm)", fontSize: "0.78rem", fontWeight: 700, background: accent ? "var(--accent)" : "none", border: `1px solid ${accent ? "var(--accent)" : "var(--border-2)"}`, cursor: "pointer", color: accent ? "#fff" : "var(--text-2)", boxShadow: "none", display: "flex", alignItems: "center", gap: 5 }}
+                onMouseEnter={e => { if (!accent) { e.currentTarget.style.borderColor = "var(--text-3)"; e.currentTarget.style.color = "var(--text)"; } }}
+                onMouseLeave={e => { if (!accent) { e.currentTarget.style.borderColor = "var(--border-2)"; e.currentTarget.style.color = "var(--text-2)"; } }}>
+                {icon}{label}
               </button>
             ))}
           </div>
         </div>
 
+        {/* Summary stat strip */}
+        {memberships.length > 0 && (() => {
+          const wins = memberships.reduce((s: number, m: any) => s + (m.wins ?? 0), 0);
+          const losses = memberships.reduce((s: number, m: any) => s + (m.losses ?? 0), 0);
+          const ties = memberships.reduce((s: number, m: any) => s + (m.ties ?? 0), 0);
+          const balance = memberships.reduce((s: number, m: any) => s + (m.balance ?? 0), 0);
+          const bets = memberships.reduce((s: number, m: any) => s + (m.betsThisWeek ?? 0), 0);
+          const ranked = memberships.filter((m: any) => m.rank != null);
+          const best = ranked.length > 0 ? ranked.reduce((a: any, b: any) => (a.rank <= b.rank ? a : b)) : null;
+          const total = wins + losses + ties;
+          const stats = [
+            { label: "Leagues", value: memberships.length },
+            { label: "Combined Record", value: total > 0 ? `${wins}-${losses}${ties > 0 ? `-${ties}` : ""}` : "—" },
+            { label: "Win %", value: total > 0 ? `${Math.round((wins / total) * 100)}%` : "—" },
+            { label: "Total Balance", value: `$${balance.toLocaleString()}` },
+            { label: "Bets This Week", value: bets },
+            { label: "Best Standing", value: best ? `#${best.rank}` : "—" },
+          ];
+          return (
+            <div style={{ width: "100%", display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 8, marginBottom: 20 }}>
+              {stats.map((s) => (
+                <div key={s.label} className="card" style={{ padding: "10px 12px" }}>
+                  <div style={{ fontSize: "0.55rem", color: "var(--text-3)", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.09em", marginBottom: 2 }}>{s.label}</div>
+                  <div style={{ fontSize: "1rem", fontWeight: 800, color: "var(--text)", fontVariantNumeric: "tabular-nums", letterSpacing: "-0.02em" }}>{s.value}</div>
+                </div>
+              ))}
+            </div>
+          );
+        })()}
+
         {/* Leagues table + actions */}
         {(() => {
           const rows = [...memberships, ...pendingMemberships.map((m: any) => ({ ...m, _pending: true }))];
-          const dash = <span style={{ color: "var(--text-3)" }}>—</span>;
-          const TH = { fontSize: "0.65rem", fontWeight: 500, color: "var(--text-3)", padding: "10px 12px 8px", borderBottom: "1px solid var(--border-2)", whiteSpace: "nowrap" as const };
-          const TD = { fontSize: "0.78rem", fontWeight: 600, color: "var(--text)", padding: "10px 12px", borderTop: "1px solid var(--border)", fontVariantNumeric: "tabular-nums" as const, whiteSpace: "nowrap" as const };
+          const dash = <span style={{ color: "var(--text)" }}>—</span>;
+          const TH = { fontSize: "0.65rem", fontWeight: 500, color: "var(--text-3)", padding: "10px 12px 8px", borderBottom: "1px solid var(--border-2)", whiteSpace: "nowrap" as const, overflow: "hidden" as const, textAlign: "left" as const, background: "transparent" };
+          const TD = { fontSize: "0.78rem", fontWeight: 400, color: "var(--text)", padding: "10px 12px", borderTop: "1px solid var(--border)", fontVariantNumeric: "tabular-nums" as const, whiteSpace: "nowrap" as const, overflow: "hidden" as const };
 
           return (
             <div style={{ width: "100%", marginBottom: 24 }}>
               {rows.length > 0 && (
-                <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "auto" }}>
+                <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed" }}>
+                  <colgroup>
+                    <col style={{ width: "22%" }} />
+                    <col style={{ width: "11%" }} />
+                    <col style={{ width: "7%" }} />
+                    <col style={{ width: "6%" }} />
+                    <col style={{ width: "7%" }} />
+                    <col style={{ width: "7%" }} />
+                    <col style={{ width: "6%" }} />
+                    <col style={{ width: "6%" }} />
+                    <col style={{ width: "6%" }} />
+                    <col style={{ width: "7%" }} />
+                    <col style={{ width: "7%" }} />
+                    <col style={{ width: "8%" }} />
+                  </colgroup>
                   <thead style={{ boxShadow: "0 4px 4px -2px rgba(0,0,0,0.08)" }}>
                     <tr>
                       <th style={{ ...TH, textAlign: "left" }}>LEAGUE</th>
                       <th style={{ ...TH, textAlign: "left" }}>YOU</th>
-                      <th style={{ ...TH, textAlign: "right" }}>BALANCE</th>
-                      <th style={{ ...TH, textAlign: "right" }}>BETS</th>
+                      <th style={{ ...TH, textAlign: "left" }}>BALANCE</th>
+                      <th style={{ ...TH, textAlign: "left" }}>BETS</th>
                       <th style={{ ...TH, textAlign: "left" }}>PHASE</th>
-                      <th style={{ ...TH, textAlign: "right" }}>STANDING</th>
-                      <th style={{ ...TH, textAlign: "right" }}>RECORD</th>
-                      <th style={{ ...TH, textAlign: "right" }}>STREAK</th>
-                      <th style={{ ...TH, textAlign: "right" }}>WIN %</th>
+                      <th style={{ ...TH, textAlign: "left" }}>STANDING</th>
+                      <th style={{ ...TH, textAlign: "left" }}>W</th>
+                      <th style={{ ...TH, textAlign: "left" }}>L</th>
+                      <th style={{ ...TH, textAlign: "left" }}>T</th>
+                      <th style={{ ...TH, textAlign: "left" }}>STREAK</th>
+                      <th style={{ ...TH, textAlign: "left" }}>WIN %</th>
                       <th style={{ ...TH }} />
                     </tr>
                   </thead>
@@ -270,49 +327,51 @@ export default function LeaguesPage() {
                         <td style={{ ...TD, textAlign: "left" }}>
                           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                             <div style={{ width: 5, height: 30, background: m.helmetColor ?? "var(--border-2)", flexShrink: 0 }} />
-                            <span style={{ fontWeight: 600, fontSize: "0.82rem", color: "var(--text)" }}>{m.league?.name}</span>
+                            <span style={{ fontWeight: 600, fontSize: "0.82rem", color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.league?.name}</span>
                           </div>
                         </td>
                         {/* You */}
                         <td style={{ ...TD, textAlign: "left" }}>
-                          {m.abbreviation && <div style={{ fontSize: "0.6rem", color: "var(--text-3)", fontWeight: 700, letterSpacing: "0.1em" }}>{m.abbreviation}</div>}
-                          <div style={{ fontSize: "0.78rem", fontWeight: 600, color: "var(--text)" }}>{m.displayName || "—"}</div>
+                          {m.abbreviation && <div style={{ fontSize: "0.6rem", color: "var(--text)", fontWeight: 700, fontStyle: "italic", letterSpacing: "0.1em" }}>{m.abbreviation}</div>}
+                          <div style={{ fontSize: "0.78rem", fontWeight: 400, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis" }}>{m.displayName || "—"}</div>
                         </td>
                         {/* Balance */}
-                        <td style={{ ...TD, textAlign: "right", color: isPending ? "var(--text-3)" : "var(--text)" }}>
+                        <td style={{ ...TD, textAlign: "left" }}>
                           {isPending ? dash : `$${(m.balance ?? 0).toLocaleString()}`}
                         </td>
                         {/* Bets */}
-                        <td style={{ ...TD, textAlign: "right" }}>
+                        <td style={{ ...TD, textAlign: "left" }}>
                           {isPending ? dash : (m.betsThisWeek ?? 0)}
                         </td>
                         {/* Phase */}
                         <td style={{ ...TD, textAlign: "left" }}>
-                          {phaseWeek && <div style={{ fontSize: "0.6rem", color: "var(--text-3)", fontWeight: 700, letterSpacing: "0.05em" }}>{phaseWeek}</div>}
-                          <div style={{ fontSize: "0.78rem", fontWeight: 600, color: phaseColor }}>{phaseState}</div>
+                          {phaseWeek && <div style={{ fontSize: "0.6rem", color: "var(--text)", fontWeight: 400, letterSpacing: "0.05em" }}>{phaseWeek}</div>}
+                          <div style={{ fontSize: "0.78rem", fontWeight: 400, color: "var(--text)" }}>{phaseState}</div>
                         </td>
                         {/* Standing */}
-                        <td style={{ ...TD, textAlign: "right" }}>
+                        <td style={{ ...TD, textAlign: "left" }}>
                           {isPending || !m.rank ? dash : (
                             <span>
-                              <span style={{ fontWeight: 700 }}>#{m.rank}</span>
-                              <span style={{ fontWeight: 400, color: "var(--text-3)", fontSize: "0.72rem" }}> / {m.totalMembers}</span>
+                              <span style={{ fontWeight: 400 }}>#{m.rank}</span>
+                              <span style={{ fontWeight: 400, color: "var(--text)", fontSize: "0.72rem" }}> / {m.totalMembers}</span>
                             </span>
                           )}
                         </td>
-                        {/* Record */}
-                        <td style={{ ...TD, textAlign: "right", color: "var(--text)" }}>
-                          {isPending ? dash : `${wins}-${losses}${ties > 0 ? `-${ties}` : ""}`}
-                        </td>
+                        {/* W */}
+                        <td style={{ ...TD, textAlign: "left" }}>{isPending ? dash : wins}</td>
+                        {/* L */}
+                        <td style={{ ...TD, textAlign: "left" }}>{isPending ? dash : losses}</td>
+                        {/* T */}
+                        <td style={{ ...TD, textAlign: "left" }}>{isPending ? dash : ties}</td>
                         {/* Streak */}
-                        <td style={{ ...TD, textAlign: "right", color: streakColor }}>
+                        <td style={{ ...TD, textAlign: "left" }}>
                           {isPending ? dash : (streak ?? "—")}
                         </td>
                         {/* Win % */}
-                        <td style={{ ...TD, textAlign: "right", color: "var(--text)" }}>
+                        <td style={{ ...TD, textAlign: "left", color: "var(--text)" }}>
                           {isPending ? dash : `${winPct ?? 0}%`}
                         </td>
-                        <td style={{ ...TD, textAlign: "right", color: "var(--text-3)", paddingLeft: 4 }}>
+                        <td style={{ ...TD, textAlign: "left", padding: "10px 12px 10px 4px" }}>
                           {!isPending && "›"}
                         </td>
                       </tr>
@@ -320,6 +379,14 @@ export default function LeaguesPage() {
                   })}
                   </tbody>
                 </table>
+              )}
+
+              {/* Empty state */}
+              {rows.length === 0 && (
+                <div style={{ padding: "32px 0", textAlign: "center" }}>
+                  <div style={{ fontSize: "0.85rem", fontWeight: 600, color: "var(--text-2)", marginBottom: 4 }}>No leagues yet</div>
+                  <div style={{ fontSize: "0.75rem", color: "var(--text-3)" }}>Create a league, join a public one, or enter an invite code to get started</div>
+                </div>
               )}
 
               {/* Join with code form */}
