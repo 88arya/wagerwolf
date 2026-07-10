@@ -2,6 +2,7 @@ import { db } from "../db/db";
 import { eq, and, lte, inArray } from "drizzle-orm";
 import { weeks, games, props, gameLines, leagues, memberships, players } from "../db/schema";
 import { seedFakePropsForWeek, FAKE_PLAYERS } from "./fakeSync";
+import { syncESPNGames } from "./syncWeek";
 import { scheduleMatchups } from "./scheduleMatchups";
 import { pickHelmetColor } from "./helmetColor";
 
@@ -42,14 +43,24 @@ async function doRunStartupSeed() {
     const [week] = await db.insert(weeks)
       .values({ number: weekNumber, startDate: base, endDate: end })
       .returning();
-    for (const g of FAKE_GAMES) {
-      const gameDate = new Date(base);
-      gameDate.setDate(gameDate.getDate() + g.offsetDays);
-      gameDate.setHours(g.hour, 0, 0, 0);
-      await db.insert(games).values({ weekId: week.id, homeTeam: g.homeTeam, awayTeam: g.awayTeam, gameDate });
+
+    let synced = 0;
+    try {
+      ({ synced } = await syncESPNGames(week.id));
+    } catch (e) {
+      console.error(`[seed] ESPN sync failed for week ${weekNumber}:`, e);
     }
-    const result = await seedFakePropsForWeek(week.id);
-    console.log(`[seed] Created week ${weekNumber} with ${result.props} props`);
+
+    if (synced === 0) {
+      for (const g of FAKE_GAMES) {
+        const gameDate = new Date(base);
+        gameDate.setDate(gameDate.getDate() + g.offsetDays);
+        gameDate.setHours(g.hour, 0, 0, 0);
+        await db.insert(games).values({ weekId: week.id, homeTeam: g.homeTeam, awayTeam: g.awayTeam, gameDate });
+      }
+      const result = await seedFakePropsForWeek(week.id);
+      console.log(`[seed] Created week ${weekNumber} with ${result.props} props`);
+    }
     return;
   }
 
@@ -58,12 +69,30 @@ async function doRunStartupSeed() {
     const weekGames = await db.select().from(games).where(eq(games.weekId, week.id));
 
     const needsGames = weekGames.length === 0;
-    if (needsGames) {
-      for (const g of FAKE_GAMES) {
-        const gameDate = new Date(base);
-        gameDate.setDate(gameDate.getDate() + g.offsetDays);
-        gameDate.setHours(g.hour, 0, 0, 0);
-        await db.insert(games).values({ weekId: week.id, homeTeam: g.homeTeam, awayTeam: g.awayTeam, gameDate });
+    // Also re-sync if ALL existing games are fake (no espnId) — replace with real ESPN games
+    const allFake = weekGames.length > 0 && weekGames.every(g => !g.espnId);
+    if (needsGames || allFake) {
+      let synced = 0;
+      try {
+        ({ synced } = await syncESPNGames(week.id));
+      } catch (e) {
+        console.error(`[seed] ESPN sync failed for week ${week.number}:`, e);
+      }
+      if (synced > 0) {
+        console.log(`[seed] Synced ${synced} ESPN games for week ${week.number}`);
+        continue;
+      }
+      if (needsGames) {
+        // Fallback: fake games (only if week had no games at all)
+        for (const g of FAKE_GAMES) {
+          const gameDate = new Date(base);
+          gameDate.setDate(gameDate.getDate() + g.offsetDays);
+          gameDate.setHours(g.hour, 0, 0, 0);
+          await db.insert(games).values({ weekId: week.id, homeTeam: g.homeTeam, awayTeam: g.awayTeam, gameDate });
+        }
+        const result = await seedFakePropsForWeek(week.id);
+        console.log(`[seed] Seeded week ${week.number} (fake games): ${result.props} props`);
+        continue;
       }
     }
 

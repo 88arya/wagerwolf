@@ -1,5 +1,5 @@
 import { db } from "../db/db";
-import { eq, and } from "drizzle-orm";
+import { eq, and, isNull, inArray } from "drizzle-orm";
 import { weeks, games, gameLines, players, props } from "../db/schema";
 import { getNFLWeekGames } from "./espnApi";
 import { getNFLWeekData } from "./oddsApi";
@@ -45,19 +45,41 @@ export async function syncESPNGames(weekId: string): Promise<{ synced: number }>
   if (!week) throw new Error("Week not found");
 
   const espnGames = await getNFLWeekGames(new Date(week.startDate), week.number);
+  if (espnGames.length === 0) {
+    console.log(`[sync] ESPN no games for week ${week.number}`);
+    return { synced: 0 };
+  }
+
+  // Delete fake games (null espnId) and their props/lines before inserting real ones
+  const fakeGameRows = await db.select({ id: games.id }).from(games)
+    .where(and(eq(games.weekId, weekId), isNull(games.espnId)));
+  if (fakeGameRows.length > 0) {
+    const fakeIds = fakeGameRows.map(g => g.id);
+    await db.delete(props).where(inArray(props.gameId, fakeIds));
+    await db.delete(gameLines).where(inArray(gameLines.gameId, fakeIds));
+    await db.delete(games).where(inArray(games.id, fakeIds));
+  }
+
+  // Update week dates to match real ESPN schedule
+  const times = espnGames.map(g => g.gameDate.getTime());
+  const weekStart = new Date(Math.min(...times));
+  const weekEnd = new Date(Math.max(...times));
+  weekEnd.setHours(weekEnd.getHours() + 18);
+  await db.update(weeks).set({ startDate: weekStart, endDate: weekEnd }).where(eq(weeks.id, weekId));
+
   let synced = 0;
   for (const g of espnGames) {
     await db.insert(games)
       .values({ weekId: week.id, homeTeam: g.homeTeam, awayTeam: g.awayTeam, gameDate: g.gameDate, espnId: g.espnId })
       .onConflictDoUpdate({
         target: games.espnId,
-        set: { gameDate: g.gameDate },
+        set: { homeTeam: g.homeTeam, awayTeam: g.awayTeam, gameDate: g.gameDate },
       });
     synced++;
   }
 
   await seedFakePropsForWeek(weekId);
-  console.log(`[sync] ESPN games for week ${week.number}: ${synced} games`);
+  console.log(`[sync] ESPN games for week ${week.number}: ${synced} synced`);
   return { synced };
 }
 
