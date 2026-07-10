@@ -4,8 +4,10 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import HelmetAvatar, { HELMET_COLORS } from "@/components/HelmetAvatar";
+import { ACCENT } from "@/lib/constants";
 
-const ACCENT = "#0E92EB";
+const TH = { fontSize: "0.65rem", fontWeight: 500, color: "var(--text-3)", padding: "10px 12px 8px", borderBottom: "1px solid var(--border-2)", whiteSpace: "nowrap" as const, overflow: "hidden" as const, textAlign: "left" as const, background: "transparent" };
+const TD = { fontSize: "0.78rem", fontWeight: 400, color: "var(--text)", padding: "10px 12px", borderTop: "1px solid var(--border)", fontVariantNumeric: "tabular-nums" as const, whiteSpace: "nowrap" as const, overflow: "hidden" as const };
 
 export default function MembersPage({ params }: PageProps<"/leagues/[leagueId]/members">) {
   const router = useRouter();
@@ -118,182 +120,227 @@ export default function MembersPage({ params }: PageProps<"/leagues/[leagueId]/m
   const canStart = members.length >= 1;
   const myMember = members.find(m => m.userId === userId);
 
+  const sectionLabel = { fontSize: "0.65rem", fontWeight: 500, color: "var(--text-3)", letterSpacing: "0.04em", marginBottom: 8 } as const;
+
   return (
-    <div className="page">
+    <div className="page-wide" style={{ display: "flex", flexDirection: "column", alignItems: "center", paddingTop: "5vh" }}>
 
-      {!league.seasonStarted && (
-        <>
-          {/* Invite code */}
-          <div className="section-title" style={{ marginBottom: 8 }}>Invite Code</div>
-          <div className="card" style={{ marginBottom: 12 }}>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-              <div className="invite-code">{league.inviteCode}</div>
-              <button className="secondary" style={{ fontSize: "0.78rem", padding: "7px 14px" }} onClick={copyCode}>
-                {copied ? "✓ Copied" : "Copy"}
-              </button>
-            </div>
-          </div>
+      <div style={{ width: "100%", maxWidth: 860, marginBottom: 16, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <div style={{ fontWeight: 900, fontSize: "1.1rem", letterSpacing: "-0.01em", color: "var(--text)" }}>
+          {league.seasonStarted ? "Members" : "Lobby"}
+        </div>
+        <div style={{ fontSize: "0.72rem", color: "var(--text-3)" }}>
+          {members.length} member{members.length !== 1 ? "s" : ""}{league.maxPlayers ? ` of ${league.maxPlayers}` : ""}
+        </div>
+      </div>
 
-          {/* My profile editor */}
-          {myMember && (
-            <>
-              <div className="section-title" style={{ marginBottom: 8 }}>Your Profile</div>
-              <div className="card" style={{ marginBottom: 12 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 18 }}>
-                  <HelmetAvatar color={profile.helmetColor || ACCENT} initials={(profile.abbreviation || "??")} size={44} />
-                  <div>
-                    <div style={{ fontWeight: 700, fontSize: "0.9rem" }}>{profile.displayName || "—"}</div>
-                    <div style={{ fontSize: "0.72rem", color: "var(--text-3)", fontWeight: 600, letterSpacing: "0.1em", marginTop: 2 }}>{profile.abbreviation || "—"}</div>
-                  </div>
+      <div style={{ width: "100%", maxWidth: 860 }}>
+
+        {!league.seasonStarted && (
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 20, alignItems: "start" }}>
+
+            {/* Left column: invite + start */}
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              <div className="card" style={{ padding: 0, overflow: "hidden" }}>
+                <div style={{ padding: "8px 14px", borderBottom: "1px solid var(--border)" }}>
+                  <span style={{ fontSize: "0.58rem", fontWeight: 800, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--text)" }}>Invite Code</span>
                 </div>
-
-                <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-                  <div>
-                    <div className="label">Display Name</div>
-                    <input
-                      value={profile.displayName}
-                      onChange={e => setProfile(p => ({ ...p, displayName: e.target.value.slice(0, 30) }))}
-                      maxLength={30}
-                      placeholder="Your name in this league"
-                    />
-                  </div>
-
-                  <div>
-                    <div className="label">Abbreviation</div>
-                    <input
-                      value={profile.abbreviation}
-                      onChange={e => setProfile(p => ({ ...p, abbreviation: e.target.value }))}
-                      placeholder="e.g. JAY"
-                      style={{ fontWeight: 800, maxWidth: 100 }}
-                    />
-                  </div>
-
-                  <div>
-                    <div className="label">Helmet Color</div>
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 6 }}>
-                      {HELMET_COLORS.map(color => (
-                        <button
-                          key={color}
-                          type="button"
-                          onClick={() => setProfile(p => ({ ...p, helmetColor: color }))}
-                          style={{
-                            width: 30, height: 30, borderRadius: "50%", background: color, padding: 0, cursor: "pointer", flexShrink: 0,
-                            border: profile.helmetColor === color ? "3px solid var(--text)" : "3px solid transparent",
-                          }}
-                        />
-                      ))}
-                    </div>
-                  </div>
-
-                  {saveError && <p className="error" style={{ margin: 0 }}>{saveError}</p>}
-
-                  <button
-                    onClick={saveProfile}
-                    disabled={saving}
-                    style={{ alignSelf: "flex-start", padding: "8px 20px", fontWeight: 700, fontSize: "0.85rem" }}
-                  >
-                    {saving ? "Saving…" : saved ? "✓ Saved" : "Save"}
+                <div style={{ padding: "14px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+                  <span className="invite-code" style={{ fontSize: "1.5rem" }}>{league.inviteCode}</span>
+                  <button type="button" onClick={copyCode}
+                    style={{ padding: "5px 12px", borderRadius: "var(--radius-sm)", fontSize: "0.78rem", fontWeight: 700, background: "none", border: "1px solid var(--border-2)", cursor: "pointer", color: "var(--text-2)", boxShadow: "none" }}
+                    onMouseEnter={e => { e.currentTarget.style.borderColor = "var(--text-3)"; e.currentTarget.style.color = "var(--text)"; }}
+                    onMouseLeave={e => { e.currentTarget.style.borderColor = "var(--border-2)"; e.currentTarget.style.color = "var(--text-2)"; }}>
+                    {copied ? "✓ Copied" : "Copy"}
                   </button>
                 </div>
               </div>
-            </>
-          )}
 
-          {/* Join requests (commissioner only) */}
-          {isCreator && pending.length > 0 && (
-            <>
-              <div className="section-title" style={{ marginBottom: 8 }}>
-                Join Requests
-                <span className="badge badge-blue" style={{ marginLeft: 8 }}>{pending.length}</span>
-              </div>
-              <div className="card" style={{ marginBottom: 12, padding: 0, overflow: "hidden" }}>
-                {pending.map((m: any, idx: number) => (
-                  <div key={m.userId} style={{
-                    display: "flex", alignItems: "center", justifyContent: "space-between",
-                    padding: "11px 14px",
-                    borderBottom: idx < pending.length - 1 ? "1px solid var(--border)" : "none",
-                  }}>
-                    <span style={{ fontWeight: 600, fontSize: "0.88rem" }}>{m.user?.displayName ?? m.displayName}</span>
-                    <div style={{ display: "flex", gap: 6 }}>
-                      <button className="secondary" style={{ fontSize: "0.72rem", padding: "5px 10px", color: "var(--win)", borderColor: "var(--win-border)" }} onClick={() => acceptMember(m.userId)}>Accept</button>
-                      <button className="ghost" style={{ fontSize: "0.72rem", padding: "5px 10px", color: "var(--loss)", borderColor: "var(--loss-border)" }} onClick={() => rejectMember(m.userId)}>Reject</button>
+              {/* Join requests */}
+              {isCreator && pending.length > 0 && (
+                <div className="card" style={{ padding: 0, overflow: "hidden" }}>
+                  <div style={{ padding: "8px 14px", borderBottom: "1px solid var(--border)" }}>
+                    <span style={{ fontSize: "0.58rem", fontWeight: 800, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--text)" }}>
+                      Join Requests ({pending.length})
+                    </span>
+                  </div>
+                  {pending.map((m: any, idx: number) => (
+                    <div key={m.userId} style={{
+                      display: "flex", alignItems: "center", justifyContent: "space-between",
+                      padding: "10px 14px",
+                      borderBottom: idx < pending.length - 1 ? "1px solid var(--border)" : "none",
+                    }}>
+                      <span style={{ fontWeight: 500, fontSize: "0.8rem" }}>{m.user?.displayName ?? m.displayName}</span>
+                      <div style={{ display: "flex", gap: 6 }}>
+                        <button type="button" onClick={() => acceptMember(m.userId)}
+                          style={{ padding: "4px 10px", borderRadius: "var(--radius-sm)", fontSize: "0.72rem", fontWeight: 700, background: "none", border: "1px solid var(--win-border)", color: "var(--win)", cursor: "pointer", boxShadow: "none" }}>
+                          Accept
+                        </button>
+                        <button type="button" onClick={() => rejectMember(m.userId)}
+                          style={{ padding: "4px 10px", borderRadius: "var(--radius-sm)", fontSize: "0.72rem", fontWeight: 700, background: "none", border: "1px solid var(--loss-border)", color: "var(--loss)", cursor: "pointer", boxShadow: "none" }}>
+                          Reject
+                        </button>
+                      </div>
                     </div>
-                  </div>
-                ))}
-              </div>
-            </>
-          )}
-
-          {/* Start league / waiting */}
-          {isCreator ? (
-            <div className="card" style={{ marginBottom: 12 }}>
-              <div style={{ fontSize: "0.8rem", color: "var(--text-2)", marginBottom: 10 }}>
-                {!canStart
-                  ? "Need at least 1 member to start"
-                  : `${members.length} member${members.length !== 1 ? "s" : ""} ready — start the season when everyone has joined`}
-              </div>
-              {startError && <p className="error" style={{ marginBottom: 10 }}>{startError}</p>}
-              <button
-                onClick={startLeague}
-                disabled={!canStart || starting}
-                style={{ width: "100%", padding: "12px", fontSize: "0.9rem", fontWeight: 800, opacity: canStart ? 1 : 0.4 }}
-              >
-                {starting ? "Starting…" : "Start League"}
-              </button>
-            </div>
-          ) : (
-            <div className="card" style={{ marginBottom: 12, textAlign: "center", padding: "18px 16px" }}>
-              <div style={{ fontSize: "0.82rem", color: "var(--text-2)" }}>
-                Waiting for the commissioner to start the league
-              </div>
-            </div>
-          )}
-        </>
-      )}
-
-      <div className="section-title" style={{ marginBottom: 8 }}>
-        Members
-        <span style={{ color: "var(--text-3)", fontWeight: 500, fontSize: "0.78rem", marginLeft: 6 }}>({members.length})</span>
-      </div>
-      <div className="card" style={{ padding: 0, overflow: "hidden", background: "var(--surface)" }}>
-        {members.length === 0 && (
-          <div style={{ padding: "20px 0", textAlign: "center", color: "var(--text-3)", fontSize: "0.82rem" }}>No members yet</div>
-        )}
-        {members.map((m: any, idx: number) => {
-          const isMe = m.userId === userId;
-          return (
-            <div
-              key={m.userId}
-              onClick={() => league.seasonStarted && router.push(`/leagues/${leagueId}/members/${m.userId}`)}
-              style={{
-                display: "flex", alignItems: "center", gap: 12, padding: "12px 14px",
-                borderBottom: idx < members.length - 1 ? "1px solid var(--border)" : "none",
-                cursor: league.seasonStarted ? "pointer" : "default",
-                transition: "background 0.1s",
-              }}
-              onMouseEnter={e => { if (league.seasonStarted) e.currentTarget.style.background = "var(--surface-2)"; }}
-              onMouseLeave={e => (e.currentTarget.style.background = "transparent")}
-            >
-              <HelmetAvatar color={m.helmetColor ?? ACCENT} initials={(m.displayName ?? "?").slice(0, 2)} size={36} />
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: "0.85rem", fontWeight: isMe ? 700 : 500, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                  {m.displayName}{isMe && <span style={{ fontSize: "0.65rem", color: "var(--text-3)", fontWeight: 400, marginLeft: 6 }}>you</span>}
+                  ))}
                 </div>
-                {league.seasonStarted && (
-                  <div style={{ fontSize: "0.7rem", color: "var(--text-3)", marginTop: 2 }}>
-                    {m.wins}W – {m.losses}L{m.ties > 0 ? ` – ${m.ties}T` : ""} · #{m.rank}
+              )}
+
+              {/* Start / waiting */}
+              {isCreator ? (
+                <div className="card" style={{ padding: 14 }}>
+                  <div style={{ fontSize: "0.75rem", color: "var(--text-2)", marginBottom: 10 }}>
+                    {!canStart
+                      ? "Need at least 1 member to start"
+                      : `${members.length} member${members.length !== 1 ? "s" : ""} ready — start the season when everyone has joined`}
                   </div>
-                )}
-              </div>
-              {league.seasonStarted && (
-                <div style={{ textAlign: "right", flexShrink: 0 }}>
-                  <div style={{ fontSize: "0.8rem", fontWeight: 600, color: "var(--text)", fontVariantNumeric: "tabular-nums" }}>${m.balance.toLocaleString()}</div>
-                  <div style={{ fontSize: "0.65rem", color: "var(--text-3)", marginTop: 2 }}>balance</div>
+                  {startError && <p className="error" style={{ marginBottom: 10 }}>{startError}</p>}
+                  <button
+                    onClick={startLeague}
+                    disabled={!canStart || starting}
+                    style={{ width: "100%", padding: "10px", fontSize: "0.85rem", fontWeight: 700 }}
+                  >
+                    {starting ? "Starting…" : "Start League"}
+                  </button>
+                </div>
+              ) : (
+                <div className="card" style={{ padding: "16px 14px", textAlign: "center" }}>
+                  <div style={{ fontSize: "0.78rem", color: "var(--text-2)" }}>
+                    Waiting for the commissioner to start the league
+                  </div>
                 </div>
               )}
             </div>
-          );
-        })}
+
+            {/* Right column: profile editor */}
+            {myMember && (
+              <div className="card" style={{ padding: 0, overflow: "hidden" }}>
+                <div style={{ padding: "8px 14px", borderBottom: "1px solid var(--border)" }}>
+                  <span style={{ fontSize: "0.58rem", fontWeight: 800, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--text)" }}>Your Profile</span>
+                </div>
+                <div style={{ padding: 14 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 14 }}>
+                    <HelmetAvatar color={profile.helmetColor || ACCENT} initials={(profile.abbreviation || "??")} size={40} />
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontWeight: 700, fontSize: "0.85rem", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{profile.displayName || "—"}</div>
+                      <div style={{ fontSize: "0.65rem", color: "var(--text-3)", fontWeight: 700, fontStyle: "italic", letterSpacing: "0.1em", marginTop: 1 }}>{profile.abbreviation || "—"}</div>
+                    </div>
+                  </div>
+
+                  <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                    <div>
+                      <div className="label">Display Name</div>
+                      <input
+                        value={profile.displayName}
+                        onChange={e => setProfile(p => ({ ...p, displayName: e.target.value.slice(0, 30) }))}
+                        maxLength={30}
+                        placeholder="Your name in this league"
+                      />
+                    </div>
+
+                    <div>
+                      <div className="label">Abbreviation</div>
+                      <input
+                        value={profile.abbreviation}
+                        onChange={e => setProfile(p => ({ ...p, abbreviation: e.target.value.toUpperCase().replace(/[^A-Z]/g, "").slice(0, 3) }))}
+                        placeholder="e.g. JAY"
+                        style={{ fontWeight: 800, maxWidth: 100, letterSpacing: "0.1em" }}
+                      />
+                    </div>
+
+                    <div>
+                      <div className="label">Helmet Color</div>
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: 7, marginTop: 6 }}>
+                        {HELMET_COLORS.map(color => (
+                          <button
+                            key={color}
+                            type="button"
+                            onClick={() => setProfile(p => ({ ...p, helmetColor: color }))}
+                            style={{
+                              width: 26, height: 26, borderRadius: 6, background: color, padding: 0, cursor: "pointer", flexShrink: 0,
+                              outline: profile.helmetColor === color ? "2.5px solid var(--accent)" : "2px solid transparent",
+                              outlineOffset: 2, border: "none",
+                            }}
+                          />
+                        ))}
+                      </div>
+                    </div>
+
+                    {saveError && <p className="error" style={{ margin: 0 }}>{saveError}</p>}
+
+                    <button
+                      onClick={saveProfile}
+                      disabled={saving}
+                      style={{ alignSelf: "flex-start", padding: "7px 18px", fontWeight: 700, fontSize: "0.8rem" }}
+                    >
+                      {saving ? "Saving…" : saved ? "✓ Saved" : "Save"}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Members table */}
+        {!league.seasonStarted && <div style={sectionLabel}>MEMBERS</div>}
+        {members.length === 0 ? (
+          <div style={{ padding: "24px 0", color: "var(--text-3)", fontSize: "0.8rem" }}>No members yet</div>
+        ) : (
+          <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed" }}>
+            <colgroup>
+              <col style={{ width: "36%" }} />
+              {league.seasonStarted && <col style={{ width: "12%" }} />}
+              {league.seasonStarted && <col style={{ width: "14%" }} />}
+              {league.seasonStarted && <col style={{ width: "16%" }} />}
+              <col style={{ width: league.seasonStarted ? "17%" : "59%" }} />
+              <col style={{ width: "5%" }} />
+            </colgroup>
+            <thead style={{ boxShadow: "0 4px 4px -2px rgba(0,0,0,0.08)" }}>
+              <tr>
+                <th style={TH}>PLAYER</th>
+                {league.seasonStarted && <th style={TH}>RANK</th>}
+                {league.seasonStarted && <th style={TH}>RECORD</th>}
+                {league.seasonStarted && <th style={TH}>BALANCE</th>}
+                <th style={TH}>ROLE</th>
+                <th style={TH} />
+              </tr>
+            </thead>
+            <tbody>
+              {members.map((m: any) => {
+                const isMe = m.userId === userId;
+                const clickable = !!league.seasonStarted;
+                return (
+                  <tr
+                    key={m.userId}
+                    onClick={() => clickable && router.push(`/leagues/${leagueId}/members/${m.userId}`)}
+                    style={{ cursor: clickable ? "pointer" : "default", transition: "background 0.08s" }}
+                    onMouseEnter={e => { if (clickable) (e.currentTarget as HTMLTableRowElement).style.background = "var(--surface-2)"; }}
+                    onMouseLeave={e => { (e.currentTarget as HTMLTableRowElement).style.background = "transparent"; }}
+                  >
+                    <td style={TD}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+                        <div style={{ width: 5, height: 30, background: m.helmetColor ?? "var(--border-2)", flexShrink: 0 }} />
+                        <HelmetAvatar color={m.helmetColor ?? ACCENT} initials={(m.abbreviation || m.displayName).slice(0, 2)} size={26} />
+                        <div style={{ minWidth: 0 }}>
+                          {m.abbreviation && <div style={{ fontSize: "0.6rem", color: "var(--text)", fontWeight: 700, fontStyle: "italic", letterSpacing: "0.1em" }}>{m.abbreviation}</div>}
+                          <div style={{ fontSize: "0.78rem", fontWeight: isMe ? 700 : 400, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                            {m.displayName}{isMe && <span style={{ fontSize: "0.65rem", color: "var(--text-3)", fontWeight: 400, marginLeft: 6 }}>you</span>}
+                          </div>
+                        </div>
+                      </div>
+                    </td>
+                    {league.seasonStarted && <td style={TD}>#{m.rank}</td>}
+                    {league.seasonStarted && <td style={TD}>{m.wins}-{m.losses}{m.ties > 0 ? `-${m.ties}` : ""}</td>}
+                    {league.seasonStarted && <td style={TD}>${(m.balance ?? 0).toLocaleString()}</td>}
+                    <td style={TD}>{m.userId === league.creatorId ? "Commissioner" : "Member"}</td>
+                    <td style={{ ...TD, padding: "10px 12px 10px 4px" }}>{clickable && "›"}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
       </div>
     </div>
   );

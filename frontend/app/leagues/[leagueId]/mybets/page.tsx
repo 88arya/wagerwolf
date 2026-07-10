@@ -25,10 +25,18 @@ function OutcomeBadge({ outcome, cashedOut }: { outcome: string; cashedOut?: boo
   return <span className="badge">{label}</span>;
 }
 
+function CashOutBtn({ busy, onClick, full }: { busy: boolean; onClick: () => void; full?: boolean }) {
+  return (
+    <button type="button" onClick={onClick} disabled={busy}
+      style={{ padding: full ? "6px" : "3px 9px", width: full ? "100%" : undefined, borderRadius: "var(--radius-sm)", fontSize: full ? "0.72rem" : "0.68rem", fontWeight: 700, background: "none", border: "1px solid var(--border-2)", color: "var(--text-2)", cursor: "pointer", boxShadow: "none" }}>
+      {busy ? "…" : "Cash Out"}
+    </button>
+  );
+}
+
 export default function MyBetsPage({ params }: PageProps<"/leagues/[leagueId]/mybets">) {
   const router = useRouter();
   const [leagueId, setLeagueId] = useState("");
-  const [isCreator, setIsCreator] = useState(false);
   const [week, setWeek] = useState<any>(null);
   const [picks, setPicks] = useState<any[]>([]);
   const [gamePicks, setGamePicks] = useState<any[]>([]);
@@ -66,13 +74,7 @@ export default function MyBetsPage({ params }: PageProps<"/leagues/[leagueId]/my
       setLeagueId(lid);
 
       try {
-        const [weeks, leagueData, memberships] = await Promise.all([
-          api(`/weeks?current=true&leagueId=${lid}`),
-          api(`/leagues/${lid}`),
-          api("/memberships"),
-        ]);
-        const uid = localStorage.getItem("userId") ?? "";
-        setIsCreator(leagueData?.creatorId === uid);
+        const weeks = await api(`/weeks?current=true&leagueId=${lid}`);
         const currentWeek = weeks?.[0] ?? null;
         setWeek(currentWeek);
         await load(lid, currentWeek);
@@ -114,57 +116,59 @@ export default function MyBetsPage({ params }: PageProps<"/leagues/[leagueId]/my
     return sum;
   }, 0);
 
+  const grid = { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 8, alignItems: "start" } as const;
+
   return (
-    <>
-      <div className="page" style={{ paddingBottom: 90 }}>
-        <div style={{ marginBottom: 12 }}>
-          <div style={{ fontSize: "1.1rem", fontWeight: 900, letterSpacing: "-0.01em" }}>My Bets</div>
-          {week && (
-            <div style={{ fontSize: "0.72rem", color: "var(--text-3)", marginTop: 2 }}>
-              {week.resolved ? "Final" : week.locked ? "Locked" : "Current week"} · {totalBets} bet{totalBets !== 1 ? "s" : ""}
-            </div>
-          )}
-        </div>
+    <div className="page-wide" style={{ display: "flex", flexDirection: "column", alignItems: "center", paddingTop: "5vh" }}>
+
+      <div style={{ width: "100%", maxWidth: 860, marginBottom: 16, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <div style={{ fontWeight: 900, fontSize: "1.1rem", letterSpacing: "-0.01em", color: "var(--text)" }}>My Bets</div>
+        {week && (
+          <div style={{ fontSize: "0.72rem", color: "var(--text-3)" }}>
+            {week.resolved ? "Final" : week.locked ? "Locked" : "Current week"} · {totalBets} bet{totalBets !== 1 ? "s" : ""}
+          </div>
+        )}
+      </div>
+
+      <div style={{ width: "100%", maxWidth: 860 }}>
 
         {loading && <div className="loading" style={{ height: "20vh" }}>Loading…</div>}
 
         {!loading && !week && (
-          <div className="card">
-            <div className="empty"><div className="empty-icon">📋</div><div className="empty-text">No active week</div></div>
-          </div>
+          <div style={{ padding: "24px 0", color: "var(--text-3)", fontSize: "0.8rem" }}>No active week</div>
         )}
 
         {!loading && week && totalBets === 0 && (
-          <div className="card">
-            <div className="empty"><div className="empty-icon">📋</div><div className="empty-text">No bets placed this week</div></div>
+          <div style={{ padding: "24px 0", color: "var(--text-3)", fontSize: "0.8rem" }}>
+            No bets placed this week — head to the Sportsbook to get started
           </div>
         )}
 
         {!loading && week && totalBets > 0 && (
           <>
-            {/* Summary */}
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 6, marginBottom: 12 }}>
+            {/* Summary strip */}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8, marginBottom: 16 }}>
               {[
-                { label: "W",    value: wins,    color: "var(--win)" },
-                { label: "L",    value: losses,  color: "var(--loss)" },
-                { label: "Pend", value: pending, color: "var(--pending)" },
-                { label: "Net",  value: (net >= 0 ? "+" : "") + "$" + Math.abs(net).toLocaleString(), color: net >= 0 ? "var(--win)" : "var(--loss)" },
+                { label: "Wins",    value: wins,    color: "var(--win)" },
+                { label: "Losses",  value: losses,  color: "var(--loss)" },
+                { label: "Pending", value: pending, color: "var(--pending)" },
+                { label: "Net",     value: (net >= 0 ? "+" : "-") + "$" + Math.abs(net).toLocaleString(), color: net >= 0 ? "var(--win)" : "var(--loss)" },
               ].map((s) => (
-                <div key={s.label} className="card" style={{ margin: 0, textAlign: "center", padding: "10px 4px" }}>
-                  <div style={{ fontSize: "1.1rem", fontWeight: 900, color: s.color, fontVariantNumeric: "tabular-nums" }}>{s.value}</div>
-                  <div style={{ fontSize: "0.6rem", color: "var(--text-3)", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", marginTop: 2 }}>{s.label}</div>
+                <div key={s.label} className="card" style={{ padding: "10px 12px" }}>
+                  <div style={{ fontSize: "0.55rem", color: "var(--text-3)", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.09em", marginBottom: 2 }}>{s.label}</div>
+                  <div style={{ fontSize: "1rem", fontWeight: 800, color: s.color, fontVariantNumeric: "tabular-nums", letterSpacing: "-0.02em" }}>{s.value}</div>
                 </div>
               ))}
             </div>
 
             {/* Tabs */}
-            <div className="segment" style={{ marginBottom: 12 }}>
+            <div className="tab-bar" style={{ marginBottom: 16 }}>
               {([
                 ["props",   `Props (${picks.length})`],
-                ["lines",   `Lines (${gamePicks.length})`],
+                ["lines",   `Game Lines (${gamePicks.length})`],
                 ["parlays", `Parlays (${parlays.length})`],
               ] as const).map(([t, label]) => (
-                <button key={t} className={`segment-btn${tab === t ? " active" : ""}`} onClick={() => setTab(t)}>
+                <button key={t} className={`tab-btn${tab === t ? " active" : ""}`} onClick={() => setTab(t)}>
                   {label}
                 </button>
               ))}
@@ -173,146 +177,136 @@ export default function MyBetsPage({ params }: PageProps<"/leagues/[leagueId]/my
             {/* Props */}
             {tab === "props" && (
               <>
-                {picks.length === 0 && <div className="card"><div className="empty"><div className="empty-text">No prop bets this week</div></div></div>}
-                {picks.map((pick: any) => {
-                  const profit = pick.outcome === "WIN" ? calcProfit(Number(pick.stake), pick.odds ?? -110) : null;
-                  const toWin = calcProfit(Number(pick.stake), pick.odds ?? -110);
-                  const canCashout = pick.outcome === "PENDING" && !pick.cashedOut && !gameStarted(pick.prop?.game?.gameDate);
-                  const effectiveLine = pick.altLine ?? pick.prop?.line;
-                  return (
-                    <div key={pick.id} className="card" style={{ marginBottom: 8, padding: "12px 14px" }}>
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
-                        <div style={{ flex: 1, minWidth: 0, paddingRight: 8 }}>
-                          <div style={{ fontWeight: 700, fontSize: "0.88rem" }}>{pick.prop?.player?.name}</div>
-                          <div style={{ fontSize: "0.72rem", color: "var(--text-2)", marginTop: 2 }}>
-                            {pick.direction} {effectiveLine} {pick.prop?.statType?.split("_").join(" ")}
+                {picks.length === 0 && <div style={{ padding: "16px 2px", color: "var(--text-3)", fontSize: "0.8rem" }}>No prop bets this week</div>}
+                <div style={grid}>
+                  {picks.map((pick: any) => {
+                    const profit = pick.outcome === "WIN" ? calcProfit(Number(pick.stake), pick.odds ?? -110) : null;
+                    const toWin = calcProfit(Number(pick.stake), pick.odds ?? -110);
+                    const canCashout = pick.outcome === "PENDING" && !pick.cashedOut && !gameStarted(pick.prop?.game?.gameDate);
+                    const effectiveLine = pick.altLine ?? pick.prop?.line;
+                    return (
+                      <div key={pick.id} className="card" style={{ padding: "11px 14px" }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 7 }}>
+                          <div style={{ flex: 1, minWidth: 0, paddingRight: 8 }}>
+                            <div style={{ fontWeight: 700, fontSize: "0.82rem", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{pick.prop?.player?.name}</div>
+                            <div style={{ fontSize: "0.72rem", color: "var(--text-2)", marginTop: 2 }}>
+                              {pick.direction} {effectiveLine} {pick.prop?.statType?.split("_").join(" ")}
+                            </div>
+                            <div style={{ fontSize: "0.68rem", color: "var(--text-3)", marginTop: 1 }}>
+                              {pick.prop?.player?.position} · {pick.prop?.player?.team}
+                            </div>
                           </div>
-                          <div style={{ fontSize: "0.68rem", color: "var(--text-3)", marginTop: 1 }}>
-                            {pick.prop?.player?.position} · {pick.prop?.player?.team}
+                          <OutcomeBadge outcome={pick.outcome} cashedOut={pick.cashedOut} />
+                        </div>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                          <div style={{ display: "flex", gap: 10, fontSize: "0.72rem", color: "var(--text-3)", fontVariantNumeric: "tabular-nums" }}>
+                            <span>{fmtOdds(pick.odds ?? -110)}</span>
+                            <span>stake ${pick.stake}</span>
+                            {profit != null
+                              ? <span style={{ color: "var(--win)", fontWeight: 700 }}>+${profit}</span>
+                              : <span>to win ${toWin}</span>
+                            }
                           </div>
+                          {canCashout && <CashOutBtn busy={cashingOut === pick.id} onClick={() => cashOut("pick", pick.id)} />}
                         </div>
-                        <OutcomeBadge outcome={pick.outcome} cashedOut={pick.cashedOut} />
                       </div>
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                        <div style={{ display: "flex", gap: 10, fontSize: "0.72rem", color: "var(--text-3)", fontVariantNumeric: "tabular-nums" }}>
-                          <span>{fmtOdds(pick.odds ?? -110)}</span>
-                          <span>stake ${pick.stake}</span>
-                          {profit != null
-                            ? <span style={{ color: "var(--win)", fontWeight: 700 }}>+${profit}</span>
-                            : <span>to win ${toWin}</span>
-                          }
-                        </div>
-                        {canCashout && (
-                          <button className="secondary" style={{ fontSize: "0.68rem", padding: "3px 10px" }}
-                            disabled={cashingOut === pick.id} onClick={() => cashOut("pick", pick.id)}>
-                            {cashingOut === pick.id ? "…" : "Cash Out"}
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
+                    );
+                  })}
+                </div>
               </>
             )}
 
             {/* Lines */}
             {tab === "lines" && (
               <>
-                {gamePicks.length === 0 && <div className="card"><div className="empty"><div className="empty-text">No game line bets this week</div></div></div>}
-                {gamePicks.map((gp: any) => {
-                  const profit = gp.outcome === "WIN" ? calcProfit(Number(gp.stake), gp.odds) : null;
-                  const toWin = calcProfit(Number(gp.stake), gp.odds);
-                  const canCashout = gp.outcome === "PENDING" && !gp.cashedOut && !gameStarted(gp.gameLine?.game?.gameDate);
-                  return (
-                    <div key={gp.id} className="card" style={{ marginBottom: 8, padding: "12px 14px" }}>
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
-                        <div style={{ flex: 1, minWidth: 0, paddingRight: 8 }}>
-                          <div style={{ fontWeight: 700, fontSize: "0.88rem" }}>{gp.gameLine?.label}</div>
-                          <div style={{ fontSize: "0.68rem", color: "var(--text-3)", marginTop: 2 }}>
-                            {gp.gameLine?.game?.awayTeam} @ {gp.gameLine?.game?.homeTeam}
+                {gamePicks.length === 0 && <div style={{ padding: "16px 2px", color: "var(--text-3)", fontSize: "0.8rem" }}>No game line bets this week</div>}
+                <div style={grid}>
+                  {gamePicks.map((gp: any) => {
+                    const profit = gp.outcome === "WIN" ? calcProfit(Number(gp.stake), gp.odds) : null;
+                    const toWin = calcProfit(Number(gp.stake), gp.odds);
+                    const canCashout = gp.outcome === "PENDING" && !gp.cashedOut && !gameStarted(gp.gameLine?.game?.gameDate);
+                    return (
+                      <div key={gp.id} className="card" style={{ padding: "11px 14px" }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 7 }}>
+                          <div style={{ flex: 1, minWidth: 0, paddingRight: 8 }}>
+                            <div style={{ fontWeight: 700, fontSize: "0.82rem", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{gp.gameLine?.label}</div>
+                            <div style={{ fontSize: "0.68rem", color: "var(--text-3)", marginTop: 2 }}>
+                              {gp.gameLine?.game?.awayTeam} @ {gp.gameLine?.game?.homeTeam}
+                            </div>
                           </div>
+                          <OutcomeBadge outcome={gp.outcome} cashedOut={gp.cashedOut} />
                         </div>
-                        <OutcomeBadge outcome={gp.outcome} cashedOut={gp.cashedOut} />
-                      </div>
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                        <div style={{ display: "flex", gap: 10, fontSize: "0.72rem", color: "var(--text-3)", fontVariantNumeric: "tabular-nums" }}>
-                          <span>{fmtOdds(gp.odds)}</span>
-                          <span>stake ${gp.stake}</span>
-                          {profit != null
-                            ? <span style={{ color: "var(--win)", fontWeight: 700 }}>+${profit}</span>
-                            : <span>to win ${toWin}</span>
-                          }
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                          <div style={{ display: "flex", gap: 10, fontSize: "0.72rem", color: "var(--text-3)", fontVariantNumeric: "tabular-nums" }}>
+                            <span>{fmtOdds(gp.odds)}</span>
+                            <span>stake ${gp.stake}</span>
+                            {profit != null
+                              ? <span style={{ color: "var(--win)", fontWeight: 700 }}>+${profit}</span>
+                              : <span>to win ${toWin}</span>
+                            }
+                          </div>
+                          {canCashout && <CashOutBtn busy={cashingOut === gp.id} onClick={() => cashOut("gamepick", gp.id)} />}
                         </div>
-                        {canCashout && (
-                          <button className="secondary" style={{ fontSize: "0.68rem", padding: "3px 10px" }}
-                            disabled={cashingOut === gp.id} onClick={() => cashOut("gamepick", gp.id)}>
-                            {cashingOut === gp.id ? "…" : "Cash Out"}
-                          </button>
-                        )}
                       </div>
-                    </div>
-                  );
-                })}
+                    );
+                  })}
+                </div>
               </>
             )}
 
             {/* Parlays */}
             {tab === "parlays" && (
               <>
-                {parlays.length === 0 && <div className="card"><div className="empty"><div className="empty-text">No parlays this week</div></div></div>}
-                {parlays.map((parlay: any) => {
-                  const profit = parlay.outcome === "WIN" ? Number(parlay.payout) - Number(parlay.stake) : null;
-                  const firstGame = parlay.legs?.[0]?.prop?.game ?? parlay.legs?.[0]?.gameLine?.game;
-                  const canCashout = parlay.outcome === "PENDING" && !parlay.cashedOut && !gameStarted(firstGame?.gameDate);
-                  return (
-                    <div key={parlay.id} className="card" style={{ marginBottom: 8, padding: "12px 14px" }}>
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
-                        <div>
-                          <div style={{ fontWeight: 800, fontSize: "0.88rem" }}>{parlay.legs?.length}-Leg Parlay</div>
-                          <div style={{ fontSize: "0.68rem", color: "var(--text-3)", marginTop: 2, fontVariantNumeric: "tabular-nums" }}>
-                            {fmtOdds(parlay.totalOdds)} · stake ${parlay.stake}
-                          </div>
-                        </div>
-                        <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4 }}>
-                          <OutcomeBadge outcome={parlay.outcome} cashedOut={parlay.cashedOut} />
-                          {profit != null && <span style={{ fontSize: "0.75rem", fontWeight: 700, color: "var(--win)", fontVariantNumeric: "tabular-nums" }}>+${profit.toLocaleString()}</span>}
-                          {parlay.outcome === "PENDING" && <span style={{ fontSize: "0.68rem", color: "var(--text-3)", fontVariantNumeric: "tabular-nums" }}>to win ${(Number(parlay.payout) - Number(parlay.stake)).toLocaleString()}</span>}
-                        </div>
-                      </div>
-                      <div style={{ borderTop: "1px solid var(--border)", paddingTop: 8, marginBottom: canCashout ? 10 : 0 }}>
-                        {parlay.legs?.map((leg: any, i: number) => (
-                          <div key={i} style={{
-                            display: "flex", justifyContent: "space-between", alignItems: "center",
-                            padding: "5px 0",
-                            borderBottom: i < parlay.legs.length - 1 ? "1px solid var(--border)" : "none",
-                          }}>
-                            <div style={{ fontSize: "0.75rem", color: "var(--text-2)", flex: 1, minWidth: 0, paddingRight: 8 }}>
-                              {leg.prop
-                                ? `${leg.prop.player?.name} ${leg.direction} ${leg.altLine ?? leg.prop.line} ${leg.prop.statType?.split("_").join(" ")}`
-                                : leg.gameLine?.label ?? "—"}
-                            </div>
-                            <div style={{ display: "flex", gap: 8, alignItems: "center", flexShrink: 0 }}>
-                              <span style={{ fontSize: "0.7rem", color: "var(--text-3)" }}>{fmtOdds(leg.odds)}</span>
-                              <OutcomeBadge outcome={leg.outcome} />
+                {parlays.length === 0 && <div style={{ padding: "16px 2px", color: "var(--text-3)", fontSize: "0.8rem" }}>No parlays this week</div>}
+                <div style={grid}>
+                  {parlays.map((parlay: any) => {
+                    const profit = parlay.outcome === "WIN" ? Number(parlay.payout) - Number(parlay.stake) : null;
+                    const firstGame = parlay.legs?.[0]?.prop?.game ?? parlay.legs?.[0]?.gameLine?.game;
+                    const canCashout = parlay.outcome === "PENDING" && !parlay.cashedOut && !gameStarted(firstGame?.gameDate);
+                    return (
+                      <div key={parlay.id} className="card" style={{ padding: "11px 14px" }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 7 }}>
+                          <div>
+                            <div style={{ fontWeight: 800, fontSize: "0.82rem" }}>{parlay.legs?.length}-Leg Parlay</div>
+                            <div style={{ fontSize: "0.68rem", color: "var(--text-3)", marginTop: 2, fontVariantNumeric: "tabular-nums" }}>
+                              {fmtOdds(parlay.totalOdds)} · stake ${parlay.stake}
                             </div>
                           </div>
-                        ))}
+                          <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4 }}>
+                            <OutcomeBadge outcome={parlay.outcome} cashedOut={parlay.cashedOut} />
+                            {profit != null && <span style={{ fontSize: "0.75rem", fontWeight: 700, color: "var(--win)", fontVariantNumeric: "tabular-nums" }}>+${profit.toLocaleString()}</span>}
+                            {parlay.outcome === "PENDING" && <span style={{ fontSize: "0.68rem", color: "var(--text-3)", fontVariantNumeric: "tabular-nums" }}>to win ${(Number(parlay.payout) - Number(parlay.stake)).toLocaleString()}</span>}
+                          </div>
+                        </div>
+                        <div style={{ borderTop: "1px solid var(--border)", paddingTop: 7, marginBottom: canCashout ? 10 : 0 }}>
+                          {parlay.legs?.map((leg: any, i: number) => (
+                            <div key={i} style={{
+                              display: "flex", justifyContent: "space-between", alignItems: "center",
+                              padding: "5px 0",
+                              borderBottom: i < parlay.legs.length - 1 ? "1px solid var(--border)" : "none",
+                            }}>
+                              <div style={{ fontSize: "0.72rem", color: "var(--text-2)", flex: 1, minWidth: 0, paddingRight: 8, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                {leg.prop
+                                  ? `${leg.prop.player?.name} ${leg.direction} ${leg.altLine ?? leg.prop.line} ${leg.prop.statType?.split("_").join(" ")}`
+                                  : leg.gameLine?.label ?? "—"}
+                              </div>
+                              <div style={{ display: "flex", gap: 8, alignItems: "center", flexShrink: 0 }}>
+                                <span style={{ fontSize: "0.68rem", color: "var(--text-3)", fontVariantNumeric: "tabular-nums" }}>{fmtOdds(leg.odds)}</span>
+                                <OutcomeBadge outcome={leg.outcome} />
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                        {canCashout && <CashOutBtn full busy={cashingOut === parlay.id} onClick={() => cashOut("parlay", parlay.id)} />}
                       </div>
-                      {canCashout && (
-                        <button className="secondary" style={{ width: "100%", fontSize: "0.75rem", padding: "7px" }}
-                          disabled={cashingOut === parlay.id} onClick={() => cashOut("parlay", parlay.id)}>
-                          {cashingOut === parlay.id ? "…" : "Cash Out"}
-                        </button>
-                      )}
-                    </div>
-                  );
-                })}
+                    );
+                  })}
+                </div>
               </>
             )}
           </>
         )}
       </div>
-
-    </>
+    </div>
   );
 }
