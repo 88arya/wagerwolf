@@ -4,8 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { GoogleLogin } from "@react-oauth/google";
 import { api } from "@/lib/api";
-
-const ACCENT = "#0E92EB";
+import { ACCENT } from "@/lib/constants";
 const NAV_H = 56;
 
 const STEPS = [
@@ -163,11 +162,11 @@ export default function HomePage() {
       </div>
 
       {/* ── How to Play ── */}
-      <div style={{ background: "var(--surface)", borderTop: "1px solid var(--border)", padding: "60px 32px 80px" }}>
+      <div style={{ background: "var(--surface-2)", borderTop: "1px solid var(--border)", padding: "60px 32px 80px" }}>
         <div style={{ maxWidth: 1040, margin: "0 auto" }}>
 
-          <div style={{ marginBottom: 40 }}>
-            <div style={{ fontSize: "0.6rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.18em", color: ACCENT, marginBottom: 10 }}>
+          <div style={{ marginBottom: 32 }}>
+            <div style={{ fontSize: "0.58rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.14em", color: ACCENT, marginBottom: 10 }}>
               How to Play
             </div>
             <div style={{ fontSize: "1.5rem", fontWeight: 900, color: "var(--text)", letterSpacing: "-0.02em", lineHeight: 1.15 }}>
@@ -177,14 +176,16 @@ export default function HomePage() {
 
           <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12 }}>
             {STEPS.map(step => (
-              <div key={step.n} style={{ background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: "var(--radius)", padding: "20px 20px 24px" }}>
-                <div style={{ fontSize: "0.58rem", fontWeight: 900, color: ACCENT, letterSpacing: "0.16em", textTransform: "uppercase", marginBottom: 14 }}>
-                  {step.n}
+              <div key={step.n} className="card" style={{ padding: 0, overflow: "hidden" }}>
+                <div style={{ padding: "8px 16px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                  <span style={{ fontSize: "0.58rem", fontWeight: 800, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--text)" }}>
+                    {step.title}
+                  </span>
+                  <span style={{ fontSize: "0.58rem", fontWeight: 800, letterSpacing: "0.12em", color: ACCENT }}>
+                    {step.n}
+                  </span>
                 </div>
-                <div style={{ fontSize: "0.88rem", fontWeight: 800, color: "var(--text)", marginBottom: 8, lineHeight: 1.3 }}>
-                  {step.title}
-                </div>
-                <div style={{ fontSize: "0.8rem", color: "var(--text-2)", lineHeight: 1.68, fontWeight: 500 }}>
+                <div style={{ padding: "14px 16px 18px", fontSize: "0.8rem", color: "var(--text-2)", lineHeight: 1.68 }}>
                   {step.desc}
                 </div>
               </div>
