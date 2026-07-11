@@ -4,23 +4,29 @@ interface Props {
   size?: number;
 }
 
+// All 32 NFL teams' primary + alternate colors (ESPN), deduped
 export const HELMET_COLORS = [
   // Red
-  "#fca5a5", "#f87171", "#dc2626", "#7f1d1d",
+  "#d50a0a", "#e31837", "#c60c30", "#c9243f", "#bd1c36", "#c41230", "#a71930", "#a40227", "#aa0000", "#5a1414",
   // Orange
-  "#fdba74", "#fb923c", "#ea580c", "#7c2d12",
-  // Yellow
-  "#fde68a", "#fbbf24", "#d97706", "#92400e",
+  "#ff3c00", "#fb4f14", "#fc4c02", "#e64100",
+  // Brown
+  "#472a08",
+  // Yellow / Gold
+  "#ffd100", "#ffc20e", "#ffc62f", "#ffb612", "#d7a22a", "#b3995d", "#d3bc8d",
   // Green
-  "#86efac", "#4ade80", "#16a34a", "#14532d",
+  "#69be28", "#115740", "#204e32",
   // Teal
-  "#5eead4", "#2dd4bf", "#0d9488", "#0f766e",
+  "#008e97", "#007487", "#06424d",
   // Blue
-  "#93c5fd", "#60a5fa", "#2563eb", "#1e3a8a",
+  "#4495d2", "#0085ca", "#0080c6", "#0076b6", "#003594", "#00338d", "#003b75", "#003c7f", "#002a5c", "#0a2343", "#0b1c3a", "#00143f", "#001532",
   // Purple
-  "#c4b5fd", "#a78bfa", "#7c3aed", "#4c1d95",
-  // Pink
-  "#f9a8d4", "#f472b6", "#db2777", "#831843",
+  "#4f2683", "#29126f",
+  // Grey / Silver
+  "#bbbbbb", "#b0b7bc", "#a5acaf", "#3e3a35",
+  // Black
+  "#000000",
+  // (white is reserved for the ghost user)
 ];
 
 export default function HelmetAvatar({ color, initials, size = 36 }: Props) {

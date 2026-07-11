@@ -2,15 +2,29 @@ import { db } from "../db/db";
 import { eq } from "drizzle-orm";
 import { memberships } from "../db/schema";
 
+// All 32 NFL teams' primary + alternate colors (ESPN), deduped
 const HELMET_COLORS = [
-  "#fca5a5", "#f87171", "#dc2626", "#7f1d1d",
-  "#fdba74", "#fb923c", "#ea580c", "#7c2d12",
-  "#fde68a", "#fbbf24", "#d97706", "#92400e",
-  "#86efac", "#4ade80", "#16a34a", "#14532d",
-  "#5eead4", "#2dd4bf", "#0d9488", "#0f766e",
-  "#93c5fd", "#60a5fa", "#2563eb", "#1e3a8a",
-  "#c4b5fd", "#a78bfa", "#7c3aed", "#4c1d95",
-  "#f9a8d4", "#f472b6", "#db2777", "#831843",
+  // Red
+  "#d50a0a", "#e31837", "#c60c30", "#c9243f", "#bd1c36", "#c41230", "#a71930", "#a40227", "#aa0000", "#5a1414",
+  // Orange
+  "#ff3c00", "#fb4f14", "#fc4c02", "#e64100",
+  // Brown
+  "#472a08",
+  // Yellow / Gold
+  "#ffd100", "#ffc20e", "#ffc62f", "#ffb612", "#d7a22a", "#b3995d", "#d3bc8d",
+  // Green
+  "#69be28", "#115740", "#204e32",
+  // Teal
+  "#008e97", "#007487", "#06424d",
+  // Blue
+  "#4495d2", "#0085ca", "#0080c6", "#0076b6", "#003594", "#00338d", "#003b75", "#003c7f", "#002a5c", "#0a2343", "#0b1c3a", "#00143f", "#001532",
+  // Purple
+  "#4f2683", "#29126f",
+  // Grey / Silver
+  "#bbbbbb", "#b0b7bc", "#a5acaf", "#3e3a35",
+  // Black
+  "#000000",
+  // (white is reserved for the ghost user)
 ];
 
 export async function pickHelmetColor(leagueId: string): Promise<string> {

@@ -698,7 +698,7 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
 
               <div>
                 <div className="label">Helmet Color</div>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 6 }}>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(6, 28px)", gap: 8, marginTop: 6 }}>
                   {HELMET_COLORS.map(c => {
                     const taken = takenColors.has(c);
                     const selected = pendingColor === c;
