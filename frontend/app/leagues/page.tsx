@@ -165,7 +165,7 @@ export default function LeaguesPage() {
   return (
     <>
       {/* Games strip */}
-      <GamesStrip leagueId={weekLeagueId} />
+      <GamesStrip leagueId={weekLeagueId} interactive={false} />
 
       {/* Nav */}
       <nav className="nav" style={{ padding: "0 300px", background: "var(--bg)" }}>

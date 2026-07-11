@@ -8,7 +8,7 @@ import TeamLogo from "@/components/TeamLogo";
 const STRIP_BG = "#F5F7FA";
 const STRIP_BG_HOVER = "var(--surface-4)";
 
-export default function GamesStrip({ leagueId }: { leagueId: string }) {
+export default function GamesStrip({ leagueId, interactive = true }: { leagueId: string; interactive?: boolean }) {
   const router = useRouter();
   const [week, setWeek] = useState<any>(null);
   const gamesScrollRef = useRef<HTMLDivElement>(null);
@@ -96,7 +96,11 @@ export default function GamesStrip({ leagueId }: { leagueId: string }) {
                 (game.status !== "FINAL" && game.status !== "CANCELLED" && game.gameDate && new Date(game.gameDate) <= now);
               const isScheduled = !isLive && game.status !== "FINAL" && game.status !== "CANCELLED";
               return (
-                <div key={game.id} onClick={() => router.push(`/leagues/${leagueId}/bet?gameId=${game.id}`)} onMouseEnter={e => (e.currentTarget.style.background = STRIP_BG_HOVER)} onMouseLeave={e => (e.currentTarget.style.background = STRIP_BG)} style={{
+                <div key={game.id}
+                  onClick={interactive ? () => router.push(`/leagues/${leagueId}/bet?gameId=${game.id}`) : undefined}
+                  onMouseEnter={interactive ? e => (e.currentTarget.style.background = STRIP_BG_HOVER) : undefined}
+                  onMouseLeave={interactive ? e => (e.currentTarget.style.background = STRIP_BG) : undefined}
+                  style={{
                   display: "flex",
                   flexDirection: "column",
                   padding: "12px 14px 6px",
@@ -106,7 +110,7 @@ export default function GamesStrip({ leagueId }: { leagueId: string }) {
                   background: STRIP_BG,
                   borderRight: "1px solid var(--border)",
                   transition: "background 0.12s",
-                  cursor: "pointer",
+                  cursor: interactive ? "pointer" : "default",
                 }}>
                   {/* Top row */}
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", lineHeight: 1 }}>
@@ -129,7 +133,7 @@ export default function GamesStrip({ leagueId }: { leagueId: string }) {
                     </div>
                     {isLive ? (
                       game.statusDetail && <span style={{ fontSize: "0.62rem", color: "var(--text-3)", fontWeight: 700, whiteSpace: "nowrap" }}>{game.statusDetail}</span>
-                    ) : isScheduled ? (
+                    ) : isScheduled && interactive ? (
                       <svg width="9" height="9" viewBox="0 0 10 10" fill="none" stroke="var(--text-3)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                         <path d="M3 1h6v6M9 1L1 9" />
                       </svg>
@@ -159,8 +163,8 @@ export default function GamesStrip({ leagueId }: { leagueId: string }) {
         </div>
         <div
           onClick={() => scrollBy(1)}
-          onMouseEnter={e => (e.currentTarget.style.background = "var(--surface-2)")}
-          onMouseLeave={e => (e.currentTarget.style.background = "var(--surface)")}
+          onMouseEnter={e => (e.currentTarget.style.background = STRIP_BG_HOVER)}
+          onMouseLeave={e => (e.currentTarget.style.background = STRIP_BG)}
           style={{ ...toggleStyle, borderLeft: "1px solid var(--border)" }}
         >
           <svg width="6" height="10" viewBox="0 0 9 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="2,1 7,7 2,13" /></svg>
