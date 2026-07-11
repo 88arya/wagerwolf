@@ -168,7 +168,7 @@ export default function LeaguesPage() {
       <GamesStrip leagueId={weekLeagueId} interactive={false} />
 
       {/* Nav */}
-      <nav className="nav" style={{ padding: "0 300px", background: "var(--bg)" }}>
+      <nav className="nav" style={{ padding: "0 300px" }}>
         <Link href="/" style={{ display: "flex", alignItems: "center", flexShrink: 0 }}>
           <img src="/grH9m01.svg" alt="FanMark" style={{ height: 28, width: 28, objectFit: "contain" }} />
         </Link>

@@ -89,7 +89,7 @@ export default function LeagueNav({ leagueId }: { leagueId: string }) {
 
   const groups = [
     {
-      label: "League",
+      label: "LEAGUE",
       links: [
         { label: "League Home",     href: base },
         { label: "Scoreboard",      href: `${base}/scoreboard` },
@@ -101,7 +101,7 @@ export default function LeagueNav({ leagueId }: { leagueId: string }) {
       ],
     },
     {
-      label: "Bets",
+      label: "BET",
       links: [
         { label: "Sportsbook", href: `${base}/bet` },
         { label: "My Bets",    href: `${base}/mybets` },
@@ -134,31 +134,39 @@ export default function LeagueNav({ leagueId }: { leagueId: string }) {
               return (
                 <div
                   key={group.label}
-                  style={{ position: "relative", display: "flex", alignItems: "stretch" }}
+                  style={{ position: "relative", display: "flex", alignItems: "stretch", margin: "0 11px" }}
                   onMouseEnter={() => setHoveredGroup(group.label)}
                   onMouseLeave={() => setHoveredGroup(null)}
                 >
                   <div style={{
                     display: "flex",
-                    alignItems: "center",
-                    padding: "0 11px",
+                    alignItems: "stretch",
+                    padding: 0,
                     fontSize: "0.82rem",
-                    fontWeight: 500,
+                    fontWeight: 900,
+                    letterSpacing: "0.03em",
                     color: "var(--text)",
-                    borderBottom: `3.5px solid ${groupActive || isHovered ? ACCENT : "transparent"}`,
-                    transition: "color 0.12s, border-color 0.12s",
                     userSelect: "none",
                     whiteSpace: "nowrap",
                     cursor: "default",
                   }}>
-                    {group.label}
-                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" style={{ marginLeft: 4, flexShrink: 0, transform: isHovered ? "rotate(180deg)" : "none", transition: "transform 0.15s" }}>
-                      <polyline points="6 9 12 15 18 9" />
-                    </svg>
+                    <span style={{
+                      display: "flex",
+                      alignItems: "center",
+                      boxShadow: groupActive || isHovered ? `inset 0 -2.5px 0 ${ACCENT}` : "none",
+                      transition: "box-shadow 0.12s",
+                    }}>
+                      {group.label}
+                    </span>
+                    <span style={{ display: "flex", alignItems: "center", marginLeft: 5 }}>
+                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" style={{ transform: isHovered ? "rotate(180deg)" : "none", transition: "transform 0.15s" }}>
+                        <polyline points="6 9 12 15 18 9" />
+                      </svg>
+                    </span>
                   </div>
 
                   {isHovered && (
-                    <div style={{ position: "absolute", top: "100%", left: 0, background: "var(--surface-2)", border: "1px solid var(--border-2)", borderRadius: "var(--radius-sm)", boxShadow: "var(--shadow-md)", minWidth: 280, zIndex: 500, overflow: "hidden", display: "grid", gridTemplateColumns: "1fr 1fr" }}>
+                    <div style={{ position: "absolute", top: "100%", left: 0, background: "#fff", border: "1px solid var(--border-2)", borderRadius: "var(--radius-sm)", boxShadow: "var(--shadow-md)", minWidth: 280, zIndex: 500, overflow: "hidden", display: "grid", gridTemplateColumns: "1fr 1fr" }}>
                       {group.links.map(({ label, href }) => {
                         return (
                           <Link
@@ -225,7 +233,7 @@ export default function LeagueNav({ leagueId }: { leagueId: string }) {
           </button>
 
           {open && (
-            <div style={{ position: "absolute", top: "100%", right: 0, background: "var(--surface-2)", border: "1px solid var(--border-2)", borderRadius: "var(--radius-sm)", boxShadow: "var(--shadow-md)", minWidth: 230, zIndex: 500, overflow: "hidden" }}>
+            <div style={{ position: "absolute", top: "100%", right: 0, background: "#fff", border: "1px solid var(--border-2)", borderRadius: "var(--radius-sm)", boxShadow: "var(--shadow-md)", minWidth: 230, zIndex: 500, overflow: "hidden" }}>
               {leagues.length === 0 && (
                 <div style={{ padding: "10px 14px", fontSize: "0.8rem", color: "var(--text-2)" }}>No leagues</div>
               )}
