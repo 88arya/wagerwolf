@@ -1,12 +1,13 @@
 import { Router } from "express";
 import { db } from "../db/db";
 import { eq, and, inArray, or, isNull, isNotNull, gt, gte, lte, sql } from "drizzle-orm";
-import { users, leagues, memberships, weeks, matchups, picks, gamePicks, parlays } from "../db/schema";
+import { users, leagues, memberships, weeks, matchups, picks, gamePicks, parlays, parlayLegs, props, games, gameLines } from "../db/schema";
 import { requireAuth } from "../middleware/auth";
 import { scheduleMatchups } from "../services/scheduleMatchups";
 import { pickHelmetColor } from "../services/helmetColor";
 import { generateAbbreviation } from "../services/abbreviation";
 import { generateLeagueName } from "../services/leagueName";
+import { tallyRecords, compareStandings } from "../services/standings";
 
 const router = Router();
 
@@ -70,6 +71,7 @@ router.get("/", requireAuth, async (req: any, res: any) => {
         league: true,
         user: true,
       },
+      orderBy: (memberships, { asc }) => [asc(memberships.createdAt)],
     }) as any[];
 
     const currentWeek = await db.query.weeks.findFirst({
@@ -84,21 +86,13 @@ router.get("/", requireAuth, async (req: any, res: any) => {
       return;
     }
 
-    const weekFilter = currentWeek
-      ? { gte: currentWeek.startDate, lte: currentWeek.endDate }
-      : undefined;
-
-    // Fetch all resolved/tied matchups for these leagues
+    // Fetch all matchups for these leagues (resolved ones feed records/streaks;
+    // unresolved playoff ones tell us who is still alive in the bracket).
+    // Ghost matchups count — they resolve against the league mean and can be lost.
     const allMatchups = await db
       .select()
       .from(matchups)
-      .where(
-        and(
-          inArray(matchups.leagueId, leagueIds),
-          eq(matchups.isGhostMatchup, false),
-          or(isNotNull(matchups.winnerId), eq(matchups.isTie, true))
-        )
-      )
+      .where(inArray(matchups.leagueId, leagueIds))
       .orderBy(matchups.weekNumber) as any[];
 
     // Fetch all active members for these leagues
@@ -107,80 +101,79 @@ router.get("/", requireAuth, async (req: any, res: any) => {
       .from(memberships)
       .where(and(inArray(memberships.leagueId, leagueIds), eq(memberships.status, "ACTIVE")));
 
-    // Bet counts per league (picks, gamePicks, parlays) scoped to current week if available
-    let pickCounts: Array<{ leagueId: string; cnt: number }> = [];
-    let gamePickCounts: Array<{ leagueId: string; cnt: number }> = [];
-    let parlayCounts: Array<{ leagueId: string; cnt: number }> = [];
+    // Bet counts per league for the current week, scoped by the week the bet's
+    // game belongs to — same semantics as the maxBetsPerWeek enforcement in
+    // picks/gamepicks/parlays routes (countWeekBets). No current week → 0.
+    const betsMap: Record<string, number> = {};
 
-    if (weekFilter) {
+    if (currentWeek) {
       const pickCountRows = await db
         .select({ leagueId: picks.leagueId, cnt: sql<number>`count(*)::int` })
         .from(picks)
+        .innerJoin(props, eq(picks.propId, props.id))
+        .innerJoin(games, eq(props.gameId, games.id))
         .where(
           and(
             eq(picks.userId, req.userId),
             inArray(picks.leagueId, leagueIds),
-            gte(picks.createdAt, weekFilter.gte),
-            lte(picks.createdAt, weekFilter.lte)
+            eq(games.weekId, currentWeek.id)
           )
         )
         .groupBy(picks.leagueId);
-      pickCounts = pickCountRows as any;
 
       const gamePickCountRows = await db
         .select({ leagueId: gamePicks.leagueId, cnt: sql<number>`count(*)::int` })
         .from(gamePicks)
+        .innerJoin(gameLines, eq(gamePicks.gameLineId, gameLines.id))
+        .innerJoin(games, eq(gameLines.gameId, games.id))
         .where(
           and(
             eq(gamePicks.userId, req.userId),
             inArray(gamePicks.leagueId, leagueIds),
-            gte(gamePicks.createdAt, weekFilter.gte),
-            lte(gamePicks.createdAt, weekFilter.lte)
+            eq(games.weekId, currentWeek.id)
           )
         )
         .groupBy(gamePicks.leagueId);
-      gamePickCounts = gamePickCountRows as any;
 
-      const parlayCountRows = await db
-        .select({ leagueId: parlays.leagueId, cnt: sql<number>`count(*)::int` })
+      // A parlay counts toward the week if any leg touches it; legs reach games
+      // via props or via gameLines, so dedupe parlay ids across both paths
+      const parlayViaProps = await db
+        .select({ leagueId: parlays.leagueId, parlayId: parlays.id })
         .from(parlays)
+        .innerJoin(parlayLegs, eq(parlayLegs.parlayId, parlays.id))
+        .innerJoin(props, eq(parlayLegs.propId, props.id))
+        .innerJoin(games, eq(props.gameId, games.id))
         .where(
           and(
             eq(parlays.userId, req.userId),
             inArray(parlays.leagueId, leagueIds),
-            gte(parlays.createdAt, weekFilter.gte),
-            lte(parlays.createdAt, weekFilter.lte)
+            eq(games.weekId, currentWeek.id)
           )
-        )
-        .groupBy(parlays.leagueId);
-      parlayCounts = parlayCountRows as any;
-    } else {
-      const pickCountRows = await db
-        .select({ leagueId: picks.leagueId, cnt: sql<number>`count(*)::int` })
-        .from(picks)
-        .where(and(eq(picks.userId, req.userId), inArray(picks.leagueId, leagueIds)))
-        .groupBy(picks.leagueId);
-      pickCounts = pickCountRows as any;
+        );
 
-      const gamePickCountRows = await db
-        .select({ leagueId: gamePicks.leagueId, cnt: sql<number>`count(*)::int` })
-        .from(gamePicks)
-        .where(and(eq(gamePicks.userId, req.userId), inArray(gamePicks.leagueId, leagueIds)))
-        .groupBy(gamePicks.leagueId);
-      gamePickCounts = gamePickCountRows as any;
-
-      const parlayCountRows = await db
-        .select({ leagueId: parlays.leagueId, cnt: sql<number>`count(*)::int` })
+      const parlayViaGameLines = await db
+        .select({ leagueId: parlays.leagueId, parlayId: parlays.id })
         .from(parlays)
-        .where(and(eq(parlays.userId, req.userId), inArray(parlays.leagueId, leagueIds)))
-        .groupBy(parlays.leagueId);
-      parlayCounts = parlayCountRows as any;
-    }
+        .innerJoin(parlayLegs, eq(parlayLegs.parlayId, parlays.id))
+        .innerJoin(gameLines, eq(parlayLegs.gameLineId, gameLines.id))
+        .innerJoin(games, eq(gameLines.gameId, games.id))
+        .where(
+          and(
+            eq(parlays.userId, req.userId),
+            inArray(parlays.leagueId, leagueIds),
+            eq(games.weekId, currentWeek.id)
+          )
+        );
 
-    const betsMap: Record<string, number> = {};
-    for (const c of pickCounts) betsMap[c.leagueId] = (betsMap[c.leagueId] ?? 0) + c.cnt;
-    for (const c of gamePickCounts) betsMap[c.leagueId] = (betsMap[c.leagueId] ?? 0) + c.cnt;
-    for (const c of parlayCounts) betsMap[c.leagueId] = (betsMap[c.leagueId] ?? 0) + c.cnt;
+      const parlaysByLeague: Record<string, Set<string>> = {};
+      for (const r of [...parlayViaProps, ...parlayViaGameLines]) {
+        (parlaysByLeague[r.leagueId] ??= new Set()).add(r.parlayId);
+      }
+
+      for (const c of pickCountRows) betsMap[c.leagueId] = (betsMap[c.leagueId] ?? 0) + c.cnt;
+      for (const c of gamePickCountRows) betsMap[c.leagueId] = (betsMap[c.leagueId] ?? 0) + c.cnt;
+      for (const [lid, ids] of Object.entries(parlaysByLeague)) betsMap[lid] = (betsMap[lid] ?? 0) + ids.size;
+    }
 
     // Filter matchups to only ones that have actually resolved (winnerId not null or isTie)
     const resolvedMatchups = allMatchups.filter(
@@ -197,9 +190,10 @@ router.get("/", requireAuth, async (req: any, res: any) => {
       const phaseWeek = isPlayoffs ? weekOffset - regularSeasonWeeks : weekOffset;
       const phaseTotal = isPlayoffs ? playoffWeeks : regularSeasonWeeks;
 
-      // W/L/T + streak
+      // W/L/T + streak (byes are self-matchups, not contests — skip them)
       const userMatchups = resolvedMatchups.filter(
-        (mu: any) => mu.leagueId === m.leagueId && (mu.homeUserId === m.userId || mu.awayUserId === m.userId)
+        (mu: any) => mu.leagueId === m.leagueId && mu.homeUserId !== mu.awayUserId &&
+          (mu.homeUserId === m.userId || mu.awayUserId === m.userId)
       );
       let wins = 0, losses = 0, ties = 0;
       for (const mu of userMatchups) {
@@ -216,25 +210,22 @@ router.get("/", requireAuth, async (req: any, res: any) => {
         else break;
       }
 
-      // Rank within this league
+      // Rank within this league — same tally + sort as leaderboard and playoff seeding
       const leagueMembers = allLeagueMembers.filter((mem) => mem.leagueId === m.leagueId);
-      const memberRecords: Record<string, { wins: number; losses: number; ties: number; balance: number }> = {};
-      for (const mem of leagueMembers) memberRecords[mem.userId] = { wins: 0, losses: 0, ties: 0, balance: mem.balance };
-      for (const mu of resolvedMatchups.filter((mu: any) => mu.leagueId === m.leagueId)) {
-        if (mu.isTie) {
-          if (memberRecords[mu.homeUserId]) memberRecords[mu.homeUserId].ties++;
-          if (memberRecords[mu.awayUserId]) memberRecords[mu.awayUserId].ties++;
-        } else if (mu.winnerId) {
-          const loserId = mu.winnerId === mu.homeUserId ? mu.awayUserId : mu.homeUserId;
-          if (memberRecords[mu.winnerId]) memberRecords[mu.winnerId].wins++;
-          if (memberRecords[loserId]) memberRecords[loserId].losses++;
-        }
-      }
-      const sorted = Object.entries(memberRecords).sort(([, a], [, b]) =>
-        b.wins - a.wins || b.ties - a.ties || b.balance - a.balance
+      const memberRecords = tallyRecords(
+        leagueMembers,
+        resolvedMatchups.filter((mu: any) => mu.leagueId === m.leagueId)
       );
+      const sorted = Object.entries(memberRecords).sort(([, a], [, b]) => compareStandings(a, b));
       const rank = sorted.findIndex(([uid]) => uid === m.userId) + 1;
       const totalMembers = leagueMembers.length;
+
+      // Alive in the playoffs = appears in a bracket matchup (incl. byes) for the
+      // current playoff week; eliminated members simply have no matchup that week
+      const alive = !isPlayoffs || allMatchups.some(
+        (mu: any) => mu.leagueId === m.leagueId && mu.isPlayoff && mu.weekNumber === nflWeek &&
+          (mu.homeUserId === m.userId || mu.awayUserId === m.userId)
+      );
 
       return {
         ...m,
@@ -242,10 +233,10 @@ router.get("/", requireAuth, async (req: any, res: any) => {
         weekContext: !league.seasonStarted
           ? { phase: "waiting" }
           : league.seasonEnded
-          ? { phase: "ended" }
+          ? { phase: "ended", champion: league.championId === m.userId }
           : weekOffset != null && weekOffset >= 1
-          ? { phase: isPlayoffs ? "playoffs" : "regular", week: phaseWeek, total: phaseTotal }
-          : { phase: "active" },
+          ? { phase: isPlayoffs ? "playoffs" : "regular", week: phaseWeek, total: phaseTotal, alive }
+          : { phase: "preseason", startsNflWeek: league.startWeek },
         wins,
         losses,
         ties,
@@ -267,9 +258,13 @@ router.get("/pending", requireAuth, async (req: any, res: any) => {
   try {
     const rows = await db.query.memberships.findMany({
       where: and(eq(memberships.userId, req.userId), eq(memberships.status, "PENDING")),
-      with: { league: true },
-    });
-    res.json(rows);
+      with: { league: true, user: true },
+      orderBy: (memberships, { asc }) => [asc(memberships.createdAt)],
+    }) as any[];
+    res.json(rows.map((r) => ({
+      ...r,
+      displayName: r.displayName || r.user?.displayName || r.user?.name || "",
+    })));
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }

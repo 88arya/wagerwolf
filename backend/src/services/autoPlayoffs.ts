@@ -1,6 +1,7 @@
 import { db } from "../db/db";
 import { eq, and } from "drizzle-orm";
 import { leagues, matchups, memberships } from "../db/schema";
+import { tallyRecords, compareStandings } from "./standings";
 
 export async function triggerPostWeekActions(resolvedWeekNumber: number): Promise<void> {
   const allLeagues = await db.query.leagues.findMany({
@@ -48,24 +49,11 @@ async function startPlayoffs(leagueId: string, weekNumber: number): Promise<void
     }),
   ]);
 
-  const records: Record<string, { wins: number; losses: number; ties: number; balance: number }> = {};
-  for (const m of leagueMembers) {
-    records[m.userId] = { wins: 0, losses: 0, ties: 0, balance: m.balance };
-  }
-  for (const mu of leagueMatchups) {
-    if (mu.isTie) {
-      if (records[mu.homeUserId]) records[mu.homeUserId].ties++;
-      if (records[mu.awayUserId]) records[mu.awayUserId].ties++;
-    } else if (mu.winnerId) {
-      const loserId = mu.winnerId === mu.homeUserId ? mu.awayUserId : mu.homeUserId;
-      if (records[mu.winnerId]) records[mu.winnerId].wins++;
-      if (records[loserId]) records[loserId].losses++;
-    }
-  }
+  const records = tallyRecords(leagueMembers, leagueMatchups);
 
   const seeded = leagueMembers
     .map((m) => ({ userId: m.userId, displayName: (m as any).user.displayName, ...records[m.userId] }))
-    .sort((a, b) => b.wins - a.wins || b.balance - a.balance)
+    .sort(compareStandings)
     .slice(0, league.playoffSize);
 
   if (seeded.length < 2) return;

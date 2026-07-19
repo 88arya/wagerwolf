@@ -11,6 +11,7 @@ import { requireAuth } from "../middleware/auth";
 import { scheduleMatchups } from "../services/scheduleMatchups";
 import { pickHelmetColor } from "../services/helmetColor";
 import { generateAbbreviation } from "../services/abbreviation";
+import { tallyRecords, compareStandings } from "../services/standings";
 
 const router = Router({ mergeParams: true });
 
@@ -76,55 +77,35 @@ router.get("/leaderboard", requireAuth, async (req: any, res: any) => {
 
     const validMembers = memberRows.filter((m) => m.user != null);
 
-    const records: Record<string, { wins: number; losses: number; ties: number }> = {};
-    for (const m of validMembers) {
-      records[m.user.id] = { wins: 0, losses: 0, ties: 0 };
-    }
-    for (const matchup of matchupRows) {
-      if (matchup.isTie) {
-        if (records[matchup.homeUserId]) records[matchup.homeUserId].ties++;
-        if (records[matchup.awayUserId]) records[matchup.awayUserId].ties++;
-      } else if (matchup.winnerId) {
-        const loserId = matchup.winnerId === matchup.homeUserId ? matchup.awayUserId : matchup.homeUserId;
-        if (records[matchup.winnerId]) records[matchup.winnerId].wins++;
-        if (records[loserId]) records[loserId].losses++;
-      }
-    }
+    const records = tallyRecords(
+      validMembers.map((m: any) => ({ userId: m.user.id, balance: m.balance })),
+      matchupRows
+    );
 
     const leaderboard = validMembers
       .map((m: any) => ({
         userId: m.user.id,
         displayName: m.displayName || m.user.displayName,
         abbreviation: m.abbreviation,
-        balance: m.balance,
         joinedAt: m.createdAt,
         helmetColor: m.helmetColor,
         ...records[m.user.id],
       }))
-      .sort((a: any, b: any) => b.wins - a.wins || b.ties - a.ties || b.balance - a.balance)
+      .sort(compareStandings)
       .map((entry: any, i: number) => ({ rank: i + 1, ...entry }));
 
     // Compute previous week standings (exclude most recent resolved week)
     const weekNumbers = matchupRows.map((m) => m.weekNumber);
     const latestWeekNumber = weekNumbers.length ? Math.max(...weekNumbers) : null;
     if (latestWeekNumber !== null) {
-      const prevRecords: Record<string, { wins: number; losses: number; ties: number }> = {};
-      for (const m of validMembers) prevRecords[m.user.id] = { wins: 0, losses: 0, ties: 0 };
-      for (const matchup of matchupRows) {
-        if (matchup.weekNumber === latestWeekNumber) continue;
-        if (matchup.isTie) {
-          if (prevRecords[matchup.homeUserId]) prevRecords[matchup.homeUserId].ties++;
-          if (prevRecords[matchup.awayUserId]) prevRecords[matchup.awayUserId].ties++;
-        } else if (matchup.winnerId) {
-          const loserId = matchup.winnerId === matchup.homeUserId ? matchup.awayUserId : matchup.homeUserId;
-          if (prevRecords[matchup.winnerId]) prevRecords[matchup.winnerId].wins++;
-          if (prevRecords[loserId]) prevRecords[loserId].losses++;
-        }
-      }
+      const prevRecords = tallyRecords(
+        validMembers.map((m: any) => ({ userId: m.user.id, balance: m.balance })),
+        matchupRows.filter((matchup) => matchup.weekNumber !== latestWeekNumber)
+      );
       const prevRankMap: Record<string, number> = {};
       [...validMembers]
-        .map((m: any) => ({ userId: m.user.id, balance: m.balance, ...prevRecords[m.user.id] }))
-        .sort((a: any, b: any) => b.wins - a.wins || b.ties - a.ties || b.balance - a.balance)
+        .map((m: any) => ({ userId: m.user.id, ...prevRecords[m.user.id] }))
+        .sort(compareStandings)
         .forEach((entry: any, i: number) => { prevRankMap[entry.userId] = i + 1; });
       for (const entry of leaderboard) {
         (entry as any).prevRank = prevRankMap[entry.userId] ?? entry.rank;
@@ -628,7 +609,7 @@ router.get("/members/:targetUserId/stats", requireAuth, async (req: any, res: an
     if (!membership) { res.status(403).json({ error: "Not a member" }); return; }
     if (!targetMembership) { res.status(404).json({ error: "Member not found" }); return; }
 
-    const [picksRows, gamePicksRows, parlaysRows, matchupRows] = await Promise.all([
+    const [picksRows, gamePicksRows, parlaysRows, leagueMatchupRows] = await Promise.all([
       db.query.picks.findMany({
         where: and(eq(picks.leagueId, leagueId), eq(picks.userId, targetUserId)),
         with: {
@@ -652,13 +633,14 @@ router.get("/members/:targetUserId/stats", requireAuth, async (req: any, res: an
         where: and(eq(parlays.leagueId, leagueId), eq(parlays.userId, targetUserId)),
         with: { legs: true },
       }),
-      db.select().from(matchups).where(
-        and(
-          eq(matchups.leagueId, leagueId),
-          or(eq(matchups.homeUserId, targetUserId), eq(matchups.awayUserId, targetUserId)),
-        )
-      ),
+      db.select().from(matchups).where(eq(matchups.leagueId, leagueId)),
     ]);
+
+    // Byes are self-matchups, not contests — exclude from the target's record
+    const matchupRows = leagueMatchupRows.filter(
+      (m) => m.homeUserId !== m.awayUserId &&
+        (m.homeUserId === targetUserId || m.awayUserId === targetUserId)
+    );
 
     // Sort by createdAt desc
     picksRows.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
@@ -735,8 +717,14 @@ router.get("/members/:targetUserId/stats", requireAuth, async (req: any, res: an
       if (m.winnerId === targetUserId) wins++; else losses++;
     }
 
-    // Rank by balance
-    const rank = leaderboardMembers.filter((m) => m.balance > targetMembership.balance).length + 1;
+    // Rank — same standings logic as leaderboard and my-leagues
+    const standingsRecords = tallyRecords(
+      leaderboardMembers.map((m: any) => ({ userId: m.userId, balance: m.balance })),
+      leagueMatchupRows.filter((m) => m.winnerId != null || m.isTie)
+    );
+    const rank = Object.entries(standingsRecords)
+      .sort(([, a], [, b]) => compareStandings(a, b))
+      .findIndex(([uid]) => uid === targetUserId) + 1;
 
     res.json({
       userId: targetUserId,
