@@ -170,8 +170,9 @@ export async function resolveWeekById(weekId: string): Promise<{
     const prop = (pick as any).prop;
     const { result } = prop;
     if (result == null) continue;
-    const won = (pick.direction === "OVER" && result > prop.line) ||
-                (pick.direction === "UNDER" && result < prop.line);
+    const effectiveLine = pick.altLine ?? prop.line;
+    const won = (pick.direction === "OVER" && result > effectiveLine) ||
+                (pick.direction === "UNDER" && result < effectiveLine);
     const profit = won ? calcProfit(pick.stake, pick.odds) : 0;
     await db.transaction(async (tx) => {
       await tx.update(picks)

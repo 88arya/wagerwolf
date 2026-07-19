@@ -7,6 +7,7 @@ import { syncESPNGames, syncOdds, syncScores } from "./syncWeek";
 import { getNFLWeekDates, nflYear } from "./espnApi";
 import { distributeWeeklyAllowances } from "./distributeAllowances";
 import { startLeagueSeason } from "./startSeason";
+import { settlePendingBetsOnFinalGames } from "./settleGame";
 
 // Tuesday 11:00 AM UTC — resolve last week, distribute allowances for new week
 const RESOLVE_SCHEDULE = "0 11 * * 2";
@@ -166,10 +167,13 @@ async function runScoreSync() {
   const hasActiveGame = ((week as any).games as any[]).some(
     (g: any) => new Date(g.gameDate) <= now && g.status !== "FINAL" && g.status !== "CANCELLED"
   );
-  if (!hasActiveGame) return;
 
   try {
-    await syncScores(week.id);
+    if (hasActiveGame) await syncScores(week.id);
+    // Settle bets on any game that has gone FINAL so winnings are re-bettable
+    // on later games in the same week (runs even after the last game finishes,
+    // so a settle missed during a restart still lands before Tuesday's resolve)
+    await settlePendingBetsOnFinalGames(week.id);
   } catch (err) {
     console.error(`[cron] Score sync failed for week ${week.number}:`, err);
   }

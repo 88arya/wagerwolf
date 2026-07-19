@@ -195,9 +195,10 @@ export async function settlePick(pickId: string) {
   }) as any;
   if (!pick || pick.outcome !== "PENDING" || pick.prop.result == null) return;
 
+  const effectiveLine = pick.altLine ?? pick.prop.line;
   const won =
-    (pick.direction === "OVER" && pick.prop.result > pick.prop.line) ||
-    (pick.direction === "UNDER" && pick.prop.result < pick.prop.line);
+    (pick.direction === "OVER" && pick.prop.result > effectiveLine) ||
+    (pick.direction === "UNDER" && pick.prop.result < effectiveLine);
 
   const profit = won ? calcProfit(pick.stake, pick.odds) : 0;
 
