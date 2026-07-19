@@ -8,6 +8,10 @@ import TeamLogo from "@/components/TeamLogo";
 const STRIP_BG = "#F5F7FA";
 const STRIP_BG_HOVER = "var(--surface-4)";
 
+function fmtOdds(american: number): string {
+  return american > 0 ? `+${american}` : `${american}`;
+}
+
 export default function GamesStrip({ leagueId, interactive = true }: { leagueId: string; interactive?: boolean }) {
   const router = useRouter();
   const [week, setWeek] = useState<any>(null);
@@ -95,6 +99,8 @@ export default function GamesStrip({ leagueId, interactive = true }: { leagueId:
               const isLive = game.status === "IN_PROGRESS" ||
                 (game.status !== "FINAL" && game.status !== "CANCELLED" && game.gameDate && new Date(game.gameDate) <= now);
               const isScheduled = !isLive && game.status !== "FINAL" && game.status !== "CANCELLED";
+              const awayML = isScheduled ? game.gameLines?.find((l: any) => l.market === "MONEYLINE_AWAY") : null;
+              const homeML = isScheduled ? game.gameLines?.find((l: any) => l.market === "MONEYLINE_HOME") : null;
               return (
                 <div key={game.id}
                   onClick={interactive ? () => router.push(`/leagues/${leagueId}/bet?gameId=${game.id}`) : undefined}
@@ -146,14 +152,22 @@ export default function GamesStrip({ leagueId, interactive = true }: { leagueId:
                         <TeamLogo team={game.awayTeam} size={20} plain />
                         <span style={{ fontWeight: 700, fontSize: "0.75rem", color: "var(--text)" }}>{game.awayTeam}</span>
                       </div>
-                      {(isLive || game.status === "FINAL") && <span style={{ fontSize: "0.75rem", fontWeight: 700, fontVariantNumeric: "tabular-nums", color: "var(--text)" }}>{game.awayScore}</span>}
+                      {(isLive || game.status === "FINAL") ? (
+                        <span style={{ fontSize: "0.75rem", fontWeight: 700, fontVariantNumeric: "tabular-nums", color: "var(--text)" }}>{game.awayScore}</span>
+                      ) : awayML ? (
+                        <span style={{ fontSize: "0.7rem", fontWeight: 550, fontVariantNumeric: "tabular-nums", color: "var(--text)" }}>{fmtOdds(awayML.odds)}</span>
+                      ) : null}
                     </div>
                     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 7 }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
                         <TeamLogo team={game.homeTeam} size={20} plain />
                         <span style={{ fontWeight: 700, fontSize: "0.75rem", color: "var(--text)" }}>{game.homeTeam}</span>
                       </div>
-                      {(isLive || game.status === "FINAL") && <span style={{ fontSize: "0.75rem", fontWeight: 700, fontVariantNumeric: "tabular-nums", color: "var(--text)" }}>{game.homeScore}</span>}
+                      {(isLive || game.status === "FINAL") ? (
+                        <span style={{ fontSize: "0.75rem", fontWeight: 700, fontVariantNumeric: "tabular-nums", color: "var(--text)" }}>{game.homeScore}</span>
+                      ) : homeML ? (
+                        <span style={{ fontSize: "0.7rem", fontWeight: 550, fontVariantNumeric: "tabular-nums", color: "var(--text)" }}>{fmtOdds(homeML.odds)}</span>
+                      ) : null}
                     </div>
                   </div>
                 </div>
