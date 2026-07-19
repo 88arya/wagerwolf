@@ -91,13 +91,13 @@ export default function LeagueNav({ leagueId }: { leagueId: string }) {
     {
       label: "LEAGUE",
       links: [
-        { label: "League Home",     href: base },
+        { label: "Home",            href: base },
         { label: "Scoreboard",      href: `${base}/scoreboard` },
         { label: "Standings",       href: `${base}/standings` },
         { label: "Members",         href: `${base}/members` },
         { label: "Bracket",         href: `${base}/bracket` },
         { label: "Schedule",        href: `${base}/schedule` },
-        { label: "League Settings", href: `${base}/settings` },
+        { label: "Settings",        href: `${base}/settings` },
       ],
     },
     {
@@ -115,7 +115,10 @@ export default function LeagueNav({ leagueId }: { leagueId: string }) {
     return pathname.startsWith(href);
   }
 
+  const activeGroup = seasonStarted ? groups.find(g => g.links.some(l => isActive(l.href))) : null;
+
   return (
+    <>
     <nav className="nav" style={{ gap: 0, padding: "0 300px" }}>
 
       {/* Left: logo + grouped nav links */}
@@ -129,7 +132,6 @@ export default function LeagueNav({ leagueId }: { leagueId: string }) {
         {seasonStarted ? (
           <>
             {groups.map((group) => {
-              const groupActive = group.links.some(l => isActive(l.href));
               const isHovered = hoveredGroup === group.label;
               return (
                 <div
@@ -153,7 +155,7 @@ export default function LeagueNav({ leagueId }: { leagueId: string }) {
                     <span style={{
                       display: "flex",
                       alignItems: "center",
-                      boxShadow: groupActive || isHovered ? `inset 0 -2.5px 0 ${ACCENT}` : "none",
+                      boxShadow: isHovered ? "inset 0 -2.5px 0 var(--text)" : "none",
                       transition: "box-shadow 0.12s",
                     }}>
                       {group.label}
@@ -293,5 +295,54 @@ export default function LeagueNav({ leagueId }: { leagueId: string }) {
 
       </div>
     </nav>
+
+    {/* Sub-nav extension: tabs of the active group */}
+    {activeGroup && (
+      <div style={{
+        flexShrink: 0,
+        background: "#fff",
+        borderBottom: "1px solid var(--border)",
+        padding: "0 300px",
+        display: "flex",
+        alignItems: "stretch",
+        gap: 26,
+        height: 40,
+        zIndex: 150,
+        position: "relative",
+      }}>
+        <div style={{ position: "absolute", top: 0, left: 300, right: 300, height: 1, background: "var(--border)" }} />
+        {activeGroup.links.map(({ label, href }) => {
+          const active = isActive(href);
+          return (
+            <Link
+              key={href}
+              href={href}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                fontSize: "0.8rem",
+                fontWeight: active ? 700 : 500,
+                color: active ? "var(--text)" : "var(--text-3)",
+                textDecoration: "none",
+                whiteSpace: "nowrap",
+                transition: "color 0.12s",
+              }}
+              onMouseEnter={e => { if (!active) (e.currentTarget as HTMLAnchorElement).style.color = "var(--text)"; }}
+              onMouseLeave={e => { if (!active) (e.currentTarget as HTMLAnchorElement).style.color = "var(--text-3)"; }}
+            >
+              <span style={{
+                display: "flex",
+                alignItems: "center",
+                height: "100%",
+                boxShadow: active ? "inset 0 -1.25px 0 var(--text)" : "none",
+              }}>
+                {label}
+              </span>
+            </Link>
+          );
+        })}
+      </div>
+    )}
+    </>
   );
 }
