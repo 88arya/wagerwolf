@@ -51,6 +51,26 @@ function propBlockOdds(baseOdds: number, baseLine: number, altLine: number, stat
   return Math.max(-500, Math.min(500, baseOdds - Math.round(favSteps * 15)));
 }
 
+// Index into PROP_OFFSETS whose Over odds land closest to even money (+100)
+function closestToEvenOffsetIdx(prop: any): number {
+  const step = propStep(prop.statType);
+  let bestIdx = 0;
+  let bestDist = Infinity;
+  PROP_OFFSETS.forEach((offset, idx) => {
+    const blockLine = propBlockLine(prop.line, offset, step);
+    const odds = propBlockOdds(prop.odds ?? -110, prop.line, blockLine, prop.statType, "OVER");
+    const dist = Math.abs(odds - 100);
+    if (dist < bestDist) { bestDist = dist; bestIdx = idx; }
+  });
+  return bestIdx;
+}
+
+function closestToEvenLine(prop: any): number {
+  const step = propStep(prop.statType);
+  const idx = closestToEvenOffsetIdx(prop);
+  return propBlockLine(prop.line, PROP_OFFSETS[idx], step);
+}
+
 const PR_BOX_W = 110;
 const PR_BOX_H = 42;
 const PR_BOX_GAP = 2;
@@ -64,12 +84,13 @@ function PropPlayerRow({ prop, slipLegs, submittedPropIds, pendingPropDirs, week
   onBet: (prop: any, direction: "OVER" | "UNDER", blockLine: number) => void;
   hitRate?: { overPct: number; sampleSize: number };
 }) {
-  const [scrollIdx, setScrollIdx] = useState(1);
-  const [hoveredBoxIdx, setHoveredBoxIdx] = useState<number | null>(null);
-
   const step = propStep(prop.statType);
   const placed = submittedPropIds.has(prop.id);
   const pendingDir = pendingPropDirs.get(prop.id);
+  const [scrollIdx, setScrollIdx] = useState(() => {
+    const bestIdx = closestToEvenOffsetIdx(prop);
+    return Math.min(2, Math.max(0, bestIdx - 1));
+  });
   const visibleIndices = [scrollIdx, scrollIdx + 1, scrollIdx + 2];
 
   function isDirBlocked(dir: "OVER" | "UNDER"): boolean {
@@ -105,16 +126,23 @@ function PropPlayerRow({ prop, slipLegs, submittedPropIds, pendingPropDirs, week
             </div>
           )}
         </div>
-        <div style={{ flex: 1, minWidth: 0, fontWeight: 400, fontSize: "0.8rem", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-          {prop.player?.name}{prop.player?.position && <span style={{ color: "var(--text-3)", marginLeft: 4 }}>· {prop.player.position}</span>}
-          {placed && <span style={{ marginLeft: 5, fontSize: "0.6rem", color: "var(--win)", fontWeight: 700 }}>✓</span>}
-          {hitRate && hitRate.sampleSize >= 3 && (
-            <span style={{
-              marginLeft: 6, fontSize: "0.58rem", fontWeight: 700,
-              color: hitRate.overPct >= 55 ? "var(--win)" : hitRate.overPct <= 45 ? "var(--loss)" : "var(--text-3)",
-            }}>
-              O {hitRate.overPct}%
-            </span>
+        <div style={{ flex: 1, minWidth: 0, overflow: "hidden" }}>
+          <div style={{ fontWeight: 400, fontSize: "0.8rem", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", lineHeight: 1.25 }}>
+            {prop.player?.name}
+            {placed && <span style={{ marginLeft: 5, fontSize: "0.6rem", color: "var(--win)", fontWeight: 700 }}>✓</span>}
+            {hitRate && hitRate.sampleSize >= 3 && (
+              <span style={{
+                marginLeft: 6, fontSize: "0.58rem", fontWeight: 700,
+                color: hitRate.overPct >= 55 ? "var(--win)" : hitRate.overPct <= 45 ? "var(--loss)" : "var(--text-3)",
+              }}>
+                O {hitRate.overPct}%
+              </span>
+            )}
+          </div>
+          {prop.player?.position && (
+            <div style={{ fontSize: "0.68rem", color: "var(--text-3)", lineHeight: 1.25, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {prop.player.position}{prop.player?.jersey && ` #${prop.player.jersey}`}
+            </div>
           )}
         </div>
       </div>
@@ -122,7 +150,7 @@ function PropPlayerRow({ prop, slipLegs, submittedPropIds, pendingPropDirs, week
       {/* Arrow + 3 boxes + Arrow */}
       <div style={{ flexShrink: 0, display: "flex", alignItems: "center", gap: 3 }}>
         <button type="button"
-          onClick={() => { setScrollIdx(s => Math.max(0, s - 1)); setHoveredBoxIdx(null); }}
+          onClick={() => setScrollIdx(s => Math.max(0, s - 1))}
           style={{ width: 16, height: PR_BOX_H, background: "none", border: "none", padding: 0, cursor: scrollIdx > 0 ? "pointer" : "default", color: scrollIdx > 0 ? "var(--text-2)" : "transparent", fontSize: "1rem", display: "flex", alignItems: "center", justifyContent: "center" }}
         >‹</button>
 
@@ -130,105 +158,45 @@ function PropPlayerRow({ prop, slipLegs, submittedPropIds, pendingPropDirs, week
           {visibleIndices.map((offsetIdx) => {
             const offset = PROP_OFFSETS[offsetIdx];
             const blockLine = propBlockLine(prop.line, offset, step);
-            const isHovered = hoveredBoxIdx === offsetIdx;
+            const plusLine = Math.round((blockLine + 0.5) * 100) / 100;
             const overLeg = getActiveLeg("OVER", blockLine);
-            const underLeg = getActiveLeg("UNDER", blockLine);
-            const hasSelection = !!(overLeg || underLeg);
-
+            const isSelected = !!overLeg;
             const overOdds = propBlockOdds(prop.odds ?? -110, prop.line, blockLine, prop.statType, "OVER");
-            const underOdds = propBlockOdds(prop.odds ?? -110, prop.line, blockLine, prop.statType, "UNDER");
-            const baseOdds = hasSelection ? (overLeg ? overOdds : underOdds) : (prop.odds ?? -110);
-            const topLabel = hasSelection ? (overLeg ? "O" : "U") + " " + blockLine : String(blockLine);
-
-            const overBlocked = isDirBlocked("OVER");
-            const underBlocked = isDirBlocked("UNDER");
-            const fullyBlocked = overBlocked && underBlocked && !hasSelection;
-            const canHover = !weekLocked && !hasSelection && !fullyBlocked;
+            const blocked = isDirBlocked("OVER") && !isSelected;
+            const clickable = !weekLocked && !blocked;
 
             return (
-              <div key={offsetIdx}
+              <button key={offsetIdx} type="button"
+                disabled={!clickable}
+                onClick={() => { if (clickable) onBet(prop, "OVER", blockLine); }}
                 style={{
                   position: "relative", width: PR_BOX_W, height: PR_BOX_H, borderRadius: 4, overflow: "hidden", flexShrink: 0,
-                  cursor: hasSelection ? "pointer" : "default",
-                }}
-                onMouseEnter={() => { if (canHover) setHoveredBoxIdx(offsetIdx); }}
-                onMouseLeave={() => setHoveredBoxIdx(null)}
-                onClick={hasSelection ? () => { onBet(prop, overLeg ? "OVER" : "UNDER", blockLine); } : undefined}
-              >
-                {/* Default layer */}
-                <div style={{
-                  position: "absolute", inset: 0, boxSizing: "border-box",
+                  border: "none", padding: 0, outline: "none",
+                  cursor: clickable ? "pointer" : "default",
+                  background: isSelected ? "var(--accent-dim)" : "var(--surface-3)",
                   display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 4,
-                  background: hasSelection ? "var(--accent-dim)" : fullyBlocked ? "var(--surface-2)" : "var(--surface-3)",
-                  border: hasSelection ? "1.5px solid var(--accent)" : "none",
-                  borderRadius: 4,
-                  opacity: (canHover && isHovered) ? 0 : 1,
-                  transform: (canHover && isHovered) ? "scale(0.88)" : "scale(1)",
-                  transition: "opacity 0.16s ease, transform 0.16s ease",
-                  pointerEvents: "none",
                   fontVariantNumeric: "tabular-nums",
-                }}>
-                  <div style={{ fontSize: "0.62rem", fontWeight: 400, color: hasSelection ? "var(--accent)" : fullyBlocked ? "var(--text-4)" : "var(--text-2)", lineHeight: 1 }}>
-                    {topLabel}
-                  </div>
-                  <div style={{ fontSize: "0.7rem", fontWeight: 400, color: hasSelection ? "var(--accent)" : fullyBlocked ? "var(--text-4)" : "var(--accent)", lineHeight: 1 }}>
-                    {weekLocked || fullyBlocked ? "—" : fmtOdds(baseOdds)}
-                  </div>
+                }}
+              >
+                <div style={{ fontSize: "0.62rem", fontWeight: 400, color: isSelected ? "var(--accent)" : blocked ? "var(--text-4)" : "var(--text-2)", lineHeight: 1 }}>
+                  {plusLine}+
                 </div>
-
-                {/* Split layer — shown on hover, both directions always visible; blocked side is blurred */}
-                {!hasSelection && !fullyBlocked && (
+                <div style={{ fontSize: "0.7rem", fontWeight: 400, color: isSelected ? "var(--accent)" : blocked ? "var(--text-4)" : "var(--accent)", lineHeight: 1 }}>
+                  {weekLocked || blocked ? "—" : fmtOdds(overOdds)}
+                </div>
+                {blocked && (
                   <div style={{
-                    position: "absolute", inset: 0,
-                    display: "flex", gap: 1,
-                    opacity: isHovered ? 1 : 0,
-                    transition: "opacity 0.16s ease",
-                    pointerEvents: isHovered ? "auto" : "none",
-                  }}>
-                    {(["UNDER", "OVER"] as const).map((direction, i) => {
-                      const blocked = direction === "UNDER" ? underBlocked : overBlocked;
-                      const blockOdds = direction === "UNDER" ? underOdds : overOdds;
-                      return (
-                        <div key={direction} style={{
-                          flex: 1, position: "relative", overflow: "hidden",
-                          transform: isHovered ? "translateX(0)" : `translateX(${i === 0 ? "-" : ""}12px)`,
-                          transition: "transform 0.18s ease",
-                        }}>
-                          <button type="button"
-                            disabled={blocked}
-                            onClick={() => { if (!blocked) onBet(prop, direction, blockLine); }}
-                            style={{
-                              width: "100%", height: "100%", border: "none",
-                              cursor: blocked ? "default" : "pointer", padding: 0, outline: "none",
-                              background: "var(--surface-2)",
-                              display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 4,
-                            }}
-                          >
-                            <div style={{ fontSize: "0.62rem", fontWeight: 400, color: "var(--text-2)", lineHeight: 1 }}>
-                              {direction === "UNDER" ? "U" : "O"}
-                            </div>
-                            <div style={{ fontSize: "0.7rem", fontWeight: 400, color: "var(--accent)", fontVariantNumeric: "tabular-nums", lineHeight: 1 }}>
-                              {fmtOdds(blockOdds)}
-                            </div>
-                          </button>
-                          {blocked && (
-                            <div style={{
-                              position: "absolute", inset: 0, pointerEvents: "none",
-                              background: "repeating-linear-gradient(45deg, rgba(0,0,0,0.045) 0px, rgba(0,0,0,0.045) 1.5px, transparent 1.5px, transparent 7px)",
-                            }} />
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
+                    position: "absolute", inset: 0, pointerEvents: "none",
+                    background: "repeating-linear-gradient(45deg, rgba(0,0,0,0.045) 0px, rgba(0,0,0,0.045) 1.5px, transparent 1.5px, transparent 7px)",
+                  }} />
                 )}
-              </div>
+              </button>
             );
           })}
         </div>
 
         <button type="button"
-          onClick={() => { setScrollIdx(s => Math.min(2, s + 1)); setHoveredBoxIdx(null); }}
+          onClick={() => setScrollIdx(s => Math.min(2, s + 1))}
           style={{ width: 16, height: PR_BOX_H, background: "none", border: "none", padding: 0, cursor: scrollIdx < 2 ? "pointer" : "default", color: scrollIdx < 2 ? "var(--text-2)" : "transparent", fontSize: "1rem", display: "flex", alignItems: "center", justifyContent: "center" }}
         >›</button>
       </div>
@@ -260,6 +228,15 @@ export default function BetPage({ params }: PageProps<"/leagues/[leagueId]/bet">
   const [altSpreadIdx, setAltSpreadIdx] = useState(0);
   const [altTotalIdx, setAltTotalIdx] = useState(0);
   const [hitRates, setHitRates] = useState<Record<string, { overPct: number; sampleSize: number }>>({});
+  const [collapsedMarkets, setCollapsedMarkets] = useState<Set<string>>(new Set());
+
+  function toggleMarketCollapsed(statType: string) {
+    setCollapsedMarkets(prev => {
+      const next = new Set(prev);
+      if (next.has(statType)) next.delete(statType); else next.add(statType);
+      return next;
+    });
+  }
   const altSpreadScrollRef = useRef<HTMLDivElement | null>(null);
   const altTotalScrollRef = useRef<HTMLDivElement | null>(null);
 
@@ -373,6 +350,17 @@ export default function BetPage({ params }: PageProps<"/leagues/[leagueId]/bet">
 
   useEffect(() => { setAltSpreadIdx(0); setAltTotalIdx(0); }, [selectedGame?.id]);
 
+  // React to gameId changing in the URL after initial mount (e.g. clicking a different
+  // game in the persistent top GamesStrip while already on this page) — the load effect
+  // above only runs once, so it can't pick up a later query-param change on its own.
+  useEffect(() => {
+    const gid = searchParams.get("gameId");
+    if (!gid || !games.length) return;
+    if (selectedGame?.id === gid) return;
+    const target = games.find((g: any) => g.id === gid);
+    if (target) setSelectedGame(target);
+  }, [searchParams, games]);
+
   const OPPOSITE_MARKET: Record<string, string> = {
     MONEYLINE_HOME: "MONEYLINE_AWAY", MONEYLINE_AWAY: "MONEYLINE_HOME",
     SPREAD_HOME: "SPREAD_AWAY", SPREAD_AWAY: "SPREAD_HOME",
@@ -428,14 +416,25 @@ export default function BetPage({ params }: PageProps<"/leagues/[leagueId]/bet">
   }
 
   function renderMarketCard(statType: string, props: any[]) {
+    const collapsed = collapsedMarkets.has(statType);
     return (
       <div key={statType} className="card" style={{ marginBottom: 8, border: "none", padding: 0 }}>
-        <div style={{ padding: "10px 12px 8px" }}>
+        <div style={{ padding: "10px 12px 8px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <div style={{ fontSize: "0.75rem", fontWeight: 700, color: "var(--text)" }}>
-            {fmtStatType(statType)} O/U
+            {fmtStatType(statType)}
           </div>
+          <button type="button"
+            onClick={() => toggleMarketCollapsed(statType)}
+            aria-label={collapsed ? "Expand" : "Collapse"}
+            style={{ background: "none", border: "none", padding: 4, margin: "-4px", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text)" }}
+          >
+            <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"
+              style={{ transform: collapsed ? "rotate(-90deg)" : "rotate(0deg)", transition: "transform 0.15s" }}>
+              <polyline points="1,3 5,7 9,3" />
+            </svg>
+          </button>
         </div>
-        {weekLocked
+        {!collapsed && (weekLocked
           ? <div style={{ textAlign: "center", color: "var(--text-3)", fontSize: "0.82rem", padding: "10px 12px" }}>Betting locked</div>
           : <div style={{ display: "flex", flexDirection: "column", gap: PR_BOX_GAP, paddingBottom: 8 }}>
               {props.map((prop) => (
@@ -451,7 +450,7 @@ export default function BetPage({ params }: PageProps<"/leagues/[leagueId]/bet">
                 />
               ))}
             </div>
-        }
+        )}
       </div>
     );
   }
@@ -477,9 +476,11 @@ export default function BetPage({ params }: PageProps<"/leagues/[leagueId]/bet">
       if (!groups[p.statType]) groups[p.statType] = [];
       groups[p.statType].push(p);
     }
-    return Object.entries(groups).map(([statType, groupProps]) =>
-      renderMarketCard(statType, groupProps)
-    );
+    return Object.entries(groups).map(([statType, groupProps]) => {
+      // Order players by their line closest to even odds, largest to smallest
+      const sorted = [...groupProps].sort((a, b) => closestToEvenLine(b) - closestToEvenLine(a));
+      return renderMarketCard(statType, sorted);
+    });
   }
 
   // ── Selected game view ──────────────────────────────────────────────
