@@ -124,6 +124,7 @@ export const players = pgTable("Player", {
   position: text("position").notNull(),
   espnId:   text("espnId").unique(),
   imageUrl: text("imageUrl"),
+  jersey:   text("jersey"),
 }, (t) => ({
   nameTeamUniq: uniqueIndex("Player_name_team_key").on(t.name, t.team),
 }));

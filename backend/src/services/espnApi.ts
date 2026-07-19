@@ -37,6 +37,21 @@ export async function searchEspnPlayerId(name: string): Promise<string | null> {
   }
 }
 
+// Jersey number lives on the "core" ESPN API, not the "site" API used elsewhere in this file
+const CORE = "https://sports.core.api.espn.com/v3/sports/football/nfl";
+
+export async function getAthleteJersey(espnId: string): Promise<string | null> {
+  try {
+    const res = await fetch(`${CORE}/athletes/${espnId}`);
+    if (!res.ok) return null;
+    const data = await res.json();
+    return data.jersey ?? null;
+  } catch (e) {
+    console.error(`ESPN jersey lookup error for athlete ${espnId}:`, e);
+    return null;
+  }
+}
+
 export interface ESPNGame {
   espnId: string;
   homeTeam: string;

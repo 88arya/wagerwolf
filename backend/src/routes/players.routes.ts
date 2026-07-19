@@ -3,7 +3,7 @@ import { db } from "../db/db";
 import { eq, asc } from "drizzle-orm";
 import { players } from "../db/schema";
 import { requireAuth, requireCron } from "../middleware/auth";
-import { searchEspnPlayerId, espnImageUrl } from "../services/espnApi";
+import { searchEspnPlayerId, espnImageUrl, getAthleteJersey } from "../services/espnApi";
 
 const router = Router();
 
@@ -30,24 +30,24 @@ router.get("/", requireAuth, async (req: any, res: any) => {
   }
 });
 
-// Lazy image resolution: espnId in DB → ESPN search by name → store for next time
+// Lazy image + jersey resolution: espnId in DB → ESPN search by name → store for next time
 router.get("/:id/image", requireAuth, async (req: any, res: any) => {
   try {
     const [player] = await db.select().from(players).where(eq(players.id, req.params.id)).limit(1);
     if (!player) { res.status(404).json({ error: "Not found" }); return; }
 
-    if (player.espnId) {
-      res.json({ imageUrl: espnImageUrl(player.espnId) });
-      return;
-    }
+    let espnId = player.espnId;
+    if (!espnId) espnId = await searchEspnPlayerId(player.name);
 
-    const espnId = await searchEspnPlayerId(player.name);
-    if (espnId) {
-      await db.update(players).set({ espnId, imageUrl: espnImageUrl(espnId) }).where(eq(players.id, player.id));
-      res.json({ imageUrl: espnImageUrl(espnId) });
-    } else {
-      res.json({ imageUrl: null });
+    if (!espnId) { res.json({ imageUrl: null, jersey: null }); return; }
+
+    let jersey = player.jersey;
+    if (!jersey) jersey = await getAthleteJersey(espnId);
+
+    if (espnId !== player.espnId || jersey !== player.jersey) {
+      await db.update(players).set({ espnId, imageUrl: espnImageUrl(espnId), jersey }).where(eq(players.id, player.id));
     }
+    res.json({ imageUrl: espnImageUrl(espnId), jersey });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
