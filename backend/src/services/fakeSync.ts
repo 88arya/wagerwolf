@@ -138,6 +138,22 @@ export const FAKE_PLAYERS: Array<{ name: string; team: string; position: string 
   { name: "Za'Darius Smith", team: "CLE", position: "DE" },
   { name: "Shaquil Barrett", team: "TB", position: "LB" },
   { name: "Harold Landry", team: "TEN", position: "LB" },
+  { name: "Zaven Collins", team: "ARI", position: "LB" },
+  { name: "Jadeveon Clowney", team: "CAR", position: "DE" },
+  { name: "Montez Sweat", team: "CHI", position: "DE" },
+  { name: "Trey Hendrickson", team: "CIN", position: "DE" },
+  { name: "Nik Bonitto", team: "DEN", position: "LB" },
+  { name: "Laiatu Latu", team: "IND", position: "DE" },
+  { name: "George Karlaftis", team: "KC", position: "DE" },
+  { name: "Khalil Mack", team: "LAC", position: "DE" },
+  { name: "Jared Verse", team: "LAR", position: "DE" },
+  { name: "Bradley Chubb", team: "MIA", position: "DE" },
+  { name: "Jonathan Greenard", team: "MIN", position: "DE" },
+  { name: "Keion White", team: "NE", position: "DE" },
+  { name: "Cameron Jordan", team: "NO", position: "DE" },
+  { name: "Zack Baun", team: "PHI", position: "LB" },
+  { name: "Boye Mafe", team: "SEA", position: "DE" },
+  { name: "Frankie Luvu", team: "WSH", position: "LB" },
   // Kickers
   { name: "Justin Tucker", team: "BAL", position: "K" },
   { name: "Harrison Butker", team: "KC", position: "K" },
@@ -272,19 +288,66 @@ function fakeAltGameLines(
   return altLines;
 }
 
+// Real FanDuel lines for actual NFL Week 1-12 2026 games, pulled live via SharpAPI on 2026-07-18.
+// Used as a deterministic pool so synthetic matchups get real, properly-correlated
+// ML/spread/total numbers instead of Math.random() output.
+type RealLineTemplate = {
+  homeML: number; awayML: number;
+  homeSpread: number; homeSpreadOdds: number;
+  awaySpread: number; awaySpreadOdds: number;
+  total: number; overOdds: number; underOdds: number;
+};
+
+const REAL_GAME_LINES: RealLineTemplate[] = [
+  { homeML: -198, awayML: 166, homeSpread: -4.5, homeSpreadOdds: -102, awaySpread: 4.5, awaySpreadOdds: -120, total: 44.5, overOdds: -115, underOdds: -105 },
+  { homeML: -210, awayML: 176, homeSpread: -3.5, homeSpreadOdds: -115, awaySpread: 3.5, awaySpreadOdds: -105, total: 49.5, overOdds: -102, underOdds: -120 },
+  { homeML: -106, awayML: -110, homeSpread: 1.5, homeSpreadOdds: -122, awaySpread: -1.5, awaySpreadOdds: 100, total: 44.5, overOdds: -112, underOdds: -108 },
+  { homeML: 118, awayML: -138, homeSpread: 2.5, homeSpreadOdds: -105, awaySpread: -2.5, awaySpreadOdds: -115, total: 45.5, overOdds: -110, underOdds: -110 },
+  { homeML: -210, awayML: 176, homeSpread: -3.5, homeSpreadOdds: -115, awaySpread: 3.5, awaySpreadOdds: -105, total: 51.5, overOdds: -112, underOdds: -108 },
+  { homeML: -405, awayML: 320, homeSpread: -7.5, homeSpreadOdds: -115, awaySpread: 7.5, awaySpreadOdds: -105, total: 40.5, overOdds: -118, underOdds: -104 },
+  { homeML: 168, awayML: -200, homeSpread: 3.5, homeSpreadOdds: -105, awaySpread: -3.5, awaySpreadOdds: -115, total: 48.5, overOdds: -110, underOdds: -110 },
+  { homeML: -146, awayML: 124, homeSpread: -2.5, homeSpreadOdds: -120, awaySpread: 2.5, awaySpreadOdds: -102, total: 41.5, overOdds: -105, underOdds: -115 },
+  { homeML: -134, awayML: 116, homeSpread: -2.5, homeSpreadOdds: -110, awaySpread: 2.5, awaySpreadOdds: -110, total: 38.5, overOdds: -110, underOdds: -110 },
+  { homeML: -370, awayML: 295, homeSpread: -7, homeSpreadOdds: -115, awaySpread: 7, awaySpreadOdds: -105, total: 48.5, overOdds: -115, underOdds: -105 },
+  { homeML: -215, awayML: 180, homeSpread: -4.5, homeSpreadOdds: -105, awaySpread: 4.5, awaySpreadOdds: -115, total: 47.5, overOdds: -115, underOdds: -105 },
+  { homeML: -104, awayML: -112, homeSpread: 1.5, homeSpreadOdds: -120, awaySpread: -1.5, awaySpreadOdds: -102, total: 45.5, overOdds: -115, underOdds: -105 },
+  { homeML: -590, awayML: 440, homeSpread: -10.5, homeSpreadOdds: -106, awaySpread: 10.5, awaySpreadOdds: -114, total: 46.5, overOdds: -110, underOdds: -110 },
+  { homeML: -210, awayML: 176, homeSpread: -3.5, homeSpreadOdds: -120, awaySpread: 3.5, awaySpreadOdds: -102, total: 40.5, overOdds: -110, underOdds: -110 },
+  { homeML: 128, awayML: -152, homeSpread: 2.5, homeSpreadOdds: -102, awaySpread: -2.5, awaySpreadOdds: -120, total: 47.5, overOdds: -115, underOdds: -105 },
+  { homeML: -146, awayML: 124, homeSpread: -2.5, homeSpreadOdds: -118, awaySpread: 2.5, awaySpreadOdds: -104, total: 43.5, overOdds: -104, underOdds: -118 },
+  { homeML: -116, awayML: -102, homeSpread: -1.5, homeSpreadOdds: -105, awaySpread: 1.5, awaySpreadOdds: -115, total: 49.5, overOdds: -110, underOdds: -110 },
+  { homeML: 106, awayML: -124, homeSpread: 1.5, homeSpreadOdds: -112, awaySpread: -1.5, awaySpreadOdds: -108, total: 44.5, overOdds: -102, underOdds: -120 },
+  { homeML: -106, awayML: -110, homeSpread: -1.5, homeSpreadOdds: 100, awaySpread: 1.5, awaySpreadOdds: -122, total: 40.5, overOdds: -115, underOdds: -105 },
+  { homeML: 108, awayML: -126, homeSpread: 1.5, homeSpreadOdds: -105, awaySpread: -1.5, awaySpreadOdds: -115, total: 40.5, overOdds: -115, underOdds: -105 },
+  { homeML: 188, awayML: -225, homeSpread: 3.5, homeSpreadOdds: -102, awaySpread: -3.5, awaySpreadOdds: -120, total: 49.5, overOdds: -105, underOdds: -115 },
+  { homeML: -210, awayML: 176, homeSpread: -4.5, homeSpreadOdds: -104, awaySpread: 4.5, awaySpreadOdds: -118, total: 47.5, overOdds: -105, underOdds: -115 },
+  { homeML: -240, awayML: 198, homeSpread: -5.5, homeSpreadOdds: -105, awaySpread: 5.5, awaySpreadOdds: -115, total: 48.5, overOdds: -108, underOdds: -112 },
+  { homeML: -134, awayML: 114, homeSpread: -2.5, homeSpreadOdds: -110, awaySpread: 2.5, awaySpreadOdds: -110, total: 53.5, overOdds: -112, underOdds: -108 },
+  { homeML: -118, awayML: 100, homeSpread: -1.5, homeSpreadOdds: -108, awaySpread: 1.5, awaySpreadOdds: -112, total: 49.5, overOdds: -115, underOdds: -105 },
+  { homeML: -148, awayML: 126, homeSpread: -2.5, homeSpreadOdds: -118, awaySpread: 2.5, awaySpreadOdds: -104, total: 50.5, overOdds: -105, underOdds: -115 },
+  { homeML: 104, awayML: -122, homeSpread: 1.5, homeSpreadOdds: -110, awaySpread: -1.5, awaySpreadOdds: -110, total: 39.5, overOdds: -110, underOdds: -110 },
+  { homeML: -130, awayML: 110, homeSpread: -2.5, homeSpreadOdds: -105, awaySpread: 2.5, awaySpreadOdds: -115, total: 37.5, overOdds: -120, underOdds: -102 },
+  { homeML: -118, awayML: 100, homeSpread: -1.5, homeSpreadOdds: -105, awaySpread: 1.5, awaySpreadOdds: -115, total: 47.5, overOdds: -112, underOdds: -108 },
+  { homeML: 112, awayML: -132, homeSpread: 1.5, homeSpreadOdds: -105, awaySpread: -1.5, awaySpreadOdds: -115, total: 46.5, overOdds: -118, underOdds: -104 },
+  { homeML: -104, awayML: -112, homeSpread: 1.5, homeSpreadOdds: -118, awaySpread: -1.5, awaySpreadOdds: -104, total: 45.5, overOdds: -110, underOdds: -110 },
+];
+
+function hashTeams(homeTeam: string, awayTeam: string): number {
+  const s = `${homeTeam}|${awayTeam}`;
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0;
+  return Math.abs(h);
+}
+
 export function fakeLinesForGame(homeTeam: string, awayTeam: string) {
-  const total = 42 + Math.floor(Math.random() * 13);
-  const homeSpread = parseFloat((-(Math.random() * 10 - 1)).toFixed(1));
-  const awaySpread = parseFloat((-homeSpread).toFixed(1));
-  const homeML = homeSpread < 0 ? -(130 + Math.floor(Math.random() * 50)) : 115 + Math.floor(Math.random() * 50);
-  const awayML = homeSpread < 0 ? 115 + Math.floor(Math.random() * 50) : -(130 + Math.floor(Math.random() * 50));
+  const t = REAL_GAME_LINES[hashTeams(homeTeam, awayTeam) % REAL_GAME_LINES.length];
   return [
-    { market: "MONEYLINE_HOME", label: `${homeTeam} ML`, odds: homeML, line: null as number | null },
-    { market: "MONEYLINE_AWAY", label: `${awayTeam} ML`, odds: awayML, line: null as number | null },
-    { market: "SPREAD_HOME", label: `${homeTeam} ${homeSpread > 0 ? "+" : ""}${homeSpread}`, odds: -110, line: homeSpread as number | null },
-    { market: "SPREAD_AWAY", label: `${awayTeam} ${awaySpread > 0 ? "+" : ""}${awaySpread}`, odds: -110, line: awaySpread as number | null },
-    { market: "TOTAL_OVER", label: `Over ${total}.5`, odds: -110, line: (total + 0.5) as number | null },
-    { market: "TOTAL_UNDER", label: `Under ${total}.5`, odds: -110, line: (total + 0.5) as number | null },
+    { market: "MONEYLINE_HOME", label: `${homeTeam} ML`, odds: t.homeML, line: null as number | null },
+    { market: "MONEYLINE_AWAY", label: `${awayTeam} ML`, odds: t.awayML, line: null as number | null },
+    { market: "SPREAD_HOME", label: `${homeTeam} ${t.homeSpread > 0 ? "+" : ""}${t.homeSpread}`, odds: t.homeSpreadOdds, line: t.homeSpread as number | null },
+    { market: "SPREAD_AWAY", label: `${awayTeam} ${t.awaySpread > 0 ? "+" : ""}${t.awaySpread}`, odds: t.awaySpreadOdds, line: t.awaySpread as number | null },
+    { market: "TOTAL_OVER", label: `Over ${t.total}`, odds: t.overOdds, line: t.total as number | null },
+    { market: "TOTAL_UNDER", label: `Under ${t.total}`, odds: t.underOdds, line: t.total as number | null },
   ];
 }
 
