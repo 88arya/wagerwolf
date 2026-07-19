@@ -1,11 +1,10 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { Globe, Lock, Plus } from "lucide-react";
-import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
-import GamesStrip from "@/components/GamesStrip";
 import HelmetAvatar, { HELMET_COLORS } from "@/components/HelmetAvatar";
 
 const NFL_LOCATIONS = [
@@ -31,20 +30,12 @@ function randomLeagueName() {
   return `${loc} ${nick} ${new Date().getFullYear()} League`;
 }
 
-function UserIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-      <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2" />
-      <circle cx="12" cy="7" r="4" />
-    </svg>
-  );
-}
-
 export default function LeaguesPage() {
   const router = useRouter();
   const [memberships, setMemberships] = useState<any[]>([]);
   const [pendingMemberships, setPendingMemberships] = useState<any[]>([]);
-  const [weekLeagueId, setWeekLeagueId] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [form, setForm] = useState({ name: "", weeklyAllowance: "300", maxPlayers: "10", isPublic: false, maxPublicPlayers: "0", maxBetsPerWeek: "", maxStakePerBet: "", startWeek: "1" });
   const [joinCode, setJoinCode] = useState("");
   const [error, setError] = useState("");
@@ -55,8 +46,6 @@ export default function LeaguesPage() {
     leagueId: string; displayName: string; abbreviation: string; helmetColor: string; isPending: boolean;
   } | null>(null);
   const [profileSaving, setProfileSaving] = useState(false);
-  const [profileOpen, setProfileOpen] = useState(false);
-  const profileRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const token = localStorage.getItem("token");
@@ -65,22 +54,16 @@ export default function LeaguesPage() {
     loadMemberships();
   }, []);
 
-  useEffect(() => {
-    function handler(e: MouseEvent) {
-      if (profileRef.current && !profileRef.current.contains(e.target as Node)) setProfileOpen(false);
-    }
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, []);
-
   async function loadMemberships() {
     try {
-      const ms = await api("/memberships");
-      setMemberships(ms);
-      const started = ms.find((m: any) => m.league?.seasonStarted);
-      if (started) setWeekLeagueId(started.leagueId);
-    } catch {}
-    try { setPendingMemberships(await api("/memberships/pending")); } catch {}
+      setMemberships(await api("/memberships"));
+      setPendingMemberships(await api("/memberships/pending").catch(() => []));
+      setLoadError(false);
+    } catch {
+      setLoadError(true);
+    } finally {
+      setLoading(false);
+    }
   }
 
   async function createLeague(e: React.FormEvent) {
@@ -153,57 +136,15 @@ export default function LeaguesPage() {
     }
   }
 
-  function logout() {
-    localStorage.removeItem("token");
-    localStorage.removeItem("userId");
-    localStorage.removeItem("displayName");
-    router.push("/");
-  }
-
   const playerOptions = [4, 6, 8, 10, 12, 14, 16, 18, 20];
 
   return (
     <>
-      {/* Games strip */}
-      <GamesStrip leagueId={weekLeagueId} interactive={false} />
-
-      {/* Nav */}
-      <nav className="nav" style={{ padding: "0 300px" }}>
-        <Link href="/" style={{ display: "flex", alignItems: "center", flexShrink: 0 }}>
-          <img src="/grH9m01.svg" alt="FanMark" style={{ height: 28, width: 28, objectFit: "contain" }} />
-        </Link>
-        <div style={{ marginLeft: "auto", display: "flex", alignItems: "center" }}>
-          <div ref={profileRef} style={{ position: "relative" }}>
-            <button type="button" onClick={() => setProfileOpen(o => !o)}
-              style={{ width: 32, height: 32, borderRadius: "50%", background: "var(--surface-3)", border: "1px solid var(--border-2)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-2)", cursor: "pointer", boxShadow: "none", padding: 0, flexShrink: 0 }}>
-              <UserIcon />
-            </button>
-            {profileOpen && (
-              <div style={{ position: "absolute", top: "calc(100% + 6px)", right: 0, background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "var(--radius)", boxShadow: "var(--shadow-md)", minWidth: 140, zIndex: 500, overflow: "hidden" }}>
-                <button type="button" onClick={() => { router.push("/settings"); setProfileOpen(false); }}
-                  style={{ display: "block", width: "100%", textAlign: "left", padding: "9px 14px", background: "none", border: "none", cursor: "pointer", fontSize: "0.82rem", fontWeight: 500, color: "var(--text)", boxShadow: "none", borderRadius: 0, transition: "background 0.1s" }}
-                  onMouseEnter={e => (e.currentTarget.style.background = "var(--surface-2)")}
-                  onMouseLeave={e => (e.currentTarget.style.background = "none")}>
-                  Settings
-                </button>
-                <div style={{ borderTop: "1px solid var(--border)" }} />
-                <button type="button" onClick={logout}
-                  style={{ display: "block", width: "100%", textAlign: "left", padding: "9px 14px", background: "none", border: "none", cursor: "pointer", fontSize: "0.82rem", fontWeight: 500, color: "var(--loss)", boxShadow: "none", borderRadius: 0, transition: "background 0.1s" }}
-                  onMouseEnter={e => (e.currentTarget.style.background = "var(--surface-2)")}
-                  onMouseLeave={e => (e.currentTarget.style.background = "none")}>
-                  Log out
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
-      </nav>
-
       {/* Content */}
       <div className="page-wide" style={{ display: "flex", flexDirection: "column", alignItems: "center", paddingTop: "5vh" }}>
 
         <div style={{ width: "100%", marginBottom: 16, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <div style={{ fontWeight: 900, fontSize: "1.1rem", letterSpacing: "-0.01em", color: "var(--text)" }}>Leagues</div>
+          <div style={{ fontWeight: 900, fontSize: "1.1rem", letterSpacing: "-0.01em", color: "var(--text)" }}>My Leagues</div>
           <div style={{ display: "flex", gap: 6 }}>
             {([
               { label: "Create League", icon: <Plus size={13} />, accent: true, onClick: () => { setView(view === "create" ? "menu" : "create"); setError(""); } },
@@ -220,158 +161,140 @@ export default function LeaguesPage() {
           </div>
         </div>
 
-        {/* Summary stat strip */}
-        {memberships.length > 0 && (() => {
-          const wins = memberships.reduce((s: number, m: any) => s + (m.wins ?? 0), 0);
-          const losses = memberships.reduce((s: number, m: any) => s + (m.losses ?? 0), 0);
-          const ties = memberships.reduce((s: number, m: any) => s + (m.ties ?? 0), 0);
-          const balance = memberships.reduce((s: number, m: any) => s + (m.balance ?? 0), 0);
-          const bets = memberships.reduce((s: number, m: any) => s + (m.betsThisWeek ?? 0), 0);
-          const ranked = memberships.filter((m: any) => m.rank != null);
-          const best = ranked.length > 0 ? ranked.reduce((a: any, b: any) => (a.rank <= b.rank ? a : b)) : null;
-          const total = wins + losses + ties;
-          const stats = [
-            { label: "Leagues", value: memberships.length },
-            { label: "Combined Record", value: total > 0 ? `${wins}-${losses}${ties > 0 ? `-${ties}` : ""}` : "—" },
-            { label: "Win %", value: total > 0 ? `${Math.round((wins / total) * 100)}%` : "—" },
-            { label: "Total Balance", value: `$${balance.toLocaleString()}` },
-            { label: "Bets This Week", value: bets },
-            { label: "Best Standing", value: best ? `#${best.rank}` : "—" },
-          ];
-          return (
-            <div style={{ width: "100%", display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 8, marginBottom: 20 }}>
-              {stats.map((s) => (
-                <div key={s.label} className="card" style={{ padding: "10px 12px" }}>
-                  <div style={{ fontSize: "0.55rem", color: "var(--text-3)", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.09em", marginBottom: 2 }}>{s.label}</div>
-                  <div style={{ fontSize: "1rem", fontWeight: 800, color: "var(--text)", fontVariantNumeric: "tabular-nums", letterSpacing: "-0.02em" }}>{s.value}</div>
-                </div>
-              ))}
-            </div>
-          );
-        })()}
-
         {/* Leagues table + actions */}
         {(() => {
           const rows = [...memberships, ...pendingMemberships.map((m: any) => ({ ...m, _pending: true }))];
-          const dash = <span style={{ color: "var(--text)" }}>—</span>;
+          const dash = <span style={{ color: "var(--text-3)" }}>—</span>;
           const TH = { fontSize: "0.65rem", fontWeight: 500, color: "var(--text-3)", padding: "10px 12px 8px", borderBottom: "1px solid var(--border-2)", whiteSpace: "nowrap" as const, overflow: "hidden" as const, textAlign: "left" as const, background: "transparent" };
+          const THR = { ...TH, textAlign: "right" as const };
           const TD = { fontSize: "0.78rem", fontWeight: 400, color: "var(--text)", padding: "10px 12px", borderTop: "1px solid var(--border)", fontVariantNumeric: "tabular-nums" as const, whiteSpace: "nowrap" as const, overflow: "hidden" as const };
+          const TDR = { ...TD, textAlign: "right" as const };
+          const MINI = { fontSize: "0.6rem", fontWeight: 700, letterSpacing: "0.08em", color: "var(--text-3)", textTransform: "uppercase" as const };
 
           return (
             <div style={{ width: "100%", marginBottom: 24 }}>
-              {rows.length > 0 && (
+              {loading && (
+                <div style={{ padding: "32px 0", textAlign: "center", fontSize: "0.8rem", color: "var(--text-3)" }}>Loading leagues…</div>
+              )}
+
+              {!loading && loadError && (
+                <div style={{ padding: "32px 0", textAlign: "center" }}>
+                  <div style={{ fontSize: "0.85rem", fontWeight: 600, color: "var(--text-2)", marginBottom: 8 }}>Couldn't load your leagues</div>
+                  <button type="button" onClick={() => { setLoading(true); loadMemberships(); }} style={{ padding: "6px 16px", fontSize: "0.78rem", fontWeight: 700 }}>Retry</button>
+                </div>
+              )}
+
+              {!loading && !loadError && rows.length > 0 && (
                 <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed" }}>
                   <colgroup>
-                    <col style={{ width: "22%" }} />
+                    <col style={{ width: "25%" }} />
+                    <col style={{ width: "12%" }} />
                     <col style={{ width: "11%" }} />
+                    <col style={{ width: "9%" }} />
                     <col style={{ width: "7%" }} />
-                    <col style={{ width: "6%" }} />
-                    <col style={{ width: "7%" }} />
-                    <col style={{ width: "7%" }} />
-                    <col style={{ width: "6%" }} />
-                    <col style={{ width: "6%" }} />
-                    <col style={{ width: "6%" }} />
+                    <col style={{ width: "9%" }} />
+                    <col style={{ width: "10%" }} />
                     <col style={{ width: "7%" }} />
                     <col style={{ width: "7%" }} />
-                    <col style={{ width: "8%" }} />
+                    <col style={{ width: "3%" }} />
                   </colgroup>
-                  <thead style={{ boxShadow: "0 4px 4px -2px rgba(0,0,0,0.08)" }}>
+                  <thead>
                     <tr>
-                      <th style={{ ...TH, textAlign: "left" }}>LEAGUE</th>
-                      <th style={{ ...TH, textAlign: "left" }}>YOU</th>
-                      <th style={{ ...TH, textAlign: "left" }}>BALANCE</th>
-                      <th style={{ ...TH, textAlign: "left" }}>BETS</th>
-                      <th style={{ ...TH, textAlign: "left" }}>PHASE</th>
-                      <th style={{ ...TH, textAlign: "left" }}>STANDING</th>
-                      <th style={{ ...TH, textAlign: "left" }}>W</th>
-                      <th style={{ ...TH, textAlign: "left" }}>L</th>
-                      <th style={{ ...TH, textAlign: "left" }}>T</th>
-                      <th style={{ ...TH, textAlign: "left" }}>STREAK</th>
-                      <th style={{ ...TH, textAlign: "left" }}>WIN %</th>
-                      <th style={{ ...TH }} />
+                      <th style={TH}>LEAGUE</th>
+                      <th style={TH}>YOU</th>
+                      <th style={TH}>PHASE</th>
+                      <th style={THR}>BALANCE</th>
+                      <th style={THR}>WK BETS</th>
+                      <th style={THR}>STANDING</th>
+                      <th style={THR}>RECORD</th>
+                      <th style={THR}>STREAK</th>
+                      <th style={THR}>WIN %</th>
+                      <th style={TH} aria-label="Open league" />
                     </tr>
                   </thead>
                   <tbody>
                   {rows.map((m: any) => {
                     const isPending = !!m._pending;
                     const ctx = m.weekContext;
+                    const notStarted = isPending || !ctx || ctx.phase === "waiting";
                     const wins: number = m.wins ?? 0;
                     const losses: number = m.losses ?? 0;
                     const ties: number = m.ties ?? 0;
                     const total = wins + losses + ties;
-                    const winPct = total > 0 ? Math.round((wins / total) * 100) : null;
+                    const winPct = total > 0 ? Math.round(((wins + ties / 2) / total) * 100) : null;
                     const streak: string | null = m.streak ?? null;
-                    const streakColor = !streak ? "var(--text-3)" : streak[0] === "W" ? "var(--win)" : streak[0] === "L" ? "var(--loss)" : "var(--text-2)";
-                    const playoffSize: number = m.league?.playoffSize ?? 999;
-                    const inConsolation = ctx?.phase === "playoffs" && m.rank != null && m.rank > playoffSize;
+                    const goToLeague = () => router.push(`/leagues/${m.leagueId}`);
 
                     let phaseState: string;
-                    let phaseWeek: string | null;
-                    let phaseColor: string;
-                    if (isPending) { phaseState = "Pending"; phaseWeek = null; phaseColor = "var(--pending)"; }
-                    else if (!ctx || ctx.phase === "waiting") { phaseState = "Lobby"; phaseWeek = null; phaseColor = "var(--text-3)"; }
-                    else if (ctx.phase === "ended") { phaseState = "Complete"; phaseWeek = null; phaseColor = "var(--text-3)"; }
-                    else if (inConsolation) { phaseState = "Consolation"; phaseWeek = ctx.week != null ? `Wk ${ctx.week}` : null; phaseColor = "var(--text-3)"; }
-                    else if (ctx.phase === "playoffs") { phaseState = "Playoffs"; phaseWeek = ctx.week != null ? `Wk ${ctx.week}` : null; phaseColor = "var(--pending)"; }
-                    else { phaseState = "Regular"; phaseWeek = ctx.week != null ? `Wk ${ctx.week}` : null; phaseColor = "var(--accent)"; }
+                    let phaseWeek: string | null = null;
+                    if (isPending) phaseState = "Pending";
+                    else if (!ctx || ctx.phase === "waiting") phaseState = "Lobby";
+                    else if (ctx.phase === "ended") phaseState = ctx.champion ? "Champion" : "Complete";
+                    else if (ctx.phase === "preseason") {
+                      phaseState = "Upcoming";
+                      phaseWeek = ctx.startsNflWeek != null ? `NFL Wk ${ctx.startsNflWeek}` : null;
+                    } else if (ctx.phase === "playoffs") {
+                      phaseState = ctx.alive === false ? "Eliminated" : "Playoffs";
+                      phaseWeek = ctx.alive !== false && ctx.week != null ? `Rd ${ctx.week}${ctx.total ? `/${ctx.total}` : ""}` : null;
+                    } else {
+                      phaseState = "Regular";
+                      phaseWeek = ctx.week != null ? `Wk ${ctx.week}${ctx.total ? `/${ctx.total}` : ""}` : null;
+                    }
 
                     return (
                       <tr
                         key={m.id}
-                        onClick={isPending ? undefined : () => router.push(`/leagues/${m.leagueId}`)}
+                        onClick={isPending ? undefined : goToLeague}
+                        tabIndex={isPending ? undefined : 0}
+                        onKeyDown={isPending ? undefined : e => { if (e.key === "Enter") goToLeague(); }}
                         style={{ cursor: isPending ? "default" : "pointer", opacity: isPending ? 0.6 : 1, transition: "background 0.08s" }}
                         onMouseEnter={isPending ? undefined : e => { (e.currentTarget as HTMLTableRowElement).style.background = "var(--surface-2)"; }}
                         onMouseLeave={isPending ? undefined : e => { (e.currentTarget as HTMLTableRowElement).style.background = "transparent"; }}
                       >
                         {/* League */}
-                        <td style={{ ...TD, textAlign: "left" }}>
+                        <td style={TD}>
                           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                             <div style={{ width: 5, height: 30, background: m.helmetColor ?? "var(--border-2)", flexShrink: 0 }} />
-                            <span style={{ fontWeight: 600, fontSize: "0.82rem", color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.league?.name}</span>
+                            {isPending ? (
+                              <span style={{ fontWeight: 600, fontSize: "0.82rem", color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis" }}>{m.league?.name}</span>
+                            ) : (
+                              <Link href={`/leagues/${m.leagueId}`} onClick={e => e.stopPropagation()}
+                                style={{ fontWeight: 600, fontSize: "0.82rem", color: "var(--text)", textDecoration: "none", overflow: "hidden", textOverflow: "ellipsis" }}>
+                                {m.league?.name}
+                              </Link>
+                            )}
                           </div>
                         </td>
                         {/* You */}
-                        <td style={{ ...TD, textAlign: "left" }}>
-                          {m.abbreviation && <div style={{ fontSize: "0.6rem", color: "var(--text)", fontWeight: 700, fontStyle: "italic", letterSpacing: "0.1em" }}>{m.abbreviation}</div>}
-                          <div style={{ fontSize: "0.78rem", fontWeight: 400, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis" }}>{m.displayName || "—"}</div>
-                        </td>
-                        {/* Balance */}
-                        <td style={{ ...TD, textAlign: "left" }}>
-                          {isPending ? dash : `$${(m.balance ?? 0).toLocaleString()}`}
-                        </td>
-                        {/* Bets */}
-                        <td style={{ ...TD, textAlign: "left" }}>
-                          {isPending ? dash : (m.betsThisWeek ?? 0)}
+                        <td style={TD}>
+                          {m.abbreviation && <div style={MINI}>{m.abbreviation}</div>}
+                          <div style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{m.displayName || dash}</div>
                         </td>
                         {/* Phase */}
-                        <td style={{ ...TD, textAlign: "left" }}>
-                          {phaseWeek && <div style={{ fontSize: "0.6rem", color: "var(--text)", fontWeight: 400, letterSpacing: "0.05em" }}>{phaseWeek}</div>}
-                          <div style={{ fontSize: "0.78rem", fontWeight: 400, color: "var(--text)" }}>{phaseState}</div>
+                        <td style={TD}>
+                          {phaseWeek && <div style={MINI}>{phaseWeek}</div>}
+                          <div>{phaseState}</div>
                         </td>
+                        {/* Balance */}
+                        <td style={TDR}>{notStarted ? dash : `$${(m.balance ?? 0).toLocaleString()}`}</td>
+                        {/* Bets this week */}
+                        <td style={TDR}>{notStarted ? dash : (m.betsThisWeek ?? 0)}</td>
                         {/* Standing */}
-                        <td style={{ ...TD, textAlign: "left" }}>
-                          {isPending || !m.rank ? dash : (
+                        <td style={TDR}>
+                          {notStarted || !m.rank ? dash : (
                             <span>
-                              <span style={{ fontWeight: 400 }}>#{m.rank}</span>
-                              <span style={{ fontWeight: 400, color: "var(--text)", fontSize: "0.72rem" }}> / {m.totalMembers}</span>
+                              #{m.rank}
+                              <span style={{ fontSize: "0.72rem" }}> / {m.totalMembers}</span>
                             </span>
                           )}
                         </td>
-                        {/* W */}
-                        <td style={{ ...TD, textAlign: "left" }}>{isPending ? dash : wins}</td>
-                        {/* L */}
-                        <td style={{ ...TD, textAlign: "left" }}>{isPending ? dash : losses}</td>
-                        {/* T */}
-                        <td style={{ ...TD, textAlign: "left" }}>{isPending ? dash : ties}</td>
+                        {/* Record */}
+                        <td style={TDR}>{notStarted ? dash : `${wins}-${losses}-${ties}`}</td>
                         {/* Streak */}
-                        <td style={{ ...TD, textAlign: "left" }}>
-                          {isPending ? dash : (streak ?? "—")}
-                        </td>
+                        <td style={TDR}>{notStarted || !streak ? dash : streak}</td>
                         {/* Win % */}
-                        <td style={{ ...TD, textAlign: "left", color: "var(--text)" }}>
-                          {isPending ? dash : `${winPct ?? 0}%`}
-                        </td>
-                        <td style={{ ...TD, textAlign: "left", padding: "10px 12px 10px 4px" }}>
+                        <td style={TDR}>{notStarted || winPct == null ? dash : `${winPct}%`}</td>
+                        <td style={{ ...TDR, padding: "10px 12px 10px 4px" }}>
                           {!isPending && "›"}
                         </td>
                       </tr>
@@ -382,7 +305,7 @@ export default function LeaguesPage() {
               )}
 
               {/* Empty state */}
-              {rows.length === 0 && (
+              {!loading && !loadError && rows.length === 0 && (
                 <div style={{ padding: "32px 0", textAlign: "center" }}>
                   <div style={{ fontSize: "0.85rem", fontWeight: 600, color: "var(--text-2)", marginBottom: 4 }}>No leagues yet</div>
                   <div style={{ fontSize: "0.75rem", color: "var(--text-3)" }}>Create a league, join a public one, or enter an invite code to get started</div>
