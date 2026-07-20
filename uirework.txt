@@ -1,6 +1,0 @@
-uis that ive created:
-league home 
-sportsbook page and all game specific betting pages
-all of nav bar 
-
-you need to see these styles and rework every other page 
