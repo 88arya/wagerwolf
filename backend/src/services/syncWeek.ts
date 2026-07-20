@@ -2,7 +2,7 @@ import { db } from "../db/db";
 import { eq, and, isNull, inArray } from "drizzle-orm";
 import { weeks, games, gameLines, players, props } from "../db/schema";
 import { getNFLWeekGames } from "./espnApi";
-import { getNFLWeekData } from "./oddsApi";
+import { getNFLWeekData, NFLGameData } from "./sharpApi";
 import { seedFakePropsForWeek } from "./fakeSync";
 
 const MARKET_TO_STAT: Record<string, string> = {
@@ -28,6 +28,7 @@ const MARKET_TO_STAT: Record<string, string> = {
   field_goal_longest: "FIELD_GOAL_LONGEST",
   kicking_points: "KICKING_POINTS",
   extra_points_made: "EXTRA_POINTS_MADE",
+  touchdowns: "TOUCHDOWNS",
 };
 
 const MARKET_TO_POSITION: Record<string, string> = {
@@ -106,28 +107,41 @@ export async function syncScores(weekId: string): Promise<{ updated: number }> {
   return { updated };
 }
 
-export async function syncOdds(weekId: string): Promise<{ games: number; lines: number; props: number }> {
-  const week = await db.query.weeks.findFirst({ where: eq(weeks.id, weekId) });
-  if (!week) throw new Error("Week not found");
-
-  const allData = await getNFLWeekData();
-  const now = new Date();
-  const start = new Date(week.startDate);
+async function applyOddsToWeek(
+  week: { id: string; number: number; startDate: Date; endDate: Date },
+  allData: NFLGameData[],
+): Promise<{ games: number; lines: number; props: number }> {
+  // 24h buffer on the start — SharpAPI kickoff times can sit minutes before
+  // the ESPN-derived week start; adjacent weeks stay >1 day apart regardless
+  const start = new Date(new Date(week.startDate).getTime() - 24 * 3600 * 1000);
   const end = new Date(week.endDate);
-  const inRange = allData.filter(({ commenceTime }: any) => {
+  const inRange = allData.filter(({ commenceTime }) => {
     const d = new Date(commenceTime);
-    return d >= start && d <= end && d > now;
+    return d >= start && d <= end;
   });
+
+  // Match SharpAPI events to games already created by the ESPN sync —
+  // both sides use the same team abbreviations (KC, BUF…)
+  const weekGames = await db.select().from(games).where(eq(games.weekId, week.id));
+  const byMatchup = new Map(weekGames.map((g) => [`${g.awayTeam}@${g.homeTeam}`, g]));
 
   let gamesSynced = 0, linesSynced = 0, propsSynced = 0;
   for (const { eventId, commenceTime, homeTeam, awayTeam, lines, props: rawProps } of inRange) {
-    const [game] = await db.insert(games)
-      .values({ weekId: week.id, homeTeam, awayTeam, gameDate: new Date(commenceTime), externalId: eventId })
-      .onConflictDoUpdate({
-        target: games.externalId,
-        set: { homeTeam, awayTeam, gameDate: new Date(commenceTime) },
-      })
-      .returning();
+    let game = byMatchup.get(`${awayTeam}@${homeTeam}`);
+    if (!game) {
+      [game] = await db.insert(games)
+        .values({ weekId: week.id, homeTeam, awayTeam, gameDate: new Date(commenceTime), externalId: eventId })
+        .onConflictDoUpdate({
+          target: games.externalId,
+          set: { homeTeam, awayTeam, gameDate: new Date(commenceTime) },
+        })
+        .returning();
+      byMatchup.set(`${awayTeam}@${homeTeam}`, game);
+    } else if (!game.externalId) {
+      await db.update(games).set({ externalId: eventId }).where(eq(games.id, game.id));
+    }
+    // Never move lines on a game that has kicked off
+    if (new Date(game.gameDate) <= new Date()) continue;
     gamesSynced++;
 
     for (const raw of lines) {
@@ -153,9 +167,9 @@ export async function syncOdds(weekId: string): Promise<{ games: number; lines: 
         where: (p, { and, eq }) => and(eq(p.gameId, game.id), eq(p.playerId, player!.id), eq(p.statType, statType as any)),
       });
       if (existing) {
-        await db.update(props).set({ line: raw.line }).where(eq(props.id, existing.id));
+        await db.update(props).set({ line: raw.line, odds: raw.odds }).where(eq(props.id, existing.id));
       } else {
-        await db.insert(props).values({ gameId: game.id, playerId: player!.id, statType: statType as any, line: raw.line });
+        await db.insert(props).values({ gameId: game.id, playerId: player!.id, statType: statType as any, line: raw.line, odds: raw.odds });
       }
       propsSynced++;
     }
@@ -163,4 +177,31 @@ export async function syncOdds(weekId: string): Promise<{ games: number; lines: 
 
   console.log(`[sync] Odds for week ${week.number}: ${gamesSynced} games, ${linesSynced} lines, ${propsSynced} props`);
   return { games: gamesSynced, lines: linesSynced, props: propsSynced };
+}
+
+export async function syncOdds(weekId: string): Promise<{ games: number; lines: number; props: number }> {
+  const week = await db.query.weeks.findFirst({ where: eq(weeks.id, weekId) });
+  if (!week) throw new Error("Week not found");
+  const allData = await getNFLWeekData();
+  return applyOddsToWeek(week, allData);
+}
+
+// One SharpAPI fetch applied across every unresolved week — SharpAPI posts
+// lines months ahead, and the 12 req/min cap makes per-week fetches wasteful
+export async function syncOddsAllWeeks(): Promise<{ weeks: number; games: number; lines: number; props: number }> {
+  const weekList = await db.query.weeks.findMany({
+    where: (w, { eq }) => eq(w.resolved, false),
+    orderBy: (w, { asc }) => [asc(w.number)],
+  });
+  if (weekList.length === 0) return { weeks: 0, games: 0, lines: 0, props: 0 };
+
+  const allData = await getNFLWeekData();
+  let gamesSynced = 0, linesSynced = 0, propsSynced = 0;
+  for (const week of weekList) {
+    const r = await applyOddsToWeek(week, allData);
+    gamesSynced += r.games;
+    linesSynced += r.lines;
+    propsSynced += r.props;
+  }
+  return { weeks: weekList.length, games: gamesSynced, lines: linesSynced, props: propsSynced };
 }

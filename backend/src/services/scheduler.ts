@@ -3,7 +3,7 @@ import { db } from "../db/db";
 import { eq, and, lt, gt, lte, gte } from "drizzle-orm";
 import { weeks, leagues } from "../db/schema";
 import { resolveWeekById } from "./resolveWeek";
-import { syncESPNGames, syncOdds, syncScores } from "./syncWeek";
+import { syncESPNGames, syncOddsAllWeeks, syncScores } from "./syncWeek";
 import { getNFLWeekDates, nflYear } from "./espnApi";
 import { distributeWeeklyAllowances } from "./distributeAllowances";
 import { startLeagueSeason } from "./startSeason";
@@ -130,26 +130,11 @@ async function runESPNGameSync() {
 }
 
 async function runOddsSync() {
-  const now = new Date();
-  // Sync both the current week and the upcoming week
-  const weekList = await db.query.weeks.findMany({
-    where: (w, { and, eq, or, lte, gte, gt }) =>
-      and(
-        eq(w.resolved, false),
-        or(
-          and(lte(w.startDate, now), gte(w.endDate, now)),
-          gt(w.startDate, now)
-        )
-      ),
-    orderBy: (w, { asc }) => [asc(w.number)],
-  });
-  const limitedWeeks = weekList.slice(0, 2);
-  for (const week of limitedWeeks) {
-    try {
-      await syncOdds(week.id);
-    } catch (err) {
-      console.error(`[cron] Odds sync failed for week ${week.number}:`, err);
-    }
+  // One SharpAPI fetch covers every unresolved week (lines post months ahead)
+  try {
+    await syncOddsAllWeeks();
+  } catch (err) {
+    console.error("[cron] Odds sync failed:", err);
   }
 }
 

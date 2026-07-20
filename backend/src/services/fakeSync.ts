@@ -1,5 +1,5 @@
 import { db } from "../db/db";
-import { eq, inArray, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { weeks, games, gameLines, players, props } from "../db/schema";
 
 export const FAKE_PLAYERS: Array<{ name: string; team: string; position: string }> = [
@@ -358,19 +358,36 @@ export async function seedFakePropsForWeek(weekId: string): Promise<{ lines: num
   });
   if (!week) throw new Error("Week not found");
 
-  const weekGames = (week as any).games as Array<{ id: string; homeTeam: string; awayTeam: string }>;
+  const weekGames = (week as any).games as Array<{ id: string; homeTeam: string; awayTeam: string; externalId: string | null }>;
+
+  // Games with externalId have real SharpAPI odds — never overwrite their
+  // main ML/spread/total; center their fake alt ladders on the real lines
+  const weekGameIds = weekGames.map((g) => g.id);
+  const MAIN_MARKETS = ["MONEYLINE_HOME", "MONEYLINE_AWAY", "SPREAD_HOME", "SPREAD_AWAY", "TOTAL_OVER", "TOTAL_UNDER"];
+  const existingMains = weekGameIds.length > 0
+    ? await db.select().from(gameLines).where(and(inArray(gameLines.gameId, weekGameIds), inArray(gameLines.market, MAIN_MARKETS)))
+    : [];
+  const mainsByGame = new Map<string, Map<string, number | null>>();
+  for (const gl of existingMains) {
+    let m = mainsByGame.get(gl.gameId);
+    if (!m) { m = new Map(); mainsByGame.set(gl.gameId, m); }
+    m.set(gl.market, gl.line);
+  }
 
   // Build all game line records in memory
   const allGameLineValues: Array<{ gameId: string; market: string; label: string; odds: number; line: number | null }> = [];
   for (const game of weekGames) {
+    const realMains = game.externalId ? mainsByGame.get(game.id) : undefined;
     const baseLines = fakeLinesForGame(game.homeTeam, game.awayTeam);
-    for (const gl of baseLines) {
-      allGameLineValues.push({ gameId: game.id, ...gl });
+    if (!realMains) {
+      for (const gl of baseLines) {
+        allGameLineValues.push({ gameId: game.id, ...gl });
+      }
     }
-    const mainHomeSpread = baseLines.find((l) => l.market === "SPREAD_HOME");
-    const mainTotalOver  = baseLines.find((l) => l.market === "TOTAL_OVER");
-    if (mainHomeSpread?.line != null && mainTotalOver?.line != null) {
-      for (const al of fakeAltGameLines(game.homeTeam, game.awayTeam, mainHomeSpread.line, mainTotalOver.line)) {
+    const spreadBase = realMains?.get("SPREAD_HOME") ?? baseLines.find((l) => l.market === "SPREAD_HOME")?.line;
+    const totalBase  = realMains?.get("TOTAL_OVER") ?? baseLines.find((l) => l.market === "TOTAL_OVER")?.line;
+    if (spreadBase != null && totalBase != null) {
+      for (const al of fakeAltGameLines(game.homeTeam, game.awayTeam, spreadBase, totalBase)) {
         allGameLineValues.push({ gameId: game.id, ...al });
       }
     }
