@@ -13,6 +13,7 @@ async function fetchWeekWithGames(weekId: string) {
     where: eq(weeks.id, weekId),
     with: {
       games: {
+        orderBy: [asc(games.gameDate), asc(games.id)],
         with: {
           props: { with: { player: true } },
           gameLines: true,
@@ -42,7 +43,7 @@ router.get("/", requireAuth, async (req: any, res: any) => {
             gte(weeks.endDate, now),
           ),
           orderBy: asc(weeks.number),
-          with: { games: { with: { props: { with: { player: true } }, gameLines: true } } },
+          with: { games: { orderBy: [asc(games.gameDate), asc(games.id)], with: { props: { with: { player: true } }, gameLines: true } } },
         });
         if (!week) {
           week = await db.query.weeks.findFirst({
@@ -53,7 +54,7 @@ router.get("/", requireAuth, async (req: any, res: any) => {
               gt(weeks.startDate, now),
             ),
             orderBy: asc(weeks.startDate),
-            with: { games: { with: { props: { with: { player: true } }, gameLines: true } } },
+            with: { games: { orderBy: [asc(games.gameDate), asc(games.id)], with: { props: { with: { player: true } }, gameLines: true } } },
           });
         }
         if (!week) {
@@ -64,7 +65,7 @@ router.get("/", requireAuth, async (req: any, res: any) => {
               lte(weeks.number, maxWeek),
             ),
             orderBy: asc(weeks.number),
-            with: { games: { with: { props: { with: { player: true } }, gameLines: true } } },
+            with: { games: { orderBy: [asc(games.gameDate), asc(games.id)], with: { props: { with: { player: true } }, gameLines: true } } },
           });
         }
         res.json(week ? [week] : []);
@@ -75,20 +76,20 @@ router.get("/", requireAuth, async (req: any, res: any) => {
       let week = await db.query.weeks.findFirst({
         where: and(eq(weeks.resolved, false), lte(weeks.startDate, now), gte(weeks.endDate, now)),
         orderBy: asc(weeks.number),
-        with: { games: { with: { props: { with: { player: true } }, gameLines: true } } },
+        with: { games: { orderBy: [asc(games.gameDate), asc(games.id)], with: { props: { with: { player: true } }, gameLines: true } } },
       });
       if (!week) {
         week = await db.query.weeks.findFirst({
           where: and(eq(weeks.resolved, false), gt(weeks.startDate, now)),
           orderBy: asc(weeks.startDate),
-          with: { games: { with: { props: { with: { player: true } }, gameLines: true } } },
+          with: { games: { orderBy: [asc(games.gameDate), asc(games.id)], with: { props: { with: { player: true } }, gameLines: true } } },
         });
       }
       if (!week) {
         week = await db.query.weeks.findFirst({
           where: eq(weeks.resolved, false),
           orderBy: asc(weeks.number),
-          with: { games: { with: { props: { with: { player: true } }, gameLines: true } } },
+          with: { games: { orderBy: [asc(games.gameDate), asc(games.id)], with: { props: { with: { player: true } }, gameLines: true } } },
         });
       }
       res.json(week ? [week] : []);
@@ -97,7 +98,7 @@ router.get("/", requireAuth, async (req: any, res: any) => {
 
     const allWeeks = await db.query.weeks.findMany({
       orderBy: desc(weeks.number),
-      with: { games: { with: { props: { with: { player: true } }, gameLines: true } } },
+      with: { games: { orderBy: [asc(games.gameDate), asc(games.id)], with: { props: { with: { player: true } }, gameLines: true } } },
     });
     res.json(allWeeks);
   } catch (err: any) {
