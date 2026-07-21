@@ -41,7 +41,7 @@ async function main() {
 
   const [league] = await db.insert(leagues).values({
     name: generateLeagueName(),
-    weeklyAllowance: 300,
+    weeklyAllowance: 30000, // $300 in cents
     inviteCode,
     creatorId: me.id,
     isPublic: false,

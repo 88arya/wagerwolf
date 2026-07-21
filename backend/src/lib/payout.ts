@@ -1,3 +1,9 @@
+// All money is integer cents. Format for user-facing messages: 12345 -> "$123.45".
+export function fmtMoney(cents: number | null | undefined): string {
+  const c = Math.round(Number(cents ?? 0));
+  return `$${(c / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
 export function toDecimal(american: number): number {
   if (american > 0) return american / 100 + 1;
   return 100 / Math.abs(american) + 1;

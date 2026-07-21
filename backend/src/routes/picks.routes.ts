@@ -3,7 +3,7 @@ import { db } from "../db/db";
 import { eq, and, inArray, count, sql } from "drizzle-orm";
 import { picks, memberships, leagues, props, games, gamePicks, gameLines } from "../db/schema";
 import { requireAuth } from "../middleware/auth";
-import { calcProfit } from "../lib/payout";
+import { calcProfit, fmtMoney } from "../lib/payout";
 
 const router = Router();
 
@@ -28,8 +28,8 @@ router.post("/", requireAuth, async (req: any, res: any) => {
       res.status(400).json({ error: "leagueId, propId, direction, and stake are required" });
       return;
     }
-    if (Number(stake) <= 0) {
-      res.status(400).json({ error: "Stake must be greater than 0" });
+    if (Number(stake) <= 0 || !Number.isInteger(Number(stake))) {
+      res.status(400).json({ error: "Stake must be a whole number of cents greater than 0" });
       return;
     }
 
@@ -76,7 +76,7 @@ router.post("/", requireAuth, async (req: any, res: any) => {
     }).from(leagues).where(eq(leagues.id, leagueId)).limit(1);
 
     if (league?.maxStakePerBet && Number(stake) > league.maxStakePerBet) {
-      res.status(400).json({ error: `Max stake per bet is $${league.maxStakePerBet}` }); return;
+      res.status(400).json({ error: `Max stake per bet is ${fmtMoney(league.maxStakePerBet)}` }); return;
     }
     if (league?.maxBetsPerWeek) {
       // Get all game IDs for this week

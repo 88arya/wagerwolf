@@ -3,7 +3,7 @@ import { db } from "../db/db";
 import { eq, and, inArray, sql } from "drizzle-orm";
 import { leagues, memberships, weeks, games, props, picks, gameLines, gamePicks, parlays, parlayLegs } from "../db/schema";
 import { requireAuth } from "../middleware/auth";
-import { calcParlayOdds, calcParlayPayout } from "../lib/payout";
+import { calcParlayOdds, calcParlayPayout, fmtMoney } from "../lib/payout";
 
 const router = Router();
 
@@ -126,8 +126,8 @@ router.post("/", requireAuth, async (req: any, res: any) => {
       res.status(400).json({ error: "leagueId, stake, and at least 2 legs are required" });
       return;
     }
-    if (Number(stake) <= 0) {
-      res.status(400).json({ error: "Stake must be greater than 0" });
+    if (Number(stake) <= 0 || !Number.isInteger(Number(stake))) {
+      res.status(400).json({ error: "Stake must be a whole number of cents greater than 0" });
       return;
     }
 
@@ -141,7 +141,7 @@ router.post("/", requireAuth, async (req: any, res: any) => {
       res.status(400).json({ error: `Maximum ${league.maxParlayLegs} legs per parlay` }); return;
     }
     if (league?.maxStakePerBet && Number(stake) > league.maxStakePerBet) {
-      res.status(400).json({ error: `Max stake per bet is $${league.maxStakePerBet}` }); return;
+      res.status(400).json({ error: `Max stake per bet is ${fmtMoney(league.maxStakePerBet)}` }); return;
     }
 
     const [membership] = await db
@@ -300,7 +300,7 @@ router.post("/round-robin", requireAuth, async (req: any, res: any) => {
       .where(eq(leagues.id, leagueId))
       .limit(1);
     if (league?.maxStakePerBet && Number(stakePerParlay) > league.maxStakePerBet) {
-      res.status(400).json({ error: `Max stake per bet is $${league.maxStakePerBet}` }); return;
+      res.status(400).json({ error: `Max stake per bet is ${fmtMoney(league.maxStakePerBet)}` }); return;
     }
 
     const [membership] = await db

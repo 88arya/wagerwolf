@@ -20,7 +20,8 @@ function nextSmallestPowerOf2(n: number): number {
 router.post("/", requireAuth, async (req: any, res: any) => {
   try {
     const { name, weeklyAllowance, maxPlayers, isPublic, maxPublicPlayers, maxBetsPerWeek, maxStakePerBet, startWeek } = req.body;
-    if (!name || !weeklyAllowance || Number(weeklyAllowance) <= 0 || Number(weeklyAllowance) > 1000000) {
+    // weeklyAllowance is in cents ($1,000,000 = 100,000,000 cents)
+    if (!name || !weeklyAllowance || Number(weeklyAllowance) <= 0 || Number(weeklyAllowance) > 100000000) {
       res.status(400).json({ error: "Weekly allowance must be between $1 and $1,000,000" });
       return;
     }
@@ -107,8 +108,8 @@ router.patch("/:id", requireAuth, async (req: any, res: any) => {
       if (!trimmed) { res.status(400).json({ error: "League name cannot be empty" }); return; }
     }
     if (weeklyAllowance !== undefined) {
-      const wa = Number(weeklyAllowance);
-      if (wa <= 0 || wa > 1000000) { res.status(400).json({ error: "Weekly allowance must be between $1 and $1,000,000" }); return; }
+      const wa = Number(weeklyAllowance); // cents
+      if (wa <= 0 || wa > 100000000) { res.status(400).json({ error: "Weekly allowance must be between $1 and $1,000,000" }); return; }
     }
 
     const sw = startWeek !== undefined ? Number(startWeek) : league.startWeek;
