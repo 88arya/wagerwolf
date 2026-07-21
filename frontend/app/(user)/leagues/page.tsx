@@ -5,6 +5,7 @@ import { Globe, Lock, Plus } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
+import { fmtMoney, toCents } from "@/lib/money";
 import HelmetAvatar, { HELMET_COLORS } from "@/components/HelmetAvatar";
 
 const NFL_LOCATIONS = [
@@ -74,12 +75,12 @@ export default function LeaguesPage() {
         method: "POST",
         body: JSON.stringify({
           name: form.name,
-          weeklyAllowance: Number(form.weeklyAllowance),
+          weeklyAllowance: toCents(form.weeklyAllowance),
           maxPlayers: Number(form.maxPlayers),
           isPublic: form.isPublic,
           maxPublicPlayers: Number(form.maxPublicPlayers),
           maxBetsPerWeek: form.maxBetsPerWeek !== "" ? Number(form.maxBetsPerWeek) : null,
-          maxStakePerBet: form.maxStakePerBet !== "" ? Number(form.maxStakePerBet) : null,
+          maxStakePerBet: form.maxStakePerBet !== "" ? toCents(form.maxStakePerBet) : null,
           startWeek: Number(form.startWeek),
         }),
       });
@@ -167,8 +168,13 @@ export default function LeaguesPage() {
           const dash = <span style={{ color: "var(--text-3)" }}>—</span>;
           const TH = { fontSize: "0.65rem", fontWeight: 500, color: "var(--text-3)", padding: "10px 12px 8px", borderBottom: "1px solid var(--border-2)", whiteSpace: "nowrap" as const, overflow: "hidden" as const, textAlign: "left" as const, background: "transparent" };
           const THR = { ...TH, textAlign: "right" as const };
+          const THC = { ...TH, textAlign: "center" as const };
           const TD = { fontSize: "0.78rem", fontWeight: 400, color: "var(--text)", padding: "10px 12px", borderTop: "1px solid var(--border)", fontVariantNumeric: "tabular-nums" as const, whiteSpace: "nowrap" as const, overflow: "hidden" as const };
           const TDR = { ...TD, textAlign: "right" as const };
+          const TDC = { ...TD, textAlign: "center" as const };
+          // "This week" columns (Balance + Active Bets) — accent treatment to flag they need attention
+          const THA = { ...THC, color: "var(--accent)", fontWeight: 700 as const, borderBottom: "2px solid var(--accent)", background: "color-mix(in srgb, var(--accent) 7%, transparent)" };
+          const TDA = { ...TDC, background: "color-mix(in srgb, var(--accent) 6%, transparent)" };
           const MINI = { fontSize: "0.6rem", fontWeight: 700, letterSpacing: "0.08em", color: "var(--text-3)", textTransform: "uppercase" as const };
 
           return (
@@ -187,13 +193,13 @@ export default function LeaguesPage() {
               {!loading && !loadError && rows.length > 0 && (
                 <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed" }}>
                   <colgroup>
-                    <col style={{ width: "25%" }} />
-                    <col style={{ width: "12%" }} />
+                    <col style={{ width: "24%" }} />
+                    <col style={{ width: "11%" }} />
+                    <col style={{ width: "10%" }} />
+                    <col style={{ width: "9%" }} />
                     <col style={{ width: "11%" }} />
                     <col style={{ width: "9%" }} />
-                    <col style={{ width: "7%" }} />
                     <col style={{ width: "9%" }} />
-                    <col style={{ width: "10%" }} />
                     <col style={{ width: "7%" }} />
                     <col style={{ width: "7%" }} />
                     <col style={{ width: "3%" }} />
@@ -203,12 +209,12 @@ export default function LeaguesPage() {
                       <th style={TH}>LEAGUE</th>
                       <th style={TH}>YOU</th>
                       <th style={TH}>PHASE</th>
-                      <th style={THR}>BALANCE</th>
-                      <th style={THR}>WK BETS</th>
-                      <th style={THR}>STANDING</th>
-                      <th style={THR}>RECORD</th>
-                      <th style={THR}>STREAK</th>
-                      <th style={THR}>WIN %</th>
+                      <th style={THA}>BALANCE</th>
+                      <th style={THA}>ACTIVE BETS</th>
+                      <th style={THC}>STANDING</th>
+                      <th style={THC}>RECORD</th>
+                      <th style={THC}>STREAK</th>
+                      <th style={THC}>WIN %</th>
                       <th style={TH} aria-label="Open league" />
                     </tr>
                   </thead>
@@ -276,11 +282,11 @@ export default function LeaguesPage() {
                           <div>{phaseState}</div>
                         </td>
                         {/* Balance */}
-                        <td style={TDR}>{notStarted ? dash : `$${(m.balance ?? 0).toLocaleString()}`}</td>
-                        {/* Bets this week */}
-                        <td style={TDR}>{notStarted ? dash : (m.betsThisWeek ?? 0)}</td>
+                        <td style={TDA}>{notStarted ? dash : fmtMoney(m.balance ?? 0)}</td>
+                        {/* Active bets this week */}
+                        <td style={TDA}>{notStarted ? dash : (m.betsThisWeek ?? 0)}</td>
                         {/* Standing */}
-                        <td style={TDR}>
+                        <td style={TDC}>
                           {notStarted || !m.rank ? dash : (
                             <span>
                               #{m.rank}
@@ -289,11 +295,11 @@ export default function LeaguesPage() {
                           )}
                         </td>
                         {/* Record */}
-                        <td style={TDR}>{notStarted ? dash : `${wins}-${losses}-${ties}`}</td>
+                        <td style={TDC}>{notStarted ? dash : `${wins}-${losses}-${ties}`}</td>
                         {/* Streak */}
-                        <td style={TDR}>{notStarted || !streak ? dash : streak}</td>
+                        <td style={TDC}>{notStarted || !streak ? dash : streak}</td>
                         {/* Win % */}
-                        <td style={TDR}>{notStarted || winPct == null ? dash : `${winPct}%`}</td>
+                        <td style={TDC}>{notStarted || winPct == null ? dash : `${winPct}%`}</td>
                         <td style={{ ...TDR, padding: "10px 12px 10px 4px" }}>
                           {!isPending && "›"}
                         </td>
