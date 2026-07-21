@@ -187,7 +187,7 @@ function PropPlayerRow({ prop, slipLegs, submittedPropIds, pendingPropDirs, week
                 {blocked && (
                   <div style={{
                     position: "absolute", inset: 0, pointerEvents: "none",
-                    background: "repeating-linear-gradient(45deg, rgba(0,0,0,0.045) 0px, rgba(0,0,0,0.045) 1.5px, transparent 1.5px, transparent 7px)",
+                    background: "repeating-linear-gradient(45deg, var(--stripe) 0px, var(--stripe) 1.5px, transparent 1.5px, transparent 7px)",
                   }} />
                 )}
               </button>
@@ -211,10 +211,6 @@ export default function BetPage({ params }: PageProps<"/leagues/[leagueId]/bet">
   const [balance, setBalance] = useState<number | null>(null);
   const [games, setGames] = useState<any[]>([]);
   const [weekLocked, setWeekLocked] = useState(false);
-  const [weekNumber, setWeekNumber] = useState<number | null>(null);
-  const [leagueWeekLabel, setLeagueWeekLabel] = useState<string | null>(null);
-  const [leagueWeekNum, setLeagueWeekNum] = useState<number | null>(null);
-  const [leagueWeekTotal, setLeagueWeekTotal] = useState<number | null>(null);
   const [selectedGame, setSelectedGame] = useState<any | null>(null);
   const [betSection, setBetSection] = useState<string>("lines");
   const [submittedPropIds, setSubmittedPropIds] = useState<Set<string>>(new Set()); // propIds with any pick (for ✓ indicator)
@@ -299,14 +295,6 @@ export default function BetPage({ params }: PageProps<"/leagues/[leagueId]/bet">
         if (weeks?.length) {
           const week = weeks[0];
           setWeekLocked(week.locked || week.resolved);
-          setWeekNumber(week.number);
-          const sw = leagueData?.startWeek ?? 1;
-          const rsw = leagueData?.regularSeasonWeeks ?? 13;
-          const isPlayoff = week.number >= sw + rsw;
-          const lwn = isPlayoff ? week.number - (sw + rsw) + 1 : week.number - sw + 1;
-          setLeagueWeekNum(lwn);
-          setLeagueWeekTotal(rsw);
-          setLeagueWeekLabel(isPlayoff ? `Playoff Week ${lwn}` : `League Week ${lwn} of ${rsw}`);
           const weekGames = week.games ?? [];
           weekGamesRef = weekGames;
           setGames(weekGames);
@@ -389,6 +377,10 @@ export default function BetPage({ params }: PageProps<"/leagues/[leagueId]/bet">
       type: "gameline", id: line.id, label: line.label, odds: line.odds,
       market: line.market, line: line.line ?? undefined,
       gameId: gameForLine?.id,
+      gameDate: gameForLine?.gameDate,
+      team: line.market.includes("HOME") ? gameForLine?.homeTeam : line.market.includes("AWAY") ? gameForLine?.awayTeam : undefined,
+      homeTeam: gameForLine?.homeTeam,
+      awayTeam: gameForLine?.awayTeam,
     });
   }
 
@@ -406,12 +398,22 @@ export default function BetPage({ params }: PageProps<"/leagues/[leagueId]/bet">
     const oppositeLeg = currentSlip.find((l: any) => l.id === prop.id && l.direction === opposite);
     if (oppositeLeg) removeFromSlip(prop.id, opposite, oppositeLeg.altLine);
     const isDefault = Math.abs(blockLine - prop.line) < 0.001;
+    const propGame = games.find((g: any) => g.id === prop.gameId);
     addToSlip({
       type: "prop", id: prop.id, direction,
       label: `${prop.player?.name} ${direction} ${blockLine} ${(prop.statType as string).split("_").join(" ")}`,
       odds: prop.odds ?? -110,
       line: prop.line, statType: prop.statType,
       altLine: isDefault ? undefined : blockLine,
+      gameId: prop.gameId,
+      gameDate: propGame?.gameDate,
+      playerId: prop.player?.id,
+      espnId: prop.player?.espnId ?? undefined,
+      imageUrl: prop.player?.imageUrl ?? undefined,
+      playerName: prop.player?.name,
+      team: prop.player?.team,
+      homeTeam: propGame?.homeTeam,
+      awayTeam: propGame?.awayTeam,
     });
   }
 
@@ -533,7 +535,7 @@ export default function BetPage({ params }: PageProps<"/leagues/[leagueId]/bet">
           {conflicted && (
             <div style={{
               position: "absolute", inset: 0, pointerEvents: "none",
-              background: "repeating-linear-gradient(45deg, rgba(0,0,0,0.045) 0px, rgba(0,0,0,0.045) 1.5px, transparent 1.5px, transparent 7px)",
+              background: "repeating-linear-gradient(45deg, var(--stripe) 0px, var(--stripe) 1.5px, transparent 1.5px, transparent 7px)",
               borderRadius: 4,
             }} />
           )}
@@ -733,7 +735,7 @@ export default function BetPage({ params }: PageProps<"/leagues/[leagueId]/bet">
                       {conflicted && (
                         <div style={{
                           position: "absolute", inset: 0, pointerEvents: "none",
-                          background: "repeating-linear-gradient(45deg, rgba(0,0,0,0.045) 0px, rgba(0,0,0,0.045) 1.5px, transparent 1.5px, transparent 7px)",
+                          background: "repeating-linear-gradient(45deg, var(--stripe) 0px, var(--stripe) 1.5px, transparent 1.5px, transparent 7px)",
                           borderRadius: 4,
                         }} />
                       )}
@@ -800,7 +802,7 @@ export default function BetPage({ params }: PageProps<"/leagues/[leagueId]/bet">
                       {conflicted && (
                         <div style={{
                           position: "absolute", inset: 0, pointerEvents: "none",
-                          background: "repeating-linear-gradient(45deg, rgba(0,0,0,0.045) 0px, rgba(0,0,0,0.045) 1.5px, transparent 1.5px, transparent 7px)",
+                          background: "repeating-linear-gradient(45deg, var(--stripe) 0px, var(--stripe) 1.5px, transparent 1.5px, transparent 7px)",
                           borderRadius: 4,
                         }} />
                       )}
@@ -875,19 +877,6 @@ export default function BetPage({ params }: PageProps<"/leagues/[leagueId]/bet">
   return (
     <>
       <div className="page" style={{ paddingBottom: 160 }}>
-        {weekNumber && (
-          <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
-            <div className="card" style={{ flex: 1, margin: 0, padding: "8px 12px", textAlign: "center", border: "none" }}>
-              <div style={{ fontSize: "0.55rem", color: "var(--text-3)", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.09em", marginBottom: 2 }}>League Week</div>
-              <div style={{ fontSize: "0.85rem", fontWeight: 700, color: "var(--text)" }}>{leagueWeekNum} of {leagueWeekTotal ?? 13}</div>
-            </div>
-            <div className="card" style={{ flex: 1, margin: 0, padding: "8px 12px", textAlign: "center", border: "none" }}>
-              <div style={{ fontSize: "0.55rem", color: "var(--text-3)", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.09em", marginBottom: 2 }}>NFL Week</div>
-              <div style={{ fontSize: "0.85rem", fontWeight: 700, color: "var(--text)" }}>{weekNumber} of 18</div>
-            </div>
-          </div>
-        )}
-
         {lockedBanner}
 
         {games.length === 0 && (
@@ -962,7 +951,7 @@ export default function BetPage({ params }: PageProps<"/leagues/[leagueId]/bet">
                     {conflicted && (
                       <div style={{
                         position: "absolute", inset: 0, pointerEvents: "none",
-                        background: "repeating-linear-gradient(45deg, rgba(0,0,0,0.045) 0px, rgba(0,0,0,0.045) 1.5px, transparent 1.5px, transparent 7px)",
+                        background: "repeating-linear-gradient(45deg, var(--stripe) 0px, var(--stripe) 1.5px, transparent 1.5px, transparent 7px)",
                         borderRadius: 4,
                       }} />
                     )}
