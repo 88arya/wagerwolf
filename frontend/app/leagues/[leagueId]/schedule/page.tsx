@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
+import { fmtMoney } from "@/lib/money";
 import { ACCENT } from "@/lib/constants";
 import HelmetAvatar from "@/components/HelmetAvatar";
 
@@ -140,11 +141,11 @@ export default function SchedulePage({ params }: PageProps<"/leagues/[leagueId]/
                           {resolved ? (
                             <>
                               <span style={{ fontSize: "0.8rem", fontWeight: homeWon ? 800 : 400, color: homeWon ? "var(--text)" : "var(--text-3)", fontVariantNumeric: "tabular-nums" }}>
-                                ${(mu.homeProfit ?? 0).toFixed(2)}
+                                {fmtMoney(mu.homeProfit ?? 0)}
                               </span>
                               <span style={{ fontSize: "0.65rem", color: "var(--text-3)" }}>–</span>
                               <span style={{ fontSize: "0.8rem", fontWeight: awayWon ? 800 : 400, color: awayWon ? "var(--text)" : "var(--text-3)", fontVariantNumeric: "tabular-nums" }}>
-                                ${(mu.awayProfit ?? 0).toFixed(2)}
+                                {fmtMoney(mu.awayProfit ?? 0)}
                               </span>
                             </>
                           ) : (

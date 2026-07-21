@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import { ACCENT } from "@/lib/constants";
+import { fmtMoney, toCents, toDollars } from "@/lib/money";
 import HelmetAvatar from "@/components/HelmetAvatar";
 
 const MAX_NFL_WEEK = 17;
@@ -51,7 +52,7 @@ export default function LeagueSettingsPage({ params }: PageProps<"/leagues/[leag
       setLeague(leagueData);
       setSettingsForm({
         name: leagueData.name ?? "",
-        weeklyAllowance: String(leagueData.weeklyAllowance ?? 300),
+        weeklyAllowance: String(toDollars(leagueData.weeklyAllowance ?? 30000)),
         startWeek: String(leagueData.startWeek ?? 1),
         regularSeasonWeeks: String(leagueData.regularSeasonWeeks ?? 13),
         playoffSize: String(leagueData.playoffSize ?? 4),
@@ -59,7 +60,7 @@ export default function LeagueSettingsPage({ params }: PageProps<"/leagues/[leag
         maxPublicPlayers: String(leagueData.maxPublicPlayers ?? 0),
       });
       setLimitsForm({
-        maxStakePerBet: leagueData.maxStakePerBet != null ? String(leagueData.maxStakePerBet) : "",
+        maxStakePerBet: leagueData.maxStakePerBet != null ? String(toDollars(leagueData.maxStakePerBet)) : "",
         maxBetsPerWeek: leagueData.maxBetsPerWeek != null ? String(leagueData.maxBetsPerWeek) : "",
         maxParlayLegs: leagueData.maxParlayLegs != null ? String(leagueData.maxParlayLegs) : "",
         feedVisibility: leagueData.feedVisibility ?? "AFTER_KICKOFF",
@@ -135,7 +136,7 @@ export default function LeagueSettingsPage({ params }: PageProps<"/leagues/[leag
         method: "PATCH",
         body: JSON.stringify({
           name: settingsForm.name.trim(),
-          weeklyAllowance: Number(settingsForm.weeklyAllowance),
+          weeklyAllowance: toCents(settingsForm.weeklyAllowance),
           startWeek: Number(settingsForm.startWeek),
           regularSeasonWeeks: Number(settingsForm.regularSeasonWeeks),
           playoffSize: Number(settingsForm.playoffSize),
@@ -157,7 +158,7 @@ export default function LeagueSettingsPage({ params }: PageProps<"/leagues/[leag
       const updated = await api(`/leagues/${leagueId}/limits`, {
         method: "PATCH",
         body: JSON.stringify({
-          maxStakePerBet: limitsForm.maxStakePerBet === "" ? null : Number(limitsForm.maxStakePerBet),
+          maxStakePerBet: limitsForm.maxStakePerBet === "" ? null : toCents(limitsForm.maxStakePerBet),
           maxBetsPerWeek: limitsForm.maxBetsPerWeek === "" ? null : Number(limitsForm.maxBetsPerWeek),
           maxParlayLegs: limitsForm.maxParlayLegs === "" ? null : Number(limitsForm.maxParlayLegs),
           feedVisibility: limitsForm.feedVisibility,
@@ -287,7 +288,7 @@ export default function LeagueSettingsPage({ params }: PageProps<"/leagues/[leag
                   ["Start Week", league.startWeek],
                   ["Regular Season Weeks", league.regularSeasonWeeks],
                   ["Playoff Teams", league.playoffSize],
-                  ["Weekly Allowance", `$${league.weeklyAllowance}`],
+                  ["Weekly Allowance", fmtMoney(league.weeklyAllowance)],
                   ["Max Players", league.maxPlayers],
                   ["Visibility", league.isPublic ? "Public" : "Invite Only"],
                 ].map(([label, val], idx, arr) => (
@@ -312,7 +313,7 @@ export default function LeagueSettingsPage({ params }: PageProps<"/leagues/[leag
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
                   <div>
                     <div className="label">Max Stake / Bet</div>
-                    <input type="number" min="1" placeholder="No limit" value={limitsForm.maxStakePerBet}
+                    <input type="number" min="0.01" step="0.01" placeholder="No limit" value={limitsForm.maxStakePerBet}
                       onChange={(e) => setLimitsForm({ ...limitsForm, maxStakePerBet: e.target.value })} />
                   </div>
                   <div>
@@ -350,7 +351,7 @@ export default function LeagueSettingsPage({ params }: PageProps<"/leagues/[leag
             ) : (
               <div style={{ padding: "4px 0" }}>
                 {[
-                  ["Max Stake / Bet", league.maxStakePerBet != null ? `$${league.maxStakePerBet}` : "No limit"],
+                  ["Max Stake / Bet", league.maxStakePerBet != null ? fmtMoney(league.maxStakePerBet) : "No limit"],
                   ["Max Bets / Week", league.maxBetsPerWeek != null ? league.maxBetsPerWeek : "No limit"],
                   ["Max Parlay Legs", league.maxParlayLegs != null ? league.maxParlayLegs : "No limit"],
                   ["Feed Visibility", league.feedVisibility === "AFTER_RESOLVE" ? "After week resolves" : "After kickoff"],

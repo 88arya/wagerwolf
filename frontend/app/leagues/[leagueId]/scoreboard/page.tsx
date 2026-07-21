@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
+import { fmtMoney } from "@/lib/money";
 import { ACCENT } from "@/lib/constants";
 import HelmetAvatar from "@/components/HelmetAvatar";
 
@@ -72,7 +73,7 @@ export default function ScoreboardPage({ params }: PageProps<"/leagues/[leagueId
           fontSize: "0.85rem", fontWeight: won ? 800 : 400,
           color: resolved && !won ? "var(--text-3)" : "var(--text)", fontVariantNumeric: "tabular-nums", flexShrink: 0,
         }}>
-          ${profit.toFixed(2)}
+          {fmtMoney(profit)}
         </span>
       </div>
     );

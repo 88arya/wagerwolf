@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
+import { fmtMoney } from "@/lib/money";
 import HelmetAvatar, { HELMET_COLORS } from "@/components/HelmetAvatar";
 import { ACCENT } from "@/lib/constants";
 
@@ -332,7 +333,7 @@ export default function MembersPage({ params }: PageProps<"/leagues/[leagueId]/m
                     </td>
                     {league.seasonStarted && <td style={TD}>#{m.rank}</td>}
                     {league.seasonStarted && <td style={TD}>{m.wins}-{m.losses}{m.ties > 0 ? `-${m.ties}` : ""}</td>}
-                    {league.seasonStarted && <td style={TD}>${(m.balance ?? 0).toLocaleString()}</td>}
+                    {league.seasonStarted && <td style={TD}>{fmtMoney(m.balance ?? 0)}</td>}
                     <td style={TD}>{m.userId === league.creatorId ? "Commissioner" : "Member"}</td>
                     <td style={{ ...TD, padding: "10px 12px 10px 4px" }}>{clickable && "›"}</td>
                   </tr>

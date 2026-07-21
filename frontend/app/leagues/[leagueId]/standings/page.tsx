@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
+import { fmtMoney } from "@/lib/money";
 import { ACCENT } from "@/lib/constants";
 import HelmetAvatar from "@/components/HelmetAvatar";
 
@@ -113,7 +114,7 @@ export default function StandingsPage({ params }: PageProps<"/leagues/[leagueId]
                     <td style={TD}>{m.ties}</td>
                     <td style={TD}>{winPct}%</td>
                     <td style={TD}>{gb === 0 ? "—" : gb}</td>
-                    <td style={TD}>${(m.balance ?? 0).toLocaleString()}</td>
+                    <td style={TD}>{fmtMoney(m.balance ?? 0)}</td>
                     <td style={{ ...TD, padding: "10px 12px 10px 4px" }}>{league?.seasonStarted && "›"}</td>
                   </tr>
                 );

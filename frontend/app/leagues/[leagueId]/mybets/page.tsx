@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
+import { fmtMoney } from "@/lib/money";
 
 function calcProfit(stake: number, odds: number): number {
   if (odds > 0) return Math.round((stake * odds) / 100);
@@ -92,7 +93,7 @@ export default function MyBetsPage({ params }: PageProps<"/leagues/[leagueId]/my
         : type === "gamepick" ? `/gamepicks/${id}/cashout`
         : `/parlays/${id}/cashout`;
       const res = await api(endpoint, { method: "POST" });
-      alert(`Cashed out — $${res.refunded} refunded`);
+      alert(`Cashed out — ${fmtMoney(res.refunded)} refunded`);
       if (week) await load(leagueId, week);
     } catch (err: any) {
       try { alert(JSON.parse(err.message).error); } catch { alert(err.message); }
@@ -152,7 +153,7 @@ export default function MyBetsPage({ params }: PageProps<"/leagues/[leagueId]/my
                 { label: "Wins",    value: wins,    color: "var(--win)" },
                 { label: "Losses",  value: losses,  color: "var(--loss)" },
                 { label: "Pending", value: pending, color: "var(--pending)" },
-                { label: "Net",     value: (net >= 0 ? "+" : "-") + "$" + Math.abs(net).toLocaleString(), color: net >= 0 ? "var(--win)" : "var(--loss)" },
+                { label: "Net",     value: fmtMoney(net, { sign: true }), color: net >= 0 ? "var(--win)" : "var(--loss)" },
               ].map((s) => (
                 <div key={s.label} className="card" style={{ padding: "10px 12px" }}>
                   <div style={{ fontSize: "0.55rem", color: "var(--text-3)", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.09em", marginBottom: 2 }}>{s.label}</div>
@@ -201,10 +202,10 @@ export default function MyBetsPage({ params }: PageProps<"/leagues/[leagueId]/my
                         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                           <div style={{ display: "flex", gap: 10, fontSize: "0.72rem", color: "var(--text-3)", fontVariantNumeric: "tabular-nums" }}>
                             <span>{fmtOdds(pick.odds ?? -110)}</span>
-                            <span>stake ${pick.stake}</span>
+                            <span>stake {fmtMoney(pick.stake)}</span>
                             {profit != null
-                              ? <span style={{ color: "var(--win)", fontWeight: 700 }}>+${profit}</span>
-                              : <span>to win ${toWin}</span>
+                              ? <span style={{ color: "var(--win)", fontWeight: 700 }}>{fmtMoney(profit, { sign: true })}</span>
+                              : <span>to win {fmtMoney(toWin)}</span>
                             }
                           </div>
                           {canCashout && <CashOutBtn busy={cashingOut === pick.id} onClick={() => cashOut("pick", pick.id)} />}
@@ -239,10 +240,10 @@ export default function MyBetsPage({ params }: PageProps<"/leagues/[leagueId]/my
                         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                           <div style={{ display: "flex", gap: 10, fontSize: "0.72rem", color: "var(--text-3)", fontVariantNumeric: "tabular-nums" }}>
                             <span>{fmtOdds(gp.odds)}</span>
-                            <span>stake ${gp.stake}</span>
+                            <span>stake {fmtMoney(gp.stake)}</span>
                             {profit != null
-                              ? <span style={{ color: "var(--win)", fontWeight: 700 }}>+${profit}</span>
-                              : <span>to win ${toWin}</span>
+                              ? <span style={{ color: "var(--win)", fontWeight: 700 }}>{fmtMoney(profit, { sign: true })}</span>
+                              : <span>to win {fmtMoney(toWin)}</span>
                             }
                           </div>
                           {canCashout && <CashOutBtn busy={cashingOut === gp.id} onClick={() => cashOut("gamepick", gp.id)} />}
@@ -269,13 +270,13 @@ export default function MyBetsPage({ params }: PageProps<"/leagues/[leagueId]/my
                           <div>
                             <div style={{ fontWeight: 800, fontSize: "0.82rem" }}>{parlay.legs?.length}-Leg Parlay</div>
                             <div style={{ fontSize: "0.68rem", color: "var(--text-3)", marginTop: 2, fontVariantNumeric: "tabular-nums" }}>
-                              {fmtOdds(parlay.totalOdds)} · stake ${parlay.stake}
+                              {fmtOdds(parlay.totalOdds)} · stake {fmtMoney(parlay.stake)}
                             </div>
                           </div>
                           <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4 }}>
                             <OutcomeBadge outcome={parlay.outcome} cashedOut={parlay.cashedOut} />
-                            {profit != null && <span style={{ fontSize: "0.75rem", fontWeight: 700, color: "var(--win)", fontVariantNumeric: "tabular-nums" }}>+${profit.toLocaleString()}</span>}
-                            {parlay.outcome === "PENDING" && <span style={{ fontSize: "0.68rem", color: "var(--text-3)", fontVariantNumeric: "tabular-nums" }}>to win ${(Number(parlay.payout) - Number(parlay.stake)).toLocaleString()}</span>}
+                            {profit != null && <span style={{ fontSize: "0.75rem", fontWeight: 700, color: "var(--win)", fontVariantNumeric: "tabular-nums" }}>{fmtMoney(profit, { sign: true })}</span>}
+                            {parlay.outcome === "PENDING" && <span style={{ fontSize: "0.68rem", color: "var(--text-3)", fontVariantNumeric: "tabular-nums" }}>to win {fmtMoney(Number(parlay.payout) - Number(parlay.stake))}</span>}
                           </div>
                         </div>
                         <div style={{ borderTop: "1px solid var(--border)", paddingTop: 7, marginBottom: canCashout ? 10 : 0 }}>

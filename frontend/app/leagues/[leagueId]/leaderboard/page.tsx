@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { ACCENT } from "@/lib/constants";
 import { api } from "@/lib/api";
+import { fmtMoney } from "@/lib/money";
 import HelmetAvatar from "@/components/HelmetAvatar";
 
 export default function LeaderboardPage({ params }: PageProps<"/leagues/[leagueId]/leaderboard">) {
@@ -159,7 +160,7 @@ export default function LeaderboardPage({ params }: PageProps<"/leagues/[leagueI
                         {wkProfit == null
                           ? <span style={{ color: "var(--text-3)" }}>—</span>
                           : <span style={{ color: wkProfit >= 0 ? "var(--win)" : "var(--loss)" }}>
-                              {wkProfit >= 0 ? "+" : ""}${Math.abs(wkProfit).toLocaleString()}
+                              {fmtMoney(wkProfit, { sign: true })}
                             </span>
                         }
                       </div>
@@ -167,7 +168,7 @@ export default function LeaderboardPage({ params }: PageProps<"/leagues/[leagueI
 
                     {/* Balance */}
                     <div style={{ textAlign: "right", fontWeight: 800, fontSize: "0.88rem", fontVariantNumeric: "tabular-nums", color: "var(--text)" }}>
-                      ${entry.balance.toLocaleString()}
+                      {fmtMoney(entry.balance)}
                     </div>
                   </div>
                 </Link>

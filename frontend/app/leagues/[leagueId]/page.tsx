@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ACCENT } from "@/lib/constants";
 import { api } from "@/lib/api";
+import { fmtMoney } from "@/lib/money";
 import HelmetAvatar, { HELMET_COLORS } from "@/components/HelmetAvatar";
 
 function PencilIcon() {
@@ -289,7 +290,7 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
               <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 8, boxShadow: "var(--shadow-sm)" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "7px 10px" }}>
                   <span style={{ fontSize: "0.8rem", fontWeight: 700, color: "var(--text)" }}>Balance</span>
-                  <span style={{ fontSize: "0.72rem", color: "var(--text-3)", fontVariantNumeric: "tabular-nums" }}>${myRecord.balance.toLocaleString()}</span>
+                  <span style={{ fontSize: "0.72rem", color: "var(--text-3)", fontVariantNumeric: "tabular-nums" }}>{fmtMoney(myRecord.balance)}</span>
                 </div>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "7px 10px" }}>
                   <span style={{ fontSize: "0.8rem", fontWeight: 700, color: "var(--text)" }}>Live Bets</span>
@@ -340,8 +341,8 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
                         </div>
                       </div>
                       <div style={{ display: "flex", flexDirection: "column", gap: 6, alignItems: "flex-end", flexShrink: 0 }}>
-                        <span style={{ fontSize: "0.72rem", fontWeight: 700, color: "var(--text)", fontVariantNumeric: "tabular-nums" }}>${homeScore.toFixed(2)}</span>
-                        <span style={{ fontSize: "0.72rem", fontWeight: 700, color: "var(--text)", fontVariantNumeric: "tabular-nums" }}>${awayScore.toFixed(2)}</span>
+                        <span style={{ fontSize: "0.72rem", fontWeight: 700, color: "var(--text)", fontVariantNumeric: "tabular-nums" }}>{fmtMoney(homeScore)}</span>
+                        <span style={{ fontSize: "0.72rem", fontWeight: 700, color: "var(--text)", fontVariantNumeric: "tabular-nums" }}>{fmtMoney(awayScore)}</span>
                       </div>
                     </div>
                   );
@@ -367,7 +368,7 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
                   <span style={{ fontWeight: 700, color: "var(--text-3)" }}>Format:</span> Standard
                 </span>
                 <span style={{ fontSize: "0.72rem", color: "var(--text-2)" }}>
-                  <span style={{ fontWeight: 700, color: "var(--text-3)" }}>Allowance:</span> ${league.weeklyAllowance}
+                  <span style={{ fontWeight: 700, color: "var(--text-3)" }}>Allowance:</span> {fmtMoney(league.weeklyAllowance)}
                 </span>
                 <span style={{ fontSize: "0.72rem", color: "var(--text-2)" }}>
                   <span style={{ fontWeight: 700, color: "var(--text-3)" }}>Teams:</span> {members.length}

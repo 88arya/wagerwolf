@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
+import { fmtMoney } from "@/lib/money";
 import { ACCENT } from "@/lib/constants";
 import HelmetAvatar from "@/components/HelmetAvatar";
 
@@ -89,7 +90,7 @@ export default function BracketPage({ params }: PageProps<"/leagues/[leagueId]/b
         </div>
         {score != null && (
           <span style={{ fontSize: "0.75rem", fontWeight: winner ? 800 : 400, color: winner ? "var(--text)" : "var(--text-3)", fontVariantNumeric: "tabular-nums", flexShrink: 0 }}>
-            ${score.toFixed(2)}
+            {fmtMoney(score)}
           </span>
         )}
       </div>

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ACCENT } from "@/lib/constants";
 import { api } from "@/lib/api";
+import { fmtMoney } from "@/lib/money";
 import HelmetAvatar from "@/components/HelmetAvatar";
 
 function fmtOdds(n: number) { return n > 0 ? `+${n}` : `${n}`; }
@@ -86,12 +87,12 @@ export default function MemberProfilePage({ params }: PageProps<"/leagues/[leagu
         {/* Stat strip */}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 8, marginBottom: 16 }}>
           {[
-            { label: "Balance", value: `$${stats.balance.toLocaleString()}`, color: "var(--text)" },
+            { label: "Balance", value: fmtMoney(stats.balance), color: "var(--text)" },
             { label: "Record", value: `${stats.wins}-${stats.losses}-${stats.ties}`, color: "var(--text)" },
             { label: "Hit Rate", value: (stats.wonPicks + stats.lostPicks) > 0 ? `${Math.round(stats.wonPicks / (stats.wonPicks + stats.lostPicks) * 100)}%` : "—", color: "var(--text)" },
             { label: "ROI", value: stats.totalStaked > 0 ? `${stats.roi > 0 ? "+" : ""}${stats.roi}%` : "—", color: roiColor },
-            { label: "Avg / Week", value: stats.avgWeeklyWinnings !== 0 ? `${stats.avgWeeklyWinnings > 0 ? "+" : "-"}$${Math.abs(stats.avgWeeklyWinnings).toLocaleString()}` : "—", color: stats.avgWeeklyWinnings > 0 ? "var(--win)" : stats.avgWeeklyWinnings < 0 ? "var(--loss)" : "var(--text)" },
-            { label: "Profit", value: stats.totalProfit !== 0 ? `${stats.totalProfit > 0 ? "+" : "-"}$${Math.abs(stats.totalProfit).toLocaleString()}` : "$0", color: stats.totalProfit > 0 ? "var(--win)" : stats.totalProfit < 0 ? "var(--loss)" : "var(--text)" },
+            { label: "Avg / Week", value: stats.avgWeeklyWinnings !== 0 ? fmtMoney(stats.avgWeeklyWinnings, { sign: true }) : "—", color: stats.avgWeeklyWinnings > 0 ? "var(--win)" : stats.avgWeeklyWinnings < 0 ? "var(--loss)" : "var(--text)" },
+            { label: "Profit", value: stats.totalProfit !== 0 ? fmtMoney(stats.totalProfit, { sign: true }) : "$0.00", color: stats.totalProfit > 0 ? "var(--win)" : stats.totalProfit < 0 ? "var(--loss)" : "var(--text)" },
           ].map(({ label, value, color }) => (
             <div key={label} className="card" style={{ padding: "10px 12px" }}>
               <div style={{ fontSize: "0.55rem", color: "var(--text-3)", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.09em", marginBottom: 2 }}>{label}</div>
@@ -115,7 +116,7 @@ export default function MemberProfilePage({ params }: PageProps<"/leagues/[leagu
                         <span className="badge badge-green">Best</span>
                       </div>
                       <span style={{ fontWeight: 700, color: "var(--win)", fontVariantNumeric: "tabular-nums", fontSize: "0.8rem" }}>
-                        +${stats.bestStatType.profit.toLocaleString()}
+                        {fmtMoney(stats.bestStatType.profit, { sign: true })}
                       </span>
                     </div>
                   )}
@@ -126,7 +127,7 @@ export default function MemberProfilePage({ params }: PageProps<"/leagues/[leagu
                         <span className="badge badge-red">Worst</span>
                       </div>
                       <span style={{ fontWeight: 700, color: "var(--loss)", fontVariantNumeric: "tabular-nums", fontSize: "0.8rem" }}>
-                        ${stats.worstStatType.profit.toLocaleString()}
+                        {fmtMoney(stats.worstStatType.profit)}
                       </span>
                     </div>
                   )}
@@ -189,7 +190,7 @@ export default function MemberProfilePage({ params }: PageProps<"/leagues/[leagu
                           {pick.outcome === "WIN" ? "WIN" : pick.outcome === "LOSS" ? "LOSS" : "—"}
                         </div>
                         <div style={{ fontSize: "0.68rem", color: "var(--text-3)", fontVariantNumeric: "tabular-nums" }}>
-                          ${pick.stake.toLocaleString()}
+                          {fmtMoney(pick.stake)}
                         </div>
                       </div>
                     </div>

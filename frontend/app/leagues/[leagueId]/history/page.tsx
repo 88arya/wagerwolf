@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
+import { fmtMoney } from "@/lib/money";
 
 function calcProfit(stake: number, odds: number): number {
   if (odds > 0) return Math.round((stake * odds) / 100);
@@ -79,7 +80,7 @@ export default function HistoryPage({ params }: PageProps<"/leagues/[leagueId]/h
     try {
       const endpoint = type === "pick" ? `/picks/${id}/cashout` : type === "gamepick" ? `/gamepicks/${id}/cashout` : `/parlays/${id}/cashout`;
       const res = await api(endpoint, { method: "POST" });
-      alert(`Cashed out — $${res.refunded} refunded to your balance`);
+      alert(`Cashed out — ${fmtMoney(res.refunded)} refunded to your balance`);
       await load(leagueId);
     } catch (err: any) {
       try { alert(JSON.parse(err.message).error); } catch { alert(err.message); }
@@ -135,7 +136,7 @@ export default function HistoryPage({ params }: PageProps<"/leagues/[leagueId]/h
         Week {wk}
       </span>
       <span style={{ fontSize: "0.75rem", fontWeight: 700, color: net >= 0 ? "var(--win)" : "var(--loss)", fontVariantNumeric: "tabular-nums" }}>
-        {net >= 0 ? "+" : ""}${net.toLocaleString()}
+        {fmtMoney(net, { sign: true })}
       </span>
     </div>
   );
@@ -169,7 +170,7 @@ export default function HistoryPage({ params }: PageProps<"/leagues/[leagueId]/h
                 { label: "Losses", value: losses, color: "var(--loss)" },
                 { label: "Pending", value: pending, color: "var(--pending)" },
                 { label: "Win Rate", value: winRate != null ? `${winRate}%` : "—", color: "var(--text)" },
-                { label: "Net", value: (netReturn >= 0 ? "+" : "-") + "$" + Math.abs(netReturn).toLocaleString(), color: netReturn >= 0 ? "var(--win)" : "var(--loss)" },
+                { label: "Net", value: fmtMoney(netReturn, { sign: true }), color: netReturn >= 0 ? "var(--win)" : "var(--loss)" },
               ].map((s) => (
                 <div key={s.label} className="card" style={{ padding: "10px 12px" }}>
                   <div style={{ fontSize: "0.55rem", color: "var(--text-3)", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.09em", marginBottom: 2 }}>{s.label}</div>
@@ -223,8 +224,8 @@ export default function HistoryPage({ params }: PageProps<"/leagues/[leagueId]/h
                                   {pick.direction} {pick.altLine ?? pick.prop?.line} {pick.prop?.statType?.split("_").join(" ")}
                                 </span>
                                 <span>{fmtOdds(pick.odds ?? -110)}</span>
-                                <span style={{ color: "var(--text-3)" }}>stake ${pick.stake}</span>
-                                {profit != null && <span style={{ color: "var(--win)", fontWeight: 700 }}>+${profit}</span>}
+                                <span style={{ color: "var(--text-3)" }}>stake {fmtMoney(pick.stake)}</span>
+                                {profit != null && <span style={{ color: "var(--win)", fontWeight: 700 }}>{fmtMoney(profit, { sign: true })}</span>}
                               </div>
                             </div>
                           );
@@ -266,8 +267,8 @@ export default function HistoryPage({ params }: PageProps<"/leagues/[leagueId]/h
                               <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center", fontSize: "0.72rem", color: "var(--text-2)", fontVariantNumeric: "tabular-nums" }}>
                                 <span style={{ fontWeight: 500, color: "var(--text)" }}>{gp.gameLine?.market?.split("_").join(" ")}</span>
                                 <span>{fmtOdds(gp.odds)}</span>
-                                <span style={{ color: "var(--text-3)" }}>stake ${gp.stake}</span>
-                                {profit != null && <span style={{ color: "var(--win)", fontWeight: 700 }}>+${profit}</span>}
+                                <span style={{ color: "var(--text-3)" }}>stake {fmtMoney(gp.stake)}</span>
+                                {profit != null && <span style={{ color: "var(--win)", fontWeight: 700 }}>{fmtMoney(profit, { sign: true })}</span>}
                               </div>
                             </div>
                           );
@@ -299,7 +300,7 @@ export default function HistoryPage({ params }: PageProps<"/leagues/[leagueId]/h
                                 <div>
                                   <div style={{ fontWeight: 800, fontSize: "0.82rem" }}>{parlay.legs?.length}-Leg Parlay</div>
                                   <div style={{ color: "var(--text-3)", fontSize: "0.68rem", marginTop: 1, fontVariantNumeric: "tabular-nums" }}>
-                                    {fmtOdds(parlay.totalOdds)} · stake ${parlay.stake}
+                                    {fmtOdds(parlay.totalOdds)} · stake {fmtMoney(parlay.stake)}
                                   </div>
                                 </div>
                                 <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4 }}>
@@ -307,9 +308,9 @@ export default function HistoryPage({ params }: PageProps<"/leagues/[leagueId]/h
                                     {canCashout && <CashOutBtn busy={cashingOut === parlay.id} onClick={() => cashOut("parlay", parlay.id)} />}
                                     <OutcomeBadge outcome={parlay.outcome} cashedOut={parlay.cashedOut} />
                                   </div>
-                                  {profit != null && <span style={{ color: "var(--win)", fontWeight: 700, fontSize: "0.75rem", fontVariantNumeric: "tabular-nums" }}>+${profit.toLocaleString()}</span>}
+                                  {profit != null && <span style={{ color: "var(--win)", fontWeight: 700, fontSize: "0.75rem", fontVariantNumeric: "tabular-nums" }}>{fmtMoney(profit, { sign: true })}</span>}
                                   {parlay.outcome === "PENDING" && (
-                                    <span style={{ color: "var(--text-3)", fontSize: "0.68rem", fontVariantNumeric: "tabular-nums" }}>to win ${(parlay.payout - parlay.stake).toLocaleString()}</span>
+                                    <span style={{ color: "var(--text-3)", fontSize: "0.68rem", fontVariantNumeric: "tabular-nums" }}>to win {fmtMoney(parlay.payout - parlay.stake)}</span>
                                   )}
                                 </div>
                               </div>
