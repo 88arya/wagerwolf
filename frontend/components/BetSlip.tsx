@@ -2,6 +2,10 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { api } from "@/lib/api";
+import PlayerAvatar from "@/components/PlayerAvatar";
+import TeamLogo from "@/components/TeamLogo";
+import { getTeamLogoUrl } from "@/lib/teamLogos";
+import { fmtMoney, fmtAmount, toCents } from "@/lib/money";
 
 export interface SlipLeg {
   type: "prop" | "gameline";
@@ -14,6 +18,15 @@ export interface SlipLeg {
   statType?: string;
   altLine?: number;
   gameId?: string;
+  gameDate?: string;
+  // Icon data — player image for props, team logo(s) for game lines
+  playerId?: string;
+  espnId?: string;
+  imageUrl?: string;
+  playerName?: string;
+  team?: string;
+  homeTeam?: string;
+  awayTeam?: string;
 }
 
 const SLIP_KEY = "betslip_legs";
@@ -72,29 +85,52 @@ function legKey(leg: SlipLeg): string {
   return `${leg.id}:${leg.direction ?? ""}`;
 }
 
-function canRotate(leg: SlipLeg): boolean {
-  if (leg.line == null) return false;
-  if (leg.type === "gameline") return !leg.market?.startsWith("MONEYLINE");
-  return true;
+// The alt line originally selected on the bet page (if any) — legs are no longer editable in the slip
+function legAltLine(leg: SlipLeg): number | undefined {
+  return leg.altLine != null && leg.altLine !== leg.line ? leg.altLine : undefined;
 }
 
-function getStep(leg: SlipLeg): number {
-  if (leg.type === "gameline") return 0.5;
-  if (leg.statType === "PASSING_YARDS" || leg.statType === "RUSHING_YARDS" || leg.statType === "RECEIVING_YARDS") return 5;
-  return 0.5;
+interface LegGroup {
+  gameId?: string;
+  gameDate?: string;
+  homeTeam?: string;
+  awayTeam?: string;
+  legs: SlipLeg[];
 }
 
-function getAdjustedOdds(leg: SlipLeg, currentLine: number): number {
-  if (leg.line == null) return leg.odds;
-  const step = getStep(leg);
-  const steps = (currentLine - leg.line) / step;
-  let favSteps: number;
-  if (leg.type === "gameline") {
-    favSteps = leg.market === "TOTAL_OVER" ? -steps : steps;
-  } else {
-    favSteps = leg.direction === "OVER" ? -steps : steps;
+// Group legs by game and order earliest → latest kickoff, matching the game cards:
+// asc(gameDate), asc(gameId). Stable sort preserves add order within a game.
+function groupLegs(legs: SlipLeg[]): LegGroup[] {
+  const ordered = legs
+    .map((leg, i) => ({ leg, i }))
+    .sort((a, b) => {
+      const da = a.leg.gameDate ? new Date(a.leg.gameDate).getTime() : Infinity;
+      const db = b.leg.gameDate ? new Date(b.leg.gameDate).getTime() : Infinity;
+      if (da !== db) return da - db;
+      const ga = a.leg.gameId ?? "";
+      const gb = b.leg.gameId ?? "";
+      if (ga !== gb) return ga < gb ? -1 : 1;
+      return a.i - b.i;
+    })
+    .map((x) => x.leg);
+
+  const groups: LegGroup[] = [];
+  for (const leg of ordered) {
+    const last = groups[groups.length - 1];
+    if (last && leg.gameId != null && last.gameId === leg.gameId) {
+      last.legs.push(leg);
+    } else {
+      groups.push({ gameId: leg.gameId, gameDate: leg.gameDate, homeTeam: leg.homeTeam, awayTeam: leg.awayTeam, legs: [leg] });
+    }
   }
-  return Math.max(-500, Math.min(500, leg.odds - Math.round(favSteps * 15)));
+  return groups;
+}
+
+function fmtKickoff(iso?: string): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return "";
+  return d.toLocaleString(undefined, { weekday: "short", hour: "numeric", minute: "2-digit" });
 }
 
 function getCombinations<T>(arr: T[], size: number): T[][] {
@@ -107,6 +143,67 @@ function getCombinations<T>(arr: T[], size: number): T[][] {
   ];
 }
 
+function titleCase(s: string): string {
+  return s.split("_").map((w) => w.charAt(0) + w.slice(1).toLowerCase()).join(" ");
+}
+
+function marketName(market?: string): string {
+  if (!market) return "";
+  if (market.includes("MONEYLINE")) return "Moneyline";
+  if (market.includes("SPREAD")) return "Spread";
+  if (market.includes("TOTAL")) return "Total";
+  return titleCase(market);
+}
+
+function LegIcon({ leg }: { leg: SlipLeg }) {
+  if (leg.type === "prop") {
+    const logoUrl = leg.team ? getTeamLogoUrl(leg.team) : null;
+    return (
+      <div style={{ position: "relative", flexShrink: 0 }}>
+        <PlayerAvatar playerId={leg.playerId} espnId={leg.espnId} imageUrl={leg.imageUrl} name={leg.playerName ?? leg.label} size={34} />
+        {leg.team && (
+          <div style={{
+            position: "absolute", bottom: -4, right: -4, width: 18, height: 18,
+            borderRadius: "50%", border: "2px solid var(--surface)",
+            background: "var(--surface-3)", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden",
+          }}>
+            {logoUrl
+              ? <img src={logoUrl} alt={leg.team} width={12} height={12} style={{ objectFit: "contain" }} />
+              : <span style={{ fontSize: 5, fontWeight: 800, color: "var(--text-2)" }}>{leg.team.substring(0, 2)}</span>
+            }
+          </div>
+        )}
+      </div>
+    );
+  }
+  if (leg.team) return <TeamLogo team={leg.team} size={34} />;
+  if (leg.homeTeam && leg.awayTeam) {
+    return (
+      <div style={{ position: "relative", width: 34, height: 34, flexShrink: 0, background: "var(--surface-3)", borderRadius: 6 }}>
+        <div style={{ position: "absolute", top: 1, left: 1 }}><TeamLogo team={leg.awayTeam} size={19} plain /></div>
+        <div style={{ position: "absolute", bottom: 1, right: 1 }}><TeamLogo team={leg.homeTeam} size={19} plain /></div>
+      </div>
+    );
+  }
+  return <div style={{ width: 34, height: 34, borderRadius: 6, background: "var(--surface-3)", flexShrink: 0 }} />;
+}
+
+function legTitle(leg: SlipLeg): string {
+  if (leg.type === "prop" && leg.playerName) return leg.playerName;
+  return leg.label;
+}
+
+function legSubtitle(leg: SlipLeg, displayLine?: number): string | null {
+  if (leg.type === "prop") {
+    if (!leg.statType || !leg.direction) return null;
+    const dir = leg.direction === "OVER" ? "Over" : "Under";
+    const line = displayLine ?? leg.altLine ?? leg.line;
+    return `${dir} ${line ?? ""} ${titleCase(leg.statType)}`.trim();
+  }
+  const matchup = leg.awayTeam && leg.homeTeam ? ` · ${leg.awayTeam} @ ${leg.homeTeam}` : "";
+  return `${marketName(leg.market)}${matchup}`;
+}
+
 function CloseIcon() {
   return (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
@@ -116,13 +213,20 @@ function CloseIcon() {
   );
 }
 
+const FIELD_LABEL: React.CSSProperties = {
+  display: "block", marginBottom: 4,
+  fontSize: "0.6rem", fontWeight: 700, letterSpacing: "0.07em",
+  color: "var(--text-3)", textTransform: "uppercase",
+};
+const DOLLAR: React.CSSProperties = {
+  position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)",
+  color: "var(--text-3)", fontSize: "0.88rem", fontWeight: 600, pointerEvents: "none",
+};
+
 export default function BetSlip({ leagueId }: { leagueId: string }) {
   const [legs, setLegs] = useState<SlipLeg[]>([]);
   const [open, setOpen] = useState(false);
-  const [legStakes, setLegStakes] = useState<Record<string, string>>({});
-  const [legLines, setLegLines] = useState<Record<string, number>>({});
   const [parlayStake, setParlayStake] = useState("");
-  const [placingLeg, setPlacingLeg] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [msg, setMsg] = useState("");
@@ -141,45 +245,24 @@ export default function BetSlip({ leagueId }: { leagueId: string }) {
     if (legs.length > 0) setOpen(true);
   }, [legs.length]);
 
-  function getCurrentLine(leg: SlipLeg): number | undefined {
-    if (leg.line == null) return undefined;
-    return legLines[legKey(leg)] ?? leg.altLine ?? leg.line;
-  }
+  const totalOdds = parlayOdds(legs.map((l) => l.odds));
+  const stakeCents = toCents(parlayStake); // wager input is in dollars; everything else is cents
+  const parlayPayout = stakeCents > 0 && legs.length >= 1 ? calcPayout(stakeCents, totalOdds) : 0;
+  const parlayProfit = parlayPayout - stakeCents;
 
-  function shiftLine(leg: SlipLeg, dir: 1 | -1) {
-    const key = legKey(leg);
-    const current = getCurrentLine(leg) ?? leg.line!;
-    const next = Math.round((current + dir * getStep(leg)) * 100) / 100;
-    setLegLines((prev) => ({ ...prev, [key]: next }));
-  }
-
-  function effectiveOdds(leg: SlipLeg): number {
-    const current = getCurrentLine(leg);
-    if (current == null || current === leg.line) return leg.odds;
-    return getAdjustedOdds(leg, current);
-  }
-
-  const totalOdds = parlayOdds(legs.map(effectiveOdds));
-  const parlayStakeNum = Number(parlayStake);
-  const parlayPayout = parlayStakeNum > 0 && legs.length >= 2 ? calcPayout(parlayStakeNum, totalOdds) : 0;
-  const parlayProfit = parlayPayout - parlayStakeNum;
-
-  async function placeSingleBet(leg: SlipLeg) {
-    const key = legKey(leg);
-    const stakeStr = legStakes[key];
-    if (!stakeStr || Number(stakeStr) <= 0) { setError("Enter a stake"); return; }
-    setPlacingLeg(key);
+  async function placeSingle() {
+    const leg = legs[0];
+    if (!leg) return;
+    if (!stakeCents || stakeCents <= 0) { setError("Enter a stake"); return; }
+    setSubmitting(true);
     setError("");
-
-    const currentLine = getCurrentLine(leg);
-    const altLine = (currentLine != null && leg.line != null && currentLine !== leg.line) ? currentLine : undefined;
-
+    const altLine = legAltLine(leg);
     try {
       if (leg.type === "prop") {
         await api("/picks", {
           method: "POST",
           body: JSON.stringify({
-            leagueId, propId: leg.id, direction: leg.direction, stake: Number(stakeStr),
+            leagueId, propId: leg.id, direction: leg.direction, stake: stakeCents,
             ...(altLine != null ? { altLine } : {}),
           }),
         });
@@ -187,18 +270,21 @@ export default function BetSlip({ leagueId }: { leagueId: string }) {
         await api("/gamepicks", {
           method: "POST",
           body: JSON.stringify({
-            leagueId, gameLineId: leg.id, stake: Number(stakeStr),
+            leagueId, gameLineId: leg.id, stake: stakeCents,
             ...(altLine != null ? { altLine } : {}),
           }),
         });
       }
-      removeFromSlip(leg.id, leg.direction);
-      setLegLines((prev) => { const n = { ...prev }; delete n[key]; return n; });
+      setMsg(`Bet placed! To win ${fmtMoney(parlayProfit)}`);
+      setParlayStake("");
+      clearSlip();
+      setOpen(false);
       window.dispatchEvent(new Event("bet-placed"));
+      setTimeout(() => setMsg(""), 4000);
     } catch (err: any) {
       try { setError(JSON.parse(err.message).error); } catch { setError(err.message); }
     } finally {
-      setPlacingLeg(null);
+      setSubmitting(false);
     }
   }
 
@@ -223,7 +309,7 @@ export default function BetSlip({ leagueId }: { leagueId: string }) {
 
   async function submitParlay() {
     if (legs.length < 2) { setError("Add at least 2 legs"); return; }
-    if (!parlayStakeNum || parlayStakeNum <= 0) { setError("Enter a parlay stake"); return; }
+    if (!stakeCents || stakeCents <= 0) { setError("Enter a parlay stake"); return; }
     // Block OVER + UNDER on the same prop
     const propDirections = new Map<string, string>();
     for (const leg of legs) {
@@ -250,10 +336,9 @@ export default function BetSlip({ leagueId }: { leagueId: string }) {
         method: "POST",
         body: JSON.stringify({
           leagueId,
-          stake: parlayStakeNum,
+          stake: stakeCents,
           legs: legs.map((l) => {
-            const currentLine = getCurrentLine(l);
-            const altLine = (currentLine != null && l.line != null && currentLine !== l.line) ? currentLine : undefined;
+            const altLine = legAltLine(l);
             return {
               propId: l.type === "prop" ? l.id : undefined,
               gameLineId: l.type === "gameline" ? l.id : undefined,
@@ -263,10 +348,9 @@ export default function BetSlip({ leagueId }: { leagueId: string }) {
           }),
         }),
       });
-      setMsg(`${legs.length}-leg parlay placed! To win $${parlayProfit.toLocaleString()}`);
+      setMsg(`${legs.length}-leg parlay placed! To win ${fmtMoney(parlayProfit)}`);
       setParlayStake("");
       clearSlip();
-      setLegLines({});
       setOpen(false);
       window.dispatchEvent(new Event("bet-placed"));
       setTimeout(() => setMsg(""), 4000);
@@ -278,11 +362,11 @@ export default function BetSlip({ leagueId }: { leagueId: string }) {
   }
 
   const rrCombos = rrMode && legs.length >= 3 ? getCombinations(legs, rrSize).length : 0;
-  const rrTotalStake = rrCombos * (Number(parlayStake) || 0);
+  const rrTotalStake = rrCombos * stakeCents; // cents
 
   async function submitRoundRobin() {
     if (legs.length < 3) { setError("Round robin requires at least 3 legs"); return; }
-    if (!parlayStakeNum || parlayStakeNum <= 0) { setError("Enter a stake per combo"); return; }
+    if (!stakeCents || stakeCents <= 0) { setError("Enter a stake per combo"); return; }
     setSubmitting(true);
     setError("");
     try {
@@ -291,10 +375,9 @@ export default function BetSlip({ leagueId }: { leagueId: string }) {
         body: JSON.stringify({
           leagueId,
           size: rrSize,
-          stakePerParlay: parlayStakeNum,
+          stakePerParlay: stakeCents,
           legs: legs.map((l) => {
-            const currentLine = getCurrentLine(l);
-            const altLine = (currentLine != null && l.line != null && currentLine !== l.line) ? currentLine : undefined;
+            const altLine = legAltLine(l);
             return {
               propId: l.type === "prop" ? l.id : undefined,
               gameLineId: l.type === "gameline" ? l.id : undefined,
@@ -305,11 +388,10 @@ export default function BetSlip({ leagueId }: { leagueId: string }) {
         }),
       });
       const n = result.combos ?? rrCombos;
-      setMsg(`${n} round robin combos placed! Total: $${result.totalStake?.toLocaleString()}`);
+      setMsg(`${n} round robin combos placed! Total: ${fmtMoney(result.totalStake)}`);
       setParlayStake("");
       setRrMode(false);
       clearSlip();
-      setLegLines({});
       setOpen(false);
       window.dispatchEvent(new Event("bet-placed"));
       setTimeout(() => setMsg(""), 5000);
@@ -394,7 +476,6 @@ export default function BetSlip({ leagueId }: { leagueId: string }) {
           overflow: "hidden",
           display: "flex",
           flexDirection: "column",
-          boxShadow: "var(--shadow-up)",
           border: "1px solid var(--border-2)",
           borderBottom: "none",
         }}>
@@ -430,9 +511,9 @@ export default function BetSlip({ leagueId }: { leagueId: string }) {
             </div>
             <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
               <button
-                onClick={() => { clearSlip(); setLegLines({}); setError(""); }}
+                onClick={() => { clearSlip(); setError(""); }}
                 style={{
-                  background: "rgba(0,0,0,0.06)",
+                  background: "var(--overlay-dim)",
                   color: "var(--text-2)",
                   fontSize: "0.72rem",
                   padding: "5px 10px",
@@ -447,7 +528,7 @@ export default function BetSlip({ leagueId }: { leagueId: string }) {
               <button
                 onClick={() => setOpen(false)}
                 style={{
-                  background: "rgba(0,0,0,0.06)",
+                  background: "var(--overlay-dim)",
                   color: "var(--text-2)",
                   padding: "5px 8px",
                   border: "none",
@@ -476,180 +557,112 @@ export default function BetSlip({ leagueId }: { leagueId: string }) {
             </div>
           )}
 
-          {/* Individual legs */}
+          {/* Legs grouped by game, earliest → latest kickoff */}
           <div style={{ flex: 1, overflowY: "auto", minHeight: 0, WebkitOverflowScrolling: "touch" } as React.CSSProperties}>
-            {legs.map((leg) => {
-              const key = legKey(leg);
-              const stakeNum = Number(legStakes[key] ?? 0);
-              const curLine = getCurrentLine(leg);
-              const adjOdds = effectiveOdds(leg);
-              const lineChanged = curLine != null && leg.line != null && curLine !== leg.line;
-              const payout = stakeNum > 0 ? calcPayout(stakeNum, adjOdds) : 0;
-              const profit = payout - stakeNum;
-              const isPlacing = placingLeg === key;
-              const rotatable = canRotate(leg);
+            {groupLegs(legs).map((group, gi) => (
+              <div key={group.gameId ?? `nogame-${gi}`}>
+                {group.awayTeam && group.homeTeam && (
+                  <div style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: 8,
+                    padding: "6px 14px",
+                    background: "var(--surface-2)",
+                    borderBottom: "1px solid var(--border)",
+                  }}>
+                    <span style={{
+                      fontSize: "0.66rem",
+                      fontWeight: 800,
+                      letterSpacing: "0.04em",
+                      color: "var(--text-2)",
+                      textTransform: "uppercase",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                    }}>
+                      {group.awayTeam} @ {group.homeTeam}
+                    </span>
+                    {group.gameDate && (
+                      <span style={{ fontSize: "0.62rem", fontWeight: 600, color: "var(--text-3)", flexShrink: 0 }}>
+                        {fmtKickoff(group.gameDate)}
+                      </span>
+                    )}
+                  </div>
+                )}
+                {group.legs.map((leg) => {
+                  const key = legKey(leg);
+                  const displayLine = leg.altLine ?? leg.line;
 
-              return (
-                <div key={key} style={{
-                  padding: "12px 14px",
-                  borderBottom: "1px solid var(--border)",
-                  background: "var(--surface)",
-                }}>
-                  {/* Leg header */}
-                  <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 8 }}>
-                    <div style={{ flex: 1, minWidth: 0, paddingRight: 8 }}>
-                      <div style={{
-                        fontWeight: 700,
-                        fontSize: "0.83rem",
-                        lineHeight: 1.35,
-                        color: "var(--text)",
-                        marginBottom: 3,
-                      }}>
-                        {leg.label}
-                      </div>
-                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                        <span style={{
-                          fontSize: "0.88rem",
-                          fontWeight: 800,
-                          color: "var(--accent)",
-                          fontVariantNumeric: "tabular-nums",
+                  return (
+                    <div key={key} style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 8,
+                      padding: "12px 14px",
+                      borderBottom: "1px solid var(--border)",
+                      background: "var(--surface)",
+                    }}>
+                      <LegIcon leg={leg} />
+                      <div style={{ flex: 1, minWidth: 0, overflow: "hidden" }}>
+                        <div style={{
+                          fontWeight: 600,
+                          fontSize: "0.8rem",
+                          lineHeight: 1.25,
+                          color: "var(--text)",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
                         }}>
-                          {fmtOdds(adjOdds)}
-                        </span>
-                        {lineChanged && (
-                          <span style={{
+                          {legTitle(leg)}
+                        </div>
+                        {legSubtitle(leg, displayLine) && (
+                          <div style={{
+                            fontSize: "0.68rem",
                             color: "var(--text-3)",
-                            fontWeight: 400,
-                            textDecoration: "line-through",
-                            fontSize: "0.72rem",
+                            lineHeight: 1.25,
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            whiteSpace: "nowrap",
                           }}>
-                            {fmtOdds(leg.odds)}
-                          </span>
+                            {legSubtitle(leg, displayLine)}
+                          </div>
                         )}
                       </div>
-                    </div>
-                    <button
-                      onClick={() => removeFromSlip(leg.id, leg.direction, leg.altLine)}
-                      style={{
-                        background: "transparent",
-                        color: "var(--text-3)",
-                        fontSize: "1rem",
-                        padding: "2px 4px",
-                        border: "none",
-                        cursor: "pointer",
-                        flexShrink: 0,
-                        display: "flex",
-                        alignItems: "center",
-                      }}
-                    >
-                      <CloseIcon />
-                    </button>
-                  </div>
-
-                  {/* Line rotation */}
-                  {rotatable && (
-                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-                      <button
-                        onClick={() => shiftLine(leg, -1)}
-                        style={{
-                          width: 28, height: 28, borderRadius: 6,
-                          border: "1px solid var(--border-2)",
-                          background: "var(--surface-3)",
-                          color: "var(--text-2)",
-                          fontSize: "1rem",
-                          fontWeight: 700,
-                          display: "flex", alignItems: "center", justifyContent: "center",
-                          cursor: "pointer", flexShrink: 0,
-                        }}
-                      >−</button>
                       <span style={{
-                        fontSize: "0.92rem",
-                        fontWeight: 800,
-                        minWidth: 52,
-                        textAlign: "center",
-                        color: lineChanged ? "var(--accent)" : "var(--text-2)",
+                        fontSize: "0.85rem",
+                        fontWeight: 700,
+                        color: "var(--accent)",
                         fontVariantNumeric: "tabular-nums",
+                        flexShrink: 0,
                       }}>
-                        {curLine}
+                        {fmtOdds(leg.odds)}
                       </span>
                       <button
-                        onClick={() => shiftLine(leg, 1)}
+                        onClick={() => removeFromSlip(leg.id, leg.direction, leg.altLine)}
+                        aria-label="Remove leg"
                         style={{
-                          width: 28, height: 28, borderRadius: 6,
-                          border: "1px solid var(--border-2)",
-                          background: "var(--surface-3)",
-                          color: "var(--text-2)",
-                          fontSize: "1rem",
-                          fontWeight: 700,
-                          display: "flex", alignItems: "center", justifyContent: "center",
-                          cursor: "pointer", flexShrink: 0,
+                          background: "transparent",
+                          color: "var(--text-3)",
+                          padding: "2px 0 2px 2px",
+                          border: "none",
+                          cursor: "pointer",
+                          display: "flex",
+                          alignItems: "center",
+                          flexShrink: 0,
                         }}
-                      >+</button>
-                      {lineChanged && (
-                        <span style={{ fontSize: "0.68rem", color: "var(--text-3)" }}>
-                          base {leg.line}
-                        </span>
-                      )}
+                      >
+                        <CloseIcon />
+                      </button>
                     </div>
-                  )}
-
-                  {/* Stake + Place bet row */}
-                  <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                    <div style={{ flex: 1, position: "relative" }}>
-                      <span style={{
-                        position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)",
-                        color: "var(--text-3)", fontSize: "0.88rem", fontWeight: 600,
-                        pointerEvents: "none",
-                      }}>$</span>
-                      <input
-                        type="number"
-                        placeholder="0"
-                        min="1"
-                        value={legStakes[key] ?? ""}
-                        onChange={(e) => { setLegStakes((prev) => ({ ...prev, [key]: e.target.value })); setError(""); }}
-                        style={{
-                          paddingLeft: 22,
-                          fontSize: "0.88rem",
-                          padding: "8px 10px 8px 22px",
-                          fontVariantNumeric: "tabular-nums",
-                        }}
-                      />
-                    </div>
-                    <button
-                      onClick={() => placeSingleBet(leg)}
-                      disabled={isPlacing || !legStakes[key] || Number(legStakes[key]) <= 0}
-                      style={{
-                        flexShrink: 0,
-                        fontSize: "0.82rem",
-                        padding: "8px 16px",
-                        fontWeight: 700,
-                        opacity: (isPlacing || !legStakes[key] || Number(legStakes[key]) <= 0) ? 0.45 : 1,
-                      }}
-                    >
-                      {isPlacing ? "Placing…" : "Place Bet"}
-                    </button>
-                  </div>
-
-                  {/* Payout display */}
-                  {payout > 0 && (
-                    <div style={{
-                      display: "flex",
-                      gap: 12,
-                      marginTop: 6,
-                      fontSize: "0.72rem",
-                      color: "var(--text-3)",
-                    }}>
-                      <span>To win <span style={{ color: "var(--win)", fontWeight: 700 }}>${profit.toLocaleString()}</span></span>
-                      <span>Payout <span style={{ fontWeight: 600, color: "var(--text-2)" }}>${payout.toLocaleString()}</span></span>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
+                  );
+                })}
+              </div>
+            ))}
           </div>
 
-          {/* Parlay / Round Robin section */}
-          {legs.length >= 2 && (
+          {/* Single / Parlay / Round Robin section */}
+          {legs.length >= 1 && (
             <div style={{
               padding: "14px 14px",
               background: "var(--surface-2)",
@@ -660,7 +673,7 @@ export default function BetSlip({ leagueId }: { leagueId: string }) {
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                   <span style={{ fontWeight: 800, fontSize: "0.88rem", color: "var(--text)" }}>
-                    {rrMode ? "Round Robin" : `${legs.length}-Leg Parlay`}
+                    {rrMode ? "Round Robin" : legs.length === 1 ? "Straight" : `${legs.length}-Leg Parlay`}
                   </span>
                   {legs.length >= 3 && (
                     <button
@@ -702,43 +715,73 @@ export default function BetSlip({ leagueId }: { leagueId: string }) {
               {rrMode && (
                 <div style={{ fontSize: "0.72rem", color: "var(--text-3)", marginBottom: 8 }}>
                   {rrCombos} combo{rrCombos !== 1 ? "s" : ""}
-                  {rrTotalStake > 0 && <span style={{ color: "var(--text-2)", fontWeight: 600 }}> · Total: ${rrTotalStake.toLocaleString()}</span>}
+                  {rrTotalStake > 0 && <span style={{ color: "var(--text-2)", fontWeight: 600 }}> · Total: {fmtMoney(rrTotalStake)}</span>}
                 </div>
               )}
 
-              <div style={{ display: "flex", gap: 6 }}>
-                <div style={{ flex: 1, position: "relative" }}>
-                  <span style={{
-                    position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)",
-                    color: "var(--text-3)", fontSize: "0.88rem", fontWeight: 600, pointerEvents: "none",
-                  }}>$</span>
+              {!rrMode ? (
+                <div style={{ display: "flex", gap: 8 }}>
+                  {/* TO WAGER */}
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <label style={FIELD_LABEL}>Wager</label>
+                    <div style={{ position: "relative" }}>
+                      <span style={DOLLAR}>$</span>
+                      <input
+                        type="number"
+                        placeholder="0.00"
+                        min="0.01"
+                        step="0.01"
+                        value={parlayStake}
+                        onChange={(e) => { setParlayStake(e.target.value); setError(""); }}
+                        style={{ width: "100%", fontSize: "0.88rem", padding: "8px 10px 8px 22px", fontVariantNumeric: "tabular-nums" }}
+                      />
+                    </div>
+                  </div>
+                  {/* TO WIN — prefilled from wager, earnings only (excludes stake) */}
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <label style={FIELD_LABEL}>To Win</label>
+                    <div style={{ position: "relative" }}>
+                      <span style={DOLLAR}>$</span>
+                      <input
+                        type="text"
+                        readOnly
+                        tabIndex={-1}
+                        placeholder="0.00"
+                        value={stakeCents > 0 && parlayProfit > 0 ? fmtAmount(parlayProfit) : ""}
+                        style={{
+                          width: "100%", fontSize: "0.88rem", padding: "8px 10px 8px 22px",
+                          fontVariantNumeric: "tabular-nums", fontWeight: 700, color: "var(--win)",
+                          background: "var(--surface-3)", cursor: "default",
+                        }}
+                      />
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div style={{ position: "relative" }}>
+                  <span style={DOLLAR}>$</span>
                   <input
                     type="number"
-                    placeholder={rrMode ? "per combo" : "0"}
-                    min="1"
+                    placeholder="per combo"
+                    min="0.01"
+                    step="0.01"
                     value={parlayStake}
                     onChange={(e) => { setParlayStake(e.target.value); setError(""); }}
-                    style={{ fontSize: "0.88rem", padding: "8px 10px 8px 22px", fontVariantNumeric: "tabular-nums" }}
+                    style={{ width: "100%", fontSize: "0.88rem", padding: "8px 10px 8px 22px", fontVariantNumeric: "tabular-nums" }}
                   />
                 </div>
-                <button
-                  onClick={rrMode ? submitRoundRobin : submitParlay}
-                  disabled={submitting || !parlayStake || Number(parlayStake) <= 0}
-                  style={{
-                    flexShrink: 0, fontSize: "0.82rem", padding: "8px 16px", fontWeight: 700,
-                    opacity: (submitting || !parlayStake || Number(parlayStake) <= 0) ? 0.45 : 1,
-                  }}
-                >
-                  {submitting ? "Placing…" : rrMode ? "Round Robin" : "Parlay"}
-                </button>
-              </div>
-
-              {!rrMode && parlayPayout > 0 && (
-                <div style={{ display: "flex", gap: 12, marginTop: 8, fontSize: "0.75rem", color: "var(--text-3)" }}>
-                  <span>To win <span style={{ color: "var(--win)", fontWeight: 700, fontSize: "0.85rem" }}>${parlayProfit.toLocaleString()}</span></span>
-                  <span>Payout <span style={{ fontWeight: 600, color: "var(--text-2)" }}>${parlayPayout.toLocaleString()}</span></span>
-                </div>
               )}
+
+              <button
+                onClick={rrMode ? submitRoundRobin : legs.length === 1 ? placeSingle : submitParlay}
+                disabled={submitting || !parlayStake || Number(parlayStake) <= 0}
+                style={{
+                  width: "100%", marginTop: 10, fontSize: "0.85rem", padding: "10px 16px", fontWeight: 700,
+                  opacity: (submitting || !parlayStake || Number(parlayStake) <= 0) ? 0.45 : 1,
+                }}
+              >
+                {submitting ? "Placing…" : "Place Bet"}
+              </button>
             </div>
           )}
         </div>
