@@ -172,9 +172,6 @@ export default function LeaguesPage() {
           const TD = { fontSize: "0.78rem", fontWeight: 400, color: "var(--text)", padding: "10px 12px", borderTop: "1px solid var(--border)", fontVariantNumeric: "tabular-nums" as const, whiteSpace: "nowrap" as const, overflow: "hidden" as const };
           const TDR = { ...TD, textAlign: "right" as const };
           const TDC = { ...TD, textAlign: "center" as const };
-          // "This week" columns (Balance + Active Bets) — accent treatment to flag they need attention
-          const THA = { ...THC, color: "var(--accent)", fontWeight: 700 as const, borderBottom: "2px solid var(--accent)", background: "color-mix(in srgb, var(--accent) 7%, transparent)" };
-          const TDA = { ...TDC, background: "color-mix(in srgb, var(--accent) 6%, transparent)" };
           const MINI = { fontSize: "0.6rem", fontWeight: 700, letterSpacing: "0.08em", color: "var(--text-3)", textTransform: "uppercase" as const };
 
           return (
@@ -209,8 +206,8 @@ export default function LeaguesPage() {
                       <th style={TH}>LEAGUE</th>
                       <th style={TH}>YOU</th>
                       <th style={TH}>PHASE</th>
-                      <th style={THA}>BALANCE</th>
-                      <th style={THA}>ACTIVE BETS</th>
+                      <th style={THC}>BALANCE</th>
+                      <th style={THC}>ACTIVE BETS</th>
                       <th style={THC}>STANDING</th>
                       <th style={THC}>RECORD</th>
                       <th style={THC}>STREAK</th>
@@ -282,9 +279,9 @@ export default function LeaguesPage() {
                           <div>{phaseState}</div>
                         </td>
                         {/* Balance */}
-                        <td style={TDA}>{notStarted ? dash : fmtMoney(m.balance ?? 0)}</td>
+                        <td style={TDC}>{notStarted ? dash : fmtMoney(m.balance ?? 0)}</td>
                         {/* Active bets this week */}
-                        <td style={TDA}>{notStarted ? dash : (m.betsThisWeek ?? 0)}</td>
+                        <td style={TDC}>{notStarted ? dash : (m.betsThisWeek ?? 0)}</td>
                         {/* Standing */}
                         <td style={TDC}>
                           {notStarted || !m.rank ? dash : (
@@ -301,7 +298,12 @@ export default function LeaguesPage() {
                         {/* Win % */}
                         <td style={TDC}>{notStarted || winPct == null ? dash : `${winPct}%`}</td>
                         <td style={{ ...TDR, padding: "10px 12px 10px 4px" }}>
-                          {!isPending && "›"}
+                          {!isPending && (
+                            <svg width="18" height="18" viewBox="0 0 24 24" style={{ display: "inline-block", color: "var(--text-3)" }}>
+                              <path d="M0 0h24v24H0z" fill="none" />
+                              <path fill="currentColor" d="M8 5.14v14l11-7z" />
+                            </svg>
+                          )}
                         </td>
                       </tr>
                     );
