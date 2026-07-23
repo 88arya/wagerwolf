@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import Logo from "@/components/Logo";
 import { GoogleLogin } from "@react-oauth/google";
 import { api } from "@/lib/api";
 
@@ -108,7 +109,7 @@ export default function HomePage() {
         padding: 32,
       }}>
         <div style={{ width: 320, display: "flex", flexDirection: "column", alignItems: "center", gap: 22 }}>
-          <img src="/grH9m01.svg" alt="FanMark" style={{ width: 72, height: 72, objectFit: "contain" }} />
+          <Logo size={72} />
 
           {!isLoggedIn ? (
             authView === null ? (

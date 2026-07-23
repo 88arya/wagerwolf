@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import TeamLogo from "@/components/TeamLogo";
 
-const STRIP_BG = "#F5F7FA";
+const STRIP_BG = "var(--bg)";
 const STRIP_BG_HOVER = "var(--surface-4)";
 
 function fmtOdds(american: number): string {

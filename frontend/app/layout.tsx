@@ -9,8 +9,11 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" style={{ colorScheme: "light" }}>
-      <body suppressHydrationWarning><GoogleProvider>{children}</GoogleProvider></body>
+    <html lang="en" suppressHydrationWarning>
+      <body suppressHydrationWarning>
+        <script dangerouslySetInnerHTML={{ __html: `try{if(localStorage.getItem("theme")==="dark")document.documentElement.dataset.theme="dark"}catch(e){}` }} />
+        <GoogleProvider>{children}</GoogleProvider>
+      </body>
     </html>
   );
 }
