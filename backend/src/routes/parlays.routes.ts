@@ -3,6 +3,7 @@ import { db } from "../db/db";
 import { eq, and, inArray, sql } from "drizzle-orm";
 import { leagues, memberships, weeks, games, props, picks, gameLines, gamePicks, parlays, parlayLegs } from "../db/schema";
 import { requireAuth } from "../middleware/auth";
+import { betLimiter } from "../middleware/rateLimit";
 import { calcParlayOdds, calcParlayPayout, fmtMoney } from "../lib/payout";
 
 const router = Router();
@@ -113,7 +114,7 @@ async function countWeekBets(userId: string, leagueId: string, weekId: string): 
   return weekPickRows.length + weekGamePickRows.length + weekParlayCount;
 }
 
-router.post("/", requireAuth, async (req: any, res: any) => {
+router.post("/", requireAuth, betLimiter, async (req: any, res: any) => {
   try {
     const { leagueId, stake, legs } = req.body as {
       leagueId: string;
@@ -283,7 +284,7 @@ router.post("/", requireAuth, async (req: any, res: any) => {
   }
 });
 
-router.post("/round-robin", requireAuth, async (req: any, res: any) => {
+router.post("/round-robin", requireAuth, betLimiter, async (req: any, res: any) => {
   try {
     const { leagueId, legs, size, stakePerParlay } = req.body as {
       leagueId: string; legs: LegInput[]; size: number; stakePerParlay: number;
@@ -424,7 +425,7 @@ router.post("/round-robin", requireAuth, async (req: any, res: any) => {
 });
 
 // Cashout a pending parlay before all games have started — full stake refund
-router.post("/:id/cashout", requireAuth, async (req: any, res: any) => {
+router.post("/:id/cashout", requireAuth, betLimiter, async (req: any, res: any) => {
   try {
     const parlay = await db.query.parlays.findFirst({
       where: eq(parlays.id, req.params.id),

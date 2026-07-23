@@ -19,15 +19,27 @@ import gamePickRoutes from "./routes/gamepicks.routes";
 import parlayRoutes from "./routes/parlays.routes";
 import { runStartupSeed } from "./services/startupSeed";
 import { startScheduler, stopScheduler } from "./services/scheduler";
+import { globalLimiter } from "./middleware/rateLimit";
 
 dotenv.config();
 
 const app = express();
 
+// Railway/Render sit in front of the app behind one reverse proxy hop — this
+// makes req.ip resolve to the real client IP (from X-Forwarded-For) instead
+// of the proxy's own address, which is required for per-IP rate limiting to
+// work at all (without it, every request looks like it comes from one IP).
+app.set("trust proxy", 1);
+
 app.use(cors());
 app.use(express.json());
 
+// Mounted before the rate limiter so platform health checks (which poll
+// frequently) can never be throttled or fail a deploy.
 app.use("/health", healthRoutes);
+
+app.use(globalLimiter);
+
 app.use("/users", userRoutes);
 app.use("/leagues", leagueRoutes);
 app.use("/leagues/:id", membershipRoutes);

@@ -5,10 +5,11 @@ import { db } from "../db/db";
 import { eq, or } from "drizzle-orm";
 import { users } from "../db/schema";
 import { requireAuth } from "../middleware/auth";
+import { authLimiter } from "../middleware/rateLimit";
 
 const router = Router();
 
-router.post("/auth/google", async (req: any, res: any) => {
+router.post("/auth/google", authLimiter, async (req: any, res: any) => {
   try {
     const { credential } = req.body;
     if (!credential) { res.status(400).json({ error: "Google credential required" }); return; }

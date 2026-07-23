@@ -3,6 +3,7 @@ import { db } from "../db/db";
 import { eq, and, inArray, count, sql } from "drizzle-orm";
 import { gamePicks, gameLines, games, memberships, leagues, picks, props } from "../db/schema";
 import { requireAuth } from "../middleware/auth";
+import { betLimiter } from "../middleware/rateLimit";
 import { calcProfit, fmtMoney } from "../lib/payout";
 
 const router = Router();
@@ -22,7 +23,7 @@ function calcGameLineAltOdds(baseOdds: number, baseLine: number, altLine: number
   return Math.max(-500, Math.min(500, baseOdds - Math.round(favSteps * 15)));
 }
 
-router.post("/", requireAuth, async (req: any, res: any) => {
+router.post("/", requireAuth, betLimiter, async (req: any, res: any) => {
   try {
     const { leagueId, gameLineId, stake, altLine } = req.body;
     const userId = req.userId;
@@ -175,7 +176,7 @@ router.get("/", requireAuth, async (req: any, res: any) => {
 });
 
 // Cashout a pending game pick before kickoff — full stake refund
-router.post("/:id/cashout", requireAuth, async (req: any, res: any) => {
+router.post("/:id/cashout", requireAuth, betLimiter, async (req: any, res: any) => {
   try {
     const gp = await db.query.gamePicks.findFirst({
       where: eq(gamePicks.id, req.params.id),
