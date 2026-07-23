@@ -3,7 +3,8 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { ACCENT } from "@/lib/constants";
+import Logo from "@/components/Logo";
+import ThemeToggle from "@/components/ThemeToggle";
 
 function UserIcon() {
   return (
@@ -45,28 +46,36 @@ export default function UserNav() {
 
       {/* Left: logo + nav links */}
       <div style={{ display: "flex", alignItems: "stretch", gap: 0, height: "100%" }}>
-        <div style={{ display: "flex", alignItems: "center", paddingRight: 16, marginRight: 4 }}>
-          <img src="/grH9m01.svg" alt="FanMark" style={{ width: 28, height: 28, flexShrink: 0, objectFit: "contain" }} />
-        </div>
+        <Link href="/home" style={{ paddingTop: 0, paddingLeft: 0, paddingBottom: 0, paddingRight: 16, display: "flex", alignItems: "center", marginRight: 4 }}>
+          <Logo size={28} />
+        </Link>
 
         {LINKS.map(({ label, href }) => {
           const active = pathname === href || pathname.startsWith(`${href}/`);
           return (
             <Link key={href} href={href} style={{
               display: "flex", alignItems: "center", padding: "0 14px",
-              fontSize: "0.82rem", fontWeight: 500, color: "var(--text)",
-              textDecoration: "none", whiteSpace: "nowrap",
-              borderBottom: `3.5px solid ${active ? ACCENT : "transparent"}`,
-              transition: "border-color 0.12s",
+              fontSize: "0.82rem", fontWeight: 900, letterSpacing: "0.03em",
+              color: "var(--text)", textDecoration: "none", whiteSpace: "nowrap",
+              textTransform: "uppercase",
             }}>
-              {label}
+              <span style={{
+                display: "flex",
+                alignItems: "center",
+                height: "100%",
+                boxShadow: active ? "inset 0 -2.5px 0 var(--text)" : "none",
+                transition: "box-shadow 0.12s",
+              }}>
+                {label}
+              </span>
             </Link>
           );
         })}
       </div>
 
-      {/* Right: profile */}
-      <div style={{ marginLeft: "auto", display: "flex", alignItems: "center" }}>
+      {/* Right: theme toggle + profile */}
+      <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8 }}>
+        <ThemeToggle />
         <div ref={profileRef} style={{ position: "relative" }}>
           <button
             type="button"

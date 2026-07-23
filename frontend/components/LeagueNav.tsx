@@ -6,6 +6,9 @@ import { usePathname, useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import HelmetAvatar from "@/components/HelmetAvatar";
 import { ACCENT } from "@/lib/constants";
+import { fmtMoney } from "@/lib/money";
+import Logo from "@/components/Logo";
+import ThemeToggle from "@/components/ThemeToggle";
 
 function ChevronDown() {
   return (
@@ -69,7 +72,11 @@ export default function LeagueNav({ leagueId }: { leagueId: string }) {
       }).catch(() => {});
     }
     window.addEventListener("league-profile-updated", refetch);
-    return () => window.removeEventListener("league-profile-updated", refetch);
+    window.addEventListener("bet-placed", refetch);
+    return () => {
+      window.removeEventListener("league-profile-updated", refetch);
+      window.removeEventListener("bet-placed", refetch);
+    };
   }, [leagueId]);
 
   function logout() {
@@ -125,9 +132,9 @@ export default function LeagueNav({ leagueId }: { leagueId: string }) {
       <div style={{ display: "flex", alignItems: "stretch", gap: 0, height: "100%" }}>
 
         {/* Logo */}
-        <div style={{ display: "flex", alignItems: "center", paddingRight: 16, marginRight: 4 }}>
-          <img src="/grH9m01.svg" alt="FanMark" style={{ width: 28, height: 28, flexShrink: 0, objectFit: "contain" }} />
-        </div>
+        <Link href="/home" style={{ paddingTop: 0, paddingLeft: 0, paddingBottom: 0, paddingRight: 16, display: "flex", alignItems: "center", marginRight: 4 }}>
+          <Logo size={28} />
+        </Link>
 
         {seasonStarted ? (
           <>
@@ -168,7 +175,7 @@ export default function LeagueNav({ leagueId }: { leagueId: string }) {
                   </div>
 
                   {isHovered && (
-                    <div style={{ position: "absolute", top: "100%", left: 0, background: "#fff", border: "1px solid var(--border-2)", borderRadius: "var(--radius-sm)", boxShadow: "var(--shadow-md)", minWidth: 280, zIndex: 500, overflow: "hidden", display: "grid", gridTemplateColumns: "1fr 1fr" }}>
+                    <div style={{ position: "absolute", top: "100%", left: 0, background: "var(--surface)", border: "1px solid var(--border-2)", borderRadius: "var(--radius-sm)", boxShadow: "var(--shadow-md)", minWidth: 280, zIndex: 500, overflow: "hidden", display: "grid", gridTemplateColumns: "1fr 1fr" }}>
                       {group.links.map(({ label, href }) => {
                         return (
                           <Link
@@ -217,8 +224,9 @@ export default function LeagueNav({ leagueId }: { leagueId: string }) {
         )}
       </div>
 
-      {/* Right: profile + league dropdown */}
+      {/* Right: theme toggle + profile + league dropdown */}
       <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8, alignSelf: "stretch" }}>
+        <ThemeToggle />
 
         {/* League name + dropdown */}
         <div ref={dropdownRef} style={{ position: "relative", alignSelf: "stretch", display: "flex", alignItems: "center" }} onMouseEnter={() => setOpen(true)} onMouseLeave={() => setOpen(false)}>
@@ -235,7 +243,7 @@ export default function LeagueNav({ leagueId }: { leagueId: string }) {
           </button>
 
           {open && (
-            <div style={{ position: "absolute", top: "100%", right: 0, background: "#fff", border: "1px solid var(--border-2)", borderRadius: "var(--radius-sm)", boxShadow: "var(--shadow-md)", minWidth: 230, zIndex: 500, overflow: "hidden" }}>
+            <div style={{ position: "absolute", top: "100%", right: 0, background: "var(--surface)", border: "1px solid var(--border-2)", borderRadius: "var(--radius-sm)", boxShadow: "var(--shadow-md)", minWidth: 230, zIndex: 500, overflow: "hidden" }}>
               {leagues.length === 0 && (
                 <div style={{ padding: "10px 14px", fontSize: "0.8rem", color: "var(--text-2)" }}>No leagues</div>
               )}
@@ -300,7 +308,7 @@ export default function LeagueNav({ leagueId }: { leagueId: string }) {
     {activeGroup && (
       <div style={{
         flexShrink: 0,
-        background: "#fff",
+        background: "var(--surface)",
         borderBottom: "1px solid var(--border)",
         padding: "0 300px",
         display: "flex",
@@ -321,7 +329,7 @@ export default function LeagueNav({ leagueId }: { leagueId: string }) {
                 display: "flex",
                 alignItems: "center",
                 fontSize: "0.8rem",
-                fontWeight: active ? 700 : 500,
+                fontWeight: 500,
                 color: active ? "var(--text)" : "var(--text-3)",
                 textDecoration: "none",
                 whiteSpace: "nowrap",
@@ -341,6 +349,17 @@ export default function LeagueNav({ leagueId }: { leagueId: string }) {
             </Link>
           );
         })}
+
+        {currentLeague && (
+          <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 6 }}>
+            <span style={{ fontSize: "0.65rem", fontWeight: 600, letterSpacing: "0.04em", color: "var(--text-3)", textTransform: "uppercase" }}>
+              Balance
+            </span>
+            <span style={{ fontSize: "0.8rem", fontWeight: 700, color: "var(--text)", fontVariantNumeric: "tabular-nums" }}>
+              {fmtMoney(currentLeague.balance ?? 0)}
+            </span>
+          </div>
+        )}
       </div>
     )}
     </>
