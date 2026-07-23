@@ -15,7 +15,7 @@ export async function distributeWeeklyAllowances(weekNumber: number): Promise<nu
     const activeMembers = (league.memberships as any[]).filter((m: any) => m.status === "ACTIVE");
     for (const membership of activeMembers) {
       await db.update(memberships)
-        .set({ balance: league.weeklyAllowance, weeklyWinnings: 0 })
+        .set({ balance: league.weeklyAllowance })
         .where(eq(memberships.id, membership.id));
       count++;
     }

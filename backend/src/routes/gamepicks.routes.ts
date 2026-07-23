@@ -236,14 +236,7 @@ export async function settleGamePick(gamePickId: string) {
 
   if (won) {
     await db.update(memberships)
-      .set({
-        balance: sql`${memberships.balance} + ${gp.stake + profit}`,
-        weeklyWinnings: sql`${memberships.weeklyWinnings} + ${profit}`,
-      })
-      .where(and(eq(memberships.userId, gp.userId), eq(memberships.leagueId, gp.leagueId)));
-  } else {
-    await db.update(memberships)
-      .set({ weeklyWinnings: sql`${memberships.weeklyWinnings} - ${gp.stake}` })
+      .set({ balance: sql`${memberships.balance} + ${gp.stake + profit}` })
       .where(and(eq(memberships.userId, gp.userId), eq(memberships.leagueId, gp.leagueId)));
   }
 }

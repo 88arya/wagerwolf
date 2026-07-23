@@ -30,18 +30,9 @@ function gameLineResult(market: string, line: number | null, homeScore: number, 
   }
 }
 
-async function creditWin(userId: string, leagueId: string, returned: number, profit: number) {
+async function creditWin(userId: string, leagueId: string, returned: number) {
   await db.update(memberships)
-    .set({
-      balance: sql`${memberships.balance} + ${returned}`,
-      weeklyWinnings: sql`${memberships.weeklyWinnings} + ${profit}`,
-    })
-    .where(and(eq(memberships.userId, userId), eq(memberships.leagueId, leagueId)));
-}
-
-async function debitLoss(userId: string, leagueId: string, stake: number) {
-  await db.update(memberships)
-    .set({ weeklyWinnings: sql`${memberships.weeklyWinnings} - ${stake}` })
+    .set({ balance: sql`${memberships.balance} + ${returned}` })
     .where(and(eq(memberships.userId, userId), eq(memberships.leagueId, leagueId)));
 }
 
@@ -107,8 +98,7 @@ export async function settleFinalGame(gameId: string): Promise<void> {
       const won = (pick.direction === "OVER" && prop.result > effectiveLine) ||
                   (pick.direction === "UNDER" && prop.result < effectiveLine);
       await db.update(picks).set({ outcome: won ? "WIN" : "LOSS" }).where(eq(picks.id, pick.id));
-      if (won) await creditWin(pick.userId, pick.leagueId, pick.stake + calcProfit(pick.stake, pick.odds), calcProfit(pick.stake, pick.odds));
-      else await debitLoss(pick.userId, pick.leagueId, pick.stake);
+      if (won) await creditWin(pick.userId, pick.leagueId, pick.stake + calcProfit(pick.stake, pick.odds));
     }
   }
 
@@ -128,8 +118,7 @@ export async function settleFinalGame(gameId: string): Promise<void> {
       }
       if (won == null) continue;
       await db.update(gamePicks).set({ outcome: won ? "WIN" : "LOSS" }).where(eq(gamePicks.id, gp.id));
-      if (won) await creditWin(gp.userId, gp.leagueId, gp.stake + calcProfit(gp.stake, gp.odds), calcProfit(gp.stake, gp.odds));
-      else await debitLoss(gp.userId, gp.leagueId, gp.stake);
+      if (won) await creditWin(gp.userId, gp.leagueId, gp.stake + calcProfit(gp.stake, gp.odds));
     }
   }
 
@@ -179,10 +168,9 @@ export async function settleFinalGame(gameId: string): Promise<void> {
     const allWon = legs.every((l) => l.outcome === "WIN");
     if (anyLoss) {
       await db.update(parlays).set({ outcome: "LOSS" }).where(eq(parlays.id, parlay.id));
-      await debitLoss(parlay.userId, parlay.leagueId, parlay.stake);
     } else if (allWon) {
       await db.update(parlays).set({ outcome: "WIN" }).where(eq(parlays.id, parlay.id));
-      await creditWin(parlay.userId, parlay.leagueId, parlay.payout, parlay.payout - parlay.stake);
+      await creditWin(parlay.userId, parlay.leagueId, parlay.payout);
     }
   }
 }

@@ -128,14 +128,7 @@ export async function resolveWeekById(weekId: string): Promise<{
         .where(eq(gamePicks.id, gp.id));
       if (won) {
         await tx.update(memberships)
-          .set({
-            balance: sql`${memberships.balance} + ${gp.stake + profit}`,
-            weeklyWinnings: sql`${memberships.weeklyWinnings} + ${profit}`,
-          })
-          .where(and(eq(memberships.userId, gp.userId), eq(memberships.leagueId, gp.leagueId)));
-      } else {
-        await tx.update(memberships)
-          .set({ weeklyWinnings: sql`${memberships.weeklyWinnings} - ${gp.stake}` })
+          .set({ balance: sql`${memberships.balance} + ${gp.stake + profit}` })
           .where(and(eq(memberships.userId, gp.userId), eq(memberships.leagueId, gp.leagueId)));
       }
     });
@@ -180,14 +173,7 @@ export async function resolveWeekById(weekId: string): Promise<{
         .where(eq(picks.id, pick.id));
       if (won) {
         await tx.update(memberships)
-          .set({
-            balance: sql`${memberships.balance} + ${pick.stake + profit}`,
-            weeklyWinnings: sql`${memberships.weeklyWinnings} + ${profit}`,
-          })
-          .where(and(eq(memberships.userId, pick.userId), eq(memberships.leagueId, pick.leagueId)));
-      } else {
-        await tx.update(memberships)
-          .set({ weeklyWinnings: sql`${memberships.weeklyWinnings} - ${pick.stake}` })
+          .set({ balance: sql`${memberships.balance} + ${pick.stake + profit}` })
           .where(and(eq(memberships.userId, pick.userId), eq(memberships.leagueId, pick.leagueId)));
       }
     });
@@ -233,21 +219,13 @@ export async function resolveWeekById(weekId: string): Promise<{
     }
     if (!allSettled) continue;
     const parlayWon = !anyLoss;
-    const profit = parlayWon ? parlay.payout - parlay.stake : 0;
     await db.transaction(async (tx) => {
       await tx.update(parlays)
         .set({ outcome: parlayWon ? "WIN" : "LOSS" })
         .where(eq(parlays.id, parlay.id));
       if (parlayWon) {
         await tx.update(memberships)
-          .set({
-            balance: sql`${memberships.balance} + ${parlay.payout}`,
-            weeklyWinnings: sql`${memberships.weeklyWinnings} + ${profit}`,
-          })
-          .where(and(eq(memberships.userId, parlay.userId), eq(memberships.leagueId, parlay.leagueId)));
-      } else {
-        await tx.update(memberships)
-          .set({ weeklyWinnings: sql`${memberships.weeklyWinnings} - ${parlay.stake}` })
+          .set({ balance: sql`${memberships.balance} + ${parlay.payout}` })
           .where(and(eq(memberships.userId, parlay.userId), eq(memberships.leagueId, parlay.leagueId)));
       }
     });
@@ -263,7 +241,8 @@ export async function resolveWeekById(weekId: string): Promise<{
     .set({ resolved: true, locked: true })
     .where(eq(weeks.id, weekId));
 
-  // Resolve matchups using weeklyWinnings
+  // Resolve matchups using ending balance — the balance already includes the
+  // week's untouched allowance, so it IS each member's score for the week
   const pendingMatchups = await db.query.matchups.findMany({
     where: (m, { and, eq, isNull }) =>
       and(eq(m.weekNumber, week.number), isNull(m.winnerId), eq(m.isTie, false)),
@@ -282,8 +261,8 @@ export async function resolveWeekById(weekId: string): Promise<{
       }),
     ]);
 
-    let homeProfit = homeMem?.weeklyWinnings ?? 0;
-    let awayProfit = awayMem?.weeklyWinnings ?? 0;
+    let homeProfit = homeMem?.balance ?? 0;
+    let awayProfit = awayMem?.balance ?? 0;
 
     if (matchup.isGhostMatchup) {
       if (!(matchup.leagueId in leagueMeanCache)) {
@@ -292,7 +271,7 @@ export async function resolveWeekById(weekId: string): Promise<{
             and(eq(m.leagueId, matchup.leagueId), eq(m.status, "ACTIVE")),
         });
         leagueMeanCache[matchup.leagueId] = mems.length > 0
-          ? mems.reduce((s, m) => s + m.weeklyWinnings, 0) / mems.length
+          ? mems.reduce((s, m) => s + m.balance, 0) / mems.length
           : 0;
       }
       const mean = leagueMeanCache[matchup.leagueId];

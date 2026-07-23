@@ -83,7 +83,6 @@ export const memberships = pgTable("Membership", {
   userId:         text("userId").notNull(),
   leagueId:       text("leagueId").notNull(),
   balance:        integer("balance").notNull(),
-  weeklyWinnings: integer("weeklyWinnings").default(0).notNull(),
   status:         membershipStatusEnum("status").default("ACTIVE").notNull(),
   isPublicFill:   boolean("isPublicFill").default(false).notNull(),
   helmetColor:    text("helmetColor").default("#2563EB").notNull(),

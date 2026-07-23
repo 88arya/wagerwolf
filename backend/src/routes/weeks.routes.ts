@@ -216,11 +216,9 @@ router.post("/:id/resolve", requireAuth, requireCron, async (req: any, res: any)
       const [mem] = await db.select().from(memberships)
         .where(and(eq(memberships.userId, pick.userId), eq(memberships.leagueId, pick.leagueId)))
         .limit(1);
-      if (mem) {
+      if (mem && won) {
         await db.update(memberships)
-          .set(won
-            ? { balance: mem.balance + Number(pick.stake) + profit, weeklyWinnings: mem.weeklyWinnings + profit }
-            : { weeklyWinnings: mem.weeklyWinnings - Number(pick.stake) })
+          .set({ balance: mem.balance + Number(pick.stake) + profit })
           .where(and(eq(memberships.userId, pick.userId), eq(memberships.leagueId, pick.leagueId)));
       }
     }
@@ -245,11 +243,9 @@ router.post("/:id/resolve", requireAuth, requireCron, async (req: any, res: any)
       const [mem] = await db.select().from(memberships)
         .where(and(eq(memberships.userId, gp.userId), eq(memberships.leagueId, gp.leagueId)))
         .limit(1);
-      if (mem) {
+      if (mem && won) {
         await db.update(memberships)
-          .set(won
-            ? { balance: mem.balance + Number(gp.stake) + profit, weeklyWinnings: mem.weeklyWinnings + profit }
-            : { weeklyWinnings: mem.weeklyWinnings - Number(gp.stake) })
+          .set({ balance: mem.balance + Number(gp.stake) + profit })
           .where(and(eq(memberships.userId, gp.userId), eq(memberships.leagueId, gp.leagueId)));
       }
     }
@@ -275,8 +271,8 @@ router.post("/:id/resolve", requireAuth, requireCron, async (req: any, res: any)
           .where(and(eq(memberships.userId, matchup.awayUserId), eq(memberships.leagueId, matchup.leagueId)))
           .limit(1),
       ]);
-      const homeProfit = homeMem[0]?.weeklyWinnings ?? 0;
-      const awayProfit = awayMem[0]?.weeklyWinnings ?? 0;
+      const homeProfit = homeMem[0]?.balance ?? 0;
+      const awayProfit = awayMem[0]?.balance ?? 0;
       const isTie = homeProfit === awayProfit;
       const winnerId = isTie ? null : homeProfit > awayProfit ? matchup.homeUserId : matchup.awayUserId;
       await db.update(matchups)
