@@ -1,6 +1,7 @@
-import cron from "node-cron";
+import { Queue, Worker, Job } from "bullmq";
+import { redisConnection } from "../queue/connection";
 import { db } from "../db/db";
-import { eq, and, lt, gt, lte, gte } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { weeks, leagues } from "../db/schema";
 import { resolveWeekById } from "./resolveWeek";
 import { syncESPNGames, syncOddsAllWeeks, syncScores } from "./syncWeek";
@@ -19,6 +20,18 @@ const ODDS_SYNC_SCHEDULE = "0 14 * * 3";
 const ODDS_REFRESH_SCHEDULE = "0 14 * * 5";
 // Every minute — sync scores only when a game has kicked off but isn't final yet
 const SCORE_SYNC_SCHEDULE = "* * * * *";
+
+const QUEUE_NAME = "cron-jobs";
+
+const JOB = {
+  RESOLVE_AND_ALLOWANCES: "resolve-and-allowances",
+  ESPN_GAME_SYNC: "espn-game-sync",
+  ODDS_SYNC: "odds-sync",
+  ODDS_REFRESH: "odds-refresh",
+  SCORE_SYNC: "score-sync",
+} as const;
+
+export const cronQueue = new Queue(QUEUE_NAME, { connection: redisConnection });
 
 async function runResolveAndAllowances() {
   const now = new Date();
@@ -164,11 +177,68 @@ async function runScoreSync() {
   }
 }
 
-export function startScheduler() {
-  cron.schedule(RESOLVE_SCHEDULE,      runResolveAndAllowances, { timezone: "UTC" });
-  cron.schedule(GAME_SYNC_SCHEDULE,    runESPNGameSync,         { timezone: "UTC" });
-  cron.schedule(ODDS_SYNC_SCHEDULE,    runOddsSync,             { timezone: "UTC" });
-  cron.schedule(ODDS_REFRESH_SCHEDULE, runOddsSync,             { timezone: "UTC" });
-  cron.schedule(SCORE_SYNC_SCHEDULE,   runScoreSync,            { timezone: "UTC" });
-  console.log("[scheduler] Cron jobs registered");
+const HANDLERS: Record<string, () => Promise<void>> = {
+  [JOB.RESOLVE_AND_ALLOWANCES]: runResolveAndAllowances,
+  [JOB.ESPN_GAME_SYNC]: runESPNGameSync,
+  [JOB.ODDS_SYNC]: runOddsSync,
+  [JOB.ODDS_REFRESH]: runOddsSync,
+  [JOB.SCORE_SYNC]: runScoreSync,
+};
+
+let worker: Worker | null = null;
+
+export async function startScheduler() {
+  // upsertJobScheduler is idempotent by schedulerId — safe for every instance
+  // to call on boot, Redis just keeps a single active schedule per id. This is
+  // what makes the schedule safe across multiple backend instances: only one
+  // worker across the whole fleet will ever pick up a given firing.
+  await cronQueue.upsertJobScheduler(
+    JOB.RESOLVE_AND_ALLOWANCES,
+    { pattern: RESOLVE_SCHEDULE, tz: "UTC" },
+    { name: JOB.RESOLVE_AND_ALLOWANCES }
+  );
+  await cronQueue.upsertJobScheduler(
+    JOB.ESPN_GAME_SYNC,
+    { pattern: GAME_SYNC_SCHEDULE, tz: "UTC" },
+    { name: JOB.ESPN_GAME_SYNC }
+  );
+  await cronQueue.upsertJobScheduler(
+    JOB.ODDS_SYNC,
+    { pattern: ODDS_SYNC_SCHEDULE, tz: "UTC" },
+    { name: JOB.ODDS_SYNC }
+  );
+  await cronQueue.upsertJobScheduler(
+    JOB.ODDS_REFRESH,
+    { pattern: ODDS_REFRESH_SCHEDULE, tz: "UTC" },
+    { name: JOB.ODDS_REFRESH }
+  );
+  await cronQueue.upsertJobScheduler(
+    JOB.SCORE_SYNC,
+    { pattern: SCORE_SYNC_SCHEDULE, tz: "UTC" },
+    { name: JOB.SCORE_SYNC }
+  );
+
+  worker = new Worker(
+    QUEUE_NAME,
+    async (job: Job) => {
+      const handler = HANDLERS[job.name];
+      if (!handler) {
+        console.warn(`[cron] No handler registered for job "${job.name}"`);
+        return;
+      }
+      await handler();
+    },
+    { connection: redisConnection, concurrency: 1 }
+  );
+
+  worker.on("failed", (job, err) => {
+    console.error(`[cron] Job "${job?.name}" failed:`, err);
+  });
+
+  console.log("[scheduler] BullMQ job schedulers registered, worker started");
+}
+
+export async function stopScheduler() {
+  await worker?.close();
+  await cronQueue.close();
 }

@@ -18,7 +18,7 @@ import gamelineRoutes from "./routes/gamelines.routes";
 import gamePickRoutes from "./routes/gamepicks.routes";
 import parlayRoutes from "./routes/parlays.routes";
 import { runStartupSeed } from "./services/startupSeed";
-import { startScheduler } from "./services/scheduler";
+import { startScheduler, stopScheduler } from "./services/scheduler";
 
 dotenv.config();
 
@@ -50,8 +50,18 @@ app.get("/", (req, res) => {
 
 const PORT = process.env.PORT || 5000;
 
-app.listen(PORT, async () => {
+const server = app.listen(PORT, async () => {
   console.log(`Server running on port ${PORT}`);
   await runStartupSeed();
-  startScheduler();
+  await startScheduler();
 });
+
+async function shutdown() {
+  console.log("Shutting down...");
+  server.close();
+  await stopScheduler();
+  process.exit(0);
+}
+
+process.on("SIGTERM", shutdown);
+process.on("SIGINT", shutdown);
