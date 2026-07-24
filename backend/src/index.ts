@@ -23,6 +23,18 @@ import { globalLimiter } from "./middleware/rateLimit";
 
 dotenv.config();
 
+// Fail fast on boot rather than surfacing confusing errors on the first request
+// that happens to need one of these.
+const REQUIRED_ENV = ["DATABASE_URL", "JWT_SECRET", "REDIS_URL"];
+const missingEnv = REQUIRED_ENV.filter((key) => !process.env[key]);
+if (missingEnv.length > 0) {
+  console.error(`Missing required environment variables: ${missingEnv.join(", ")}`);
+  process.exit(1);
+}
+if (process.env.NODE_ENV === "production" && !process.env.CRON_SECRET) {
+  console.error("CRON_SECRET is not set — cron-protected routes (/espn/resolve, /weeks/:id/resolve, etc.) are open to anyone in production.");
+}
+
 const app = express();
 
 // Railway/Render sit in front of the app behind one reverse proxy hop — this
@@ -31,7 +43,10 @@ const app = express();
 // work at all (without it, every request looks like it comes from one IP).
 app.set("trust proxy", 1);
 
-app.use(cors());
+// FRONTEND_URL restricts CORS to the deployed frontend in production. Unset in
+// dev, so cors() falls back to reflecting any origin (matches localhost usage).
+const allowedOrigins = process.env.FRONTEND_URL?.split(",").map((o) => o.trim());
+app.use(cors(allowedOrigins ? { origin: allowedOrigins } : undefined));
 app.use(express.json());
 
 // Mounted before the rate limiter so platform health checks (which poll
