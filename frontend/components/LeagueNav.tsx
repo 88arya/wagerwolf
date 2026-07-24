@@ -99,6 +99,7 @@ export default function LeagueNav({ leagueId }: { leagueId: string }) {
       label: "LEAGUE",
       links: [
         { label: "Home",            href: base },
+        { label: "Matchup",         href: `${base}/matchup` },
         { label: "Scoreboard",      href: `${base}/scoreboard` },
         { label: "Standings",       href: `${base}/standings` },
         { label: "Members",         href: `${base}/members` },
