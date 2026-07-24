@@ -44,7 +44,6 @@ export default function MyBetsPage({ params }: PageProps<"/leagues/[leagueId]/my
   const [parlays, setParlays] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [cashingOut, setCashingOut] = useState<string | null>(null);
-  const [tab, setTab] = useState<"props" | "lines" | "parlays">("props");
 
   async function load(lid: string, currentWeek: any) {
     const weekPropIds = new Set((currentWeek?.games ?? []).flatMap((g: any) => (g.props ?? []).map((p: any) => p.id)));
@@ -117,6 +116,12 @@ export default function MyBetsPage({ params }: PageProps<"/leagues/[leagueId]/my
     return sum;
   }, 0);
 
+  const allBets = [
+    ...picks.map((p) => ({ kind: "pick" as const, createdAt: p.createdAt, data: p })),
+    ...gamePicks.map((g) => ({ kind: "gamepick" as const, createdAt: g.createdAt, data: g })),
+    ...parlays.map((p) => ({ kind: "parlay" as const, createdAt: p.createdAt, data: p })),
+  ].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
   const grid = { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 8, alignItems: "start" } as const;
 
   return (
@@ -162,149 +167,119 @@ export default function MyBetsPage({ params }: PageProps<"/leagues/[leagueId]/my
               ))}
             </div>
 
-            {/* Tabs */}
-            <div className="tab-bar" style={{ marginBottom: 16 }}>
-              {([
-                ["props",   `Props (${picks.length})`],
-                ["lines",   `Game Lines (${gamePicks.length})`],
-                ["parlays", `Parlays (${parlays.length})`],
-              ] as const).map(([t, label]) => (
-                <button key={t} className={`tab-btn${tab === t ? " active" : ""}`} onClick={() => setTab(t)}>
-                  {label}
-                </button>
-              ))}
+            {/* All bets, most recent first */}
+            <div style={grid}>
+              {allBets.map(({ kind, data }) => {
+                if (kind === "pick") {
+                  const pick = data;
+                  const profit = pick.outcome === "WIN" ? calcProfit(Number(pick.stake), pick.odds ?? -110) : null;
+                  const toWin = calcProfit(Number(pick.stake), pick.odds ?? -110);
+                  const canCashout = pick.outcome === "PENDING" && !pick.cashedOut && !gameStarted(pick.prop?.game?.gameDate);
+                  const effectiveLine = pick.altLine ?? pick.prop?.line;
+                  return (
+                    <div key={pick.id} className="card" style={{ padding: "11px 14px" }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 7 }}>
+                        <div style={{ flex: 1, minWidth: 0, paddingRight: 8 }}>
+                          <div style={{ fontWeight: 700, fontSize: "0.82rem", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{pick.prop?.player?.name}</div>
+                          <div style={{ fontSize: "0.72rem", color: "var(--text-2)", marginTop: 2 }}>
+                            {pick.direction} {effectiveLine} {pick.prop?.statType?.split("_").join(" ")}
+                          </div>
+                          <div style={{ fontSize: "0.68rem", color: "var(--text-3)", marginTop: 1 }}>
+                            {pick.prop?.player?.position} · {pick.prop?.player?.team}
+                          </div>
+                        </div>
+                        <OutcomeBadge outcome={pick.outcome} cashedOut={pick.cashedOut} />
+                      </div>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                        <div style={{ display: "flex", gap: 10, fontSize: "0.72rem", color: "var(--text-3)", fontVariantNumeric: "tabular-nums" }}>
+                          <span>{fmtOdds(pick.odds ?? -110)}</span>
+                          <span>stake {fmtMoney(pick.stake)}</span>
+                          {profit != null
+                            ? <span style={{ color: "var(--win)", fontWeight: 700 }}>{fmtMoney(profit, { sign: true })}</span>
+                            : <span>to win {fmtMoney(toWin)}</span>
+                          }
+                        </div>
+                        {canCashout && <CashOutBtn busy={cashingOut === pick.id} onClick={() => cashOut("pick", pick.id)} />}
+                      </div>
+                    </div>
+                  );
+                }
+
+                if (kind === "gamepick") {
+                  const gp = data;
+                  const profit = gp.outcome === "WIN" ? calcProfit(Number(gp.stake), gp.odds) : null;
+                  const toWin = calcProfit(Number(gp.stake), gp.odds);
+                  const canCashout = gp.outcome === "PENDING" && !gp.cashedOut && !gameStarted(gp.gameLine?.game?.gameDate);
+                  return (
+                    <div key={gp.id} className="card" style={{ padding: "11px 14px" }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 7 }}>
+                        <div style={{ flex: 1, minWidth: 0, paddingRight: 8 }}>
+                          <div style={{ fontWeight: 700, fontSize: "0.82rem", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{gp.gameLine?.label}</div>
+                          <div style={{ fontSize: "0.68rem", color: "var(--text-3)", marginTop: 2 }}>
+                            {gp.gameLine?.game?.awayTeam} @ {gp.gameLine?.game?.homeTeam}
+                          </div>
+                        </div>
+                        <OutcomeBadge outcome={gp.outcome} cashedOut={gp.cashedOut} />
+                      </div>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                        <div style={{ display: "flex", gap: 10, fontSize: "0.72rem", color: "var(--text-3)", fontVariantNumeric: "tabular-nums" }}>
+                          <span>{fmtOdds(gp.odds)}</span>
+                          <span>stake {fmtMoney(gp.stake)}</span>
+                          {profit != null
+                            ? <span style={{ color: "var(--win)", fontWeight: 700 }}>{fmtMoney(profit, { sign: true })}</span>
+                            : <span>to win {fmtMoney(toWin)}</span>
+                          }
+                        </div>
+                        {canCashout && <CashOutBtn busy={cashingOut === gp.id} onClick={() => cashOut("gamepick", gp.id)} />}
+                      </div>
+                    </div>
+                  );
+                }
+
+                // parlay
+                const parlay = data;
+                const profit = parlay.outcome === "WIN" ? Number(parlay.payout) - Number(parlay.stake) : null;
+                const firstGame = parlay.legs?.[0]?.prop?.game ?? parlay.legs?.[0]?.gameLine?.game;
+                const canCashout = parlay.outcome === "PENDING" && !parlay.cashedOut && !gameStarted(firstGame?.gameDate);
+                return (
+                  <div key={parlay.id} className="card" style={{ padding: "11px 14px" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 7 }}>
+                      <div>
+                        <div style={{ fontWeight: 800, fontSize: "0.82rem" }}>{parlay.legs?.length}-Leg Parlay</div>
+                        <div style={{ fontSize: "0.68rem", color: "var(--text-3)", marginTop: 2, fontVariantNumeric: "tabular-nums" }}>
+                          {fmtOdds(parlay.totalOdds)} · stake {fmtMoney(parlay.stake)}
+                        </div>
+                      </div>
+                      <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4 }}>
+                        <OutcomeBadge outcome={parlay.outcome} cashedOut={parlay.cashedOut} />
+                        {profit != null && <span style={{ fontSize: "0.75rem", fontWeight: 700, color: "var(--win)", fontVariantNumeric: "tabular-nums" }}>{fmtMoney(profit, { sign: true })}</span>}
+                        {parlay.outcome === "PENDING" && <span style={{ fontSize: "0.68rem", color: "var(--text-3)", fontVariantNumeric: "tabular-nums" }}>to win {fmtMoney(Number(parlay.payout) - Number(parlay.stake))}</span>}
+                      </div>
+                    </div>
+                    <div style={{ borderTop: "1px solid var(--border)", paddingTop: 7, marginBottom: canCashout ? 10 : 0 }}>
+                      {parlay.legs?.map((leg: any, i: number) => (
+                        <div key={i} style={{
+                          display: "flex", justifyContent: "space-between", alignItems: "center",
+                          padding: "5px 0",
+                          borderBottom: i < parlay.legs.length - 1 ? "1px solid var(--border)" : "none",
+                        }}>
+                          <div style={{ fontSize: "0.72rem", color: "var(--text-2)", flex: 1, minWidth: 0, paddingRight: 8, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                            {leg.prop
+                              ? `${leg.prop.player?.name} ${leg.direction} ${leg.altLine ?? leg.prop.line} ${leg.prop.statType?.split("_").join(" ")}`
+                              : leg.gameLine?.label ?? "—"}
+                          </div>
+                          <div style={{ display: "flex", gap: 8, alignItems: "center", flexShrink: 0 }}>
+                            <span style={{ fontSize: "0.68rem", color: "var(--text-3)", fontVariantNumeric: "tabular-nums" }}>{fmtOdds(leg.odds)}</span>
+                            <OutcomeBadge outcome={leg.outcome} />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    {canCashout && <CashOutBtn full busy={cashingOut === parlay.id} onClick={() => cashOut("parlay", parlay.id)} />}
+                  </div>
+                );
+              })}
             </div>
-
-            {/* Props */}
-            {tab === "props" && (
-              <>
-                {picks.length === 0 && <div style={{ padding: "16px 2px", color: "var(--text-3)", fontSize: "0.8rem" }}>No prop bets this week</div>}
-                <div style={grid}>
-                  {picks.map((pick: any) => {
-                    const profit = pick.outcome === "WIN" ? calcProfit(Number(pick.stake), pick.odds ?? -110) : null;
-                    const toWin = calcProfit(Number(pick.stake), pick.odds ?? -110);
-                    const canCashout = pick.outcome === "PENDING" && !pick.cashedOut && !gameStarted(pick.prop?.game?.gameDate);
-                    const effectiveLine = pick.altLine ?? pick.prop?.line;
-                    return (
-                      <div key={pick.id} className="card" style={{ padding: "11px 14px" }}>
-                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 7 }}>
-                          <div style={{ flex: 1, minWidth: 0, paddingRight: 8 }}>
-                            <div style={{ fontWeight: 700, fontSize: "0.82rem", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{pick.prop?.player?.name}</div>
-                            <div style={{ fontSize: "0.72rem", color: "var(--text-2)", marginTop: 2 }}>
-                              {pick.direction} {effectiveLine} {pick.prop?.statType?.split("_").join(" ")}
-                            </div>
-                            <div style={{ fontSize: "0.68rem", color: "var(--text-3)", marginTop: 1 }}>
-                              {pick.prop?.player?.position} · {pick.prop?.player?.team}
-                            </div>
-                          </div>
-                          <OutcomeBadge outcome={pick.outcome} cashedOut={pick.cashedOut} />
-                        </div>
-                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                          <div style={{ display: "flex", gap: 10, fontSize: "0.72rem", color: "var(--text-3)", fontVariantNumeric: "tabular-nums" }}>
-                            <span>{fmtOdds(pick.odds ?? -110)}</span>
-                            <span>stake {fmtMoney(pick.stake)}</span>
-                            {profit != null
-                              ? <span style={{ color: "var(--win)", fontWeight: 700 }}>{fmtMoney(profit, { sign: true })}</span>
-                              : <span>to win {fmtMoney(toWin)}</span>
-                            }
-                          </div>
-                          {canCashout && <CashOutBtn busy={cashingOut === pick.id} onClick={() => cashOut("pick", pick.id)} />}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </>
-            )}
-
-            {/* Lines */}
-            {tab === "lines" && (
-              <>
-                {gamePicks.length === 0 && <div style={{ padding: "16px 2px", color: "var(--text-3)", fontSize: "0.8rem" }}>No game line bets this week</div>}
-                <div style={grid}>
-                  {gamePicks.map((gp: any) => {
-                    const profit = gp.outcome === "WIN" ? calcProfit(Number(gp.stake), gp.odds) : null;
-                    const toWin = calcProfit(Number(gp.stake), gp.odds);
-                    const canCashout = gp.outcome === "PENDING" && !gp.cashedOut && !gameStarted(gp.gameLine?.game?.gameDate);
-                    return (
-                      <div key={gp.id} className="card" style={{ padding: "11px 14px" }}>
-                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 7 }}>
-                          <div style={{ flex: 1, minWidth: 0, paddingRight: 8 }}>
-                            <div style={{ fontWeight: 700, fontSize: "0.82rem", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{gp.gameLine?.label}</div>
-                            <div style={{ fontSize: "0.68rem", color: "var(--text-3)", marginTop: 2 }}>
-                              {gp.gameLine?.game?.awayTeam} @ {gp.gameLine?.game?.homeTeam}
-                            </div>
-                          </div>
-                          <OutcomeBadge outcome={gp.outcome} cashedOut={gp.cashedOut} />
-                        </div>
-                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                          <div style={{ display: "flex", gap: 10, fontSize: "0.72rem", color: "var(--text-3)", fontVariantNumeric: "tabular-nums" }}>
-                            <span>{fmtOdds(gp.odds)}</span>
-                            <span>stake {fmtMoney(gp.stake)}</span>
-                            {profit != null
-                              ? <span style={{ color: "var(--win)", fontWeight: 700 }}>{fmtMoney(profit, { sign: true })}</span>
-                              : <span>to win {fmtMoney(toWin)}</span>
-                            }
-                          </div>
-                          {canCashout && <CashOutBtn busy={cashingOut === gp.id} onClick={() => cashOut("gamepick", gp.id)} />}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </>
-            )}
-
-            {/* Parlays */}
-            {tab === "parlays" && (
-              <>
-                {parlays.length === 0 && <div style={{ padding: "16px 2px", color: "var(--text-3)", fontSize: "0.8rem" }}>No parlays this week</div>}
-                <div style={grid}>
-                  {parlays.map((parlay: any) => {
-                    const profit = parlay.outcome === "WIN" ? Number(parlay.payout) - Number(parlay.stake) : null;
-                    const firstGame = parlay.legs?.[0]?.prop?.game ?? parlay.legs?.[0]?.gameLine?.game;
-                    const canCashout = parlay.outcome === "PENDING" && !parlay.cashedOut && !gameStarted(firstGame?.gameDate);
-                    return (
-                      <div key={parlay.id} className="card" style={{ padding: "11px 14px" }}>
-                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 7 }}>
-                          <div>
-                            <div style={{ fontWeight: 800, fontSize: "0.82rem" }}>{parlay.legs?.length}-Leg Parlay</div>
-                            <div style={{ fontSize: "0.68rem", color: "var(--text-3)", marginTop: 2, fontVariantNumeric: "tabular-nums" }}>
-                              {fmtOdds(parlay.totalOdds)} · stake {fmtMoney(parlay.stake)}
-                            </div>
-                          </div>
-                          <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4 }}>
-                            <OutcomeBadge outcome={parlay.outcome} cashedOut={parlay.cashedOut} />
-                            {profit != null && <span style={{ fontSize: "0.75rem", fontWeight: 700, color: "var(--win)", fontVariantNumeric: "tabular-nums" }}>{fmtMoney(profit, { sign: true })}</span>}
-                            {parlay.outcome === "PENDING" && <span style={{ fontSize: "0.68rem", color: "var(--text-3)", fontVariantNumeric: "tabular-nums" }}>to win {fmtMoney(Number(parlay.payout) - Number(parlay.stake))}</span>}
-                          </div>
-                        </div>
-                        <div style={{ borderTop: "1px solid var(--border)", paddingTop: 7, marginBottom: canCashout ? 10 : 0 }}>
-                          {parlay.legs?.map((leg: any, i: number) => (
-                            <div key={i} style={{
-                              display: "flex", justifyContent: "space-between", alignItems: "center",
-                              padding: "5px 0",
-                              borderBottom: i < parlay.legs.length - 1 ? "1px solid var(--border)" : "none",
-                            }}>
-                              <div style={{ fontSize: "0.72rem", color: "var(--text-2)", flex: 1, minWidth: 0, paddingRight: 8, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                                {leg.prop
-                                  ? `${leg.prop.player?.name} ${leg.direction} ${leg.altLine ?? leg.prop.line} ${leg.prop.statType?.split("_").join(" ")}`
-                                  : leg.gameLine?.label ?? "—"}
-                              </div>
-                              <div style={{ display: "flex", gap: 8, alignItems: "center", flexShrink: 0 }}>
-                                <span style={{ fontSize: "0.68rem", color: "var(--text-3)", fontVariantNumeric: "tabular-nums" }}>{fmtOdds(leg.odds)}</span>
-                                <OutcomeBadge outcome={leg.outcome} />
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                        {canCashout && <CashOutBtn full busy={cashingOut === parlay.id} onClick={() => cashOut("parlay", parlay.id)} />}
-                      </div>
-                    );
-                  })}
-                </div>
-              </>
-            )}
           </>
         )}
       </div>
