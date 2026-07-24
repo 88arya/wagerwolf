@@ -190,23 +190,23 @@ export default function LeaguesPage() {
               {!loading && !loadError && rows.length > 0 && (
                 <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed" }}>
                   <colgroup>
-                    <col style={{ width: "24%" }} />
+                    <col style={{ width: "23%" }} />
                     <col style={{ width: "11%" }} />
                     <col style={{ width: "10%" }} />
-                    <col style={{ width: "9%" }} />
-                    <col style={{ width: "11%" }} />
-                    <col style={{ width: "9%" }} />
-                    <col style={{ width: "9%" }} />
+                    <col style={{ width: "14%" }} />
+                    <col style={{ width: "8%" }} />
+                    <col style={{ width: "8%" }} />
+                    <col style={{ width: "8%" }} />
                     <col style={{ width: "7%" }} />
                     <col style={{ width: "7%" }} />
-                    <col style={{ width: "3%" }} />
+                    <col style={{ width: "4%" }} />
                   </colgroup>
                   <thead>
                     <tr>
                       <th style={TH}>LEAGUE</th>
                       <th style={TH}>YOU</th>
                       <th style={TH}>PHASE</th>
-                      <th style={THC}>BALANCE</th>
+                      <th style={THC}>AVAILABLE BALANCE</th>
                       <th style={THC}>ACTIVE BETS</th>
                       <th style={THC}>STANDING</th>
                       <th style={THC}>RECORD</th>

@@ -85,7 +85,7 @@ export default function LeaderboardPage({ params }: PageProps<"/leagues/[leagueI
               borderBottom: "1px solid var(--border)",
               gap: 8,
             }}>
-              {["#", "Player", "W–L–T", ...(hasWeekProfits ? ["Wk P&L"] : []), "Balance"].map((h, i) => (
+              {["#", "Player", "W–L–T", ...(hasWeekProfits ? ["Wk P&L"] : []), "Available Balance"].map((h, i) => (
                 <span key={String(h)} style={{
                   fontSize: "0.6rem", fontWeight: 800, letterSpacing: "0.1em",
                   textTransform: "uppercase", color: "var(--text-3)",
