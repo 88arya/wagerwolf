@@ -125,6 +125,35 @@ function BetCard({ bet }: { bet: any }) {
   );
 }
 
+function Stat({ label, value, color, align }: { label: string; value: string; color?: string; align: "left" | "right" }) {
+  return (
+    <div style={{ textAlign: align }}>
+      <div style={{ fontSize: "0.56rem", fontWeight: 800, letterSpacing: "0.07em", textTransform: "uppercase", color: "var(--text-3)", marginBottom: 2 }}>
+        {label}
+      </div>
+      <div style={{ fontSize: "0.8rem", fontWeight: 700, fontVariantNumeric: "tabular-nums", color: color ?? "var(--text)" }}>
+        {value}
+      </div>
+    </div>
+  );
+}
+
+function BalanceBreakdown({ side, weeklyAllowance, balanceEdge, align }: { side: any; weeklyAllowance: number; balanceEdge: number; align: "left" | "right" }) {
+  const netThisWeek = side.balance - weeklyAllowance;
+  const vsOpponent = balanceEdge;
+  const stats = [
+    <Stat key="avail" label="Available Balance" value={fmtMoney(side.balance)} align={align} />,
+    <Stat key="allow" label="Weekly Allowance" value={fmtMoney(weeklyAllowance)} align={align} />,
+    <Stat key="net" label="Net This Week" value={fmtMoney(netThisWeek, { sign: true })} color={netThisWeek >= 0 ? "var(--win)" : "var(--loss)"} align={align} />,
+    <Stat key="vsopp" label="vs Opponent" value={fmtMoney(vsOpponent, { sign: true })} color={vsOpponent >= 0 ? "var(--win)" : "var(--loss)"} align={align} />,
+  ];
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px 18px" }}>
+      {align === "right" ? [stats[1], stats[0], stats[3], stats[2]] : stats}
+    </div>
+  );
+}
+
 function TeamHeader({ side, align }: { side: any; align: "left" | "right" }) {
   return (
     <div style={{
@@ -169,6 +198,11 @@ export default function MatchupPage({ params }: PageProps<"/leagues/[leagueId]/m
   const me = data?.me;
   const opponent = data?.opponent;
 
+  const margin = me && opponent ? me.projected - opponent.projected : 0;
+  const isEven = margin === 0;
+  const leaderName = margin > 0 ? me?.displayName : opponent?.displayName;
+  const leaderColor = margin > 0 ? me?.helmetColor : opponent?.helmetColor;
+
   return (
     <div className="page-wide">
       <div style={{ marginBottom: 16 }}>
@@ -206,12 +240,7 @@ export default function MatchupPage({ params }: PageProps<"/leagues/[leagueId]/m
             </div>
             <div style={{ borderTop: "1px solid var(--border)" }} />
             <div style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr", alignItems: "center", padding: "16px 24px", gap: 12 }}>
-              <div style={{ textAlign: "left" }}>
-                <div style={{ fontSize: "0.6rem", fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--text-3)", marginBottom: 3 }}>
-                  Available Balance
-                </div>
-                <div style={{ fontSize: "0.9rem", fontWeight: 700, fontVariantNumeric: "tabular-nums" }}>{fmtMoney(me.balance)}</div>
-              </div>
+              <BalanceBreakdown side={me} weeklyAllowance={data.weeklyAllowance} balanceEdge={me.balance - opponent.balance} align="left" />
 
               <div style={{ display: "flex", alignItems: "center", gap: 20 }}>
                 <div style={{ textAlign: "center" }}>
@@ -225,12 +254,19 @@ export default function MatchupPage({ params }: PageProps<"/leagues/[leagueId]/m
                 </div>
               </div>
 
-              <div style={{ textAlign: "right" }}>
-                <div style={{ fontSize: "0.6rem", fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--text-3)", marginBottom: 3 }}>
-                  Available Balance
-                </div>
-                <div style={{ fontSize: "0.9rem", fontWeight: 700, fontVariantNumeric: "tabular-nums" }}>{fmtMoney(opponent.balance)}</div>
-              </div>
+              <BalanceBreakdown side={opponent} weeklyAllowance={data.weeklyAllowance} balanceEdge={opponent.balance - me.balance} align="right" />
+            </div>
+            <div style={{ borderTop: "1px solid var(--border)", padding: "10px 24px", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, background: "var(--surface-2)" }}>
+              {isEven ? (
+                <span style={{ fontSize: "0.75rem", fontWeight: 700, color: "var(--text-2)" }}>Toss-up — projected totals are even</span>
+              ) : (
+                <>
+                  <span style={{ width: 8, height: 8, borderRadius: "50%", background: leaderColor, flexShrink: 0 }} />
+                  <span style={{ fontSize: "0.75rem", fontWeight: 700, color: "var(--text)" }}>
+                    {leaderName} projected to win by <span style={{ color: ACCENT }}>{fmtMoney(Math.abs(margin))}</span>
+                  </span>
+                </>
+              )}
             </div>
           </div>
 

@@ -324,6 +324,7 @@ router.get("/:leagueId/matchup", requireAuth, async (req: any, res: any) => {
       hasMatchup: true,
       isBye,
       weekNumber: week.number,
+      weeklyAllowance: league.weeklyAllowance,
       me: buildSide(userId, myBets, true),
       opponent: isBye ? null : buildSide(opponentId as string, oppBets, false),
     });
