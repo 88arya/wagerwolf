@@ -2,10 +2,8 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { api } from "@/lib/api";
-import PlayerAvatar from "@/components/PlayerAvatar";
-import TeamLogo from "@/components/TeamLogo";
-import { getTeamLogoUrl } from "@/lib/teamLogos";
 import { fmtMoney, fmtAmount, toCents } from "@/lib/money";
+import { BetHeader, BetRows, gameLineSubtitle, gameLineTitle, titleCase, type BetRow } from "./BetRows";
 
 export interface SlipLeg {
   type: "prop" | "gameline";
@@ -72,10 +70,6 @@ function parlayOdds(legs: number[]): number {
   return Math.round(-100 / (dec - 1));
 }
 
-function fmtOdds(american: number): string {
-  return american > 0 ? `+${american}` : `${american}`;
-}
-
 function calcPayout(stake: number, american: number): number {
   if (american > 0) return stake + Math.round((stake * american) / 100);
   return stake + Math.round((stake * 100) / Math.abs(american));
@@ -90,49 +84,6 @@ function legAltLine(leg: SlipLeg): number | undefined {
   return leg.altLine != null && leg.altLine !== leg.line ? leg.altLine : undefined;
 }
 
-interface LegGroup {
-  gameId?: string;
-  gameDate?: string;
-  homeTeam?: string;
-  awayTeam?: string;
-  legs: SlipLeg[];
-}
-
-// Group legs by game and order earliest → latest kickoff, matching the game cards:
-// asc(gameDate), asc(gameId). Stable sort preserves add order within a game.
-function groupLegs(legs: SlipLeg[]): LegGroup[] {
-  const ordered = legs
-    .map((leg, i) => ({ leg, i }))
-    .sort((a, b) => {
-      const da = a.leg.gameDate ? new Date(a.leg.gameDate).getTime() : Infinity;
-      const db = b.leg.gameDate ? new Date(b.leg.gameDate).getTime() : Infinity;
-      if (da !== db) return da - db;
-      const ga = a.leg.gameId ?? "";
-      const gb = b.leg.gameId ?? "";
-      if (ga !== gb) return ga < gb ? -1 : 1;
-      return a.i - b.i;
-    })
-    .map((x) => x.leg);
-
-  const groups: LegGroup[] = [];
-  for (const leg of ordered) {
-    const last = groups[groups.length - 1];
-    if (last && leg.gameId != null && last.gameId === leg.gameId) {
-      last.legs.push(leg);
-    } else {
-      groups.push({ gameId: leg.gameId, gameDate: leg.gameDate, homeTeam: leg.homeTeam, awayTeam: leg.awayTeam, legs: [leg] });
-    }
-  }
-  return groups;
-}
-
-function fmtKickoff(iso?: string): string {
-  if (!iso) return "";
-  const d = new Date(iso);
-  if (isNaN(d.getTime())) return "";
-  return d.toLocaleString(undefined, { weekday: "short", hour: "numeric", minute: "2-digit" });
-}
-
 function getCombinations<T>(arr: T[], size: number): T[][] {
   if (size === 0) return [[]];
   if (arr.length < size) return [];
@@ -143,72 +94,76 @@ function getCombinations<T>(arr: T[], size: number): T[][] {
   ];
 }
 
-function titleCase(s: string): string {
-  return s.split("_").map((w) => w.charAt(0) + w.slice(1).toLowerCase()).join(" ");
-}
-
-function marketName(market?: string): string {
-  if (!market) return "";
-  if (market.includes("MONEYLINE")) return "Moneyline";
-  if (market.includes("SPREAD")) return "Spread";
-  if (market.includes("TOTAL")) return "Total";
-  return titleCase(market);
-}
-
-function LegIcon({ leg }: { leg: SlipLeg }) {
-  if (leg.type === "prop") {
-    const logoUrl = leg.team ? getTeamLogoUrl(leg.team) : null;
-    return (
-      <div style={{ position: "relative", flexShrink: 0 }}>
-        <PlayerAvatar playerId={leg.playerId} espnId={leg.espnId} imageUrl={leg.imageUrl} name={leg.playerName ?? leg.label} size={34} />
-        {leg.team && (
-          <div style={{
-            position: "absolute", bottom: -4, right: -4, width: 18, height: 18,
-            borderRadius: "50%", border: "2px solid var(--surface)",
-            background: "var(--surface-3)", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden",
-          }}>
-            {logoUrl
-              ? <img src={logoUrl} alt={leg.team} width={12} height={12} style={{ objectFit: "contain" }} />
-              : <span style={{ fontSize: 5, fontWeight: 800, color: "var(--text-2)" }}>{leg.team.substring(0, 2)}</span>
-            }
-          </div>
-        )}
-      </div>
-    );
-  }
-  if (leg.team) return <TeamLogo team={leg.team} size={34} />;
-  if (leg.homeTeam && leg.awayTeam) {
-    return (
-      <div style={{ position: "relative", width: 34, height: 34, flexShrink: 0, background: "var(--surface-3)", borderRadius: 6 }}>
-        <div style={{ position: "absolute", top: 1, left: 1 }}><TeamLogo team={leg.awayTeam} size={19} plain /></div>
-        <div style={{ position: "absolute", bottom: 1, right: 1 }}><TeamLogo team={leg.homeTeam} size={19} plain /></div>
-      </div>
-    );
-  }
-  return <div style={{ width: 34, height: 34, borderRadius: 6, background: "var(--surface-3)", flexShrink: 0 }} />;
-}
-
 function legTitle(leg: SlipLeg): string {
   if (leg.type === "prop" && leg.playerName) return leg.playerName;
+  if (leg.type === "gameline") {
+    return gameLineTitle({
+      market: leg.market,
+      line: leg.altLine ?? leg.line,
+      homeTeam: leg.homeTeam,
+      awayTeam: leg.awayTeam,
+      label: leg.label,
+    });
+  }
   return leg.label;
 }
 
-function legSubtitle(leg: SlipLeg, displayLine?: number): string | null {
+function legSubtitle(leg: SlipLeg): string | null {
   if (leg.type === "prop") {
     if (!leg.statType || !leg.direction) return null;
     const dir = leg.direction === "OVER" ? "Over" : "Under";
-    const line = displayLine ?? leg.altLine ?? leg.line;
+    const line = leg.altLine ?? leg.line;
     return `${dir} ${line ?? ""} ${titleCase(leg.statType)}`.trim();
   }
-  const matchup = leg.awayTeam && leg.homeTeam ? ` · ${leg.awayTeam} @ ${leg.homeTeam}` : "";
-  return `${marketName(leg.market)}${matchup}`;
+  return gameLineSubtitle(leg.market);
 }
 
-function CloseIcon() {
+function MinusCircleIcon() {
   return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
-      <line x1="18" y1="6" x2="6" y2="18" />
-      <line x1="6" y1="6" x2="18" y2="18" />
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
+      <circle cx="12" cy="12" r="9" />
+      <line x1="8" y1="12" x2="16" y2="12" />
+    </svg>
+  );
+}
+
+// LeagueNav's horizontal padding — the slip's right edge lines up with the
+// nav's right-hand contents. Keep in sync with LeagueNav / GamesStrip.
+const NAV_GUTTER = 300;
+// Nav (44) + sub-nav (40), used only until the real offset is measured.
+const NAV_FALLBACK = 84;
+
+/** Removes a leg from the slip — sits in the rail gutter of each leg row. */
+function RemoveBtn({ onRemove }: { onRemove: () => void }) {
+  return (
+    <button
+      onClick={onRemove}
+      aria-label="Remove bet"
+      style={{
+        position: "relative",
+        background: "var(--surface)",
+        border: "none",
+        borderRadius: "50%",
+        padding: 0,
+        lineHeight: 0,
+        color: "var(--loss)",
+        cursor: "pointer",
+        display: "flex",
+        alignItems: "center",
+      }}
+    >
+      <MinusCircleIcon />
+    </button>
+  );
+}
+
+function TrashIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="3 6 5 6 21 6" />
+      <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+      <path d="M10 11v6M14 11v6" />
+      <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
     </svg>
   );
 }
@@ -225,7 +180,6 @@ const DOLLAR: React.CSSProperties = {
 
 export default function BetSlip({ leagueId }: { leagueId: string }) {
   const [legs, setLegs] = useState<SlipLeg[]>([]);
-  const [open, setOpen] = useState(false);
   const [parlayStake, setParlayStake] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
@@ -241,9 +195,36 @@ export default function BetSlip({ leagueId }: { leagueId: string }) {
     return () => window.removeEventListener("betslip-update", refresh);
   }, [refresh]);
 
+  // Anchor the slip just below the nav stack. Measured rather than hardcoded:
+  // the games strip above the nav is conditional and the sub-nav only renders
+  // for some routes, so the stack height varies per page.
+  const [navBottom, setNavBottom] = useState(NAV_FALLBACK);
   useEffect(() => {
-    if (legs.length > 0) setOpen(true);
-  }, [legs.length]);
+    const page = document.querySelector(".page, .page-wide");
+    if (!page) return;
+    const measure = () => setNavBottom(Math.round(page.getBoundingClientRect().top));
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(page);
+    window.addEventListener("resize", measure);
+    return () => { ro.disconnect(); window.removeEventListener("resize", measure); };
+  }, []);
+
+  const betLabel = legs.length === 0
+    ? "Bet Slip"
+    : rrMode ? "Round Robin" : legs.length === 1 ? "Straight" : `${legs.length}-Leg Parlay`;
+
+  const rows: BetRow[] = legs.map((leg) => ({
+    key: legKey(leg),
+    title: legTitle(leg),
+    subtitle: legSubtitle(leg),
+    odds: leg.odds,
+    gameId: leg.gameId,
+    gameDate: leg.gameDate,
+    homeTeam: leg.homeTeam,
+    awayTeam: leg.awayTeam,
+    gutter: <RemoveBtn onRemove={() => removeFromSlip(leg.id, leg.direction, leg.altLine)} />,
+  }));
 
   const totalOdds = parlayOdds(legs.map((l) => l.odds));
   const stakeCents = toCents(parlayStake); // wager input is in dollars; everything else is cents
@@ -278,7 +259,6 @@ export default function BetSlip({ leagueId }: { leagueId: string }) {
       setMsg(`Bet placed! To win ${fmtMoney(parlayProfit)}`);
       setParlayStake("");
       clearSlip();
-      setOpen(false);
       window.dispatchEvent(new Event("bet-placed"));
       setTimeout(() => setMsg(""), 4000);
     } catch (err: any) {
@@ -351,7 +331,6 @@ export default function BetSlip({ leagueId }: { leagueId: string }) {
       setMsg(`${legs.length}-leg parlay placed! To win ${fmtMoney(parlayProfit)}`);
       setParlayStake("");
       clearSlip();
-      setOpen(false);
       window.dispatchEvent(new Event("bet-placed"));
       setTimeout(() => setMsg(""), 4000);
     } catch (err: any) {
@@ -392,7 +371,6 @@ export default function BetSlip({ leagueId }: { leagueId: string }) {
       setParlayStake("");
       setRrMode(false);
       clearSlip();
-      setOpen(false);
       window.dispatchEvent(new Event("bet-placed"));
       setTimeout(() => setMsg(""), 5000);
     } catch (err: any) {
@@ -402,10 +380,21 @@ export default function BetSlip({ leagueId }: { leagueId: string }) {
     }
   }
 
-  if (legs.length === 0 && !msg) return null;
-
   return (
-    <div style={{ position: "fixed", bottom: 56, right: 12, width: 368, maxWidth: "calc(100vw - 24px)", zIndex: 500, pointerEvents: "none" }}>
+    <div style={{
+      position: "fixed",
+      top: navBottom + 12,
+      bottom: 12,
+      right: NAV_GUTTER,
+      width: 368,
+      maxWidth: `calc(100vw - ${NAV_GUTTER + 12}px)`,
+      zIndex: 500,
+      pointerEvents: "none",
+      display: "flex",
+      flexDirection: "column",
+      alignItems: "stretch",
+      gap: 10,
+    }}>
       {/* Success toast */}
       {msg && (
         <div style={{
@@ -427,121 +416,21 @@ export default function BetSlip({ leagueId }: { leagueId: string }) {
         </div>
       )}
 
-      {/* Collapsed bar */}
-      {!open && legs.length > 0 && (
-        <button
-          onClick={() => setOpen(true)}
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            width: "100%",
-            pointerEvents: "auto",
-            background: "var(--accent)",
-            color: "#FFFFFF",
-            border: "none",
-            borderRadius: "10px 10px 0 0",
-            padding: "13px 20px",
-            cursor: "pointer",
-            fontWeight: 800,
-            fontSize: "0.92rem",
-          }}
-        >
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <span style={{
-              background: "rgba(0,0,0,0.2)",
-              color: "#FFFFFF",
-              borderRadius: "50%",
-              width: 22,
-              height: 22,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              fontSize: "0.72rem",
-              fontWeight: 900,
-            }}>{legs.length}</span>
-            Bet Slip
-          </div>
-          <span style={{ fontSize: "0.78rem", fontWeight: 600, opacity: 0.7 }}>View ↑</span>
-        </button>
-      )}
-
-      {/* Expanded slip */}
-      {open && (
-        <div style={{
+      {/* Part 1 — header + legs, anchored under the nav */}
+      <div style={{
           pointerEvents: "auto",
           background: "var(--surface)",
           borderRadius: 12,
-          maxHeight: "80vh",
+          minHeight: 0,
           overflow: "hidden",
           display: "flex",
           flexDirection: "column",
-          border: "1px solid var(--border-2)",
-          borderBottom: "none",
         }}>
-          {/* Header */}
-          <div style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            padding: "14px 16px 12px",
-            background: "var(--navy)",
-            borderRadius: "12px 12px 0 0",
-            flexShrink: 0,
-            borderBottom: "1px solid var(--border)",
-          }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <span style={{ fontWeight: 800, fontSize: "0.95rem", color: "var(--text)", letterSpacing: "0.01em" }}>
-                Bet Slip
-              </span>
-              <span style={{
-                background: "var(--accent)",
-                color: "#FFFFFF",
-                borderRadius: "50%",
-                width: 20,
-                height: 20,
-                display: "inline-flex",
-                alignItems: "center",
-                justifyContent: "center",
-                fontSize: "0.7rem",
-                fontWeight: 900,
-              }}>
-                {legs.length}
-              </span>
-            </div>
-            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-              <button
-                onClick={() => { clearSlip(); setError(""); }}
-                style={{
-                  background: "var(--overlay-dim)",
-                  color: "var(--text-2)",
-                  fontSize: "0.72rem",
-                  padding: "5px 10px",
-                  border: "none",
-                  borderRadius: 5,
-                  cursor: "pointer",
-                  fontWeight: 600,
-                }}
-              >
-                Clear
-              </button>
-              <button
-                onClick={() => setOpen(false)}
-                style={{
-                  background: "var(--overlay-dim)",
-                  color: "var(--text-2)",
-                  padding: "5px 8px",
-                  border: "none",
-                  borderRadius: 5,
-                  cursor: "pointer",
-                  display: "flex",
-                  alignItems: "center",
-                }}
-              >
-                <CloseIcon />
-              </button>
-            </div>
-          </div>
+          <BetHeader
+            count={legs.length}
+            label={betLabel}
+            odds={!rrMode && legs.length > 0 ? totalOdds : null}
+          />
 
           {error && (
             <div style={{
@@ -558,159 +447,86 @@ export default function BetSlip({ leagueId }: { leagueId: string }) {
           )}
 
           {/* Legs grouped by game, earliest → latest kickoff */}
-          <div style={{ flex: 1, overflowY: "auto", minHeight: 0, WebkitOverflowScrolling: "touch" } as React.CSSProperties}>
-            {groupLegs(legs).map((group, gi) => (
-              <div key={group.gameId ?? `nogame-${gi}`}>
-                {group.awayTeam && group.homeTeam && (
-                  <div style={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    gap: 8,
-                    padding: "6px 14px",
-                    background: "var(--surface-2)",
-                    borderBottom: "1px solid var(--border)",
-                  }}>
-                    <span style={{
-                      fontSize: "0.66rem",
-                      fontWeight: 800,
-                      letterSpacing: "0.04em",
-                      color: "var(--text-2)",
-                      textTransform: "uppercase",
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                      whiteSpace: "nowrap",
-                    }}>
-                      {group.awayTeam} @ {group.homeTeam}
-                    </span>
-                    {group.gameDate && (
-                      <span style={{ fontSize: "0.62rem", fontWeight: 600, color: "var(--text-3)", flexShrink: 0 }}>
-                        {fmtKickoff(group.gameDate)}
-                      </span>
-                    )}
-                  </div>
-                )}
-                {group.legs.map((leg) => {
-                  const key = legKey(leg);
-                  const displayLine = leg.altLine ?? leg.line;
-
-                  return (
-                    <div key={key} style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 8,
-                      padding: "12px 14px",
-                      borderBottom: "1px solid var(--border)",
-                      background: "var(--surface)",
-                    }}>
-                      <LegIcon leg={leg} />
-                      <div style={{ flex: 1, minWidth: 0, overflow: "hidden" }}>
-                        <div style={{
-                          fontWeight: 600,
-                          fontSize: "0.8rem",
-                          lineHeight: 1.25,
-                          color: "var(--text)",
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
-                          whiteSpace: "nowrap",
-                        }}>
-                          {legTitle(leg)}
-                        </div>
-                        {legSubtitle(leg, displayLine) && (
-                          <div style={{
-                            fontSize: "0.68rem",
-                            color: "var(--text-3)",
-                            lineHeight: 1.25,
-                            overflow: "hidden",
-                            textOverflow: "ellipsis",
-                            whiteSpace: "nowrap",
-                          }}>
-                            {legSubtitle(leg, displayLine)}
-                          </div>
-                        )}
-                      </div>
-                      <span style={{
-                        fontSize: "0.85rem",
-                        fontWeight: 700,
-                        color: "var(--accent)",
-                        fontVariantNumeric: "tabular-nums",
-                        flexShrink: 0,
-                      }}>
-                        {fmtOdds(leg.odds)}
-                      </span>
-                      <button
-                        onClick={() => removeFromSlip(leg.id, leg.direction, leg.altLine)}
-                        aria-label="Remove leg"
-                        style={{
-                          background: "transparent",
-                          color: "var(--text-3)",
-                          padding: "2px 0 2px 2px",
-                          border: "none",
-                          cursor: "pointer",
-                          display: "flex",
-                          alignItems: "center",
-                          flexShrink: 0,
-                        }}
-                      >
-                        <CloseIcon />
-                      </button>
-                    </div>
-                  );
-                })}
+          {/* flex-basis auto (not 0) so the list sizes to its content and only
+              shrinks — and therefore only scrolls — once space runs out */}
+          <div style={{ flex: "0 1 auto", overflowY: "auto", minHeight: 0, WebkitOverflowScrolling: "touch" } as React.CSSProperties}>
+            {legs.length === 0 && (
+              <div style={{
+                padding: "28px 20px",
+                textAlign: "center",
+                color: "var(--text-3)",
+                fontSize: "0.78rem",
+                lineHeight: 1.5,
+              }}>
+                Tap any odds to start building a bet.
               </div>
-            ))}
+            )}
+            <BetRows rows={rows} />
           </div>
+      </div>
 
-          {/* Single / Parlay / Round Robin section */}
-          {legs.length >= 1 && (
+      {/* Part 2 — wager controls, pinned to the bottom of the screen */}
+      {legs.length >= 1 && (
             <div style={{
+              marginTop: "auto",
+              pointerEvents: "auto",
               padding: "14px 14px",
-              background: "var(--surface-2)",
-              borderTop: "2px solid var(--border-2)",
+              background: "var(--surface)",
+              borderRadius: 12,
               flexShrink: 0,
             }}>
-              {/* Header row */}
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <span style={{ fontWeight: 800, fontSize: "0.88rem", color: "var(--text)" }}>
-                    {rrMode ? "Round Robin" : legs.length === 1 ? "Straight" : `${legs.length}-Leg Parlay`}
-                  </span>
-                  {legs.length >= 3 && (
-                    <button
-                      onClick={() => { setRrMode((v) => !v); setError(""); }}
-                      style={{
-                        fontSize: "0.65rem", fontWeight: 800, padding: "2px 7px",
-                        borderRadius: 4, border: `1px solid ${rrMode ? "var(--accent)" : "var(--border-2)"}`,
-                        background: rrMode ? "var(--accent)" : "transparent",
-                        color: rrMode ? "#fff" : "var(--text-3)",
-                        cursor: "pointer", letterSpacing: "0.05em",
-                      }}
-                    >RR</button>
+              {/* Remove all selections */}
+              <button
+                onClick={() => { clearSlip(); setError(""); }}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
+                  background: "transparent",
+                  border: "none",
+                  padding: "0 0 12px",
+                  color: "var(--loss)",
+                  fontSize: "0.78rem",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                }}
+              >
+                <TrashIcon />
+                Remove all selections
+              </button>
+
+              {/* Round robin controls */}
+              {legs.length >= 3 && (
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+                  <button
+                    onClick={() => { setRrMode((v) => !v); setError(""); }}
+                    style={{
+                      fontSize: "0.65rem", fontWeight: 800, padding: "2px 7px",
+                      borderRadius: 4, border: `1px solid ${rrMode ? "var(--accent)" : "var(--border-2)"}`,
+                      background: rrMode ? "var(--accent)" : "transparent",
+                      color: rrMode ? "#fff" : "var(--text-3)",
+                      cursor: "pointer", letterSpacing: "0.05em",
+                    }}
+                  >RR</button>
+                  {rrMode && (
+                    <div style={{ display: "flex", gap: 4 }}>
+                      {[2, 3].filter((s) => s < legs.length).map((s) => (
+                        <button
+                          key={s}
+                          onClick={() => setRrSize(s)}
+                          style={{
+                            fontSize: "0.7rem", fontWeight: 700, padding: "3px 9px", borderRadius: 4,
+                            border: `1px solid ${rrSize === s ? "var(--accent)" : "var(--border-2)"}`,
+                            background: rrSize === s ? "var(--accent)" : "transparent",
+                            color: rrSize === s ? "#fff" : "var(--text-3)",
+                            cursor: "pointer",
+                          }}
+                        >{s}-team</button>
+                      ))}
+                    </div>
                   )}
                 </div>
-                {!rrMode && (
-                  <span style={{ fontWeight: 900, fontSize: "1rem", color: "var(--accent)", fontVariantNumeric: "tabular-nums" }}>
-                    {fmtOdds(totalOdds)}
-                  </span>
-                )}
-                {rrMode && (
-                  <div style={{ display: "flex", gap: 4 }}>
-                    {[2, 3].filter((s) => s < legs.length).map((s) => (
-                      <button
-                        key={s}
-                        onClick={() => setRrSize(s)}
-                        style={{
-                          fontSize: "0.7rem", fontWeight: 700, padding: "3px 9px", borderRadius: 4,
-                          border: `1px solid ${rrSize === s ? "var(--accent)" : "var(--border-2)"}`,
-                          background: rrSize === s ? "var(--accent)" : "transparent",
-                          color: rrSize === s ? "#fff" : "var(--text-3)",
-                          cursor: "pointer",
-                        }}
-                      >{s}-team</button>
-                    ))}
-                  </div>
-                )}
-              </div>
+              )}
 
               {rrMode && (
                 <div style={{ fontSize: "0.72rem", color: "var(--text-3)", marginBottom: 8 }}>
@@ -783,8 +599,6 @@ export default function BetSlip({ leagueId }: { leagueId: string }) {
                 {submitting ? "Placing…" : "Place Bet"}
               </button>
             </div>
-          )}
-        </div>
       )}
     </div>
   );
