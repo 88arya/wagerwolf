@@ -112,6 +112,7 @@ export default function LeagueNav({ leagueId }: { leagueId: string }) {
       label: "BET",
       links: [
         { label: "Sportsbook", href: `${base}/bet` },
+        { label: "Specials",   href: `${base}/specials` },
         { label: "My Bets",    href: `${base}/mybets` },
         { label: "History",    href: `${base}/history` },
       ],
