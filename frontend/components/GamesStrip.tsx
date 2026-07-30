@@ -8,20 +8,43 @@ import TeamLogo from "@/components/TeamLogo";
 const STRIP_BG = "var(--bg)";
 const STRIP_BG_HOVER = "var(--surface-4)";
 
+// One card's natural height, measured: 12px top pad + status row + 6px gap +
+// two 20px team rows separated by 6px + 6px bottom pad. The strip reserves this
+// while the week is loading so games arriving don't shove the page down. If the
+// card's padding or logo size changes, re-measure.
+const STRIP_ROW_H = 80;
+
+// The strip is mounted by two different layouts — app/(user)/layout.tsx and
+// app/leagues/[leagueId]/layout.tsx — so navigating between a league and /home
+// crosses a layout boundary and swaps one instance for another. Caching the
+// week per league lets the new instance paint from memory instead of flashing
+// an empty bar while it refetches.
+const weekCache = new Map<string, any>();
+
 function fmtOdds(american: number): string {
   return american > 0 ? `+${american}` : `${american}`;
 }
 
 export default function GamesStrip({ leagueId, interactive = true }: { leagueId: string; interactive?: boolean }) {
   const router = useRouter();
-  const [week, setWeek] = useState<any>(null);
+  const cached = leagueId ? weekCache.get(leagueId) : null;
+  const [week, setWeek] = useState<any>(cached ?? null);
+  // Whether the fetch has settled. Distinguishes "still loading" (reserve the
+  // height) from "resolved, nothing to show" (collapse for real).
+  const [loaded, setLoaded] = useState(!!cached);
   const gamesScrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (!localStorage.getItem("token") || !leagueId) return;
+    if (!leagueId) return;
+    const hit = weekCache.get(leagueId);
+    if (hit) { setWeek(hit); setLoaded(true); }
+    if (!localStorage.getItem("token")) return;
     api(`/weeks?current=true&leagueId=${leagueId}`)
-      .then((weeks: any) => { if (weeks?.[0]) setWeek(weeks[0]); })
-      .catch(() => {});
+      .then((weeks: any) => {
+        if (weeks?.[0]) { weekCache.set(leagueId, weeks[0]); setWeek(weeks[0]); }
+      })
+      .catch(() => {})
+      .finally(() => setLoaded(true));
   }, [leagueId]);
 
   // Anchor scroll to the first upcoming game
@@ -57,7 +80,16 @@ export default function GamesStrip({ leagueId, interactive = true }: { leagueId:
     return () => clearInterval(interval);
   }, [week, leagueId]);
 
-  if (!week?.games?.length) return null;
+  if (!week?.games?.length) {
+    // Settled with nothing to show — collapse. Otherwise hold the space so the
+    // page below doesn't jump once the games land.
+    if (loaded) return null;
+    return (
+      <div style={{ flexShrink: 0, background: STRIP_BG, borderBottom: "1px solid var(--border)", padding: "0 300px" }}>
+        <div style={{ height: STRIP_ROW_H, borderLeft: "1px solid var(--border)", borderRight: "1px solid var(--border)" }} />
+      </div>
+    );
+  }
 
   function scrollBy(dir: -1 | 1) {
     const el = gamesScrollRef.current;
