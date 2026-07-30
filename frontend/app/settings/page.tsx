@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import Logo from "@/components/Logo";
 import { api } from "@/lib/api";
 
 export default function SettingsPage() {
@@ -43,7 +44,7 @@ export default function SettingsPage() {
     <>
       <nav className="nav" style={{ padding: "0 24px", background: "var(--bg)" }}>
         <Link href="/leagues" style={{ display: "flex", alignItems: "center", flexShrink: 0 }}>
-          <img src="/grH9m01.svg" alt="FanMark" style={{ height: 28, width: 28, objectFit: "contain" }} />
+          <Logo size={28} />
         </Link>
         <div style={{ marginLeft: "auto" }}>
           <Link href="/leagues" style={{ fontSize: "0.8rem", fontWeight: 500, color: "var(--text-2)" }}>‹ Leagues</Link>

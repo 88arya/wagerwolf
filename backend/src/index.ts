@@ -72,7 +72,7 @@ app.use("/gamepicks", gamePickRoutes);
 app.use("/parlays", parlayRoutes);
 
 app.get("/", (req, res) => {
-  res.json({ status: "FanMark backend running" });
+  res.json({ status: "Wager backend running" });
 });
 
 const PORT = process.env.PORT || 5000;
