@@ -7,12 +7,18 @@ import { GoogleLogin } from "@react-oauth/google";
 import { api } from "@/lib/api";
 
 const STEPS = [
-  { n: "01", title: "Join a League", desc: "Create a private league and invite friends, or drop into a public one. Leagues run the full NFL season." },
-  { n: "02", title: "Get Your Weekly Budget", desc: "Each week your balance resets to the league allowance. That's your bankroll — bet it on any games that week." },
-  { n: "03", title: "Bet Props & Game Lines", desc: "Pick player props (yards, TDs, receptions) or game lines (spread, total, moneyline). Set your stake and submit." },
-  { n: "04", title: "Parlay for Bigger Payouts", desc: "Stack multiple bets into a parlay. All legs must hit, but the odds multiply — higher risk, higher reward." },
-  { n: "05", title: "Head-to-Head Matchup", desc: "Each week you're paired against one opponent. Whoever profits more wins the matchup." },
-  { n: "06", title: "Playoffs & Champion", desc: "Top records advance after the regular season. Win the bracket, win the league." },
+  { n: "01", title: "Join a league", desc: "Create a private league and invite friends, or drop into a public one. Leagues run the full NFL season." },
+  { n: "02", title: "Get your weekly budget", desc: "Each week your balance resets to the league allowance. That's your bankroll — bet it on any games that week." },
+  { n: "03", title: "Bet props & game lines", desc: "Pick player props (yards, TDs, receptions) or game lines (spread, total, moneyline). Set your stake and submit." },
+  { n: "04", title: "Parlay for bigger payouts", desc: "Stack multiple bets into a parlay. All legs must hit, but the odds multiply — higher risk, higher reward." },
+  { n: "05", title: "Head-to-head matchup", desc: "Each week you're paired against one opponent. Whoever profits more wins the matchup." },
+  { n: "06", title: "Playoffs & champion", desc: "Top records advance after the regular season. Win the bracket, win the league." },
+];
+
+const FACTS = [
+  { k: "Stat markets", v: "22" },
+  { k: "NFL weeks", v: "17" },
+  { k: "Real money at risk", v: "$0" },
 ];
 
 export default function HomePage() {
@@ -57,143 +63,257 @@ export default function HomePage() {
     ? displayName.split(" ").map((w: string) => w[0]).join("").toUpperCase().slice(0, 2)
     : "?";
 
+  const PAD = "0 max(24px, calc((100% - 1120px) / 2))";
+
   return (
-    <div style={{ flex: 1, minHeight: 0, display: "flex", overflow: "hidden" }}>
+    <div style={{ flex: 1, minHeight: 0, overflowY: "auto", background: "var(--bg)" }}>
 
-      {/* ── Left — brand + how to play ── */}
-      <div style={{
-        flex: "0 0 66%",
-        minWidth: 0,
-        background: "var(--surface)",
-        color: "var(--text)",
-        display: "flex",
-        flexDirection: "column",
-        justifyContent: "center",
-        padding: "48px 56px",
-        overflowY: "auto",
-      }}>
-        <div style={{ fontSize: "clamp(2.2rem, 4.5vw, 3.4rem)", fontWeight: 900, letterSpacing: "-0.03em", lineHeight: 1, marginBottom: 14 }}>
-          FANMARK
+      {/* ── Header ── */}
+      <header
+        style={{
+          position: "sticky",
+          top: 0,
+          zIndex: 50,
+          background: "var(--bg)",
+          borderBottom: "1px solid var(--border)",
+          height: 60,
+          display: "flex",
+          alignItems: "center",
+          padding: PAD,
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: 9, marginRight: "auto" }}>
+          <Logo size={24} />
+          <span style={{ fontSize: "1.05rem", fontWeight: 500, letterSpacing: "-0.03em" }}>Wager</span>
         </div>
-        <p style={{ fontSize: "0.95rem", lineHeight: 1.7, fontWeight: 500, color: "var(--text-2)", maxWidth: 420, margin: "0 0 36px" }}>
-          The new way to play Fantasy Football. Score points by hitting on your bets.
-        </p>
 
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, maxWidth: 640 }}>
-          {STEPS.map(step => (
-            <div key={step.n} style={{ background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: "var(--radius)", padding: "14px 16px" }}>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 7 }}>
-                <span style={{ fontSize: "0.6rem", fontWeight: 800, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--text)" }}>
-                  {step.title}
-                </span>
-                <span style={{ fontSize: "0.6rem", fontWeight: 800, letterSpacing: "0.12em", color: "var(--text-3)" }}>
-                  {step.n}
-                </span>
-              </div>
-              <div style={{ fontSize: "0.74rem", color: "var(--text-2)", lineHeight: 1.6 }}>
-                {step.desc}
-              </div>
-            </div>
-          ))}
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <a
+            href="/how-to-play"
+            style={{ fontSize: "0.85rem", fontWeight: 450, color: "var(--text-2)", padding: "6px 12px" }}
+          >
+            How to play
+          </a>
+          {isLoggedIn ? (
+            <button type="button" className="dark" onClick={() => router.push("/leagues")}>
+              My leagues
+            </button>
+          ) : (
+            <>
+              <button
+                type="button"
+                className="ghost"
+                onClick={() => { setAuthError(""); setAuthView("signin"); }}
+              >
+                Sign in
+              </button>
+              <button type="button" onClick={() => { setAuthError(""); setAuthView("signup"); }}>
+                Get started
+              </button>
+            </>
+          )}
         </div>
-      </div>
+      </header>
 
-      {/* ── Right — log in / play now ── */}
-      <div style={{
-        flex: "0 0 34%",
-        minWidth: 0,
-        background: "var(--bg)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        padding: 32,
-      }}>
-        <div style={{ width: 320, display: "flex", flexDirection: "column", alignItems: "center", gap: 22 }}>
-          <Logo size={72} />
+      {/* ── Hero ── */}
+      <section
+        className="dot-grid"
+        style={{ padding: PAD, borderBottom: "1px solid var(--border)" }}
+      >
+        <div style={{ padding: "88px 0 96px", maxWidth: 900 }}>
 
+          {/* Eyebrow + data chip, Ramp-style */}
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 26, flexWrap: "wrap" }}>
+            <span className="eyebrow">Fantasy football, scored like a sportsbook</span>
+            <span
+              style={{
+                fontSize: "0.65rem",
+                fontWeight: 450,
+                letterSpacing: "0.02em",
+                color: "var(--text)",
+                background: "var(--surface-3)",
+                border: "1px solid var(--border)",
+                borderRadius: 3,
+                padding: "2px 7px",
+              }}
+            >
+              2026 season
+            </span>
+          </div>
+
+          <h1 className="display" style={{ marginBottom: 22, maxWidth: 760 }}>
+            Draft nothing.
+            <br />
+            Bet everything.
+          </h1>
+
+          <p className="lede" style={{ maxWidth: 460, marginBottom: 36 }}>
+            Props, spreads, parlays — head-to-head, every week.{" "}
+            <span style={{ color: "var(--text)", borderBottom: "1px solid var(--border-3)" }}>Fake money</span>, real NFL.
+          </p>
+
+          {/* CTA */}
           {!isLoggedIn ? (
             authView === null ? (
-              <>
-                <div style={{ textAlign: "center" }}>
-                  <div style={{ fontSize: "1.35rem", fontWeight: 900, letterSpacing: "-0.02em", color: "var(--text)", marginBottom: 6 }}>
-                    Ready to play?
-                  </div>
-                  <div style={{ fontSize: "0.85rem", color: "var(--text-2)", lineHeight: 1.6 }}>
-                    Bet with friends. Win your league.
-                  </div>
-                </div>
-                <div style={{ width: "100%", display: "flex", flexDirection: "column", gap: 10 }}>
-                  <button
-                    type="button"
-                    onClick={() => { setAuthError(""); setAuthView("signup"); }}
-                    style={{ width: "100%", padding: "12px", fontSize: "0.95rem", fontWeight: 700 }}
-                  >
-                    Play Now
-                  </button>
-                  <button
-                    type="button"
-                    className="secondary"
-                    onClick={() => { setAuthError(""); setAuthView("signin"); }}
-                    style={{ width: "100%", padding: "12px", fontSize: "0.95rem" }}
-                  >
-                    Sign In
-                  </button>
-                </div>
-              </>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                <button
+                  type="button"
+                  onClick={() => { setAuthError(""); setAuthView("signup"); }}
+                  style={{ padding: "12px 26px", fontSize: "0.95rem" }}
+                >
+                  Start a league
+                </button>
+                <button
+                  type="button"
+                  className="secondary"
+                  onClick={() => { setAuthError(""); setAuthView("signin"); }}
+                  style={{ padding: "12px 26px", fontSize: "0.95rem" }}
+                >
+                  Sign in
+                </button>
+              </div>
             ) : (
-              <>
-                <div style={{ textAlign: "center" }}>
-                  <div style={{ fontSize: "1.35rem", fontWeight: 900, letterSpacing: "-0.02em", color: "var(--text)", marginBottom: 6 }}>
-                    {authView === "signup" ? "Create your account" : "Welcome back"}
-                  </div>
-                  <div style={{ fontSize: "0.85rem", color: "var(--text-2)", lineHeight: 1.6 }}>
-                    {authView === "signup" ? "Sign up with Google to start your league." : "Sign in with Google to keep playing."}
-                  </div>
+              <div
+                style={{
+                  background: "var(--surface)",
+                  border: "1px solid var(--border-2)",
+                  borderRadius: "var(--radius-lg)",
+                  padding: 22,
+                  maxWidth: 380,
+                }}
+              >
+                <div style={{ fontSize: "1.05rem", fontWeight: 500, letterSpacing: "-0.02em", marginBottom: 4 }}>
+                  {authView === "signup" ? "Create your account" : "Welcome back"}
                 </div>
-                {authError && <p className="error" style={{ width: "100%", textAlign: "center", margin: 0 }}>{authError}</p>}
+                <div style={{ fontSize: "0.85rem", color: "var(--text-2)", marginBottom: 18 }}>
+                  {authView === "signup" ? "Sign up with Google to start your league." : "Sign in with Google to keep playing."}
+                </div>
+                {authError && <p className="error" style={{ marginBottom: 12 }}>{authError}</p>}
                 <GoogleLogin
                   onSuccess={handleGoogleSuccess}
                   onError={() => setAuthError("Google sign-in failed")}
-                  width="304"
+                  width="334"
                   text={authView === "signup" ? "signup_with" : "signin_with"}
                 />
                 <button
                   type="button"
                   onClick={() => { setAuthError(""); setAuthView(null); }}
-                  style={{ background: "none", border: "none", padding: 0, color: "var(--text-2)", fontSize: "0.8rem", fontWeight: 500, cursor: "pointer", boxShadow: "none" }}
+                  style={{
+                    background: "none", border: "none", padding: "14px 0 0", color: "var(--text-2)",
+                    fontSize: "0.82rem", fontWeight: 450, cursor: "pointer",
+                  }}
                 >
                   ← Back
                 </button>
-              </>
+              </div>
             )
           ) : (
-            <>
-              <div style={{ textAlign: "center" }}>
-                <div style={{ fontSize: "1.35rem", fontWeight: 900, letterSpacing: "-0.02em", color: "var(--text)", marginBottom: 6 }}>
-                  Welcome back{displayName ? `, ${displayName}` : ""}
-                </div>
-                <div style={{ fontSize: "0.85rem", color: "var(--text-2)" }}>
-                  Pick up right where you left off.
-                </div>
-              </div>
-              <button type="button" onClick={() => router.push("/leagues")} style={{ width: "100%", padding: "12px", fontSize: "0.95rem", fontWeight: 700 }}>
-                My Leagues →
+            <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
+              <button
+                type="button"
+                onClick={() => router.push("/leagues")}
+                style={{ padding: "12px 26px", fontSize: "0.95rem" }}
+              >
+                Continue as {displayName || "you"} →
               </button>
-              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 <div
                   className="avatar"
                   onClick={() => router.push("/settings")}
-                  style={{ cursor: "pointer", width: 30, height: 30, fontSize: "0.65rem" }}
+                  style={{ cursor: "pointer", width: 28, height: 28, fontSize: "0.62rem" }}
                 >
                   {initials}
                 </div>
-                <button type="button" className="ghost" onClick={logout} style={{ padding: "6px 12px", fontSize: "0.8rem" }}>Log Out</button>
+                <button type="button" className="ghost" onClick={logout} style={{ padding: "6px 12px", fontSize: "0.82rem" }}>
+                  Log out
+                </button>
               </div>
-            </>
+            </div>
           )}
         </div>
-      </div>
+      </section>
 
+      {/* ── Facts strip ── */}
+      <section style={{ padding: PAD, borderBottom: "1px solid var(--border)" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))" }}>
+          {FACTS.map((f, i) => (
+            <div
+              key={f.k}
+              style={{
+                padding: "26px 24px 26px 0",
+                borderRight: i < FACTS.length - 1 ? "1px solid var(--border)" : "none",
+                paddingLeft: i === 0 ? 0 : 24,
+              }}
+            >
+              <div style={{ fontSize: "2rem", fontWeight: 400, letterSpacing: "-0.035em", lineHeight: 1 }}>{f.v}</div>
+              <div className="eyebrow" style={{ marginTop: 9 }}>{f.k}</div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* ── How it works ── */}
+      <section style={{ padding: PAD }}>
+        <div style={{ padding: "72px 0 24px", maxWidth: 620 }}>
+          <span className="eyebrow">How to play</span>
+          <h2 className="display-2" style={{ margin: "16px 0 0", textTransform: "none", letterSpacing: "-0.028em", color: "var(--text)" }}>
+            Six steps to a season.
+          </h2>
+        </div>
+
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
+            border: "1px solid var(--border)",
+            borderRadius: "var(--radius-lg)",
+            overflow: "hidden",
+            marginBottom: 80,
+          }}
+        >
+          {STEPS.map((step) => (
+            <div
+              key={step.n}
+              style={{
+                padding: "26px 24px 30px",
+                borderRight: "1px solid var(--border)",
+                borderBottom: "1px solid var(--border)",
+                margin: "0 -1px -1px 0",
+                background: "var(--surface)",
+              }}
+            >
+              <div style={{ fontSize: "0.7rem", fontWeight: 450, color: "var(--text-3)", marginBottom: 14, fontVariantNumeric: "tabular-nums" }}>
+                {step.n}
+              </div>
+              <div style={{ fontSize: "1rem", fontWeight: 500, letterSpacing: "-0.022em", marginBottom: 8 }}>
+                {step.title}
+              </div>
+              <div style={{ fontSize: "0.85rem", color: "var(--text-2)", lineHeight: 1.55 }}>
+                {step.desc}
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* ── Footer ── */}
+      <footer style={{ padding: PAD, borderTop: "1px solid var(--border)" }}>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 12,
+            padding: "24px 0",
+            flexWrap: "wrap",
+          }}
+        >
+          <Logo size={20} />
+          <span style={{ fontSize: "0.85rem", fontWeight: 450 }}>Wager</span>
+          <span style={{ fontSize: "0.8rem", color: "var(--text-3)", marginLeft: "auto" }}>
+            Fake money. Real NFL data.
+          </span>
+        </div>
+      </footer>
     </div>
   );
 }
