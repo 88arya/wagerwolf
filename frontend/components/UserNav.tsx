@@ -4,7 +4,6 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import Logo from "@/components/Logo";
-import ThemeToggle from "@/components/ThemeToggle";
 
 function UserIcon() {
   return (
@@ -75,7 +74,6 @@ export default function UserNav() {
 
       {/* Right: theme toggle + profile */}
       <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8 }}>
-        <ThemeToggle />
         <div ref={profileRef} style={{ position: "relative" }}>
           <button
             type="button"

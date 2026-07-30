@@ -8,7 +8,6 @@ import HelmetAvatar from "@/components/HelmetAvatar";
 import { ACCENT } from "@/lib/constants";
 import { fmtMoney } from "@/lib/money";
 import Logo from "@/components/Logo";
-import ThemeToggle from "@/components/ThemeToggle";
 
 function ChevronDown() {
   return (
@@ -228,7 +227,6 @@ export default function LeagueNav({ leagueId }: { leagueId: string }) {
 
       {/* Right: theme toggle + profile + league dropdown */}
       <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8, alignSelf: "stretch" }}>
-        <ThemeToggle />
 
         {/* League name + dropdown */}
         <div ref={dropdownRef} style={{ position: "relative", alignSelf: "stretch", display: "flex", alignItems: "center" }} onMouseEnter={() => setOpen(true)} onMouseLeave={() => setOpen(false)}>

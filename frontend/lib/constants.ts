@@ -1,2 +1,2 @@
-// Resolves to the theme's accent (see globals.css :root / [data-theme="dark"])
+// Resolves to the accent (see globals.css :root)
 export const ACCENT = "var(--accent)";
