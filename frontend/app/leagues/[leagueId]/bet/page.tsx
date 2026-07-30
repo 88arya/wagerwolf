@@ -355,24 +355,12 @@ export default function BetPage({ params }: PageProps<"/leagues/[leagueId]/bet">
     TOTAL_OVER: "TOTAL_UNDER", TOTAL_UNDER: "TOTAL_OVER",
   };
 
-  const CONFLICT_MARKETS: Record<string, string[]> = {
-    MONEYLINE_HOME: ["MONEYLINE_AWAY", "SPREAD_AWAY"],
-    MONEYLINE_AWAY: ["MONEYLINE_HOME", "SPREAD_HOME"],
-    SPREAD_HOME:    ["SPREAD_AWAY", "MONEYLINE_AWAY"],
-    SPREAD_AWAY:    ["SPREAD_HOME", "MONEYLINE_HOME"],
-    TOTAL_OVER:     ["TOTAL_UNDER"],
-    TOTAL_UNDER:    ["TOTAL_OVER"],
-  };
-
   function toggleLineinSlip(line: any) {
     const inSlip = slipIds.has(`${line.id}:`);
     if (inSlip) { removeFromSlip(line.id, undefined); return; }
     const gameForLine = games.find((g: any) => (g.gameLines ?? []).some((l: any) => l.id === line.id));
-    const conflicts = CONFLICT_MARKETS[line.market] ?? [];
-    for (const conflictMarket of conflicts) {
-      const conflictLine = (gameForLine?.gameLines ?? []).find((l: any) => l.market === conflictMarket);
-      if (conflictLine && slipIds.has(`${conflictLine.id}:`)) removeFromSlip(conflictLine.id, undefined);
-    }
+    // Conflicting lines are no longer swapped out — they go into the slip and
+    // the slip flags them in amber (see lib/conflicts.ts).
     addToSlip({
       type: "gameline", id: line.id, label: line.label, odds: line.odds,
       market: line.market, line: line.line ?? undefined,
@@ -392,11 +380,10 @@ export default function BetPage({ params }: PageProps<"/leagues/[leagueId]/bet">
     if (existingLeg && Math.abs((existingBlockLine ?? 0) - blockLine) < 0.001) {
       removeFromSlip(prop.id, direction, existingLeg.altLine); return;
     }
+    // Selecting a different line for the same direction replaces it — that's
+    // the alt-line scroller's contract. The opposite direction is left alone:
+    // OVER + UNDER may coexist and the slip flags them (see lib/conflicts.ts).
     if (existingLeg) removeFromSlip(prop.id, direction, existingLeg.altLine);
-    // Remove opposite direction — can't have OVER and UNDER on the same prop
-    const opposite = direction === "OVER" ? "UNDER" : "OVER";
-    const oppositeLeg = currentSlip.find((l: any) => l.id === prop.id && l.direction === opposite);
-    if (oppositeLeg) removeFromSlip(prop.id, opposite, oppositeLeg.altLine);
     const isDefault = Math.abs(blockLine - prop.line) < 0.001;
     const propGame = games.find((g: any) => g.id === prop.gameId);
     addToSlip({

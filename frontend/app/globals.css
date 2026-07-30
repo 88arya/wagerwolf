@@ -31,6 +31,7 @@
   --loss-border:  rgba(220, 38, 38, 0.25);
   --pending:      #D97706;
   --pending-bg:   rgba(217, 119, 6, 0.10);
+  --pending-border: rgba(217, 119, 6, 0.25);
 
   /* ── Ranks ── */
   --gold:         #D97706;

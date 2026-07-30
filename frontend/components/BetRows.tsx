@@ -91,6 +91,8 @@ export interface BetRow extends RowGame {
   subtitle?: string | null;
   odds: number;
   gutter?: React.ReactNode;
+  /** Slip-only: leg can't be parlayed with another selection. Renders amber. */
+  conflict?: boolean;
 }
 
 export interface LegGroup<T extends RowGame> extends RowGame {
@@ -274,7 +276,7 @@ export function BetRows({ rows }: { rows: BetRow[] }) {
                 gap: 8,
                 padding: `12px 14px 12px ${RAIL_PAD}px`,
                 borderBottom: "1px solid var(--border)",
-                background: "var(--surface)",
+                background: row.conflict ? "var(--pending-bg)" : "var(--surface)",
               }}>
                 <RailLine last={isLastRow} />
                 <RailCell>{row.gutter}</RailCell>
@@ -283,7 +285,7 @@ export function BetRows({ rows }: { rows: BetRow[] }) {
                     fontWeight: 600,
                     fontSize: "0.8rem",
                     lineHeight: 1.25,
-                    color: "var(--text)",
+                    color: row.conflict ? "var(--pending)" : "var(--text)",
                     overflow: "hidden",
                     textOverflow: "ellipsis",
                     whiteSpace: "nowrap",
@@ -293,7 +295,8 @@ export function BetRows({ rows }: { rows: BetRow[] }) {
                   {row.subtitle && (
                     <div style={{
                       fontSize: "0.68rem",
-                      color: "var(--text-3)",
+                      color: row.conflict ? "var(--pending)" : "var(--text-3)",
+                      opacity: row.conflict ? 0.8 : 1,
                       lineHeight: 1.25,
                       overflow: "hidden",
                       textOverflow: "ellipsis",
@@ -306,7 +309,7 @@ export function BetRows({ rows }: { rows: BetRow[] }) {
                 <span style={{
                   fontSize: "0.85rem",
                   fontWeight: 700,
-                  color: "var(--accent)",
+                  color: row.conflict ? "var(--pending)" : "var(--accent)",
                   fontVariantNumeric: "tabular-nums",
                   flexShrink: 0,
                 }}>

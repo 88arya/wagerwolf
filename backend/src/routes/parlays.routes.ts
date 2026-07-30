@@ -5,6 +5,7 @@ import { leagues, memberships, weeks, games, props, picks, gameLines, gamePicks,
 import { requireAuth } from "../middleware/auth";
 import { betLimiter } from "../middleware/rateLimit";
 import { calcParlayOdds, calcParlayPayout, fmtMoney } from "../lib/payout";
+import { findFirstConflict, conflictMessage, type ConflictLeg } from "../services/betConflicts";
 
 const router = Router();
 
@@ -26,16 +27,29 @@ interface ResolvedLeg {
   altLine?: number;
   gameId: string;
   market?: string;
+  // Carried so each combo can be checked with the shared conflict model.
+  line?: number | null;
+  statType?: string | null;
+  playerId?: string | null;
 }
 
-const OPPOSITE: Record<string, string> = {
-  MONEYLINE_HOME: "MONEYLINE_AWAY",
-  MONEYLINE_AWAY: "MONEYLINE_HOME",
-  SPREAD_HOME: "SPREAD_AWAY",
-  SPREAD_AWAY: "SPREAD_HOME",
-  TOTAL_OVER: "TOTAL_UNDER",
-  TOTAL_UNDER: "TOTAL_OVER",
-};
+/** A resolved round-robin leg in the shape the conflict model expects. */
+function toConflictLeg(leg: ResolvedLeg): ConflictLeg {
+  return leg.propId
+    ? {
+        type: "prop", id: leg.propId, direction: leg.direction,
+        line: leg.line, altLine: leg.altLine, statType: leg.statType,
+        playerId: leg.playerId, gameId: leg.gameId,
+      }
+    : {
+        type: "gameline", id: leg.gameLineId!, market: leg.market,
+        line: leg.line, altLine: leg.altLine, gameId: leg.gameId,
+      };
+}
+
+// Opposing-side / redundant-leg detection lives in services/betConflicts.ts so
+// the line values and the favoured side are actually taken into account. See
+// that file for the model.
 
 const STAT_STEP: Record<string, number> = {
   PASSING_YARDS: 5, RUSHING_YARDS: 5, RECEIVING_YARDS: 5,
@@ -158,9 +172,8 @@ router.post("/", requireAuth, betLimiter, async (req: any, res: any) => {
 
     // Validate each leg and collect odds
     const resolvedLegs: Array<{ propId?: string; gameLineId?: string; direction?: string; odds: number; altLine?: number }> = [];
-    const seenPropIds = new Set<string>();
     const seenGameLineIds = new Set<string>();
-    const seenGameMarkets = new Map<string, Set<string>>();
+    const conflictLegs: ConflictLeg[] = [];
     let firstWeekId: string | null = null;
 
     for (const leg of legs) {
@@ -186,13 +199,11 @@ router.post("/", requireAuth, betLimiter, async (req: any, res: any) => {
           res.status(400).json({ error: `Game has already kicked off — cannot include in parlay` }); return;
         }
 
-        // Anti-arbitrage within legs: no OVER and UNDER on same prop
-        const oppositeDir = leg.direction === "OVER" ? "UNDER" : "OVER";
-        if (seenPropIds.has(`${leg.propId}:${oppositeDir}`)) {
-          res.status(409).json({ error: "Cannot include both OVER and UNDER on same prop in one parlay" });
-          return;
-        }
-        seenPropIds.add(`${leg.propId}:${leg.direction}`);
+        conflictLegs.push({
+          type: "prop", id: leg.propId, direction: leg.direction,
+          line: prop.line, altLine: leg.altLine, statType: prop.statType,
+          playerId: prop.playerId, gameId: prop.gameId,
+        });
         if (!firstWeekId) firstWeekId = prop.game.week.id;
 
         const propOdds = (leg.altLine != null && prop.line != null)
@@ -219,15 +230,10 @@ router.post("/", requireAuth, betLimiter, async (req: any, res: any) => {
           return;
         }
 
-        // Anti-arbitrage: no opposite markets in same game
-        const gameMarkets = seenGameMarkets.get(gameLine.gameId) ?? new Set<string>();
-        const oppositeMarket = OPPOSITE[gameLine.market];
-        if (oppositeMarket && gameMarkets.has(oppositeMarket)) {
-          res.status(409).json({ error: `Cannot include both ${gameLine.market} and ${oppositeMarket} on same game in one parlay` });
-          return;
-        }
-        gameMarkets.add(gameLine.market);
-        seenGameMarkets.set(gameLine.gameId, gameMarkets);
+        conflictLegs.push({
+          type: "gameline", id: leg.gameLineId, market: gameLine.market,
+          line: gameLine.line, altLine: leg.altLine, gameId: gameLine.gameId,
+        });
         seenGameLineIds.add(leg.gameLineId);
         if (!firstWeekId) firstWeekId = gameLine.game.week.id;
 
@@ -239,6 +245,13 @@ router.post("/", requireAuth, betLimiter, async (req: any, res: any) => {
           : gameLine.odds;
         resolvedLegs.push({ gameLineId: leg.gameLineId, odds: glOdds, altLine: leg.altLine });
       }
+    }
+
+    // Contradictory, redundant and duplicate legs, in one pass over the set.
+    const conflict = findFirstConflict(conflictLegs);
+    if (conflict) {
+      res.status(409).json({ error: conflictMessage(conflict.a, conflict.b, conflict.kind) });
+      return;
     }
 
     if (league?.maxBetsPerWeek && firstWeekId) {
@@ -332,7 +345,10 @@ router.post("/round-robin", requireAuth, betLimiter, async (req: any, res: any) 
           ? calcPropAltOdds(prop.odds, prop.line, leg.altLine, prop.statType, leg.direction!)
           : prop.odds;
         if (!firstWeekId) firstWeekId = prop.game.week.id;
-        resolved.push({ propId: leg.propId, direction: leg.direction, odds, altLine: leg.altLine, gameId: prop.game.id });
+        resolved.push({
+          propId: leg.propId, direction: leg.direction, odds, altLine: leg.altLine,
+          gameId: prop.game.id, line: prop.line, statType: prop.statType, playerId: prop.playerId,
+        });
       } else if (leg.gameLineId) {
         const gameLine = await db.query.gameLines.findFirst({
           where: eq(gameLines.id, leg.gameLineId),
@@ -347,7 +363,10 @@ router.post("/round-robin", requireAuth, betLimiter, async (req: any, res: any) 
           ? calcGameLineAltOdds(gameLine.odds, gameLine.line, leg.altLine, gameLine.market)
           : gameLine.odds;
         if (!firstWeekId) firstWeekId = gameLine.game.week.id;
-        resolved.push({ gameLineId: leg.gameLineId, odds, altLine: leg.altLine, gameId: gameLine.game.id, market: gameLine.market });
+        resolved.push({
+          gameLineId: leg.gameLineId, odds, altLine: leg.altLine,
+          gameId: gameLine.game.id, market: gameLine.market, line: gameLine.line,
+        });
       }
     }
 
@@ -358,27 +377,14 @@ router.post("/round-robin", requireAuth, betLimiter, async (req: any, res: any) 
       res.status(400).json({ error: `Insufficient balance — need $${totalStake} for ${combos.length} combos` }); return;
     }
 
-    // Validate each combo for internal conflicts
+    // Validate each combo for internal conflicts. Checked per combo rather than
+    // over the whole set: two legs that clash may never land in the same combo,
+    // and only the combos that actually pair them are unplaceable.
     for (const combo of combos) {
-      const propDirs = new Map<string, string>();
-      const gameMarkets = new Map<string, Set<string>>();
-      for (const leg of combo) {
-        if (leg.propId && leg.direction) {
-          const existing = propDirs.get(leg.propId);
-          if (existing && existing !== leg.direction) {
-            res.status(409).json({ error: "Conflicting legs — OVER and UNDER on the same prop cannot both be in a combo" }); return;
-          }
-          propDirs.set(leg.propId, leg.direction);
-        }
-        if (leg.gameLineId && leg.market) {
-          const markets = gameMarkets.get(leg.gameId) ?? new Set<string>();
-          const opp = OPPOSITE[leg.market];
-          if (opp && markets.has(opp)) {
-            res.status(409).json({ error: `Conflicting game lines in combo: ${leg.market} vs ${opp}` }); return;
-          }
-          markets.add(leg.market);
-          gameMarkets.set(leg.gameId, markets);
-        }
+      const conflict = findFirstConflict(combo.map(toConflictLeg));
+      if (conflict) {
+        res.status(409).json({ error: conflictMessage(conflict.a, conflict.b, conflict.kind) });
+        return;
       }
     }
 

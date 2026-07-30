@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { api } from "@/lib/api";
 import { fmtMoney, fmtAmount, toCents } from "@/lib/money";
 import { BetHeader, BetRows, gameLineSubtitle, gameLineTitle, titleCase, type BetRow } from "./BetRows";
+import { findConflicts, type ConflictLeg } from "@/lib/conflicts";
 
 export interface SlipLeg {
   type: "prop" | "gameline";
@@ -35,12 +36,9 @@ export function getBetSlip(): SlipLeg[] {
 }
 
 export function addToSlip(leg: SlipLeg): boolean {
-  let legs = getBetSlip();
-  // Defensive: remove opposite direction for same prop (can't have OVER + UNDER)
-  if (leg.type === "prop" && leg.direction) {
-    const opposite = leg.direction === "OVER" ? "UNDER" : "OVER";
-    legs = legs.filter((l) => !(l.id === leg.id && l.direction === opposite));
-  }
+  const legs = getBetSlip();
+  // Conflicting selections are allowed to coexist here — the slip flags them in
+  // amber and blocks the parlay rather than silently dropping one.
   if (legs.some((l) => l.id === leg.id && l.direction === leg.direction && l.altLine === leg.altLine)) return false;
   localStorage.setItem(SLIP_KEY, JSON.stringify([...legs, leg]));
   window.dispatchEvent(new Event("betslip-update"));
@@ -116,6 +114,17 @@ function legSubtitle(leg: SlipLeg): string | null {
     return `${dir} ${line ?? ""} ${titleCase(leg.statType)}`.trim();
   }
   return gameLineSubtitle(leg.market);
+}
+
+function HazardIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+      <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z" />
+      <line x1="12" y1="9" x2="12" y2="13" />
+      <line x1="12" y1="17" x2="12.01" y2="17" />
+    </svg>
+  );
 }
 
 function MinusCircleIcon() {
@@ -214,6 +223,27 @@ export default function BetSlip({ leagueId }: { leagueId: string }) {
     ? "Bet Slip"
     : rrMode ? "Round Robin" : legs.length === 1 ? "Straight" : `${legs.length}-Leg Parlay`;
 
+  // Conflicting legs stay in the slip and are flagged rather than removed, so
+  // the key has to include the alt line — two lines on one prop are distinct
+  // selections here even though they share an id and direction.
+  const conflictLegs: ConflictLeg[] = legs.map((leg) => ({
+    key: `${legKey(leg)}:${leg.altLine ?? ""}`,
+    type: leg.type,
+    id: leg.id,
+    direction: leg.direction,
+    market: leg.market,
+    line: leg.line,
+    altLine: leg.altLine,
+    statType: leg.statType,
+    playerId: leg.playerId,
+    gameId: leg.gameId,
+  }));
+  const { keys: conflictKeys } = findConflicts(conflictLegs);
+  const hasConflict = conflictKeys.size > 0;
+  // A single leg can't conflict with anything, so only multi-leg bets are held
+  // back. The CTA just dims — the amber banner already says why.
+  const conflictBlocked = hasConflict && legs.length > 1;
+
   const rows: BetRow[] = legs.map((leg) => ({
     key: legKey(leg),
     title: legTitle(leg),
@@ -223,6 +253,7 @@ export default function BetSlip({ leagueId }: { leagueId: string }) {
     gameDate: leg.gameDate,
     homeTeam: leg.homeTeam,
     awayTeam: leg.awayTeam,
+    conflict: conflictKeys.has(`${legKey(leg)}:${leg.altLine ?? ""}`),
     gutter: <RemoveBtn onRemove={() => removeFromSlip(leg.id, leg.direction, leg.altLine)} />,
   }));
 
@@ -268,47 +299,10 @@ export default function BetSlip({ leagueId }: { leagueId: string }) {
     }
   }
 
-  const CROSS_CONFLICTS: Record<string, string> = {
-    MONEYLINE_HOME: "SPREAD_AWAY",
-    MONEYLINE_AWAY: "SPREAD_HOME",
-    SPREAD_HOME: "MONEYLINE_AWAY",
-    SPREAD_AWAY: "MONEYLINE_HOME",
-  };
-
-  function conflictingLeg(leg: SlipLeg): SlipLeg | null {
-    if (!leg.gameId || !leg.market) return null;
-    const sameGame = legs.filter((l) => l.gameId === leg.gameId && l.id !== leg.id);
-    for (const other of sameGame) {
-      if (!other.market) continue;
-      const isSameMarketOpposite = other.market === ({ MONEYLINE_HOME: "MONEYLINE_AWAY", MONEYLINE_AWAY: "MONEYLINE_HOME", SPREAD_HOME: "SPREAD_AWAY", SPREAD_AWAY: "SPREAD_HOME", TOTAL_OVER: "TOTAL_UNDER", TOTAL_UNDER: "TOTAL_OVER" })[leg.market];
-      const isCrossConflict = other.market === CROSS_CONFLICTS[leg.market];
-      if (isSameMarketOpposite || isCrossConflict) return other;
-    }
-    return null;
-  }
-
   async function submitParlay() {
     if (legs.length < 2) { setError("Add at least 2 legs"); return; }
     if (!stakeCents || stakeCents <= 0) { setError("Enter a parlay stake"); return; }
-    // Block OVER + UNDER on the same prop
-    const propDirections = new Map<string, string>();
-    for (const leg of legs) {
-      if (leg.type === "prop" && leg.direction) {
-        const existing = propDirections.get(leg.id);
-        if (existing && existing !== leg.direction) {
-          setError("Can't parlay OVER and UNDER on the same prop");
-          return;
-        }
-        propDirections.set(leg.id, leg.direction);
-      }
-    }
-    for (const leg of legs) {
-      const conflict = conflictingLeg(leg);
-      if (conflict) {
-        setError(`Conflicting legs: can't parlay ${leg.market?.replace("_", " ")} with ${conflict.market?.replace("_", " ")} for the same game`);
-        return;
-      }
-    }
+    if (hasConflict) { setError("Remove the flagged selections to place this parlay"); return; }
     setSubmitting(true);
     setError("");
     try {
@@ -346,6 +340,7 @@ export default function BetSlip({ leagueId }: { leagueId: string }) {
   async function submitRoundRobin() {
     if (legs.length < 3) { setError("Round robin requires at least 3 legs"); return; }
     if (!stakeCents || stakeCents <= 0) { setError("Enter a stake per combo"); return; }
+    if (hasConflict) { setError("Remove the flagged selections to place this round robin"); return; }
     setSubmitting(true);
     setError("");
     try {
@@ -446,6 +441,25 @@ export default function BetSlip({ leagueId }: { leagueId: string }) {
             </div>
           )}
 
+          {hasConflict && (
+            <div style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 8,
+              padding: "9px 16px",
+              color: "var(--pending)",
+              fontSize: "0.78rem",
+              fontWeight: 600,
+              background: "var(--pending-bg)",
+              borderBottom: "1px solid var(--pending-border)",
+              flexShrink: 0,
+            }}>
+              <HazardIcon />
+              Some selections cannot be parlayed
+            </div>
+          )}
+
           {/* Legs grouped by game, earliest → latest kickoff */}
           {/* flex-basis auto (not 0) so the list sizes to its content and only
               shrinks — and therefore only scrolls — once space runs out */}
@@ -481,6 +495,8 @@ export default function BetSlip({ leagueId }: { leagueId: string }) {
                 style={{
                   display: "flex",
                   alignItems: "center",
+                  justifyContent: "center",
+                  width: "100%",
                   gap: 6,
                   background: "transparent",
                   border: "none",
@@ -590,10 +606,10 @@ export default function BetSlip({ leagueId }: { leagueId: string }) {
 
               <button
                 onClick={rrMode ? submitRoundRobin : legs.length === 1 ? placeSingle : submitParlay}
-                disabled={submitting || !parlayStake || Number(parlayStake) <= 0}
+                disabled={submitting || !parlayStake || Number(parlayStake) <= 0 || conflictBlocked}
                 style={{
                   width: "100%", marginTop: 10, fontSize: "0.85rem", padding: "10px 16px", fontWeight: 700,
-                  opacity: (submitting || !parlayStake || Number(parlayStake) <= 0) ? 0.45 : 1,
+                  opacity: (submitting || !parlayStake || Number(parlayStake) <= 0 || conflictBlocked) ? 0.45 : 1,
                 }}
               >
                 {submitting ? "Placing…" : "Place Bet"}
