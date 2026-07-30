@@ -36,9 +36,14 @@ export async function resolveWeekById(weekId: string): Promise<{
 
   // Fetch ESPN box scores
   const masterStats = new Map<string, any>();
+  // Games that came back with a box score, i.e. they've actually been played.
+  // Used below to tell "this player didn't play" apart from "this game hasn't
+  // happened yet" — only the former settles as a zero stat line.
+  const playedGameIds = new Set<string>();
   for (const game of weekGames) {
     if (!game.espnId) continue;
     const gameStats = await getGameStats(game.espnId);
+    if (gameStats.size > 0) playedGameIds.add(game.id);
     for (const [name, stats] of gameStats) {
       masterStats.set(name.toLowerCase(), stats);
     }
@@ -139,12 +144,19 @@ export async function resolveWeekById(weekId: string): Promise<{
   for (const game of weekGames) {
     for (const prop of (game.props as any[])) {
       if (prop.result != null) { propMatched++; continue; }
-      const playerStats = masterStats.get(prop.player.name.toLowerCase());
-      if (!playerStats) { propUnmatched++; continue; }
       const statKey = STAT_FIELD[prop.statType as string];
+      // No ESPN field mapped for this stat type is our gap, not a DNP — leave
+      // it unresolved rather than settling someone's bet against them.
       if (!statKey) { propUnmatched++; continue; }
-      const result = (playerStats as any)[statKey] ?? null;
+
+      const playerStats = masterStats.get(prop.player.name.toLowerCase());
+      const reported = playerStats ? (playerStats as any)[statKey] ?? null : null;
+      // Once the game has a box score, a player with no line didn't play, and a
+      // player with no value for this stat didn't record it — ESPN omits zeros.
+      // Both settle as 0 so the pick can't sit PENDING with the stake held.
+      const result = reported ?? (playedGameIds.has(game.id) ? 0 : null);
       if (result == null) { propUnmatched++; continue; }
+
       await db.update(props).set({ result }).where(eq(props.id, prop.id));
       propMatched++;
     }
