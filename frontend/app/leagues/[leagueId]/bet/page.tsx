@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { api } from "@/lib/api";
 import BetSlip, { addToSlip, removeFromSlip, getBetSlip } from "@/components/BetSlip";
@@ -15,9 +15,16 @@ function fmtCountdown(dateStr: string): string {
   const totalHrs = Math.floor(diffMs / 3600000);
   const days = Math.floor(totalHrs / 24);
   const hrs = totalHrs % 24;
-  if (days > 0) return `Starts in: ${days}d ${hrs}h`;
-  if (hrs > 0) return `Starts in: ${hrs}h`;
+  // Bare duration — the "Starts in:" prefix is now a timer icon at the render site.
+  if (days > 0) return `${days}d ${hrs}h`;
+  if (hrs > 0) return `${hrs}h`;
   return "Soon";
+}
+
+// True for the countdown values that the timer icon should accompany. "Live"
+// and "Soon" are states, not durations, so they render without it.
+function isCountdownValue(v: string): boolean {
+  return v !== "" && v !== "Live" && v !== "Soon";
 }
 
 function fmtOdds(american: number): string {
@@ -27,8 +34,17 @@ function fmtOdds(american: number): string {
 function fmtGameTime(dateStr: string): string {
   if (!dateStr) return "";
   const d = new Date(dateStr);
-  return d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" }) +
-    " · " + d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+  const weekday = d.toLocaleDateString("en-US", { weekday: "short" }).toUpperCase();
+  // No timeZone option, so the browser formats in the viewer's own zone.
+  // "shortGeneric" yields ET/PT rather than EDT/PDT, so the label doesn't flip
+  // with daylight saving mid-season.
+  let time: string;
+  try {
+    time = d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZoneName: "shortGeneric" });
+  } catch {
+    time = d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZoneName: "short" });
+  }
+  return `${weekday} ${time}`;
 }
 
 const PROP_OFFSETS = [-2, -1, 0, 1, 2];
@@ -225,6 +241,26 @@ export default function BetPage({ params }: PageProps<"/leagues/[leagueId]/bet">
   const [altTotalIdx, setAltTotalIdx] = useState(0);
   const [hitRates, setHitRates] = useState<Record<string, { overPct: number; sampleSize: number }>>({});
   const [collapsedMarkets, setCollapsedMarkets] = useState<Set<string>>(new Set());
+
+  // Track devicePixelRatio so the game-card box gap can be snapped to a whole
+  // number of device pixels — a fractional device gap rounds to floor() at one
+  // column boundary and ceil() at the next, which reads as uneven gutters.
+  // Starts at 1 so server and first client render agree, then corrects on mount.
+  const [dpr, setDpr] = useState(1);
+  useEffect(() => {
+    const update = () => setDpr(window.devicePixelRatio || 1);
+    update();
+    // devicePixelRatio changes on zoom and on moving between monitors; the
+    // resolution media query fires for both, but must be re-armed each time
+    // because it is pinned to the current ratio.
+    const mq = window.matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`);
+    mq.addEventListener("change", update);
+    window.addEventListener("resize", update);
+    return () => {
+      mq.removeEventListener("change", update);
+      window.removeEventListener("resize", update);
+    };
+  }, [dpr]);
 
   function toggleMarketCollapsed(statType: string) {
     setCollapsedMarkets(prev => {
@@ -585,7 +621,20 @@ export default function BetPage({ params }: PageProps<"/leagues/[leagueId]/bet">
                   </div>
                   <div style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)", pointerEvents: "none" }}>
                     <div style={{ background: "rgba(255,255,255,0.92)", borderRadius: 8, padding: "6px 12px", display: "flex", flexDirection: "column", alignItems: "center", gap: 3 }}>
-                      <div style={{ fontSize: "0.55rem", fontWeight: 600, color: "rgba(0,0,0,0.9)", letterSpacing: "0.08em" }}>{fmtCountdown(selectedGame.gameDate)}</div>
+                      {(() => {
+                        const countdown = fmtCountdown(selectedGame.gameDate);
+                        return (
+                          <div style={{ fontSize: "0.55rem", fontWeight: 600, color: "rgba(0,0,0,0.9)", letterSpacing: "0.08em", display: "flex", alignItems: "center", gap: 3 }}>
+                            {isCountdownValue(countdown) && (
+                              <svg xmlns="http://www.w3.org/2000/svg" width="1.15em" height="1.15em" viewBox="0 0 24 24" aria-hidden="true" style={{ flexShrink: 0 }}>
+                                <path d="M0 0h24v24H0z" fill="none" />
+                                <path fill="currentColor" d="M15 1H9v2h6zm-4 13h2V8h-2zm8.03-6.61l1.42-1.42c-.43-.51-.9-.99-1.41-1.41l-1.42 1.42A8.962 8.962 0 0 0 12 4a9 9 0 0 0-9 9a9 9 0 0 0 9 9a8.994 8.994 0 0 0 7.03-14.61M12 20c-3.87 0-7-3.13-7-7s3.13-7 7-7s7 3.13 7 7s-3.13 7-7 7" />
+                              </svg>
+                            )}
+                            {countdown}
+                          </div>
+                        );
+                      })()}
                       <div style={{ fontSize: "0.55rem", color: "rgba(0,0,0,0.4)", textAlign: "center", whiteSpace: "nowrap", lineHeight: 1.4 }}>{fmtGameTime(selectedGame.gameDate)}</div>
                     </div>
                   </div>
@@ -872,9 +921,11 @@ export default function BetPage({ params }: PageProps<"/leagues/[leagueId]/bet">
           </div>
         )}
 
-        {gamesByDate.map(({ date, games: dayGames }) => (
-          <div key={date}>
-            {dayGames.map((game: any) => {
+        {/* One continuous white strip rather than a card per game. Groups are
+            flattened so the separator runs between games across date boundaries
+            too, and so gameIdx is a single running index over the whole list. */}
+        <div style={{ background: "var(--surface)" }}>
+          {gamesByDate.flatMap(({ games: dayGames }) => dayGames).map((game: any, gameIdx: number) => {
               const lines: any[] = game.gameLines ?? [];
               const now = new Date();
               const isLive = game.status === "IN_PROGRESS" ||
@@ -890,11 +941,15 @@ export default function BetPage({ params }: PageProps<"/leagues/[leagueId]/bet">
               // market-boxes: nested grid with only fixed-width columns so columnGap is exact
               const BOX_W = 110;
               const BOX_H = 42;
-              const BOX_GAP = 2;
+              // Exactly GAP_DEVICE_PX device pixels wide at any scale/zoom. An
+              // integer device width renders identically at every position, so
+              // all three gutters stay equal however the grid's origin falls.
+              const GAP_DEVICE_PX = 3;
+              const BOX_GAP = GAP_DEVICE_PX / dpr;
 
               function OddsBlock({ line, topLabel }: { line: any; topLabel?: string }) {
                 if (!line) {
-                  return <div style={{ width: BOX_W, height: BOX_H, flexShrink: 0 }} />;
+                  return <div style={{ width: BOX_W, height: BOX_H }} />;
                 }
                 const inSlip = slipIds.has(`${line.id}:`);
                 const oppMarket = OPPOSITE_MARKET[line.market];
@@ -902,17 +957,17 @@ export default function BetPage({ params }: PageProps<"/leagues/[leagueId]/bet">
                 const conflicted = !!oppLine && pendingLineIds.has(oppLine.id);
                 const isDisabled = weekLocked || conflicted;
                 return (
-                  <div style={{ position: "relative", width: BOX_W, height: BOX_H, flexShrink: 0, borderRadius: 4, overflow: "hidden" }}>
+                  <div style={{ position: "relative", width: BOX_W, height: BOX_H, borderRadius: 0, overflow: "hidden" }}>
                     <button
                       type="button"
                       disabled={isDisabled}
                       onClick={(e) => { e.stopPropagation(); if (!isDisabled) toggleLineinSlip(line); }}
                       style={{
-                        width: "100%", height: "100%", borderRadius: 4, boxSizing: "border-box",
+                        width: "100%", height: "100%", borderRadius: 0, boxSizing: "border-box",
                         display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 4,
                         cursor: isDisabled ? "default" : "pointer",
                         background: inSlip ? "var(--accent-dim)" : "var(--surface-3)",
-                        border: inSlip ? "1.5px solid var(--accent)" : "none",
+                        border: inSlip ? "1.5px solid var(--accent)" : "1.5px solid transparent",
                         outline: "none",
                         transition: "all 0.1s",
                         padding: 0,
@@ -939,74 +994,89 @@ export default function BetPage({ params }: PageProps<"/leagues/[leagueId]/bet">
                       <div style={{
                         position: "absolute", inset: 0, pointerEvents: "none",
                         background: "repeating-linear-gradient(45deg, var(--stripe) 0px, var(--stripe) 1.5px, transparent 1.5px, transparent 7px)",
-                        borderRadius: 4,
+                        borderRadius: 0,
                       }} />
                     )}
                   </div>
                 );
               }
 
-              // total width of the 3-column market block
-              const MARKETS_W = BOX_W * 3 + BOX_GAP * 2;
-
               return (
-                <div
-                  key={game.id}
-                  className="card"
-                  style={{ marginBottom: 8, border: "none", overflow: "visible", padding: 0 }}
-                >
-                  {/* Header: column labels only */}
-                  <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "flex-end", padding: "0px 12px 3px", height: 22 }}>
-                    <div style={{ display: "flex", flexDirection: "row", gap: BOX_GAP, flexShrink: 0 }}>
-                      {(["Spread", "Total", "Moneyline"] as const).map((h) => (
-                        <div key={h} style={{ width: BOX_W, textAlign: "center", fontSize: "0.48rem", color: "var(--text-2)", letterSpacing: "0.07em", textTransform: "uppercase" }}>{h}</div>
-                      ))}
-                    </div>
-                  </div>
+                <Fragment key={game.id}>
+                  {/* Separator between games — inset 12px, the same padding the
+                      footer uses, so it spans exactly from the date's left edge
+                      to the right edge of "More Bets" above it. Kept a sibling of
+                      the row (not a child) so the row's vertical padding doesn't
+                      push it inward and unbalance the space either side of it. */}
+                  {gameIdx > 0 && (
+                    // height is exactly 1 device pixel. A flat `height: 1` is
+                    // 1×dpr device px, which rounds to 1 or 2 depending on the
+                    // line's y position — every third separator came out double
+                    // weight. Snapping to 1/dpr makes them all identical.
+                    <div style={{ height: 1 / dpr, background: "var(--border)", margin: "0 12px" }} />
+                  )}
 
-                  {/* Body: team-info column (flex) + market-box column (nested grid, isolated) */}
-                  <div style={{ display: "flex", padding: "0 12px" }}>
-                    {/* Left: team info stack */}
-                    <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
-                      <div style={{ height: BOX_H, display: "flex", alignItems: "center", gap: 8 }}>
-                        <TeamLogo team={game.awayTeam} size={26} />
-                        <span style={{ fontWeight: 700, fontSize: "0.85rem", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{getTeamDisplayName(game.awayTeam)}</span>
-                      </div>
-                      <div style={{ height: BOX_GAP, display: "flex", alignItems: "center", gap: 5, paddingLeft: 34, overflow: "visible" }}>
-                        <span style={{ fontSize: "0.45rem", color: "var(--text-3)", letterSpacing: "0.12em", flexShrink: 0, lineHeight: 1 }}>AT</span>
-                        <div style={{ flex: 1, height: 1, background: "linear-gradient(to right, var(--border), transparent)" }} />
-                      </div>
-                      <div style={{ height: BOX_H, display: "flex", alignItems: "center", gap: 8 }}>
-                        <TeamLogo team={game.homeTeam} size={26} />
-                        <span style={{ fontWeight: 700, fontSize: "0.85rem", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{getTeamDisplayName(game.homeTeam)}</span>
+                  <div style={{ overflow: "visible", padding: "4px 0" }}>
+                    {/* Header: column labels only */}
+                    <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "flex-end", padding: "0px 12px 3px", height: 22 }}>
+                      <div style={{ display: "flex", flexDirection: "row", gap: BOX_GAP, flexShrink: 0 }}>
+                        {(["Spread", "Total", "Moneyline"] as const).map((h) => (
+                          <div key={h} style={{ width: BOX_W, textAlign: "center", fontSize: "0.48rem", color: "var(--text-2)", letterSpacing: "0.07em", textTransform: "uppercase" }}>{h}</div>
+                        ))}
                       </div>
                     </div>
 
-                    {/* Right: market boxes — 2-row grid, both gaps from same property so they're identical */}
-                    <div style={{ flexShrink: 0, display: "grid", gridTemplateColumns: `repeat(3, ${BOX_W}px)`, gridTemplateRows: `${BOX_H}px ${BOX_H}px`, columnGap: BOX_GAP, rowGap: BOX_GAP }}>
-                      <OddsBlock line={spAway} topLabel={spAway?.line != null ? String(spAway.line > 0 ? `+${spAway.line}` : spAway.line) : undefined} />
-                      <OddsBlock line={totOver} topLabel={totOver?.line != null ? `O ${totOver.line}` : undefined} />
-                      <OddsBlock line={mlAway} />
-                      <OddsBlock line={spHome} topLabel={spHome?.line != null ? String(spHome.line > 0 ? `+${spHome.line}` : spHome.line) : undefined} />
-                      <OddsBlock line={totUnder} topLabel={totUnder?.line != null ? `U ${totUnder.line}` : undefined} />
-                      <OddsBlock line={mlHome} />
+                    {/* Body: team-info column (flex) + market-box column (nested grid, isolated) */}
+                    <div style={{ display: "flex", gap: 12, padding: "0 12px" }}>
+                      {/* Left: team info stack */}
+                      <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
+                        <div style={{ height: BOX_H, display: "flex", alignItems: "center", gap: 8 }}>
+                          <TeamLogo team={game.awayTeam} size={26} />
+                          <span style={{ fontWeight: 700, fontSize: "0.85rem", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{getTeamDisplayName(game.awayTeam)}</span>
+                        </div>
+                        <div style={{ height: BOX_GAP, display: "flex", alignItems: "center", gap: 5, paddingLeft: 34, overflow: "visible" }}>
+                          <span style={{ fontSize: "0.45rem", color: "var(--text-3)", letterSpacing: "0.12em", flexShrink: 0, lineHeight: 1 }}>AT</span>
+                          <div style={{ flex: 1, height: 1, background: "linear-gradient(to right, var(--border), transparent)" }} />
+                        </div>
+                        <div style={{ height: BOX_H, display: "flex", alignItems: "center", gap: 8 }}>
+                          <TeamLogo team={game.homeTeam} size={26} />
+                          <span style={{ fontWeight: 700, fontSize: "0.85rem", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{getTeamDisplayName(game.homeTeam)}</span>
+                        </div>
+                      </div>
+
+                      {/* Right: market boxes — 2-row grid, both gaps from same property so they're identical */}
+                      <div style={{ flexShrink: 0, display: "grid", gridTemplateColumns: `repeat(3, ${BOX_W}px)`, gridTemplateRows: `${BOX_H}px ${BOX_H}px`, columnGap: BOX_GAP, rowGap: BOX_GAP }}>
+                        <OddsBlock line={spAway} topLabel={spAway?.line != null ? String(spAway.line > 0 ? `+${spAway.line}` : spAway.line) : undefined} />
+                        <OddsBlock line={totOver} topLabel={totOver?.line != null ? `O ${totOver.line}` : undefined} />
+                        <OddsBlock line={mlAway} />
+                        <OddsBlock line={spHome} topLabel={spHome?.line != null ? String(spHome.line > 0 ? `+${spHome.line}` : spHome.line) : undefined} />
+                        <OddsBlock line={totUnder} topLabel={totUnder?.line != null ? `U ${totUnder.line}` : undefined} />
+                        <OddsBlock line={mlHome} />
+                      </div>
+                    </div>
+
+                    {/* Footer */}
+                    <div style={{ height: 32, display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 12px" }}>
+                      <span style={{ fontSize: "0.72rem", color: "var(--text)", fontWeight: 600 }}>
+                        {fmtGameTime(game.gameDate)}
+                        {game.status === "FINAL" && <span style={{ marginLeft: 6, color: "var(--text-3)", fontWeight: 700 }}>· FINAL</span>}
+                        {game.status === "CANCELLED" && <span style={{ marginLeft: 6, color: "var(--loss)", fontWeight: 700 }}>· CANCELLED</span>}
+                      </span>
+                      <span style={{ fontSize: "0.72rem", color: "var(--text)", cursor: "pointer", fontWeight: 600, display: "inline-flex", alignItems: "center", gap: 2 }} onClick={() => setSelectedGame(game)}>
+                        More Bets
+                        <svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" aria-hidden="true" style={{ flexShrink: 0 }}>
+                          <path d="M0 0h24v24H0z" fill="none" />
+                          {/* stroke on top of the fill thickens the chevron without
+                              redrawing it — strokeWidth is the weight knob */}
+                          <path fill="currentColor" stroke="currentColor" strokeWidth={1} strokeLinejoin="round" strokeLinecap="round" d="M11.273 3.687a1 1 0 1 1 1.454-1.374l8.5 9a1 1 0 0 1 0 1.374l-8.5 9.001a1 1 0 1 1-1.454-1.373L19.125 12z" />
+                        </svg>
+                      </span>
                     </div>
                   </div>
-
-                  {/* Footer */}
-                  <div style={{ height: 32, display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 12px" }}>
-                    <span style={{ fontSize: "0.72rem", color: "var(--text-2)" }}>
-                      {fmtGameTime(game.gameDate)}
-                      {game.status === "FINAL" && <span style={{ marginLeft: 6, color: "var(--text-3)", fontWeight: 700 }}>· FINAL</span>}
-                      {game.status === "CANCELLED" && <span style={{ marginLeft: 6, color: "var(--loss)", fontWeight: 700 }}>· CANCELLED</span>}
-                    </span>
-                    <span style={{ fontSize: "0.72rem", color: "var(--text)", cursor: "pointer", fontWeight: 600 }} onClick={() => setSelectedGame(game)}>More Bets &nbsp;›</span>
-                  </div>
-                </div>
+                </Fragment>
               );
-            })}
-          </div>
-        ))}
+          })}
+        </div>
       </div>
 
       <BetSlip leagueId={leagueId} />
