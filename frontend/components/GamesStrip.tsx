@@ -160,8 +160,10 @@ export default function GamesStrip({ leagueId, interactive = true }: { leagueId:
                         </>
                       ) : isScheduled && game.gameDate ? (
                         <>
-                          <span style={{ fontSize: "0.62rem", fontWeight: 700, color: "var(--text-3)" }}>{new Date(game.gameDate).toLocaleDateString("en-US", { weekday: "short", timeZone: "America/New_York" })}</span>
-                          <span style={{ fontSize: "0.62rem", fontWeight: 700, color: "var(--text-3)" }}>{new Date(game.gameDate).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: "America/New_York" })}</span>
+                          {/* No timeZone option — weekday and time both render in the
+                              viewer's own zone, matching the game-card footers. */}
+                          <span style={{ fontSize: "0.62rem", fontWeight: 700, color: "var(--text-3)", textTransform: "uppercase" }}>{new Date(game.gameDate).toLocaleDateString("en-US", { weekday: "short" })}</span>
+                          <span style={{ fontSize: "0.62rem", fontWeight: 700, color: "var(--text-3)" }}>{new Date(game.gameDate).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}</span>
                         </>
                       ) : game.status === "CANCELLED" ? (
                         <span style={{ fontSize: "0.62rem", color: "var(--loss)", fontWeight: 700 }}>CANCELLED</span>
