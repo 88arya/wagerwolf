@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Logo from "@/components/Logo";
+import LogoWordmark from "@/components/LogoWordmark";
 import { GoogleLogin } from "@react-oauth/google";
 import { api } from "@/lib/api";
 
@@ -307,8 +308,9 @@ export default function HomePage() {
             flexWrap: "wrap",
           }}
         >
-          <Logo size={20} />
-          <span style={{ fontSize: "0.85rem", fontWeight: 450 }}>Wager</span>
+          {/* Wordmark carries the name itself, so it stands in for the icon
+              plus the "Wager" label the footer used to pair. */}
+          <LogoWordmark height={22} />
           <span style={{ fontSize: "0.8rem", color: "var(--text-3)", marginLeft: "auto" }}>
             Fake money. Real NFL data.
           </span>

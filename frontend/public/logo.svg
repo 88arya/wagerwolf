@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" role="img" aria-label="Wager">
+  <title>Wager</title>
+  <!-- Keep in sync with frontend/components/Logo.tsx -->
+  <defs>
+    <clipPath id="logo-tile">
+      <rect width="24" height="24" rx="2"/>
+    </clipPath>
+  </defs>
+  <rect width="24" height="24" rx="2" fill="#0E92EB"/>
+  <g clip-path="url(#logo-tile)" fill="#FFFFFF">
+    <rect x="3.50" y="2.40" width="4.6" height="6" rx="0.4" transform="rotate(-24 5.8 5.4)"/>
+    <rect x="9.40" y="8.60" width="5.2" height="6.8" rx="0.4" transform="rotate(12 12 12)"/>
+    <rect x="15.30" y="14.90" width="5.8" height="7.4" rx="0.4" transform="rotate(-14 18.2 18.6)"/>
+  </g>
+</svg>
