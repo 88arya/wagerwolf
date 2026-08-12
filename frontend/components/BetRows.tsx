@@ -176,7 +176,9 @@ export function BetHeader({ count, label, odds }: { count: number; label: string
       justifyContent: "space-between",
       padding: "14px 16px 12px",
       background: "var(--surface)",
-      borderRadius: "12px 12px 0 0",
+      // Top corners must track the parent card's radius (PlacedBetCard / BetSlip)
+      // or the header squares off inside a rounded container.
+      borderRadius: "var(--radius) var(--radius) 0 0",
       flexShrink: 0,
       borderBottom: "1px solid var(--border)",
     }}>

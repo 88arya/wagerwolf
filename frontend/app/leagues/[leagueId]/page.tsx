@@ -235,7 +235,7 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
         {league.seasonEnded && (
           <div style={{
             background: "linear-gradient(135deg, #5a3800 0%, #a06c00 100%)",
-            borderRadius: "var(--radius-lg)",
+            borderRadius: "var(--radius)",
             padding: "14px 16px",
             marginBottom: 14,
             color: "#fff",

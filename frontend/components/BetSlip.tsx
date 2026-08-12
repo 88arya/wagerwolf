@@ -397,7 +397,7 @@ export default function BetSlip({ leagueId }: { leagueId: string }) {
           pointerEvents: "auto",
           background: "var(--win-bg)",
           border: "1px solid var(--win-border)",
-          borderRadius: 10,
+          borderRadius: "var(--radius)",
           padding: "12px 16px",
           color: "var(--win)",
           fontWeight: 700,
@@ -415,7 +415,7 @@ export default function BetSlip({ leagueId }: { leagueId: string }) {
       <div style={{
           pointerEvents: "auto",
           background: "var(--surface)",
-          borderRadius: 12,
+          borderRadius: "var(--radius)",
           minHeight: 0,
           overflow: "hidden",
           display: "flex",
@@ -486,7 +486,7 @@ export default function BetSlip({ leagueId }: { leagueId: string }) {
               pointerEvents: "auto",
               padding: "14px 14px",
               background: "var(--surface)",
-              borderRadius: 12,
+              borderRadius: "var(--radius)",
               flexShrink: 0,
             }}>
               {/* Remove all selections */}

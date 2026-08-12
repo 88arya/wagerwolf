@@ -214,7 +214,7 @@ export default function PlacedBetCard({
   return (
     <div style={{
       background: "var(--surface)",
-      borderRadius: 12,
+      borderRadius: "var(--radius)",
       overflow: "hidden",
       display: "flex",
       flexDirection: "column",

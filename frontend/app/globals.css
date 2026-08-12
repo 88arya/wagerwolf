@@ -643,7 +643,7 @@ hr { border: none; border-top: 1px solid var(--border); margin: 14px 0; }
 .league-banner {
   background: linear-gradient(135deg, #009960 0%, var(--accent) 100%);
   border: 1px solid rgba(2, 209, 138, 0.2);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius);
   padding: 18px 16px;
   color: #fff;
   margin-bottom: 10px;
