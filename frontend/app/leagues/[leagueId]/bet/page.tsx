@@ -1,11 +1,11 @@
 "use client";
 
-import { Fragment, useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { api } from "@/lib/api";
 import BetSlip, { addToSlip, removeFromSlip, getBetSlip } from "@/components/BetSlip";
 import TeamLogo from "@/components/TeamLogo";
-import { getTeamSelectedColor, getTeamDisplayName, getTeamFullName, getTeamLogoUrl } from "@/lib/teamLogos";
+import { getTeamDisplayName, getTeamFullName, getTeamLogoUrl } from "@/lib/teamLogos";
 import PlayerAvatar from "@/components/PlayerAvatar";
 
 function fmtCountdown(dateStr: string): string {
@@ -89,7 +89,27 @@ function closestToEvenLine(prop: any): number {
 
 const PR_BOX_W = 110;
 const PR_BOX_H = 42;
-const PR_BOX_GAP = 2;
+
+// The one gutter used by every odds-box grid on this page: the game cards on
+// the list view, the game-lines card inside a game, and the prop rows.
+//
+// Expressed in *device* pixels, not CSS pixels. A fractional device width
+// rounds down at one column boundary and up at the next, which reads as
+// uneven gutters; an integer device width renders identically wherever the
+// grid's origin falls. The CSS px value therefore depends on devicePixelRatio,
+// which is only known on the client — so the page component resolves it once
+// into the --box-gap custom property (see boxGapStyle) and everything below
+// reads that variable. This keeps the arithmetic in one place and lets
+// module-scope components like PropPlayerRow, which can't see the page's dpr
+// state, use the same value without prop drilling.
+const GAP_DEVICE_PX = 3;
+const BOX_GAP = "var(--box-gap)";
+
+// Applied to each render branch's root so --box-gap is in scope for the whole
+// subtree. Starts at dpr 1 on the server and corrects on mount.
+function boxGapStyle(dpr: number): CSSProperties {
+  return { ["--box-gap"]: `${GAP_DEVICE_PX / dpr}px` } as CSSProperties;
+}
 
 function PropPlayerRow({ prop, slipLegs, submittedPropIds, pendingPropDirs, weekLocked, onBet, hitRate }: {
   prop: any;
@@ -170,7 +190,7 @@ function PropPlayerRow({ prop, slipLegs, submittedPropIds, pendingPropDirs, week
           style={{ width: 16, height: PR_BOX_H, background: "none", border: "none", padding: 0, cursor: scrollIdx > 0 ? "pointer" : "default", color: scrollIdx > 0 ? "var(--text-2)" : "transparent", fontSize: "1rem", display: "flex", alignItems: "center", justifyContent: "center" }}
         >‹</button>
 
-        <div style={{ display: "flex", gap: PR_BOX_GAP }}>
+        <div style={{ display: "flex", gap: BOX_GAP }}>
           {visibleIndices.map((offsetIdx) => {
             const offset = PROP_OFFSETS[offsetIdx];
             const blockLine = propBlockLine(prop.line, offset, step);
@@ -440,10 +460,19 @@ export default function BetPage({ params }: PageProps<"/leagues/[leagueId]/bet">
     });
   }
 
-  function renderMarketCard(statType: string, props: any[]) {
+  // One market (stat type) within a section's strip. Not a card of its own —
+  // the section wraps every market in a single white strip and these are
+  // divided by hairlines, matching the games list on the all-games view.
+  function renderMarketCard(statType: string, props: any[], marketIdx: number) {
     const collapsed = collapsedMarkets.has(statType);
     return (
-      <div key={statType} className="card" style={{ marginBottom: 8, border: "none", padding: 0 }}>
+      <Fragment key={statType}>
+        {/* Separator between markets — inset 12px to match the header padding,
+            and exactly 1 device pixel tall so every rule renders the same
+            weight regardless of where it lands. Same rule as the games list. */}
+        {marketIdx > 0 && (
+          <div style={{ height: 1 / dpr, background: "var(--border)", margin: "0 12px" }} />
+        )}
         <div style={{ padding: "10px 12px 8px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <div style={{ fontSize: "0.75rem", fontWeight: 700, color: "var(--text)" }}>
             {fmtStatType(statType)}
@@ -461,7 +490,7 @@ export default function BetPage({ params }: PageProps<"/leagues/[leagueId]/bet">
         </div>
         {!collapsed && (weekLocked
           ? <div style={{ textAlign: "center", color: "var(--text-3)", fontSize: "0.82rem", padding: "10px 12px" }}>Betting locked</div>
-          : <div style={{ display: "flex", flexDirection: "column", gap: PR_BOX_GAP, paddingBottom: 8 }}>
+          : <div style={{ display: "flex", flexDirection: "column", gap: BOX_GAP, paddingBottom: 8 }}>
               {props.map((prop) => (
                 <PropPlayerRow
                   key={prop.id}
@@ -476,7 +505,7 @@ export default function BetPage({ params }: PageProps<"/leagues/[leagueId]/bet">
               ))}
             </div>
         )}
-      </div>
+      </Fragment>
     );
   }
 
@@ -501,11 +530,21 @@ export default function BetPage({ params }: PageProps<"/leagues/[leagueId]/bet">
       if (!groups[p.statType]) groups[p.statType] = [];
       groups[p.statType].push(p);
     }
-    return Object.entries(groups).map(([statType, groupProps]) => {
-      // Order players by their line closest to even odds, largest to smallest
-      const sorted = [...groupProps].sort((a, b) => closestToEvenLine(b) - closestToEvenLine(a));
-      return renderMarketCard(statType, sorted);
-    });
+    const markets = Object.entries(groups);
+    // Guard: without this an empty tab would still paint the strip, leaving a
+    // stray rounded box where the old per-market cards rendered nothing.
+    if (markets.length === 0) return null;
+    return (
+      // One continuous white strip rather than a card per market, so the
+      // separator runs between markets the way it does between games.
+      <div style={{ background: "var(--surface)", borderRadius: "var(--radius)", overflow: "hidden" }}>
+        {markets.map(([statType, groupProps], marketIdx) => {
+          // Order players by their line closest to even odds, largest to smallest
+          const sorted = [...groupProps].sort((a, b) => closestToEvenLine(b) - closestToEvenLine(a));
+          return renderMarketCard(statType, sorted, marketIdx);
+        })}
+      </div>
+    );
   }
 
   // ── Selected game view ──────────────────────────────────────────────
@@ -522,7 +561,6 @@ export default function BetPage({ params }: PageProps<"/leagues/[leagueId]/bet">
 
     const SL_BOX_W = 110;
     const SL_BOX_H = 42;
-    const SL_BOX_GAP = 2;
 
     function renderLineBox(line: any, topLabel?: string) {
       if (!line) return <div style={{ width: SL_BOX_W, height: SL_BOX_H, flexShrink: 0 }} />;
@@ -593,7 +631,7 @@ export default function BetPage({ params }: PageProps<"/leagues/[leagueId]/bet">
 
     return (
       <>
-        <div className="page" style={{ paddingBottom: 160 }}>
+        <div className="page" style={{ paddingBottom: 160, ...boxGapStyle(dpr) }}>
           <button
             className="ghost"
             style={{ fontSize: "0.78rem", padding: "5px 10px", marginBottom: 12, display: "inline-flex", alignItems: "center", gap: 5 }}
@@ -604,40 +642,115 @@ export default function BetPage({ params }: PageProps<"/leagues/[leagueId]/bet">
 
           {/* Game matchup header */}
           {(() => {
-            const awayColor = getTeamSelectedColor(selectedGame.awayTeam);
-            const homeColor = getTeamSelectedColor(selectedGame.homeTeam);
+            const countdown = fmtCountdown(selectedGame.gameDate);
+            // Icon + micro-label on top, value beneath. The value is indented by
+            // the icon's width + gap so it starts under the label text, not the
+            // icon. Label styling follows the .eyebrow convention in globals.css.
+            const ICON_INDENT = 14;
+            function MetaItem({ icon, label, value }: { icon: ReactNode; label: string; value: ReactNode }) {
+              return (
+                <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
+                  <div style={{
+                    display: "flex", alignItems: "center", gap: 4,
+                    fontSize: "0.5rem", fontWeight: 500, letterSpacing: "0.12em",
+                    textTransform: "uppercase", color: "var(--text-3)", whiteSpace: "nowrap",
+                  }}>
+                    {icon}
+                    {label}
+                  </div>
+                  <div style={{
+                    fontSize: "0.72rem", fontWeight: 600, color: "var(--text)",
+                    whiteSpace: "nowrap", paddingLeft: ICON_INDENT, lineHeight: 1.2,
+                  }}>
+                    {value}
+                  </div>
+                </div>
+              );
+            }
+            function TeamSide({ team }: { team: string }) {
+              const url = getTeamLogoUrl(team);
+              return (
+                <div style={{ display: "flex", alignItems: "center", gap: 7, minWidth: 0 }}>
+                  {url
+                    ? <img src={team ? url : ""} alt={team} width={30} height={30} referrerPolicy="no-referrer" style={{ objectFit: "contain", flexShrink: 0 }} />
+                    : null}
+                  <span style={{ fontWeight: 700, fontSize: "0.82rem", color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {getTeamFullName(team)}
+                  </span>
+                </div>
+              );
+            }
             return (
-              <div style={{ marginBottom: 12, borderRadius: "var(--radius-lg)", overflow: "hidden" }}>
-                <div style={{ position: "relative", background: `linear-gradient(90deg, ${awayColor} 50%, ${homeColor} 50%)` }}>
-                  <div style={{ display: "flex", alignItems: "center" }}>
-                    <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 8, padding: "20px 12px" }}>
-                      {(() => { const url = getTeamLogoUrl(selectedGame.awayTeam); return url ? <img src={url} alt={selectedGame.awayTeam} width={52} height={52} style={{ objectFit: "contain", background: "rgba(255,255,255,0.18)", borderRadius: 8, padding: 4 }} /> : <span style={{ fontWeight: 800, fontSize: "1.2rem", color: "#fff" }}>{selectedGame.awayTeam}</span>; })()}
-                      <div style={{ fontWeight: 700, fontSize: "0.78rem", textAlign: "center", color: "rgba(255,255,255,0.9)", lineHeight: 1.3 }}>{getTeamFullName(selectedGame.awayTeam)}</div>
-                    </div>
-                    <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 8, padding: "20px 12px" }}>
-                      {(() => { const url = getTeamLogoUrl(selectedGame.homeTeam); return url ? <img src={url} alt={selectedGame.homeTeam} width={52} height={52} style={{ objectFit: "contain", background: "rgba(255,255,255,0.18)", borderRadius: 8, padding: 4 }} /> : <span style={{ fontWeight: 800, fontSize: "1.2rem", color: "#fff" }}>{selectedGame.homeTeam}</span>; })()}
-                      <div style={{ fontWeight: 700, fontSize: "0.78rem", textAlign: "center", color: "rgba(255,255,255,0.9)", lineHeight: 1.3 }}>{getTeamFullName(selectedGame.homeTeam)}</div>
-                    </div>
-                  </div>
-                  <div style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)", pointerEvents: "none" }}>
-                    <div style={{ background: "rgba(255,255,255,0.92)", borderRadius: 8, padding: "6px 12px", display: "flex", flexDirection: "column", alignItems: "center", gap: 3 }}>
-                      {(() => {
-                        const countdown = fmtCountdown(selectedGame.gameDate);
-                        return (
-                          <div style={{ fontSize: "0.55rem", fontWeight: 600, color: "rgba(0,0,0,0.9)", letterSpacing: "0.08em", display: "flex", alignItems: "center", gap: 3 }}>
-                            {isCountdownValue(countdown) && (
-                              <svg xmlns="http://www.w3.org/2000/svg" width="1.15em" height="1.15em" viewBox="0 0 24 24" aria-hidden="true" style={{ flexShrink: 0 }}>
-                                <path d="M0 0h24v24H0z" fill="none" />
-                                <path fill="currentColor" d="M15 1H9v2h6zm-4 13h2V8h-2zm8.03-6.61l1.42-1.42c-.43-.51-.9-.99-1.41-1.41l-1.42 1.42A8.962 8.962 0 0 0 12 4a9 9 0 0 0-9 9a9 9 0 0 0 9 9a8.994 8.994 0 0 0 7.03-14.61M12 20c-3.87 0-7-3.13-7-7s3.13-7 7-7s7 3.13 7 7s-3.13 7-7 7" />
-                              </svg>
-                            )}
-                            {countdown}
-                          </div>
-                        );
-                      })()}
-                      <div style={{ fontSize: "0.55rem", color: "rgba(0,0,0,0.4)", textAlign: "center", whiteSpace: "nowrap", lineHeight: 1.4 }}>{fmtGameTime(selectedGame.gameDate)}</div>
-                    </div>
-                  </div>
+              // Teams stacked on top, the four meta items in a row beneath.
+              <div style={{ display: "flex", flexDirection: "column", gap: 14, marginBottom: 12, borderRadius: "var(--radius)", overflow: "hidden", background: "var(--surface)", padding: "14px 12px" }}>
+                {/* Teams — away over AT over home. */}
+                <div style={{ minWidth: 0, display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 5 }}>
+                  <TeamSide team={selectedGame.awayTeam} />
+                  {/* Indent by logo width + gap so AT sits under the team names. */}
+                  <span style={{ fontSize: "0.5rem", color: "var(--text-3)", letterSpacing: "0.12em", paddingLeft: 37, lineHeight: 1 }}>AT</span>
+                  <TeamSide team={selectedGame.homeTeam} />
+                </div>
+
+                {/* Meta — kickoff, lock countdown, stadium type, weather. Fixed
+                    gap rather than space-between: the row drops to three items
+                    for indoor games, and spreading those across the full width
+                    reads as a layout error rather than a choice. */}
+                <div style={{
+                  display: "flex", flexDirection: "row", alignItems: "flex-start",
+                  gap: 24, flexWrap: "wrap",
+                }}>
+                  <MetaItem
+                    label="Kickoff"
+                    value={fmtGameTime(selectedGame.gameDate)}
+                    icon={
+                      <svg xmlns="http://www.w3.org/2000/svg" width="1.25em" height="1.25em" viewBox="0 0 24 24" aria-hidden="true" style={{ flexShrink: 0 }}>
+                        <path d="M0 0h24v24H0z" fill="none" />
+                        <path fill="currentColor" d="M19 3h-1V1h-2v2H8V1H6v2H5c-1.11 0-1.99.9-1.99 2L3 19a2 2 0 0 0 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2m0 16H5V8h14zM7 10h5v5H7z" />
+                      </svg>
+                    }
+                  />
+                  {countdown && (
+                    <MetaItem
+                      label="Bets lock in"
+                      value={countdown}
+                      icon={
+                        /* Icon only for a real countdown — "Live"/"Soon" aren't durations. */
+                        isCountdownValue(countdown) ? (
+                          <svg xmlns="http://www.w3.org/2000/svg" width="1.25em" height="1.25em" viewBox="0 0 24 24" aria-hidden="true" style={{ flexShrink: 0 }}>
+                            <path d="M0 0h24v24H0z" fill="none" />
+                            <path fill="currentColor" d="M15 1H9v2h6zm-4 13h2V8h-2zm8.03-6.61l1.42-1.42c-.43-.51-.9-.99-1.41-1.41l-1.42 1.42A8.962 8.962 0 0 0 12 4a9 9 0 0 0-9 9a9 9 0 0 0 9 9a8.994 8.994 0 0 0 7.03-14.61M12 20c-3.87 0-7-3.13-7-7s3.13-7 7-7s7 3.13 7 7s-3.13 7-7 7" />
+                          </svg>
+                        ) : null
+                      }
+                    />
+                  )}
+                  {/* Stadium type — ESPN's venue.indoor, available at any distance
+                      from kickoff, so this shows as soon as the game is synced. */}
+                  {selectedGame.indoor != null && (
+                    <MetaItem
+                      label="Stadium type"
+                      value={selectedGame.indoor ? "Indoors" : "Outdoors"}
+                      icon={
+                        <svg xmlns="http://www.w3.org/2000/svg" width="1.25em" height="1.25em" viewBox="0 0 24 24" aria-hidden="true" style={{ flexShrink: 0 }}>
+                          <path d="M0 0h24v24H0z" fill="none" />
+                          <path fill="currentColor" d="M3 7V3l4 2zm15 0V3l4 2zm-7-1V2l4 2zm0 16q-1.9-.05-3.537-.312t-2.85-.663T2.7 20.1T2 19v-9q0-.625.788-1.162t2.137-.95t3.175-.65T12 7t3.9.238t3.175.65t2.138.95T22 10v9q0 .575-.7 1.1t-1.912.925t-2.85.663T13 22v-4h-2zm1-11q2.425 0 4.188-.288T19 10.05q0-.125-1.9-.587T12 9t-5.1.463t-1.9.587q1.05.375 2.812.663T12 11m-3 8.85V16h6v3.85q2-.2 3.275-.587T20 18.575V11.8q-1.375.55-3.45.875T12 13t-4.55-.325T4 11.8v6.775q.45.3 1.725.688T9 19.85m3-4.025" />
+                        </svg>
+                      }
+                    />
+                  )}
+                  {/* Conditions — outdoor games only, and only once ESPN has a
+                      forecast (it publishes ~5 days out, so this is empty early). */}
+                  {selectedGame.indoor === false && selectedGame.weather && (
+                    <MetaItem
+                      label="Weather"
+                      value={`${selectedGame.weather}${selectedGame.weatherTemp != null ? ` · ${selectedGame.weatherTemp}°` : ""}`}
+                      icon={
+                        <svg xmlns="http://www.w3.org/2000/svg" width="1.25em" height="1.25em" viewBox="0 0 24 24" aria-hidden="true" style={{ flexShrink: 0 }}>
+                          <path fill="currentColor" d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96" />
+                        </svg>
+                      }
+                    />
+                  )}
                 </div>
               </div>
             );
@@ -707,7 +820,7 @@ export default function BetPage({ params }: PageProps<"/leagues/[leagueId]/bet">
               {gameLinesList.length > 0 && (
                 <div className="card" style={{ marginBottom: 8, border: "none", padding: 0 }}>
                   <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "flex-end", padding: "0px 12px 3px", height: 22 }}>
-                    <div style={{ display: "flex", flexDirection: "row", gap: SL_BOX_GAP }}>
+                    <div style={{ display: "flex", flexDirection: "row", gap: BOX_GAP }}>
                       {(["Spread", "Total", "Moneyline"] as const).map((h) => (
                         <div key={h} style={{ width: SL_BOX_W, textAlign: "center", fontSize: "0.48rem", color: "var(--text-2)", letterSpacing: "0.07em", textTransform: "uppercase" }}>{h}</div>
                       ))}
@@ -719,8 +832,8 @@ export default function BetPage({ params }: PageProps<"/leagues/[leagueId]/bet">
                         <TeamLogo team={selectedGame.awayTeam} size={26} />
                         <span style={{ fontWeight: 700, fontSize: "0.85rem", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{getTeamDisplayName(selectedGame.awayTeam)}</span>
                       </div>
-                      <div style={{ height: SL_BOX_GAP, display: "flex", alignItems: "center", gap: 5, paddingLeft: 34, overflow: "visible" }}>
-                        <span style={{ fontSize: "0.45rem", color: "var(--text-3)", letterSpacing: "0.12em", flexShrink: 0, lineHeight: 1 }}>AT</span>
+                      <div style={{ height: BOX_GAP, display: "flex", alignItems: "center", gap: 5, paddingLeft: 34, overflow: "visible" }}>
+                        <span style={{ fontSize: "0.45rem", color: "var(--text-3)", letterSpacing: "0.12em", flexShrink: 0, lineHeight: 1 }}>VS</span>
                         <div style={{ flex: 1, height: 1, background: "linear-gradient(to right, var(--border), transparent)" }} />
                       </div>
                       <div style={{ height: SL_BOX_H, display: "flex", alignItems: "center", gap: 8 }}>
@@ -728,7 +841,7 @@ export default function BetPage({ params }: PageProps<"/leagues/[leagueId]/bet">
                         <span style={{ fontWeight: 700, fontSize: "0.85rem", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{getTeamDisplayName(selectedGame.homeTeam)}</span>
                       </div>
                     </div>
-                    <div style={{ flexShrink: 0, display: "grid", gridTemplateColumns: `repeat(3, ${SL_BOX_W}px)`, gridTemplateRows: `${SL_BOX_H}px ${SL_BOX_H}px`, columnGap: SL_BOX_GAP, rowGap: SL_BOX_GAP }}>
+                    <div style={{ flexShrink: 0, display: "grid", gridTemplateColumns: `repeat(3, ${SL_BOX_W}px)`, gridTemplateRows: `${SL_BOX_H}px ${SL_BOX_H}px`, columnGap: BOX_GAP, rowGap: BOX_GAP }}>
                       {renderLineBox(slSpAway, slSpAway?.line != null ? String(slSpAway.line > 0 ? `+${slSpAway.line}` : slSpAway.line) : undefined)}
                       {renderLineBox(slTotOver, slTotOver?.line != null ? `O ${slTotOver.line}` : undefined)}
                       {renderLineBox(slMlAway)}
@@ -781,7 +894,7 @@ export default function BetPage({ params }: PageProps<"/leagues/[leagueId]/bet">
                 return (
                   <div className="card" style={{ marginBottom: 8, border: "none", padding: 0 }}>
                     <div style={{ padding: "10px 12px 8px", fontSize: "0.75rem", fontWeight: 700, color: "var(--text)" }}>Alternate Spread</div>
-                    <div style={{ display: "flex", gap: SL_BOX_GAP, padding: "0 12px" }}>
+                    <div style={{ display: "flex", gap: BOX_GAP, padding: "0 12px" }}>
                       {renderAltSpreadBox(awayL, selectedGame.awayTeam, homeL?.id)}
                       {renderAltSpreadBox(homeL, selectedGame.homeTeam, awayL?.id)}
                     </div>
@@ -848,7 +961,7 @@ export default function BetPage({ params }: PageProps<"/leagues/[leagueId]/bet">
                 return (
                   <div className="card" style={{ marginBottom: 8, border: "none", padding: 0 }}>
                     <div style={{ padding: "10px 12px 8px", fontSize: "0.75rem", fontWeight: 700, color: "var(--text)" }}>Alternate Total</div>
-                    <div style={{ display: "flex", gap: SL_BOX_GAP, padding: "0 12px" }}>
+                    <div style={{ display: "flex", gap: BOX_GAP, padding: "0 12px" }}>
                       {renderAltTotalBox(overL, "Over", String(lineVal), underL?.id)}
                       {renderAltTotalBox(underL, "Under", String(lineVal), overL?.id)}
                     </div>
@@ -912,7 +1025,7 @@ export default function BetPage({ params }: PageProps<"/leagues/[leagueId]/bet">
 
   return (
     <>
-      <div className="page" style={{ paddingBottom: 160 }}>
+      <div className="page" style={{ paddingBottom: 160, ...boxGapStyle(dpr) }}>
         {lockedBanner}
 
         {games.length === 0 && (
@@ -924,7 +1037,7 @@ export default function BetPage({ params }: PageProps<"/leagues/[leagueId]/bet">
         {/* One continuous white strip rather than a card per game. Groups are
             flattened so the separator runs between games across date boundaries
             too, and so gameIdx is a single running index over the whole list. */}
-        <div style={{ background: "var(--surface)" }}>
+        <div style={{ background: "var(--surface)", borderRadius: "var(--radius)", overflow: "hidden" }}>
           {gamesByDate.flatMap(({ games: dayGames }) => dayGames).map((game: any, gameIdx: number) => {
               const lines: any[] = game.gameLines ?? [];
               const now = new Date();
@@ -941,11 +1054,6 @@ export default function BetPage({ params }: PageProps<"/leagues/[leagueId]/bet">
               // market-boxes: nested grid with only fixed-width columns so columnGap is exact
               const BOX_W = 110;
               const BOX_H = 42;
-              // Exactly GAP_DEVICE_PX device pixels wide at any scale/zoom. An
-              // integer device width renders identically at every position, so
-              // all three gutters stay equal however the grid's origin falls.
-              const GAP_DEVICE_PX = 3;
-              const BOX_GAP = GAP_DEVICE_PX / dpr;
 
               function OddsBlock({ line, topLabel }: { line: any; topLabel?: string }) {
                 if (!line) {
@@ -957,13 +1065,13 @@ export default function BetPage({ params }: PageProps<"/leagues/[leagueId]/bet">
                 const conflicted = !!oppLine && pendingLineIds.has(oppLine.id);
                 const isDisabled = weekLocked || conflicted;
                 return (
-                  <div style={{ position: "relative", width: BOX_W, height: BOX_H, borderRadius: 0, overflow: "hidden" }}>
+                  <div style={{ position: "relative", width: BOX_W, height: BOX_H, borderRadius: 4, overflow: "hidden" }}>
                     <button
                       type="button"
                       disabled={isDisabled}
                       onClick={(e) => { e.stopPropagation(); if (!isDisabled) toggleLineinSlip(line); }}
                       style={{
-                        width: "100%", height: "100%", borderRadius: 0, boxSizing: "border-box",
+                        width: "100%", height: "100%", borderRadius: 4, boxSizing: "border-box",
                         display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 4,
                         cursor: isDisabled ? "default" : "pointer",
                         background: inSlip ? "var(--accent-dim)" : "var(--surface-3)",
@@ -994,7 +1102,7 @@ export default function BetPage({ params }: PageProps<"/leagues/[leagueId]/bet">
                       <div style={{
                         position: "absolute", inset: 0, pointerEvents: "none",
                         background: "repeating-linear-gradient(45deg, var(--stripe) 0px, var(--stripe) 1.5px, transparent 1.5px, transparent 7px)",
-                        borderRadius: 0,
+                        borderRadius: 4,
                       }} />
                     )}
                   </div>
