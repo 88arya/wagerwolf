@@ -61,6 +61,13 @@ export interface ESPNGame {
   awayScore: number | null;
   status: "SCHEDULED" | "IN_PROGRESS" | "FINAL" | "CANCELLED";
   statusDetail: string;
+  /** venue.indoor — stable, present on every game regardless of kickoff distance. */
+  indoor: boolean | null;
+  /** weather.displayValue, e.g. "Mostly cloudy w/ t-storms". ESPN only populates
+   *  weather ~5 days out, so this is null for anything further ahead. */
+  weather: string | null;
+  /** weather.temperature, °F. Null whenever weather is. */
+  weatherTemp: number | null;
 }
 
 export interface PlayerGameStats {
@@ -132,6 +139,12 @@ export async function getNFLWeekGames(weekStartDate: Date, weekNumber: number): 
     const awayScore = parseScore(away.score);
     const statusDetail: string = event.status?.type?.shortDetail ?? "";
 
+    const indoor: boolean | null = typeof comp.venue?.indoor === "boolean" ? comp.venue.indoor : null;
+    const weather: string | null = event.weather?.displayValue ?? null;
+    const weatherTemp: number | null = typeof event.weather?.temperature === "number"
+      ? event.weather.temperature
+      : null;
+
     games.push({
       espnId: String(event.id),
       homeTeam: home.team.abbreviation,
@@ -141,6 +154,9 @@ export async function getNFLWeekGames(weekStartDate: Date, weekNumber: number): 
       awayScore,
       status,
       statusDetail,
+      indoor,
+      weather,
+      weatherTemp,
     });
   }
   return games;

@@ -71,10 +71,16 @@ export async function syncESPNGames(weekId: string): Promise<{ synced: number }>
   let synced = 0;
   for (const g of espnGames) {
     await db.insert(games)
-      .values({ weekId: week.id, homeTeam: g.homeTeam, awayTeam: g.awayTeam, gameDate: g.gameDate, espnId: g.espnId })
+      .values({
+        weekId: week.id, homeTeam: g.homeTeam, awayTeam: g.awayTeam, gameDate: g.gameDate, espnId: g.espnId,
+        indoor: g.indoor, weather: g.weather, weatherTemp: g.weatherTemp,
+      })
       .onConflictDoUpdate({
         target: games.espnId,
-        set: { homeTeam: g.homeTeam, awayTeam: g.awayTeam, gameDate: g.gameDate },
+        set: {
+          homeTeam: g.homeTeam, awayTeam: g.awayTeam, gameDate: g.gameDate,
+          indoor: g.indoor, weather: g.weather, weatherTemp: g.weatherTemp,
+        },
       });
     synced++;
   }
@@ -99,6 +105,11 @@ export async function syncScores(weekId: string): Promise<{ updated: number }> {
         homeScore: g.homeScore,
         awayScore: g.awayScore,
         statusDetail: g.statusDetail,
+        indoor: g.indoor,
+        // Weather only appears ~5 days out, so this minute-by-minute sync is
+        // what actually fills it in. Only written when ESPN has a value —
+        // otherwise a far-out game would keep nulling a forecast we already had.
+        ...(g.weather != null ? { weather: g.weather, weatherTemp: g.weatherTemp } : {}),
       })
       .where(eq(games.espnId, g.espnId));
     updated++;
