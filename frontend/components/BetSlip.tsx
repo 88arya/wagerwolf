@@ -139,8 +139,9 @@ function MinusCircleIcon() {
 // LeagueNav's horizontal padding — the slip's right edge lines up with the
 // nav's right-hand contents. Keep in sync with LeagueNav / GamesStrip.
 const NAV_GUTTER = 300;
-// Nav (44) + sub-nav (40), used only until the real offset is measured.
-const NAV_FALLBACK = 84;
+// Nav (44) + sub-nav (40) + .page's 16px top padding, used only until the real
+// offset is measured.
+const CONTENT_TOP_FALLBACK = 100;
 
 /** Removes a leg from the slip — sits in the rail gutter of each leg row. */
 function RemoveBtn({ onRemove }: { onRemove: () => void }) {
@@ -204,14 +205,24 @@ export default function BetSlip({ leagueId }: { leagueId: string }) {
     return () => window.removeEventListener("betslip-update", refresh);
   }, [refresh]);
 
-  // Anchor the slip just below the nav stack. Measured rather than hardcoded:
-  // the games strip above the nav is conditional and the sub-nav only renders
-  // for some routes, so the stack height varies per page.
-  const [navBottom, setNavBottom] = useState(NAV_FALLBACK);
+  // Anchor the slip to the top of the page's *content* box, so its first card
+  // starts on the same line as the first card in the page column. Measured
+  // rather than hardcoded: the games strip above the nav is conditional and the
+  // sub-nav only renders for some routes, so the stack height varies per page.
+  //
+  // The padding has to be read off the element rather than assumed — .page pads
+  // 16px and .page-wide pads 20px (globals.css), so a fixed offset here would
+  // align on one kind of route and miss on the other. Deliberately not rounded:
+  // the nav stack can land on a fractional y, and rounding reintroduces the
+  // few-tenths gap this is meant to close.
+  const [contentTop, setContentTop] = useState(CONTENT_TOP_FALLBACK);
   useEffect(() => {
     const page = document.querySelector(".page, .page-wide");
     if (!page) return;
-    const measure = () => setNavBottom(Math.round(page.getBoundingClientRect().top));
+    const measure = () => {
+      const padTop = parseFloat(getComputedStyle(page).paddingTop) || 0;
+      setContentTop(page.getBoundingClientRect().top + padTop);
+    };
     measure();
     const ro = new ResizeObserver(measure);
     ro.observe(page);
@@ -378,7 +389,7 @@ export default function BetSlip({ leagueId }: { leagueId: string }) {
   return (
     <div style={{
       position: "fixed",
-      top: navBottom + 12,
+      top: contentTop,
       bottom: 12,
       right: NAV_GUTTER,
       width: 368,
