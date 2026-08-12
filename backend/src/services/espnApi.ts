@@ -120,8 +120,16 @@ export async function getNFLWeekGames(weekStartDate: Date, weekNumber: number): 
     else if (statusName === "STATUS_IN_PROGRESS") status = "IN_PROGRESS";
     else if (statusName === "STATUS_CANCELLED" || statusName === "STATUS_POSTPONED") status = "CANCELLED";
 
-    const homeScore = home.score != null ? (parseInt(home.score) || null) : null;
-    const awayScore = away.score != null ? (parseInt(away.score) || null) : null;
+    // Guard on NaN, not truthiness: a shutout comes back as "0", and `0 || null`
+    // would record it as "no score" rather than zero — which then feeds spread
+    // and total resolution.
+    const parseScore = (raw: unknown): number | null => {
+      if (raw == null) return null;
+      const n = parseInt(String(raw), 10);
+      return Number.isNaN(n) ? null : n;
+    };
+    const homeScore = parseScore(home.score);
+    const awayScore = parseScore(away.score);
     const statusDetail: string = event.status?.type?.shortDetail ?? "";
 
     games.push({
