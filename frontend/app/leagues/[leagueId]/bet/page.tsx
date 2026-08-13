@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { api } from "@/lib/api";
 import BetSlip, { addToSlip, removeFromSlip, getBetSlip } from "@/components/BetSlip";
 import TeamLogo from "@/components/TeamLogo";
-import { getTeamDisplayName, getTeamFullName, getTeamLogoUrl } from "@/lib/teamLogos";
+import { getTeamBannerColor, getTeamDisplayName, getTeamFullName, getTeamLogoUrl, getTeamOnColor } from "@/lib/teamLogos";
 import PlayerAvatar from "@/components/PlayerAvatar";
 
 function fmtCountdown(dateStr: string): string {
@@ -19,12 +19,6 @@ function fmtCountdown(dateStr: string): string {
   if (days > 0) return `${days}d ${hrs}h`;
   if (hrs > 0) return `${hrs}h`;
   return "Soon";
-}
-
-// True for the countdown values that the timer icon should accompany. "Live"
-// and "Soon" are states, not durations, so they render without it.
-function isCountdownValue(v: string): boolean {
-  return v !== "" && v !== "Live" && v !== "Soon";
 }
 
 function fmtOdds(american: number): string {
@@ -110,6 +104,17 @@ const BOX_GAP = "var(--box-gap)";
 function boxGapStyle(dpr: number): CSSProperties {
   return { ["--box-gap"]: `${GAP_DEVICE_PX / dpr}px` } as CSSProperties;
 }
+
+// Background for the matchup header card alone — the teams-and-meta block at
+// the top of the selected-game view. Kept as a named constant because this is
+// the surface most likely to be retried: var(--bg) makes the card blend flush
+// into the page, var(--surface-2) gives a grey card that still holds an edge.
+const GAME_CARD_BG = "var(--surface)";
+
+// Side of the square team tiles in the matchup header. Chosen to clear the
+// tallest content the tile holds — 38px logo, a team name wrapping to two lines
+// and the Away/Home label — so no name overflows its square.
+const TEAM_TILE = 124;
 
 function PropPlayerRow({ prop, slipLegs, submittedPropIds, pendingPropDirs, weekLocked, onBet, hitRate }: {
   prop: any;
@@ -629,6 +634,64 @@ export default function BetPage({ params }: PageProps<"/leagues/[leagueId]/bet">
 
     const activeSection = tabs.some((t) => t.key === betSection) ? betSection : "lines";
 
+    // Game reference detail, as data rather than JSX, so the info modal can lay
+    // it out as a vertical list. Built conditionally for the same reasons as
+    // before: no countdown once a game is past, no stadium type for games
+    // seeded outside ESPN, and no weather/temperature for indoor venues or for
+    // games still outside ESPN's 10-day forecast window.
+    const countdown = fmtCountdown(selectedGame.gameDate);
+    const metaItems: Array<{ label: string; value: string; icon: ReactNode }> = [
+      {
+        label: "Kickoff",
+        value: fmtGameTime(selectedGame.gameDate),
+        icon: (
+          <svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" aria-hidden="true" style={{ flexShrink: 0 }}>
+            <path d="M0 0h24v24H0z" fill="none" />
+            <path fill="currentColor" d="M19 3h-1V1h-2v2H8V1H6v2H5c-1.11 0-1.99.9-1.99 2L3 19a2 2 0 0 0 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2m0 16H5V8h14zM7 10h5v5H7z" />
+          </svg>
+        ),
+      },
+      ...(countdown ? [{
+        label: "Bets lock in",
+        value: countdown,
+        icon: (
+          <svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" aria-hidden="true" style={{ flexShrink: 0 }}>
+            <path d="M0 0h24v24H0z" fill="none" />
+            <path fill="currentColor" d="M15 1H9v2h6zm-4 13h2V8h-2zm8.03-6.61l1.42-1.42c-.43-.51-.9-.99-1.41-1.41l-1.42 1.42A8.962 8.962 0 0 0 12 4a9 9 0 0 0-9 9a9 9 0 0 0 9 9a8.994 8.994 0 0 0 7.03-14.61M12 20c-3.87 0-7-3.13-7-7s3.13-7 7-7s7 3.13 7 7s-3.13 7-7 7" />
+          </svg>
+        ),
+      }] : []),
+      ...(selectedGame.indoor != null ? [{
+        label: "Stadium type",
+        value: selectedGame.indoor ? "Indoors" : "Outdoors",
+        icon: (
+          <svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" aria-hidden="true" style={{ flexShrink: 0 }}>
+            <path d="M0 0h24v24H0z" fill="none" />
+            <path fill="currentColor" d="M3 7V3l4 2zm15 0V3l4 2zm-7-1V2l4 2zm0 16q-1.9-.05-3.537-.312t-2.85-.663T2.7 20.1T2 19v-9q0-.625.788-1.162t2.137-.95t3.175-.65T12 7t3.9.238t3.175.65t2.138.95T22 10v9q0 .575-.7 1.1t-1.912.925t-2.85.663T13 22v-4h-2zm1-11q2.425 0 4.188-.288T19 10.05q0-.125-1.9-.587T12 9t-5.1.463t-1.9.587q1.05.375 2.812.663T12 11m-3 8.85V16h6v3.85q2-.2 3.275-.587T20 18.575V11.8q-1.375.55-3.45.875T12 13t-4.55-.325T4 11.8v6.775q.45.3 1.725.688T9 19.85m3-4.025" />
+          </svg>
+        ),
+      }] : []),
+      ...(selectedGame.indoor === false && selectedGame.weather ? [{
+        label: "Weather",
+        value: selectedGame.weather as string,
+        icon: (
+          <svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" aria-hidden="true" style={{ flexShrink: 0 }}>
+            <path fill="currentColor" d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96" />
+          </svg>
+        ),
+      }] : []),
+      ...(selectedGame.indoor === false && selectedGame.weatherTemp != null ? [{
+        label: "Temperature",
+        value: `${selectedGame.weatherTemp}°`,
+        icon: (
+          <svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" aria-hidden="true" style={{ flexShrink: 0 }}>
+            <path d="M0 0h24v24H0z" fill="none" />
+            <path fill="currentColor" d="M15 13V5a3 3 0 0 0-6 0v8a5 5 0 1 0 6 0m-3-9a1 1 0 0 1 1 1v3h-2V5a1 1 0 0 1 1-1" />
+          </svg>
+        ),
+      }] : []),
+    ];
+
     return (
       <>
         <div className="page" style={{ paddingBottom: 160, ...boxGapStyle(dpr) }}>
@@ -640,117 +703,87 @@ export default function BetPage({ params }: PageProps<"/leagues/[leagueId]/bet">
             ← All Games
           </button>
 
-          {/* Game matchup header */}
+          {/* Game matchup header — halved team banner over the detail row. */}
           {(() => {
-            const countdown = fmtCountdown(selectedGame.gameDate);
-            // Icon + micro-label on top, value beneath. The value is indented by
-            // the icon's width + gap so it starts under the label text, not the
-            // icon. Label styling follows the .eyebrow convention in globals.css.
-            const ICON_INDENT = 14;
-            function MetaItem({ icon, label, value }: { icon: ReactNode; label: string; value: ReactNode }) {
-              return (
-                <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
-                  <div style={{
-                    display: "flex", alignItems: "center", gap: 4,
-                    fontSize: "0.5rem", fontWeight: 500, letterSpacing: "0.12em",
-                    textTransform: "uppercase", color: "var(--text-3)", whiteSpace: "nowrap",
-                  }}>
-                    {icon}
-                    {label}
-                  </div>
-                  <div style={{
-                    fontSize: "0.72rem", fontWeight: 600, color: "var(--text)",
-                    whiteSpace: "nowrap", paddingLeft: ICON_INDENT, lineHeight: 1.2,
-                  }}>
-                    {value}
-                  </div>
-                </div>
-              );
-            }
-            function TeamSide({ team }: { team: string }) {
+            // Each half carries its team's primary. Three pairs share a primary
+            // exactly, so those matchups render as one solid block rather than
+            // two visible halves: NE/SEA (#002244), DAL/LAR (#003594) and
+            // CIN/DEN (#FB4F14). Deliberate — true primaries were preferred
+            // over getTeamSelectedColor's curated substitutions, which exist to
+            // break precisely those ties.
+            function TeamHalf({ team, role }: { team: string; role: "Away" | "Home" }) {
               const url = getTeamLogoUrl(team);
+              const bg = getTeamBannerColor(team);
+              const fg = getTeamOnColor(bg);
               return (
-                <div style={{ display: "flex", alignItems: "center", gap: 7, minWidth: 0 }}>
-                  {url
-                    ? <img src={team ? url : ""} alt={team} width={30} height={30} referrerPolicy="no-referrer" style={{ objectFit: "contain", flexShrink: 0 }} />
-                    : null}
-                  <span style={{ fontWeight: 700, fontSize: "0.82rem", color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                <div style={{
+                  // Fixed square. Sized off the tile's old content height so
+                  // the card keeps roughly the height it had — the squareness
+                  // comes out of the width, not by growing downward. Hence a
+                  // flat size rather than flex: 1 + aspect-ratio, which would
+                  // take the full half-card width and drive the height to match.
+                  width: TEAM_TILE, height: TEAM_TILE, flexShrink: 0,
+                  background: bg, padding: 10,
+                  borderRadius: "var(--radius-sm)", overflow: "hidden",
+                  display: "flex", flexDirection: "column",
+                  alignItems: "center", justifyContent: "center", gap: 7,
+                }}>
+                  {url && <img src={url} alt="" width={38} height={38} referrerPolicy="no-referrer" style={{ objectFit: "contain", flexShrink: 0 }} />}
+                  <div style={{
+                    fontSize: "0.8rem", fontWeight: 700, color: fg, textAlign: "center",
+                    lineHeight: 1.25, maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis",
+                  }}>
                     {getTeamFullName(team)}
-                  </span>
+                  </div>
+                  <div style={{
+                    fontSize: "0.5rem", fontWeight: 500, letterSpacing: "0.12em",
+                    textTransform: "uppercase", color: fg, opacity: 0.7, lineHeight: 1,
+                  }}>
+                    {role}
+                  </div>
                 </div>
               );
             }
             return (
-              // Teams stacked on top, the four meta items in a row beneath.
-              <div style={{ display: "flex", flexDirection: "column", gap: 14, marginBottom: 12, borderRadius: "var(--radius)", overflow: "hidden", background: "var(--surface)", padding: "14px 12px" }}>
-                {/* Teams — away over AT over home. */}
-                <div style={{ minWidth: 0, display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 5 }}>
-                  <TeamSide team={selectedGame.awayTeam} />
-                  {/* Indent by logo width + gap so AT sits under the team names. */}
-                  <span style={{ fontSize: "0.5rem", color: "var(--text-3)", letterSpacing: "0.12em", paddingLeft: 37, lineHeight: 1 }}>AT</span>
-                  <TeamSide team={selectedGame.homeTeam} />
+              // White card with its own padding — the team blocks are inset
+              // tiles now rather than halves bleeding to the card's edges.
+              <div style={{ marginBottom: 12, borderRadius: "var(--radius)", background: GAME_CARD_BG, padding: 12 }}>
+                {/* Centred rather than stretched: the tiles are a fixed square
+                    now, so they no longer fill the card's width and would sit
+                    off to the left if left to flow. The gutter is deliberately
+                    wider than the page's BOX_GAP — these read as two separate
+                    tiles, not as one split control the way the odds boxes do. */}
+                <div style={{ display: "flex", justifyContent: "center", gap: 10 }}>
+                  <TeamHalf team={selectedGame.awayTeam} role="Away" />
+                  <TeamHalf team={selectedGame.homeTeam} role="Home" />
                 </div>
 
-                {/* Meta — kickoff, lock countdown, stadium type, weather. Fixed
-                    gap rather than space-between: the row drops to three items
-                    for indoor games, and spreading those across the full width
-                    reads as a layout error rather than a choice. */}
+                {/* Detail — centred with a fixed gap rather than space-between:
+                    the row drops from five items to three for indoor games, and
+                    spreading those across the full width reads as a layout
+                    error rather than a choice. */}
                 <div style={{
                   display: "flex", flexDirection: "row", alignItems: "flex-start",
-                  gap: 24, flexWrap: "wrap",
+                  justifyContent: "center", gap: 24, flexWrap: "wrap", paddingTop: 14,
                 }}>
-                  <MetaItem
-                    label="Kickoff"
-                    value={fmtGameTime(selectedGame.gameDate)}
-                    icon={
-                      <svg xmlns="http://www.w3.org/2000/svg" width="1.25em" height="1.25em" viewBox="0 0 24 24" aria-hidden="true" style={{ flexShrink: 0 }}>
-                        <path d="M0 0h24v24H0z" fill="none" />
-                        <path fill="currentColor" d="M19 3h-1V1h-2v2H8V1H6v2H5c-1.11 0-1.99.9-1.99 2L3 19a2 2 0 0 0 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2m0 16H5V8h14zM7 10h5v5H7z" />
-                      </svg>
-                    }
-                  />
-                  {countdown && (
-                    <MetaItem
-                      label="Bets lock in"
-                      value={countdown}
-                      icon={
-                        /* Icon only for a real countdown — "Live"/"Soon" aren't durations. */
-                        isCountdownValue(countdown) ? (
-                          <svg xmlns="http://www.w3.org/2000/svg" width="1.25em" height="1.25em" viewBox="0 0 24 24" aria-hidden="true" style={{ flexShrink: 0 }}>
-                            <path d="M0 0h24v24H0z" fill="none" />
-                            <path fill="currentColor" d="M15 1H9v2h6zm-4 13h2V8h-2zm8.03-6.61l1.42-1.42c-.43-.51-.9-.99-1.41-1.41l-1.42 1.42A8.962 8.962 0 0 0 12 4a9 9 0 0 0-9 9a9 9 0 0 0 9 9a8.994 8.994 0 0 0 7.03-14.61M12 20c-3.87 0-7-3.13-7-7s3.13-7 7-7s7 3.13 7 7s-3.13 7-7 7" />
-                          </svg>
-                        ) : null
-                      }
-                    />
-                  )}
-                  {/* Stadium type — ESPN's venue.indoor, available at any distance
-                      from kickoff, so this shows as soon as the game is synced. */}
-                  {selectedGame.indoor != null && (
-                    <MetaItem
-                      label="Stadium type"
-                      value={selectedGame.indoor ? "Indoors" : "Outdoors"}
-                      icon={
-                        <svg xmlns="http://www.w3.org/2000/svg" width="1.25em" height="1.25em" viewBox="0 0 24 24" aria-hidden="true" style={{ flexShrink: 0 }}>
-                          <path d="M0 0h24v24H0z" fill="none" />
-                          <path fill="currentColor" d="M3 7V3l4 2zm15 0V3l4 2zm-7-1V2l4 2zm0 16q-1.9-.05-3.537-.312t-2.85-.663T2.7 20.1T2 19v-9q0-.625.788-1.162t2.137-.95t3.175-.65T12 7t3.9.238t3.175.65t2.138.95T22 10v9q0 .575-.7 1.1t-1.912.925t-2.85.663T13 22v-4h-2zm1-11q2.425 0 4.188-.288T19 10.05q0-.125-1.9-.587T12 9t-5.1.463t-1.9.587q1.05.375 2.812.663T12 11m-3 8.85V16h6v3.85q2-.2 3.275-.587T20 18.575V11.8q-1.375.55-3.45.875T12 13t-4.55-.325T4 11.8v6.775q.45.3 1.725.688T9 19.85m3-4.025" />
-                        </svg>
-                      }
-                    />
-                  )}
-                  {/* Conditions — outdoor games only, and only once ESPN has a
-                      forecast (it publishes ~5 days out, so this is empty early). */}
-                  {selectedGame.indoor === false && selectedGame.weather && (
-                    <MetaItem
-                      label="Weather"
-                      value={`${selectedGame.weather}${selectedGame.weatherTemp != null ? ` · ${selectedGame.weatherTemp}°` : ""}`}
-                      icon={
-                        <svg xmlns="http://www.w3.org/2000/svg" width="1.25em" height="1.25em" viewBox="0 0 24 24" aria-hidden="true" style={{ flexShrink: 0 }}>
-                          <path fill="currentColor" d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96" />
-                        </svg>
-                      }
-                    />
-                  )}
+                  {metaItems.map((item) => (
+                    <div key={item.label} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 1 }}>
+                      <div style={{
+                        display: "flex", alignItems: "center", gap: 4,
+                        fontSize: "0.5rem", fontWeight: 500, letterSpacing: "0.12em",
+                        textTransform: "uppercase", color: "var(--text-3)", whiteSpace: "nowrap",
+                      }}>
+                        {item.icon}
+                        {item.label}
+                      </div>
+                      <div style={{
+                        fontSize: "0.72rem", fontWeight: 600, color: "var(--text)",
+                        whiteSpace: "nowrap", textAlign: "center", lineHeight: 1.2,
+                      }}>
+                        {item.value}
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </div>
             );
@@ -812,13 +845,18 @@ export default function BetPage({ params }: PageProps<"/leagues/[leagueId]/bet">
               underL: altLines.find((l: any) => l.market === `ALT_TOTAL_UNDER_${overL.line}`) ?? null,
             }));
             const fmtSpread = (n: number) => n > 0 ? `+${n}` : String(n);
+            // Every section below renders bare inside one continuous white strip,
+            // divided by hairlines — the same treatment renderPropSection gives the
+            // markets in the prop tabs, rather than a card per section.
+            const divider = <div style={{ height: 1 / dpr, background: "var(--border)", margin: "0 12px" }} />;
             return (
             <>
               {gameLinesList.length === 0 && (
                 <div className="card"><div className="empty"><div className="empty-icon">📊</div><div className="empty-text">No lines for this game</div></div></div>
               )}
               {gameLinesList.length > 0 && (
-                <div className="card" style={{ marginBottom: 8, border: "none", padding: 0 }}>
+                <div style={{ background: "var(--surface)", borderRadius: "var(--radius)", overflow: "hidden" }}>
+                <div style={{ paddingTop: 8 }}>
                   <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "flex-end", padding: "0px 12px 3px", height: 22 }}>
                     <div style={{ display: "flex", flexDirection: "row", gap: BOX_GAP }}>
                       {(["Spread", "Total", "Moneyline"] as const).map((h) => (
@@ -852,9 +890,9 @@ export default function BetPage({ params }: PageProps<"/leagues/[leagueId]/bet">
                   </div>
                   <div style={{ height: 12 }} />
                 </div>
-              )}
 
               {/* Alt Spreads */}
+              {altSpreadRows.length > 0 && divider}
               {altSpreadRows.length > 0 && (() => {
                 const safeIdx = Math.min(altSpreadIdx, altSpreadRows.length - 1);
                 const { homeL, awayL } = altSpreadRows[safeIdx];
@@ -892,7 +930,7 @@ export default function BetPage({ params }: PageProps<"/leagues/[leagueId]/bet">
                   );
                 }
                 return (
-                  <div className="card" style={{ marginBottom: 8, border: "none", padding: 0 }}>
+                  <div>
                     <div style={{ padding: "10px 12px 8px", fontSize: "0.75rem", fontWeight: 700, color: "var(--text)" }}>Alternate Spread</div>
                     <div style={{ display: "flex", gap: BOX_GAP, padding: "0 12px" }}>
                       {renderAltSpreadBox(awayL, selectedGame.awayTeam, homeL?.id)}
@@ -922,6 +960,7 @@ export default function BetPage({ params }: PageProps<"/leagues/[leagueId]/bet">
               })()}
 
               {/* Alt Totals */}
+              {altTotalRows.length > 0 && divider}
               {altTotalRows.length > 0 && (() => {
                 const safeIdx = Math.min(altTotalIdx, altTotalRows.length - 1);
                 const { lineVal, overL, underL } = altTotalRows[safeIdx];
@@ -959,7 +998,7 @@ export default function BetPage({ params }: PageProps<"/leagues/[leagueId]/bet">
                   );
                 }
                 return (
-                  <div className="card" style={{ marginBottom: 8, border: "none", padding: 0 }}>
+                  <div>
                     <div style={{ padding: "10px 12px 8px", fontSize: "0.75rem", fontWeight: 700, color: "var(--text)" }}>Alternate Total</div>
                     <div style={{ display: "flex", gap: BOX_GAP, padding: "0 12px" }}>
                       {renderAltTotalBox(overL, "Over", String(lineVal), underL?.id)}
@@ -987,6 +1026,8 @@ export default function BetPage({ params }: PageProps<"/leagues/[leagueId]/bet">
                   </div>
                 );
               })()}
+                </div>
+              )}
             </>
             );
           })()}
