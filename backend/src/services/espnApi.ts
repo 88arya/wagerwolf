@@ -64,9 +64,15 @@ export interface ESPNGame {
   /** venue.indoor — stable, present on every game regardless of kickoff distance. */
   indoor: boolean | null;
   /** weather.displayValue, e.g. "Mostly cloudy w/ t-storms". ESPN only populates
-   *  weather ~5 days out, so this is null for anything further ahead. */
+   *  weather inside 10 days of kickoff — AccuWeather's forecast horizon, and a
+   *  sharp boundary, not a fuzzy one — so this is null for anything further
+   *  ahead. It is also dropped again once the game goes FINAL, so whatever is
+   *  stored at kickoff is the last value ESPN will ever hand back. */
   weather: string | null;
-  /** weather.temperature, °F. Null whenever weather is. */
+  /** weather.temperature, °F. Both fields live on the same optional `weather`
+   *  object, so this is null exactly when `weather` is — never one without the
+   *  other. Present for indoor venues too (it's the city forecast, not the
+   *  stadium), which is why the UI gates on `indoor === false`, not on this. */
   weatherTemp: number | null;
 }
 

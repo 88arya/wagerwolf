@@ -114,8 +114,9 @@ export const games = pgTable("Game", {
   homeScore:    integer("homeScore"),
   awayScore:    integer("awayScore"),
   statusDetail: text("statusDetail").default("").notNull(),
-  // Nullable: ESPN only returns weather ~5 days before kickoff, so these stay
-  // null until a sync close to the game fills them in. `indoor` is available
+  // Nullable: ESPN only returns weather inside 10 days of kickoff, so these
+  // stay null until a sync close to the game fills them in. They always arrive
+  // together — ESPN never sends one without the other. `indoor` is available
   // at any distance, but is nullable too for games seeded outside ESPN.
   indoor:       boolean("indoor"),
   weather:      text("weather"),

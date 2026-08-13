@@ -106,9 +106,10 @@ export async function syncScores(weekId: string): Promise<{ updated: number }> {
         awayScore: g.awayScore,
         statusDetail: g.statusDetail,
         indoor: g.indoor,
-        // Weather only appears ~5 days out, so this minute-by-minute sync is
-        // what actually fills it in. Only written when ESPN has a value —
-        // otherwise a far-out game would keep nulling a forecast we already had.
+        // Weather only appears inside 10 days of kickoff, so this minute-by-minute
+        // sync is what actually fills it in. Only written when ESPN has a value —
+        // otherwise a far-out game would keep nulling a forecast we already had,
+        // and ESPN drops weather again once the game is FINAL.
         ...(g.weather != null ? { weather: g.weather, weatherTemp: g.weatherTemp } : {}),
       })
       .where(eq(games.espnId, g.espnId));
