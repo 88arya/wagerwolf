@@ -78,6 +78,42 @@ export function getTeamSelectedColor(teamName: string): string {
   return TEAM_COLOR_SELECTION[team.abbr] ?? team.color;
 }
 
+// Teams whose logo mark is drawn in their own primary, so a primary-coloured
+// fill swallows the logo entirely. These take the alternate instead. Distinct
+// from TEAM_COLOR_SELECTION above, which resolves clashes *between* teams —
+// this resolves a clash between a team's logo and its own background.
+const LOGO_MATCHES_PRIMARY: Record<string, true> = {
+  lar: true, // Rams mark is their primary navy — invisible on #003594
+  nyg: true, // Giants "NY" is their primary navy — invisible on #0B2265
+  nyj: true, // Jets mark is their primary green — invisible on #125740
+};
+
+// Background for a solid team-coloured banner: the primary, except where that
+// would hide the logo. Pair with getTeamOnColor for a legible foreground.
+export function getTeamBannerColor(teamName: string): string {
+  if (!teamName) return "#1a1a2e";
+  const lower = teamName.toLowerCase().trim();
+  const team = NFL_TEAMS.find((t) => t.names.some((n) => lower === n || lower.endsWith(n) || lower.startsWith(n)));
+  if (!team) return "#1a1a2e";
+  return LOGO_MATCHES_PRIMARY[team.abbr] ? team.altColor : team.color;
+}
+
+// Black or white, whichever stays legible on the given fill. Most NFL primaries
+// are dark enough for white, but the Rams' alternate (#FFA300) is not — white
+// on it is 2.0:1, under half the 4.5:1 minimum, versus 8.9:1 for dark. WCAG
+// relative luminance, so the gamma correction is the real curve rather than a
+// naive channel average.
+export function getTeamOnColor(bgHex: string): string {
+  const h = bgHex.replace("#", "");
+  if (h.length !== 6) return "#FFFFFF";
+  const channel = (i: number) => {
+    const s = parseInt(h.slice(i, i + 2), 16) / 255;
+    return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
+  };
+  const L = 0.2126 * channel(0) + 0.7152 * channel(2) + 0.0722 * channel(4);
+  return L > 0.45 ? "#0F172A" : "#FFFFFF";
+}
+
 const TEAM_STADIUM: Record<string, string> = {
   ari: "State Farm Stadium, Glendale AZ",
   atl: "Mercedes-Benz Stadium, Atlanta GA",
