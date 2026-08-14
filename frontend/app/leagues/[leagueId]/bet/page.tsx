@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { api } from "@/lib/api";
 import BetSlip, { addToSlip, removeFromSlip, getBetSlip } from "@/components/BetSlip";
 import TeamLogo from "@/components/TeamLogo";
-import { getTeamBannerColor, getTeamDisplayName, getTeamFullName, getTeamLogoUrl, getTeamOnColor } from "@/lib/teamLogos";
+import { getTeamBannerColor, getTeamDisplayName, getTeamFullName, getTeamLogoUrl } from "@/lib/teamLogos";
 import PlayerAvatar from "@/components/PlayerAvatar";
 
 function fmtCountdown(dateStr: string): string {
@@ -711,36 +711,41 @@ export default function BetPage({ params }: PageProps<"/leagues/[leagueId]/bet">
             // CIN/DEN (#FB4F14). Deliberate — true primaries were preferred
             // over getTeamSelectedColor's curated substitutions, which exist to
             // break precisely those ties.
-            function TeamHalf({ team, role }: { team: string; role: "Away" | "Home" }) {
+            function TeamSide({ team, record }: { team: string; record: string | null | undefined }) {
               const url = getTeamLogoUrl(team);
               const bg = getTeamBannerColor(team);
-              const fg = getTeamOnColor(bg);
+              // Always white, not luminance-matched. Only the Rams land on a
+              // light banner (#FFA300 — their alt, used because their logo is a
+              // single navy that would vanish on their primary), and white is
+              // wanted there for consistency with the other 31 teams.
+              const fg = "#FFFFFF";
               return (
                 <div style={{
-                  // Fixed square. Sized off the tile's old content height so
-                  // the card keeps roughly the height it had — the squareness
-                  // comes out of the width, not by growing downward. Hence a
-                  // flat size rather than flex: 1 + aspect-ratio, which would
-                  // take the full half-card width and drive the height to match.
-                  width: TEAM_TILE, height: TEAM_TILE, flexShrink: 0,
-                  background: bg, padding: 10,
-                  borderRadius: "var(--radius-sm)", overflow: "hidden",
+                  // Halves of one band rather than free-standing tiles: each
+                  // takes half the width and the band's fixed height, which is
+                  // the old square's size so the card's footprint is unchanged.
+                  flex: 1, minWidth: 0, height: TEAM_TILE,
+                  background: bg, padding: "10px 14px",
                   display: "flex", flexDirection: "column",
-                  alignItems: "center", justifyContent: "center", gap: 7,
+                  alignItems: "center", justifyContent: "center", gap: 6,
                 }}>
                   {url && <img src={url} alt="" width={38} height={38} referrerPolicy="no-referrer" style={{ objectFit: "contain", flexShrink: 0 }} />}
                   <div style={{
                     fontSize: "0.8rem", fontWeight: 700, color: fg, textAlign: "center",
-                    lineHeight: 1.25, maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis",
+                    lineHeight: 1.25, maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
                   }}>
                     {getTeamFullName(team)}
                   </div>
-                  <div style={{
-                    fontSize: "0.5rem", fontWeight: 500, letterSpacing: "0.12em",
-                    textTransform: "uppercase", color: fg, opacity: 0.7, lineHeight: 1,
-                  }}>
-                    {role}
-                  </div>
+                  {/* Omitted rather than dashed when ESPN has no record yet —
+                      the band is a fixed height, so nothing shifts. */}
+                  {record && (
+                    <div style={{
+                      fontSize: "0.6rem", fontWeight: 500, letterSpacing: "0.08em",
+                      color: fg, opacity: 0.75, lineHeight: 1, fontVariantNumeric: "tabular-nums",
+                    }}>
+                      {record}
+                    </div>
+                  )}
                 </div>
               );
             }
@@ -748,14 +753,30 @@ export default function BetPage({ params }: PageProps<"/leagues/[leagueId]/bet">
               // White card with its own padding — the team blocks are inset
               // tiles now rather than halves bleeding to the card's edges.
               <div style={{ marginBottom: 12, borderRadius: "var(--radius)", background: GAME_CARD_BG, padding: 12 }}>
-                {/* Centred rather than stretched: the tiles are a fixed square
-                    now, so they no longer fill the card's width and would sit
-                    off to the left if left to flow. The gutter is deliberately
-                    wider than the page's BOX_GAP — these read as two separate
-                    tiles, not as one split control the way the odds boxes do. */}
-                <div style={{ display: "flex", justifyContent: "center", gap: 10 }}>
-                  <TeamHalf team={selectedGame.awayTeam} role="Away" />
-                  <TeamHalf team={selectedGame.homeTeam} role="Home" />
+                {/* One band split down the middle, away on the left — the
+                    reading order carries the home/away meaning that the old
+                    AWAY/HOME captions spelled out, the same way "MIN @ LAC"
+                    does. The "AT" chip sits on the seam. */}
+                <div style={{
+                  position: "relative", display: "flex",
+                  borderRadius: "var(--radius-sm)", overflow: "hidden",
+                }}>
+                  <TeamSide team={selectedGame.awayTeam} record={selectedGame.awayRecord} />
+                  <TeamSide team={selectedGame.homeTeam} record={selectedGame.homeRecord} />
+                  {/* Also the only separator when both teams share a primary
+                      exactly — NE/SEA (#002244), DAL/LAR (#003594) and
+                      CIN/DEN (#FB4F14) — where the band is one solid colour. */}
+                  <div style={{
+                    position: "absolute", top: "50%", left: "50%",
+                    transform: "translate(-50%, -50%)",
+                    width: 30, height: 30, borderRadius: "50%",
+                    background: GAME_CARD_BG,
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    fontSize: "0.5rem", fontWeight: 500, letterSpacing: "0.1em",
+                    textTransform: "uppercase", color: "var(--text-3)",
+                  }}>
+                    at
+                  </div>
                 </div>
 
                 {/* Detail — centred with a fixed gap rather than space-between:
