@@ -9,6 +9,12 @@ import { ACCENT } from "@/lib/constants";
 import { fmtMoney } from "@/lib/money";
 import Logo from "@/components/Logo";
 
+// Fixed column width for the LEAGUE / BET dropdown items, so the hover
+// highlight is the same rectangle for every entry regardless of label length.
+// Must stay in sync with `.navmenu-item` in globals.css: 124px highlight
+// + 8px padding either side.
+const MENU_ITEM_W = 140;
+
 function ChevronDown() {
   return (
     <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
@@ -176,29 +182,12 @@ export default function LeagueNav({ leagueId }: { leagueId: string }) {
                   </div>
 
                   {isHovered && (
-                    <div style={{ position: "absolute", top: "100%", left: 0, background: "var(--surface)", border: "1px solid var(--border-2)", borderRadius: "var(--radius-sm)", boxShadow: "var(--shadow-md)", minWidth: 280, zIndex: 500, overflow: "hidden", display: "grid", gridTemplateColumns: "1fr 1fr" }}>
-                      {group.links.map(({ label, href }) => {
-                        return (
-                          <Link
-                            key={href}
-                            href={href}
-                            style={{
-                              display: "block",
-                              padding: "9px 14px",
-                              fontSize: "0.82rem",
-                              fontWeight: 500,
-                              color: "var(--text)",
-                              background: "none",
-                              textDecoration: "none",
-                              transition: "background 0.1s, color 0.1s",
-                            }}
-                            onMouseEnter={e => { const el = e.currentTarget as HTMLAnchorElement; el.style.background = ACCENT; el.style.color = "#fff"; }}
-                            onMouseLeave={e => { const el = e.currentTarget as HTMLAnchorElement; el.style.background = "none"; el.style.color = "var(--text)"; }}
-                          >
-                            {label}
-                          </Link>
-                        );
-                      })}
+                    <div style={{ position: "absolute", top: "100%", left: 0, background: "var(--surface)", border: "none", borderRadius: 0, boxShadow: "var(--shadow-md)", zIndex: 500, padding: "6px 0", display: "grid", gridTemplateColumns: `repeat(2, ${MENU_ITEM_W}px)` }}>
+                      {group.links.map(({ label, href }) => (
+                        <Link key={href} href={href} className="navmenu-item">
+                          <span>{label}</span>
+                        </Link>
+                      ))}
                     </div>
                   )}
                 </div>
@@ -243,41 +232,36 @@ export default function LeagueNav({ leagueId }: { leagueId: string }) {
           </button>
 
           {open && (
-            <div style={{ position: "absolute", top: "100%", right: 0, background: "var(--surface)", border: "1px solid var(--border-2)", borderRadius: "var(--radius-sm)", boxShadow: "var(--shadow-md)", minWidth: 230, zIndex: 500, overflow: "hidden" }}>
+            <div style={{ position: "absolute", top: "100%", right: 0, background: "var(--surface)", border: "none", borderRadius: 0, boxShadow: "var(--shadow-md)", width: 230, zIndex: 500, padding: "6px 0" }}>
               {leagues.length === 0 && (
                 <div style={{ padding: "10px 14px", fontSize: "0.8rem", color: "var(--text-2)" }}>No leagues</div>
               )}
-              {leagues.map((m: any) => {
-                const active = m.leagueId === leagueId;
-                return (
-                  <button
-                    key={m.leagueId}
-                    type="button"
-                    onClick={() => { router.push(`/leagues/${m.leagueId}`); setOpen(false); }}
-                    style={{ display: "block", width: "100%", textAlign: "left", padding: "10px 14px", background: "none", border: "none", borderBottom: "none", cursor: "pointer", boxShadow: "none", borderRadius: 0, color: "var(--text)", transition: "background 0.1s, color 0.1s" }}
-                    onMouseEnter={e => { e.currentTarget.style.background = ACCENT; e.currentTarget.style.color = "#fff"; }}
-                    onMouseLeave={e => { e.currentTarget.style.background = "none"; e.currentTarget.style.color = "var(--text)"; }}
-                  >
-                    <div style={{ fontSize: "0.82rem", fontWeight: 500, marginBottom: 5 }}>
+              {leagues.map((m: any) => (
+                <button
+                  key={m.leagueId}
+                  type="button"
+                  className="navmenu-league"
+                  onClick={() => { router.push(`/leagues/${m.leagueId}`); setOpen(false); }}
+                >
+                  <span>
+                    <span style={{ fontSize: "0.82rem" }}>
                       {m.league?.name ?? m.leagueId}
-                    </div>
-                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    </span>
+                    <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
                       <HelmetAvatar color={m.helmetColor ?? ACCENT} initials={(m.displayName || myDisplayName).slice(0, 2)} size={18} />
-                      <span style={{ fontSize: "0.72rem", fontWeight: 500 }}>
+                      <span style={{ fontSize: "0.72rem" }}>
                         {m.displayName || myDisplayName}
                       </span>
-                    </div>
-                  </button>
-                );
-              })}
+                    </span>
+                  </span>
+                </button>
+              ))}
               <button
                 type="button"
+                className="navmenu-league"
                 onClick={() => { router.push("/leagues"); setOpen(false); }}
-                style={{ display: "block", width: "100%", textAlign: "left", padding: "10px 14px", background: "none", border: "none", cursor: "pointer", fontSize: "0.82rem", fontWeight: 500, color: "var(--text)", boxShadow: "none", borderRadius: 0, transition: "background 0.1s, color 0.1s" }}
-                onMouseEnter={e => { e.currentTarget.style.background = ACCENT; e.currentTarget.style.color = "#fff"; }}
-                onMouseLeave={e => { e.currentTarget.style.background = "none"; e.currentTarget.style.color = "var(--text)"; }}
               >
-                + Add Another League
+                <span>+ Add Another League</span>
               </button>
             </div>
           )}
@@ -309,7 +293,6 @@ export default function LeagueNav({ leagueId }: { leagueId: string }) {
       <div style={{
         flexShrink: 0,
         background: "var(--surface)",
-        borderBottom: "1px solid var(--border)",
         padding: "0 300px",
         display: "flex",
         alignItems: "stretch",
@@ -318,6 +301,8 @@ export default function LeagueNav({ leagueId }: { leagueId: string }) {
         zIndex: 150,
         position: "relative",
       }}>
+        {/* Divider between the nav bar and the sub-nav, inset to the content
+            rail rather than bleeding to the viewport edges. */}
         <div style={{ position: "absolute", top: 0, left: 300, right: 300, height: 1, background: "var(--border)" }} />
         {activeGroup.links.map(({ label, href }) => {
           const active = isActive(href);

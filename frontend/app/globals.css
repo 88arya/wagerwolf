@@ -696,6 +696,86 @@ hr { border: none; border-top: 1px solid var(--border); margin: 14px 0; }
 }
 .list-row:last-child { border-bottom: none; }
 
+/* ── LEAGUE / BET nav dropdown items ──
+   The hover highlight is a fixed rectangle inset from the cell, so it is the
+   same size for every entry regardless of label length. Cell width is
+   MENU_ITEM_W in LeagueNav.tsx and must equal
+   the 124px highlight + 2 * horizontal padding below.
+   Both blocks are qualified with `.nav` because the generic `.nav a` (0-1-1)
+   and `button` / `button:hover` (0-0-1 / 0-1-1) rules earlier in this file
+   otherwise outrank a bare `.navmenu-*` class (0-1-0) and win. */
+.nav a.navmenu-item {
+  display: block;
+  padding: 2px 8px;
+  text-decoration: none;
+  color: #000;
+}
+.navmenu-item > span {
+  display: flex;
+  align-items: center;
+  width: 124px;
+  height: 22px;
+  padding: 0 9px;
+  font-size: 0.82rem;
+  font-weight: 500;
+  border-radius: 0;
+  background: none;
+  transition: background 0.1s;
+}
+/* Outranks the `.nav a:hover` grey above, so the label stays black on hover. */
+.nav a.navmenu-item:hover {
+  color: #000;
+}
+.navmenu-item:hover > span {
+  background: var(--surface-2);
+  font-weight: 700;
+}
+
+/* Same treatment for the league dropdown on the right of the nav. Rows are
+   two-line (league name + helmet/display name) so the rectangle is taller,
+   but its width is still fixed. Panel width = 214 + 8px padding either side.
+   Children must not set their own font-weight or the hover step won't apply. */
+.nav button.navmenu-league,
+.nav button.navmenu-league:hover,
+.nav button.navmenu-league:active {
+  display: block;
+  width: 100%;
+  padding: 2px 8px;
+  background: none;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  text-align: left;
+  cursor: pointer;
+  color: #000;
+  transform: none;
+}
+.navmenu-league > span {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  width: 214px;
+  padding: 7px 9px;
+  font-size: 0.82rem;
+  font-weight: 500;
+  border-radius: 0;
+  background: none;
+  transition: background 0.1s;
+}
+.navmenu-league:hover > span {
+  background: var(--surface-2);
+  font-weight: 700;
+}
+/* The rectangle is a fixed width, so long league names must truncate rather
+   than run past its edge. */
+.navmenu-league > span > span,
+.navmenu-league > span > span > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* ── Standings table ── */
 .standings-header {
   display: grid;
