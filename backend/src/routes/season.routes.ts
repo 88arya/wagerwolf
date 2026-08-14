@@ -104,17 +104,36 @@ router.get("/:leagueId/matchups", requireAuth, async (req: any, res: any) => {
       }),
     ]);
 
-    const nameMap: Record<string, string> = {};
-    for (const m of membershipRows as any[]) nameMap[m.userId] = m.displayName || m.user.displayName;
+    // Per-league identity + balance live on Membership, not User. The strip's
+    // matchups mode renders a helmet, an abbreviation and a balance per side,
+    // so carry them through here rather than making the client join two lists.
+    // Ghost opponents have no Membership row, hence the null-safe fallbacks.
+    const memberMap: Record<string, any> = {};
+    for (const m of membershipRows as any[]) {
+      memberMap[m.userId] = {
+        displayName: m.displayName || m.user.displayName,
+        abbreviation: m.abbreviation,
+        helmetColor: m.helmetColor,
+        balance: m.balance,
+      };
+    }
+
+    const withMember = (u: any) => {
+      if (!u) return u;
+      const mem = memberMap[u.id];
+      return {
+        ...u,
+        displayName: mem?.displayName ?? u.displayName,
+        abbreviation: mem?.abbreviation ?? null,
+        helmetColor: mem?.helmetColor ?? null,
+        balance: mem?.balance ?? null,
+      };
+    };
 
     const augmented = (matchupRows as any[]).map((mu) => ({
       ...mu,
-      homeUser: mu.homeUser
-        ? { ...mu.homeUser, displayName: nameMap[mu.homeUser.id] ?? mu.homeUser.displayName }
-        : mu.homeUser,
-      awayUser: mu.awayUser
-        ? { ...mu.awayUser, displayName: nameMap[mu.awayUser.id] ?? mu.awayUser.displayName }
-        : mu.awayUser,
+      homeUser: withMember(mu.homeUser),
+      awayUser: withMember(mu.awayUser),
     }));
 
     res.json(augmented);
