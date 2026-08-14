@@ -63,6 +63,11 @@ export interface ESPNGame {
   statusDetail: string;
   /** venue.indoor — stable, present on every game regardless of kickoff distance. */
   indoor: boolean | null;
+  /** Overall W-L(-T) from competitors[].records where type === "total", e.g.
+   *  "5-3". Comes back on the same scoreboard call as everything else, so it
+   *  costs no extra request. Null when ESPN has not published a record yet. */
+  homeRecord: string | null;
+  awayRecord: string | null;
   /** weather.displayValue, e.g. "Mostly cloudy w/ t-storms". ESPN only populates
    *  weather inside 10 days of kickoff — AccuWeather's forecast horizon, and a
    *  sharp boundary, not a fuzzy one — so this is null for anything further
@@ -145,6 +150,14 @@ export async function getNFLWeekGames(weekStartDate: Date, weekNumber: number): 
     const awayScore = parseScore(away.score);
     const statusDetail: string = event.status?.type?.shortDetail ?? "";
 
+    // ESPN ships three records per competitor (overall / home / road). Match on
+    // type === "total" rather than taking [0]: the order is not contractual,
+    // and "Home"/"Road" would otherwise silently render as the overall record.
+    const overallRecord = (c: any): string | null =>
+      c.records?.find((r: any) => r.type === "total")?.summary ?? null;
+    const homeRecord = overallRecord(home);
+    const awayRecord = overallRecord(away);
+
     const indoor: boolean | null = typeof comp.venue?.indoor === "boolean" ? comp.venue.indoor : null;
     const weather: string | null = event.weather?.displayValue ?? null;
     const weatherTemp: number | null = typeof event.weather?.temperature === "number"
@@ -163,6 +176,8 @@ export async function getNFLWeekGames(weekStartDate: Date, weekNumber: number): 
       indoor,
       weather,
       weatherTemp,
+      homeRecord,
+      awayRecord,
     });
   }
   return games;

@@ -74,12 +74,14 @@ export async function syncESPNGames(weekId: string): Promise<{ synced: number }>
       .values({
         weekId: week.id, homeTeam: g.homeTeam, awayTeam: g.awayTeam, gameDate: g.gameDate, espnId: g.espnId,
         indoor: g.indoor, weather: g.weather, weatherTemp: g.weatherTemp,
+        homeRecord: g.homeRecord, awayRecord: g.awayRecord,
       })
       .onConflictDoUpdate({
         target: games.espnId,
         set: {
           homeTeam: g.homeTeam, awayTeam: g.awayTeam, gameDate: g.gameDate,
           indoor: g.indoor, weather: g.weather, weatherTemp: g.weatherTemp,
+          homeRecord: g.homeRecord, awayRecord: g.awayRecord,
         },
       });
     synced++;
@@ -111,6 +113,10 @@ export async function syncScores(weekId: string): Promise<{ updated: number }> {
         // otherwise a far-out game would keep nulling a forecast we already had,
         // and ESPN drops weather again once the game is FINAL.
         ...(g.weather != null ? { weather: g.weather, weatherTemp: g.weatherTemp } : {}),
+        // Same guard as weather: only overwrite when ESPN actually has a
+        // record, so a null response can't wipe one we already stored.
+        ...(g.homeRecord != null ? { homeRecord: g.homeRecord } : {}),
+        ...(g.awayRecord != null ? { awayRecord: g.awayRecord } : {}),
       })
       .where(eq(games.espnId, g.espnId));
     updated++;

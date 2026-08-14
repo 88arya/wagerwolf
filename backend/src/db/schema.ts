@@ -121,6 +121,12 @@ export const games = pgTable("Game", {
   indoor:       boolean("indoor"),
   weather:      text("weather"),
   weatherTemp:  integer("weatherTemp"),
+  // Overall W-L(-T) at the time of the last sync, e.g. "5-3" / "5-3-1".
+  // A snapshot, not a live value: ESPN reports the record as it stood when we
+  // fetched, so these are refreshed by the minute-by-minute score sync as well
+  // as the weekly game sync. Nullable for games seeded outside ESPN.
+  homeRecord:   text("homeRecord"),
+  awayRecord:   text("awayRecord"),
 });
 
 export const players = pgTable("Player", {
