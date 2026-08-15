@@ -788,6 +788,52 @@ hr { border: none; border-top: 1px solid var(--border); margin: 14px 0; }
   white-space: nowrap;
 }
 
+/* Profile dropdown. Same rectangle treatment as .navmenu-item, with two
+   differences: the rows are buttons rather than links, and they are wide enough
+   for an email address. Children must not set their own font-weight or the
+   hover step won't apply. */
+.nav .navmenu-profile,
+.nav .navmenu-profile:hover,
+.nav .navmenu-profile:active {
+  display: block;
+  width: 100%;
+  padding: 2px 8px;
+  background: none;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  text-align: left;
+  text-decoration: none;
+  color: #000;
+  cursor: pointer;
+  transform: none;
+}
+.navmenu-profile > span {
+  display: flex;
+  align-items: center;
+  width: 196px;
+  height: 22px;
+  padding: 0 9px;
+  font-size: 0.82rem;
+  font-weight: 500;
+  border-radius: 0;
+  background: none;
+  transition: background 0.1s;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.navmenu-profile:hover > span {
+  background: var(--surface-2);
+  font-weight: 700;
+}
+/* The email is a label, not a control: it keeps the row metrics so the panel
+   stays aligned, but takes no hover and no pointer. */
+.nav .navmenu-profile.is-label,
+.nav .navmenu-profile.is-label:hover { cursor: default; }
+.navmenu-profile.is-label > span { color: var(--text-2); }
+.navmenu-profile.is-label:hover > span { background: none; font-weight: 500; }
+
 /* ── Standings table ── */
 .standings-header {
   display: grid;

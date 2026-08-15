@@ -4,12 +4,15 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import Logo from "@/components/Logo";
+import { ACCENT } from "@/lib/constants";
 
+// Solid person-in-circle. Filled rather than stroked, so it takes `fill` from
+// currentColor and ignores strokeWidth. Duplicated verbatim in LeagueNav — keep
+// the two in step.
 function UserIcon() {
   return (
-    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-      <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2" />
-      <circle cx="12" cy="7" r="4" />
+    <svg width="26" height="26" viewBox="0 0 512 512" fill="currentColor" aria-hidden="true">
+      <path fillRule="evenodd" d="M256 42.667A213.333 213.333 0 0 1 469.334 256c0 117.821-95.513 213.334-213.334 213.334c-117.82 0-213.333-95.513-213.333-213.334C42.667 138.18 138.18 42.667 256 42.667m21.334 234.667h-42.667c-52.815 0-98.158 31.987-117.715 77.648c30.944 43.391 81.692 71.685 139.048 71.685s108.104-28.294 139.049-71.688c-19.557-45.658-64.9-77.645-117.715-77.645M256 106.667c-35.346 0-64 28.654-64 64s28.654 64 64 64s64-28.654 64-64s-28.653-64-64-64" />
     </svg>
   );
 }
@@ -78,7 +81,13 @@ export default function UserNav() {
           <button
             type="button"
             onClick={() => setProfileOpen(o => !o)}
-            style={{ width: 32, height: 32, borderRadius: "50%", background: "var(--surface-3)", border: "1px solid var(--border-2)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-2)", cursor: "pointer", boxShadow: "none", padding: 0, flexShrink: 0 }}
+            // No disc of its own — the icon draws its own circle, so a second
+            // one around it would read as a ring.
+            // 26px to match the height of the league dropdown beside it, so the
+            // two right-hand controls read as the same size.
+            // The icon fills from currentColor, so the button's `color` is what
+            // tints it — accent blue rather than the grey the nav uses for text.
+            style={{ width: 26, height: 26, borderRadius: "50%", background: "none", border: "none", display: "flex", alignItems: "center", justifyContent: "center", color: ACCENT, cursor: "pointer", boxShadow: "none", padding: 0, flexShrink: 0 }}
           >
             <UserIcon />
           </button>
