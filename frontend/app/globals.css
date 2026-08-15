@@ -788,6 +788,36 @@ hr { border: none; border-top: 1px solid var(--border); margin: 14px 0; }
   white-space: nowrap;
 }
 
+/* Utility bar links. The rule grows in from the left on hover rather than
+   appearing all at once — text-decoration cannot be transitioned, so this is a
+   pseudo-element bar scaled on the x axis from a left origin. inline-block is
+   required: an inline anchor gives ::after nothing to anchor its width to. */
+.utility-link {
+  position: relative;
+  display: inline-block;
+  text-decoration: none;
+}
+.utility-link::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -5px;
+  height: 1px;
+  background: currentColor;
+  transform: scaleX(0);
+  transform-origin: left center;
+  transition: transform 0.18s ease;
+}
+.utility-link:hover::after {
+  transform: scaleX(1);
+}
+/* No animation for anyone who has asked the OS to stop them; the rule still
+   appears, it just does not sweep. */
+@media (prefers-reduced-motion: reduce) {
+  .utility-link::after { transition: none; }
+}
+
 /* Profile dropdown. Same rectangle treatment as .navmenu-item, with two
    differences: the rows are buttons rather than links, and they are wide enough
    for an email address. Children must not set their own font-weight or the
