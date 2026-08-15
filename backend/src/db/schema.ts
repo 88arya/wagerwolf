@@ -30,6 +30,11 @@ export const users = pgTable("User", {
   googleId:    text("googleId").unique(),
   name:        text("name").notNull(),
   displayName: text("displayName").notNull(),
+  // Collected during onboarding. Nullable because accounts created before this
+  // existed have neither, and that absence is exactly what the onboarding gate
+  // checks for — a user with no firstName has not been through it yet.
+  firstName:   text("firstName"),
+  lastName:    text("lastName"),
   createdAt:   timestamp("createdAt").defaultNow().notNull(),
 });
 

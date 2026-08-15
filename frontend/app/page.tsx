@@ -54,7 +54,9 @@ export default function HomePage() {
       localStorage.setItem("displayName", res.displayName);
       setIsLoggedIn(true);
       setDisplayName(res.displayName || "");
-      router.push("/leagues");
+      // The server decides whether onboarding is owed, so the rule lives in one
+      // place rather than being re-derived from the fields on the client.
+      router.push(res.needsOnboarding ? "/onboarding" : "/leagues");
     } catch (err: any) {
       try { setAuthError(JSON.parse(err.message).error); } catch { setAuthError(err.message); }
     }
