@@ -136,9 +136,10 @@ function MinusCircleIcon() {
   );
 }
 
-// LeagueNav's horizontal padding — the slip's right edge lines up with the
-// nav's right-hand contents. Keep in sync with LeagueNav / GamesStrip.
-const NAV_GUTTER = 300;
+// The shared content rail (--rail in globals.css) — the slip's right edge lines
+// up with the nav's right-hand contents. The slip is position: fixed, so the
+// `100%` inside the token resolves against the viewport, same as for the nav.
+const NAV_GUTTER = "var(--rail)";
 // Nav (44) + sub-nav (40) + .page's 16px top padding, used only until the real
 // offset is measured.
 const CONTENT_TOP_FALLBACK = 100;
@@ -393,7 +394,7 @@ export default function BetSlip({ leagueId }: { leagueId: string }) {
       bottom: 12,
       right: NAV_GUTTER,
       width: 368,
-      maxWidth: `calc(100vw - ${NAV_GUTTER + 12}px)`,
+      maxWidth: `calc(100vw - ${NAV_GUTTER} - 12px)`,
       zIndex: 500,
       pointerEvents: "none",
       display: "flex",

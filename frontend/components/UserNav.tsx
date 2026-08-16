@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import Logo from "@/components/Logo";
 import { ACCENT } from "@/lib/constants";
+import { useDevicePixelRatio, snapToDevicePx } from "@/lib/hairline";
 
 // Solid person-in-circle. Filled rather than stroked, so it takes `fill` from
 // currentColor and ignores strokeWidth. Duplicated verbatim in LeagueNav — keep
@@ -27,6 +28,7 @@ export default function UserNav() {
   const router = useRouter();
   const [profileOpen, setProfileOpen] = useState(false);
   const profileRef = useRef<HTMLDivElement>(null);
+  const dpr = useDevicePixelRatio();
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
@@ -43,8 +45,9 @@ export default function UserNav() {
     router.push("/");
   }
 
+  // Horizontal padding comes from `.nav`, which insets by --rail.
   return (
-    <nav className="nav" style={{ gap: 0, padding: "0 300px" }}>
+    <nav className="nav" style={{ gap: 0 }}>
 
       {/* Left: logo + nav links */}
       <div style={{ display: "flex", alignItems: "stretch", gap: 0, height: "100%" }}>
@@ -62,13 +65,28 @@ export default function UserNav() {
               textTransform: "uppercase",
             }}>
               <span style={{
+                position: "relative",
                 display: "flex",
                 alignItems: "center",
                 height: "100%",
-                boxShadow: active ? "inset 0 -2.5px 0 var(--text)" : "none",
-                transition: "box-shadow 0.12s",
               }}>
                 {label}
+                {/* Filled element rather than an inset box-shadow, snapped to
+                    whole device pixels — see lib/hairline. Always rendered and
+                    faded on opacity so the change still animates. */}
+                <span
+                  aria-hidden="true"
+                  style={{
+                    position: "absolute",
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    height: snapToDevicePx(2.5, dpr),
+                    background: "var(--text)",
+                    opacity: active ? 1 : 0,
+                    transition: "opacity 0.12s",
+                  }}
+                />
               </span>
             </Link>
           );

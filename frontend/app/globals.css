@@ -1,4 +1,17 @@
 :root {
+  /* ── Content rail ──
+     The single horizontal gutter. Everything that spans the window — TopBar,
+     GamesStrip, the nav, its sub-nav, the bet slip and .page-wide — insets by
+     this, so their contents share one left and right edge at every width.
+     Centres a 1220px column, falling back to a 20px gutter once the window is
+     narrower than that. Percentages in `padding` resolve against the
+     containing block, and every consumer is a full-width child of <body>, so
+     `100%` is the window width in all of them.
+     This replaced a hardcoded `0 300px` duplicated across those components,
+     which fixed the gutter at 300px and so pushed the nav 154px inboard of the
+     page content at a 1512px window. Change it here, not at the call sites. */
+  --rail: max(20px, calc((100% - 1220px) / 2));
+
   /* ── Backgrounds ── */
   --bg:           #F5F7FA;
   --surface:      #FFFFFF;
@@ -155,7 +168,7 @@ button.dark:hover { opacity: 0.86; background: var(--text); border-color: var(--
 /* ── Top Nav ── */
 .nav {
   background: var(--navy);
-  padding: 0 16px;
+  padding: 0 var(--rail);
   display: flex;
   align-items: center;
   gap: 4px;
@@ -238,7 +251,7 @@ button.dark:hover { opacity: 0.86; background: var(--text); border-color: var(--
 /* ── Page wrappers ── */
 /* Full-width scroll containers — content centered via padding so scrollbar sits at viewport right edge */
 .page { flex: 1; min-height: 0; overflow-y: auto; scrollbar-gutter: stable; width: 100%; padding: 16px max(14px, calc((100% - 612px) / 2)) 24px; }
-.page-wide { flex: 1; min-height: 0; overflow-y: auto; scrollbar-gutter: stable; width: 100%; padding: 20px max(16px, calc((100% - 1220px) / 2)) 24px; }
+.page-wide { flex: 1; min-height: 0; overflow-y: auto; scrollbar-gutter: stable; width: 100%; padding: 20px var(--rail) 24px; }
 
 /* ── Typography ── */
 h1 {
@@ -805,12 +818,16 @@ hr { border: none; border-top: 1px solid var(--border); margin: 14px 0; }
   bottom: -5px;
   height: 1px;
   background: currentColor;
-  transform: scaleX(0);
-  transform-origin: left center;
-  transition: transform 0.18s ease;
+  /* Revealed left-to-right by clipping, not by scaleX. The bar is always laid
+     out and rasterised at its final width; the clip just uncovers it. scaleX
+     stretched the bar instead, so it was re-rasterised at a different width
+     every frame and its ends resampled as it went — which read as the rule
+     growing into place rather than sweeping in at full weight. */
+  clip-path: inset(0 100% 0 0);
+  transition: clip-path 0.18s ease;
 }
 .utility-link:hover::after {
-  transform: scaleX(1);
+  clip-path: inset(0 0 0 0);
 }
 /* No animation for anyone who has asked the OS to stop them; the rule still
    appears, it just does not sweep. */
@@ -824,7 +841,10 @@ hr { border: none; border-top: 1px solid var(--border); margin: 14px 0; }
    hover step won't apply. */
 .nav .navmenu-profile,
 .nav .navmenu-profile:hover,
-.nav .navmenu-profile:active {
+.nav .navmenu-profile:active,
+.utility-menu .navmenu-profile,
+.utility-menu .navmenu-profile:hover,
+.utility-menu .navmenu-profile:active {
   display: block;
   width: 100%;
   padding: 2px 8px;
@@ -860,9 +880,26 @@ hr { border: none; border-top: 1px solid var(--border); margin: 14px 0; }
 /* The email is a label, not a control: it keeps the row metrics so the panel
    stays aligned, but takes no hover and no pointer. */
 .nav .navmenu-profile.is-label,
-.nav .navmenu-profile.is-label:hover { cursor: default; }
+.nav .navmenu-profile.is-label:hover,
+.utility-menu .navmenu-profile.is-label,
+.utility-menu .navmenu-profile.is-label:hover { cursor: default; }
 .navmenu-profile.is-label > span { color: var(--text-2); }
 .navmenu-profile.is-label:hover > span { background: none; font-weight: 500; }
+
+/* The utility bar's My Account control is a menu trigger, not a link, so it
+   needs the button chrome stripped back to what .utility-link expects. */
+button.utility-link,
+button.utility-link:hover,
+button.utility-link:active {
+  background: none;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  padding: 0;
+  cursor: pointer;
+  transform: none;
+  font-family: inherit;
+}
 
 /* ── Standings table ── */
 .standings-header {
