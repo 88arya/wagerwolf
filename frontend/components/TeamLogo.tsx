@@ -40,7 +40,16 @@ export default function TeamLogo({ team, size = 40, plain = false }: Props) {
       alt={team}
       width={size}
       height={size}
-      style={{ objectFit: "contain", flexShrink: 0, ...(plain ? {} : { padding: 2 }) }}
+      // A logo is decoration, never a payload. Left as the browser default it
+      // is a draggable image, so pressing one inside a scrollable strip starts
+      // a picture drag with a ghost thumbnail instead of scrolling. draggable
+      // covers the drag itself; WebkitUserDrag stops Safari starting one at all.
+      draggable={false}
+      style={{
+        objectFit: "contain", flexShrink: 0,
+        WebkitUserDrag: "none",
+        ...(plain ? {} : { padding: 2 }),
+      } as React.CSSProperties}
     />
   );
 }

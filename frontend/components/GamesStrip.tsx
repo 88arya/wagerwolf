@@ -10,6 +10,29 @@ import { fmtMoney } from "@/lib/money";
 
 const STRIP_BG = "var(--bg)";
 
+// The mode selector's fill. Back to the accent token after a spell in the NFL's
+// own navy (#013369) — as a token it tracks --accent rather than pinning a
+// third-party brand value into the strip.
+const SELECTOR_BG = ACCENT;
+
+// Inset of the label and the switch from their own edges of the header cell.
+// One value for both sides, which is what keeps the two symmetric: the label is
+// SELECTOR_PAD_X from the cell's left edge and the switch the same from its
+// right. Raised from 12 to 24.
+const SELECTOR_PAD_X = 24;
+
+// The auto-scroll switch in the header cell. Sized to sit inside the label row
+// without outgrowing the 0.68rem text beside it.
+const TOGGLE_W = 26;
+const TOGGLE_H = 14;
+const TOGGLE_PAD = 2;
+const TOGGLE_KNOB = TOGGLE_H - TOGGLE_PAD * 2;
+
+// How far the pointer may travel between mousedown and mouseup and still count
+// as a click on a card rather than a drag of the strip. A few pixels of hand
+// tremor should still open the game.
+const DRAG_CLICK_SLOP = 4;
+
 // The date/arrow band across the top of each game card — a step darker than
 // the card itself. --surface-3 (#E8ECF0) sits in the same cool-grey ramp as
 // --bg (#F5F7FA), so the band shares the card's hue and only drops in value.
@@ -33,11 +56,17 @@ const STRIP_ROW_H = 70;
 // visible varies, which is what keeps them from stretching on a wide screen.
 const CARD_W = 128;
 
-// The mode selector deliberately outgrows a card in both directions, so it
-// reads as the strip's header rather than another cell. Its height sets the
-// strip's overall height; the cards are centred against it.
+// The mode selector still outgrows a card in width, so it reads as the strip's
+// header rather than another cell — but no longer in height. It is pinned to
+// STRIP_ROW_H so the blue block and the cards share one top and bottom edge and
+// the strip reads as a single band; at its old 92 it towered over the 70px
+// cards with white showing above and below them.
+//
+// Derived rather than a second literal: the card height is measured (see
+// STRIP_ROW_H), so hardcoding 70 here would silently break the match the next
+// time a card's padding changes.
 const SELECTOR_W = 168;
-const SELECTOR_H = 92;
+const SELECTOR_H = STRIP_ROW_H;
 
 // Pixels per second the games drift leftward on their own. Slow enough to read
 // while it moves.
@@ -137,27 +166,34 @@ export default function GamesStrip({ leagueId, interactive = true }: { leagueId:
   // Whether the fetch has settled. Distinguishes "still loading" (reserve the
   // height) from "resolved, nothing to show" (collapse for real).
   const [loaded, setLoaded] = useState(!!cached);
+  // MATCHUPS is currently unreachable: the mode dropdown that used to set it was
+  // replaced by the auto-scroll toggle, so nothing calls setMode. The rendering
+  // branch and its fetch are left intact rather than deleted, so putting the
+  // switch back is a UI change only.
   const [mode, setMode] = useState<StripMode>("NFL");
-  const [menuOpen, setMenuOpen] = useState(false);
   const [matchupRows, setMatchupRows] = useState<any[] | null>(null);
+  // The toggle in the header cell. On by default; off stops the drift and hands
+  // scrolling to the user via drag.
+  const [autoScroll, setAutoScroll] = useState(true);
   // Hovering anywhere on the strip halts the drift so a card can be read (and
-  // clicked) without it sliding out from under the cursor.
-  const [drifting, setDrifting] = useState(true);
+  // clicked) without it sliding out from under the cursor. Only relevant while
+  // autoScroll is on — with it off there is no drift to pause.
+  const [hovering, setHovering] = useState(false);
+  // Only flips on mousedown/mouseup, not on every move — cheap enough for
+  // state, and the cursor needs a re-render to change.
+  const [dragging, setDragging] = useState(false);
   // Scroller width, tracked so the tape can be repeated enough times to cover
   // it. Starts at 0, which yields the minimum two copies until measured.
   const [scrollerW, setScrollerW] = useState(0);
   const gamesScrollRef = useRef<HTMLDivElement>(null);
-  const menuRef = useRef<HTMLDivElement>(null);
   // Set by the anchor effect, consumed by the drift loop on its next start.
   const startPosRef = useRef<number | null>(null);
+  // Drag-to-scroll bookkeeping, in a ref rather than state: these change on
+  // every mousemove and none of them should trigger a re-render.
+  //   moved — total distance travelled, used to tell a drag from a click
+  const dragRef = useRef({ active: false, startX: 0, startScroll: 0, moved: 0 });
 
-  useEffect(() => {
-    function onDown(e: MouseEvent) {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false);
-    }
-    document.addEventListener("mousedown", onDown);
-    return () => document.removeEventListener("mousedown", onDown);
-  }, []);
+  const drifting = autoScroll && !hovering;
 
   // Drop cached matchups when the league or week changes. Without this the
   // `if (matchupRows)` guard below would keep showing the previous league's
@@ -293,97 +329,155 @@ export default function GamesStrip({ leagueId, interactive = true }: { leagueId:
     // page below doesn't jump once the games land.
     if (loaded) return null;
     return (
-      <div style={{ flexShrink: 0, background: STRIP_BG, padding: "0 300px" }}>
-        <div style={{ height: SELECTOR_H, borderLeft: "1px solid var(--border)" }} />
+      <div style={{ flexShrink: 0, background: STRIP_BG }}>
+        {/* Blank — its only job is to hold SELECTOR_H so the page below does
+            not jump once the games land. */}
+        <div style={{ height: SELECTOR_H }} />
       </div>
     );
   }
 
 
-  // Accent-blue mode selector. Sits at the head of the strip and names what the
-  // strip is currently showing; the chevron opens the two-option menu.
+  // The strip's header cell: the label, plus the switch that runs or stops the
+  // drift. It replaced a dropdown that chose between NFL and MATCHUPS — hence
+  // no chevron, and hence setMode having no caller (see the state above).
   const modeSelector = (
     // Bigger than a card in both directions so it reads as the strip's header.
     // Its height is what makes the strip taller than the cards, which are then
     // centred against it by the row's alignItems.
-    <div ref={menuRef} style={{
-      position: "relative", flexShrink: 0, display: "flex",
-      width: SELECTOR_W, height: SELECTOR_H,
+    <div style={{
+      position: "relative", flexShrink: 0, display: "flex", alignItems: "center",
+      justifyContent: "space-between", gap: 8,
+      width: SELECTOR_W, height: SELECTOR_H, padding: `0 ${SELECTOR_PAD_X}px`,
+      background: SELECTOR_BG, color: "#FFFFFF",
+      fontSize: "0.68rem", fontWeight: 700, letterSpacing: "0.08em",
+      whiteSpace: "nowrap",
     }}>
+      {MODE_LABEL[mode]}
       <button
         type="button"
-        onClick={() => setMenuOpen((o) => !o)}
+        role="switch"
+        aria-checked={autoScroll}
+        aria-label="Auto-scroll games"
+        title={autoScroll ? "Auto-scroll on — click to stop and drag manually" : "Auto-scroll off — drag the strip to scroll"}
+        onClick={() => setAutoScroll((v) => !v)}
         style={{
-          display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8,
-          width: "100%", height: "100%", padding: "0 12px",
-          background: ACCENT, color: "#FFFFFF",
-          border: "none", borderRadius: 0, boxShadow: "none",
-          fontSize: "0.68rem", fontWeight: 700, letterSpacing: "0.08em",
-          whiteSpace: "nowrap", cursor: "pointer",
+          flexShrink: 0, position: "relative", padding: 0,
+          width: TOGGLE_W, height: TOGGLE_H, borderRadius: TOGGLE_H / 2,
+          // Filled white when on, a faint wash when off — both legible on the
+          // navy, without introducing a colour outside the two already here.
+          background: autoScroll ? "#FFFFFF" : "rgba(255,255,255,0.26)",
+          border: "none", boxShadow: "none", cursor: "pointer",
+          // The track animates; the global button transform does not apply. See
+          // the note on the cards' click handler about globals.css:141.
+          transform: "none", transition: "background 0.18s",
         }}
       >
-        {MODE_LABEL[mode]}
-        <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3} strokeLinecap="round" strokeLinejoin="round"
-          style={{ transform: menuOpen ? "rotate(180deg)" : "none", transition: "transform 0.15s", flexShrink: 0 }}>
-          <polyline points="6 9 12 15 18 9" />
-        </svg>
+        <span style={{
+          position: "absolute", top: (TOGGLE_H - TOGGLE_KNOB) / 2,
+          left: autoScroll ? TOGGLE_W - TOGGLE_KNOB - TOGGLE_PAD : TOGGLE_PAD,
+          width: TOGGLE_KNOB, height: TOGGLE_KNOB, borderRadius: "50%",
+          background: autoScroll ? SELECTOR_BG : "#FFFFFF",
+          transition: "left 0.18s, background 0.18s",
+        }} />
       </button>
-      {menuOpen && (
-        <div style={{
-          position: "absolute", top: "100%", left: 0, zIndex: 400,
-          background: "var(--surface)", boxShadow: "var(--shadow-md)",
-          padding: "6px 0", minWidth: 190,
-        }}>
-          {/* Styled inline rather than with .navmenu-league: that rule is
-              scoped to `.nav`, and the strip sits outside it, so the items
-              would fall back to the global navy `button` fill. */}
-          {(["NFL", "MATCHUPS"] as StripMode[]).map((m) => (
-            <button
-              key={m}
-              type="button"
-              onClick={() => { setMode(m); setMenuOpen(false); }}
-              onMouseEnter={(e) => { e.currentTarget.style.background = "var(--surface-2)"; }}
-              onMouseLeave={(e) => { e.currentTarget.style.background = "none"; }}
-              style={{
-                display: "block", width: "100%", textAlign: "left",
-                padding: "8px 14px",
-                background: "none", border: "none", borderRadius: 0, boxShadow: "none",
-                color: "#000", cursor: "pointer",
-                fontSize: "0.68rem", fontWeight: mode === m ? 700 : 500,
-                letterSpacing: "0.08em", whiteSpace: "nowrap",
-              }}
-            >
-              {MODE_LABEL[m]}
-            </button>
-          ))}
-        </div>
-      )}
     </div>
   );
 
+  // ── Drag-to-scroll, live only while the drift is off ──
+  //
+  // Writes scrollLeft directly rather than routing through state: the drift
+  // loop owns that same property and rewrites it every frame, so a state
+  // round-trip would fight it. With autoScroll off the loop is not running, so
+  // the pointer is the only writer.
+  function beginDrag(e: React.MouseEvent) {
+    // Reset unconditionally. If this only ran on a real drag, `moved` would
+    // keep its value from the previous one and swallow the next genuine click.
+    dragRef.current.moved = 0;
+    const el = gamesScrollRef.current;
+    if (autoScroll || !el) return;
+    dragRef.current.active = true;
+    dragRef.current.startX = e.clientX;
+    dragRef.current.startScroll = el.scrollLeft;
+    setDragging(true);
+  }
+
+  function onDragMove(e: React.MouseEvent) {
+    const d = dragRef.current;
+    const el = gamesScrollRef.current;
+    if (!d.active || !el) return;
+    const dx = e.clientX - d.startX;
+    d.moved = Math.max(d.moved, Math.abs(dx));
+
+    // Wrap instead of stopping at either end. The tape is two identical halves
+    // (see buildTape), so folding the offset into [0, oneCopy) always lands on
+    // the matching card in the other half and the seam is invisible — the same
+    // trick the drift loop uses, but applied in both directions because a drag
+    // can run backwards. Doing the maths before the assignment matters:
+    // scrollLeft clamps negatives to 0 on write, so letting it go past the
+    // start would dead-end the strip rather than continue it.
+    const oneCopy = el.scrollWidth / 2;
+    const next = d.startScroll - dx;
+    el.scrollLeft = oneCopy > 0 ? ((next % oneCopy) + oneCopy) % oneCopy : next;
+
+    // Without this the browser starts a text/image selection mid-drag.
+    e.preventDefault();
+  }
+
+  function endDrag() {
+    if (!dragRef.current.active) return;
+    dragRef.current.active = false;
+    setDragging(false);
+  }
+
   return (
-    // White behind the strip — the rail gutters either side, and the band above
-    // and below the centred cards. The cards and the selector keep their own
-    // backgrounds and are unaffected.
-    <div style={{ flexShrink: 0, background: "var(--surface)", padding: "0 300px" }}>
-      {/* alignItems centres the shorter cards against the taller selector,
-          which is what sets the strip's height. */}
-      <div style={{ display: "flex", alignItems: "center", height: SELECTOR_H, borderLeft: "1px solid var(--border)" }}>
+    // White behind the strip — the band above and below the centred cards. The
+    // cards and the selector keep their own backgrounds and are unaffected.
+    //
+    // Deliberately full-bleed: no `padding: 0 var(--rail)`. This is the one
+    // component that opts out of the content rail, so the ticker runs the whole
+    // window the way a scoreboard strip does, with the NFL cell flush to the
+    // left edge. Everything else — TopBar, the nav and sub-nav, BetSlip,
+    // .page-wide — still insets by --rail, so the strip's edges intentionally
+    // do not line up with the content below it.
+    <div style={{ flexShrink: 0, background: "var(--surface)" }}>
+      {/* stretch, not center: the selector and the cards are now the same
+          height, so letting both fill the row guarantees they share a top and
+          bottom edge even if a card's measured height drifts a pixel from
+          STRIP_ROW_H. Centring would leave a white sliver above and below the
+          cards while the blue block still ran the full height. */}
+      <div style={{ display: "flex", alignItems: "stretch", height: SELECTOR_H }}>
         {modeSelector}
         {/* A mask rather than the two gradient overlays that used to sit here:
             those painted a dark wash over the edges, which reads as a shadow.
             The mask fades the cards themselves out to transparent, so they
-            dissolve into whatever is behind the strip at both ends. */}
+            dissolve into whatever is behind the strip at both ends.
+
+            Only while drifting. The fade sells cards arriving and leaving under
+            their own steam; with the drift stopped nothing is entering or
+            leaving on its own, and it just dims two cards the user is trying to
+            read and click. */}
         {/* The drift pauses on hover here rather than on the row above, so the
             mode selector beside it is not part of the target — moving onto the
             blue box leaves the cards running. */}
         <div
-          onMouseEnter={() => setDrifting(false)}
-          onMouseLeave={() => setDrifting(true)}
+          onMouseEnter={() => setHovering(true)}
+          onMouseLeave={() => { setHovering(false); endDrag(); }}
+          onMouseDown={beginDrag}
+          onMouseMove={onDragMove}
+          onMouseUp={endDrag}
+          // Kills the browser's native image drag. Without it, pressing on a
+          // team logo starts a picture drag with a ghost thumbnail instead of
+          // scrolling the strip.
+          onDragStart={(e) => e.preventDefault()}
           style={{
             flex: 1, overflow: "hidden", position: "relative",
-            maskImage: FADE_MASK,
-            WebkitMaskImage: FADE_MASK,
+            maskImage: autoScroll ? FADE_MASK : undefined,
+            WebkitMaskImage: autoScroll ? FADE_MASK : undefined,
+            // Only advertise dragging when the drift is off — with it running,
+            // the pointer is for reading and clicking cards.
+            cursor: autoScroll ? "default" : dragging ? "grabbing" : "grab",
+            userSelect: dragging ? "none" : undefined,
           }}>
           <div ref={gamesScrollRef} className="no-scrollbar" style={{ display: "flex", overflowX: "auto" }}>
             {/* Two identical halves (see buildTape). The drift wraps at the
@@ -434,7 +528,13 @@ export default function GamesStrip({ leagueId, interactive = true }: { leagueId:
               const homeML = isScheduled ? game.gameLines?.find((l: any) => l.market === "MONEYLINE_HOME") : null;
               return (
                 <div key={`${game.id}-${i}`}
-                  onClick={interactive ? () => router.push(`/leagues/${leagueId}/bet?gameId=${game.id}`) : undefined}
+                  // A drag ends with a click on whichever card is under the
+                  // cursor, so anything past the slop is treated as a scroll
+                  // gesture and must not navigate.
+                  onClick={interactive ? () => {
+                    if (dragRef.current.moved > DRAG_CLICK_SLOP) return;
+                    router.push(`/leagues/${leagueId}/bet?gameId=${game.id}`);
+                  } : undefined}
                   // Only the card's own background moves on hover. The band
                   // paints its own, so it stays put and just the teams area —
                   // which has no background of its own — lightens.
@@ -476,12 +576,13 @@ export default function GamesStrip({ leagueId, interactive = true }: { leagueId:
                         <span style={{ fontSize: "0.62rem", fontWeight: 700, color: "var(--text-3)" }}>FINAL</span>
                       )}
                     </div>
-                    {isLive ? (
-                      game.statusDetail && <span style={{ fontSize: "0.62rem", color: "var(--text-3)", fontWeight: 700, whiteSpace: "nowrap" }}>{game.statusDetail}</span>
-                    ) : isScheduled && interactive ? (
-                      <svg width="9" height="9" viewBox="0 0 10 10" fill="none" stroke="var(--text-2)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M3 1h6v6M9 1L1 9" />
-                      </svg>
+                    {/* Live games show the clock here. Scheduled ones used to
+                        show an open-in-page arrow; it is gone, but the card
+                        itself is still a link to the bet page — the onClick and
+                        the pointer cursor above are what carry that, not this
+                        icon. */}
+                    {isLive && game.statusDetail ? (
+                      <span style={{ fontSize: "0.62rem", color: "var(--text-3)", fontWeight: 700, whiteSpace: "nowrap" }}>{game.statusDetail}</span>
                     ) : null}
                   </div>
                   {/* Teams + scores. Spacing copied from the nfl.com scoreboard
