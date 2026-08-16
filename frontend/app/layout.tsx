@@ -31,7 +31,7 @@ const fugazOne = Fugaz_One({
 });
 
 export const metadata: Metadata = {
-  title: "Wager",
+  title: "Wagerwolf",
   description: "Fantasy football format, NFL sportsbook scoring",
 };
 

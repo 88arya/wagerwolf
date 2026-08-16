@@ -72,7 +72,7 @@ app.use("/gamepicks", gamePickRoutes);
 app.use("/parlays", parlayRoutes);
 
 app.get("/", (req, res) => {
-  res.json({ status: "Wager backend running" });
+  res.json({ status: "Wagerwolf backend running" });
 });
 
 const PORT = process.env.PORT || 5000;

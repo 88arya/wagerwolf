@@ -87,7 +87,7 @@ export default function HomePage() {
       >
         <div style={{ display: "flex", alignItems: "center", gap: 9, marginRight: "auto" }}>
           <Logo size={24} />
-          <span style={{ fontSize: "1.05rem", fontWeight: 500, letterSpacing: "-0.03em" }}>Wager</span>
+          <span style={{ fontSize: "1.05rem", fontWeight: 500, letterSpacing: "-0.03em" }}>Wagerwolf</span>
         </div>
 
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -311,7 +311,7 @@ export default function HomePage() {
           }}
         >
           {/* Wordmark carries the name itself, so it stands in for the icon
-              plus the "Wager" label the footer used to pair. */}
+              plus the "Wagerwolf" label the footer used to pair. */}
           <LogoWordmark height={22} />
           <span style={{ fontSize: "0.8rem", color: "var(--text-3)", marginLeft: "auto" }}>
             Fake money. Real NFL data.

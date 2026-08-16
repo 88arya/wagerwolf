@@ -1,6 +1,10 @@
-// Wager wordmark (test version) — five bet slips, one letter each, spelling
-// "wager". This is an alternative to components/Logo.tsx, which stays the
-// current mark; nothing imports this yet.
+// STALE — this spells "wager", the pre-rename name. The product is Wagerwolf,
+// so this lockup is wrong wherever it renders (currently the landing-page
+// footer, app/page.tsx). Either redraw it for the new name or drop it in favour
+// of <Logo> plus a text label, as the landing-page header already does.
+//
+// Wordmark (test version) — five bet slips, one letter each, spelling "wager".
+// An alternative to components/Logo.tsx, which carries the current mark.
 //
 // Unlike Logo, this is a wide lockup rather than a square tile: five slips with
 // legible letters can't fit a 24px square, where each letter would land around
@@ -30,7 +34,7 @@ const SLIP_H = 23;
 const VIEW_W = 114;
 const VIEW_H = 30;
 
-const BLUE = "#0E92EB";
+const BLUE = "#2B5DE3";
 
 // Poppins rather than the UI's Inter Tight — a deliberate exception for the
 // logo only, loaded in app/layout.tsx as --font-poppins. Its geometric bowls
