@@ -91,6 +91,23 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
     setShowIdentityEditor(true);
   }
 
+  // LeagueNav's profile menu offers "Edit Profile" from every page in the
+  // league, but this modal lives here — so it routes to this page with
+  // ?edit=profile and this opens it. Held until members and userId have landed,
+  // since the editor prefills from them; fires once, then strips the parameter
+  // so a refresh or a back-navigation does not reopen it.
+  // window.location rather than useSearchParams: this page is entirely client
+  // rendered, and useSearchParams would force a Suspense boundary around it.
+  const editParamHandledRef = useRef(false);
+  useEffect(() => {
+    if (editParamHandledRef.current) return;
+    if (!leagueId || !userId || members.length === 0) return;
+    if (new URLSearchParams(window.location.search).get("edit") !== "profile") return;
+    editParamHandledRef.current = true;
+    openIdentityEditor();
+    router.replace(`/leagues/${leagueId}`, { scroll: false });
+  }, [leagueId, userId, members, myHelmetColor]);
+
   async function saveIdentity() {
     const trimmedName = nameInput.trim();
     if (trimmedName.length < 3 || trimmedName.length > 20) return;
