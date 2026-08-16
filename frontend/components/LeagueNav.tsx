@@ -6,7 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import HelmetAvatar from "@/components/HelmetAvatar";
 import { ACCENT } from "@/lib/constants";
-import Logo from "@/components/Logo";
+import { useDevicePixelRatio, snapToDevicePx } from "@/lib/hairline";
 
 // Fixed column width for the LEAGUE / BET dropdown items, so the hover
 // highlight is the same rectangle for every entry regardless of label length.
@@ -18,20 +18,6 @@ function ChevronDown() {
   return (
     <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
       <polyline points="6 9 12 15 18 9" />
-    </svg>
-  );
-}
-
-// Outlined person-in-circle, used beside the name at the head of the profile
-// menu. Filled paths cut with evenodd, so it takes its colour from currentColor
-// and ignores strokeWidth — same as UserIcon below.
-function AccountIcon() {
-  return (
-    <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" style={{ flexShrink: 0 }}>
-      <g fillRule="evenodd" clipRule="evenodd">
-        <path d="M16 9a4 4 0 1 1-8 0a4 4 0 0 1 8 0m-2 0a2 2 0 1 1-4 0a2 2 0 0 1 4 0" />
-        <path d="M12 1C5.925 1 1 5.925 1 12s4.925 11 11 11s11-4.925 11-11S18.075 1 12 1M3 12c0 2.09.713 4.014 1.908 5.542A8.99 8.99 0 0 1 12.065 14a8.98 8.98 0 0 1 7.092 3.458A9 9 0 1 0 3 12m9 9a8.96 8.96 0 0 1-5.672-2.012A6.99 6.99 0 0 1 12.065 16a6.99 6.99 0 0 1 5.689 2.92A8.96 8.96 0 0 1 12 21" />
-      </g>
     </svg>
   );
 }
@@ -53,7 +39,6 @@ export default function LeagueNav({ leagueId }: { leagueId: string }) {
   const [leagues, setLeagues] = useState<any[]>([]);
   const [currentLeague, setCurrentLeague] = useState<any>(null);
   const [myDisplayName, setMyDisplayName] = useState("");
-  const [myFullName, setMyFullName] = useState("");
   const [open, setOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [hoveredGroup, setHoveredGroup] = useState<string | null>(null);
@@ -61,13 +46,16 @@ export default function LeagueNav({ leagueId }: { leagueId: string }) {
   const profileRef = useRef<HTMLDivElement>(null);
   const navStartedRef = useRef(false);
 
+  // Every underline in this nav is a filled element snapped to whole device
+  // pixels — see lib/hairline for why neither the snapping nor the switch away
+  // from inset box-shadows is optional.
+  const dpr = useDevicePixelRatio();
+
   useEffect(() => {
+    // Only the display name is needed here: this nav is entirely league-scoped
+    // now, and the real name/email belong to My Account in the utility bar.
     api("/users/me").then((u: any) => {
       setMyDisplayName(u.displayName || u.name || "");
-      // Falls back to the display name for accounts that predate onboarding and
-      // so have no first/last on record.
-      const full = [u.firstName, u.lastName].filter(Boolean).join(" ");
-      setMyFullName(full || u.displayName || u.name || "");
     }).catch(() => {});
   }, []);
 
@@ -106,11 +94,10 @@ export default function LeagueNav({ leagueId }: { leagueId: string }) {
     };
   }, [leagueId]);
 
-  function logout() {
-    localStorage.removeItem("token");
-    localStorage.removeItem("userId");
-    router.push("/");
-  }
+  // The user's team within *this* league. Falls back to the account display
+  // name for members who have not renamed their team yet — the same fallback
+  // every leaderboard/feed/chat endpoint applies.
+  const teamName = currentLeague?.displayName || myDisplayName;
 
   const base = `/leagues/${leagueId}`;
 
@@ -155,15 +142,13 @@ export default function LeagueNav({ leagueId }: { leagueId: string }) {
 
   return (
     <>
-    <nav className="nav" style={{ gap: 0, padding: "0 300px" }}>
+    {/* Horizontal padding comes from `.nav`, which insets by --rail. */}
+    <nav className="nav" style={{ gap: 0 }}>
 
-      {/* Left: logo + grouped nav links */}
+      {/* Left: grouped nav links. The logo used to lead this row; it now lives
+          at the far left of the utility bar (TopBar), which is present on every
+          page rather than only inside a league. */}
       <div style={{ display: "flex", alignItems: "stretch", gap: 0, height: "100%" }}>
-
-        {/* Logo */}
-        <Link href="/home" style={{ paddingTop: 0, paddingLeft: 0, paddingBottom: 0, paddingRight: 16, display: "flex", alignItems: "center", marginRight: 4 }}>
-          <Logo size={28} />
-        </Link>
 
         {seasonStarted ? (
           <>
@@ -172,7 +157,11 @@ export default function LeagueNav({ leagueId }: { leagueId: string }) {
               return (
                 <div
                   key={group.label}
-                  style={{ position: "relative", display: "flex", alignItems: "stretch", margin: "0 11px" }}
+                  // Trailing margin only, never leading. The old `0 11px` put
+                  // 11px in front of the first group, so LEAGUE sat inboard of
+                  // the sub-nav's first tab, which starts flush at --rail. The
+                  // 22px between groups is unchanged (it was 11 + 11).
+                  style={{ position: "relative", display: "flex", alignItems: "stretch", marginRight: 22 }}
                   onMouseEnter={() => setHoveredGroup(group.label)}
                   onMouseLeave={() => setHoveredGroup(null)}
                 >
@@ -189,12 +178,29 @@ export default function LeagueNav({ leagueId }: { leagueId: string }) {
                     cursor: "default",
                   }}>
                     <span style={{
+                      position: "relative",
                       display: "flex",
                       alignItems: "center",
-                      boxShadow: isHovered ? "inset 0 -2.5px 0 var(--text)" : "none",
-                      transition: "box-shadow 0.12s",
                     }}>
                       {group.label}
+                      {/* Filled element rather than an inset box-shadow, and
+                          snapped to whole device pixels — see lib/hairline.
+                          Always rendered and faded on opacity so the hover
+                          still animates, which a mounted/unmounted bar could
+                          not do. */}
+                      <span
+                        aria-hidden="true"
+                        style={{
+                          position: "absolute",
+                          left: 0,
+                          right: 0,
+                          bottom: 0,
+                          height: snapToDevicePx(2.5, dpr),
+                          background: "var(--text)",
+                          opacity: isHovered ? 1 : 0,
+                          transition: "opacity 0.12s",
+                        }}
+                      />
                     </span>
                     <span style={{ display: "flex", alignItems: "center", marginLeft: 5 }}>
                       <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" style={{ transform: isHovered ? "rotate(180deg)" : "none", transition: "transform 0.15s" }}>
@@ -299,31 +305,44 @@ export default function LeagueNav({ leagueId }: { leagueId: string }) {
             // 26px to match the height of the league dropdown beside it, so the
             // two right-hand controls read as the same size.
             // The icon fills from currentColor, so the button's `color` is what
-            // tints it — accent blue rather than the grey the nav uses for text.
-            style={{ width: 26, height: 26, borderRadius: "50%", background: "none", border: "none", display: "flex", alignItems: "center", justifyContent: "center", color: ACCENT, cursor: "pointer", boxShadow: "none", padding: 0, flexShrink: 0 }}
+            // tints it. --text (the near-black) rather than the accent: it sits
+            // next to the league name, which is also --text, so the two
+            // right-hand controls now read as one group.
+            style={{ width: 26, height: 26, borderRadius: "50%", background: "none", border: "none", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text)", cursor: "pointer", boxShadow: "none", padding: 0, flexShrink: 0 }}
           >
             <UserIcon />
           </button>
           {profileOpen && (
             // Same panel treatment as the LEAGUE / BET dropdowns: square, no
-            // border, shadow only, 6px of vertical padding. The email is a
-            // label row, then a rule, then the two actions.
+            // border, shadow only, 6px of vertical padding. This menu is scoped
+            // to the current league — the team name heads it, then a rule, then
+            // that team's standing in this league. The global account (real
+            // name, email, password, sign out) lives under My Account in the
+            // utility bar above, not here.
             <div style={{ position: "absolute", top: "100%", right: 0, background: "var(--surface)", border: "none", borderRadius: 0, boxShadow: "var(--shadow-md)", zIndex: 500, padding: "6px 0" }}>
               <div className="navmenu-profile is-label">
-                <span style={{ gap: 8 }}>
-                  <AccountIcon />
-                  {myFullName || "—"}
-                </span>
+                <span>{teamName || "—"}</span>
               </div>
               {/* Inset to line up with the rows' inner rectangle rather than
                   running the full width of the panel: 8px of row padding plus
                   9px inside the rectangle. */}
               <div style={{ borderTop: "1px solid var(--border)", margin: "3px 17px" }} />
-              <button type="button" className="navmenu-profile" onClick={() => { router.push("/settings"); setProfileOpen(false); }}>
-                <span>Edit profile</span>
+              {/* The identity editor is a modal owned by the league home page,
+                  which this nav cannot reach directly, so route there with a
+                  flag and let that page open it once its members have loaded. */}
+              <button
+                type="button"
+                className="navmenu-profile"
+                onClick={() => { router.push(`${base}?edit=profile`); setProfileOpen(false); }}
+              >
+                <span>Edit Profile</span>
               </button>
-              <button type="button" className="navmenu-profile" onClick={logout}>
-                <span>Sign out</span>
+              <button
+                type="button"
+                className="navmenu-profile"
+                onClick={() => { router.push(`${base}/settings`); setProfileOpen(false); }}
+              >
+                <span>League Settings</span>
               </button>
             </div>
           )}
@@ -337,17 +356,24 @@ export default function LeagueNav({ leagueId }: { leagueId: string }) {
       <div style={{
         flexShrink: 0,
         background: "var(--surface)",
-        padding: "0 300px",
+        padding: "0 var(--rail)",
         display: "flex",
         alignItems: "stretch",
         gap: 26,
         height: 40,
         zIndex: 150,
         position: "relative",
+        // Deliberately not a scroll container. The active tab's underline sits
+        // flush with this row's bottom edge, so any overflow clip here lands
+        // exactly on the line and shaves it down to a faint sliver. Tabs are
+        // kept from colliding by flexShrink: 0 on each link instead.
       }}>
         {/* Divider between the nav bar and the sub-nav, inset to the content
-            rail rather than bleeding to the viewport edges. */}
-        <div style={{ position: "absolute", top: 0, left: 300, right: 300, height: 1, background: "var(--border)" }} />
+            rail rather than bleeding to the viewport edges.
+            zIndex 0 keeps it in the same stacking layer as the tabs below it:
+            as a positioned element it would otherwise paint above the in-flow
+            links and lay its hairline across the top of the active tab. */}
+        <div style={{ position: "absolute", top: 0, left: "var(--rail)", right: "var(--rail)", height: 1, background: "var(--border)", zIndex: 0 }} />
         {activeGroup.links.map(({ label, href }) => {
           const active = isActive(href);
           return (
@@ -363,17 +389,41 @@ export default function LeagueNav({ leagueId }: { leagueId: string }) {
                 textDecoration: "none",
                 whiteSpace: "nowrap",
                 transition: "color 0.12s",
+                // The label cannot wrap, so a shrunk tab does not get shorter
+                // text — it overflows its box and paints over the next tab.
+                // Hold every tab at its natural width instead.
+                flexShrink: 0,
+                // Puts the tabs in the same stacking layer as the divider, so
+                // DOM order decides and the tabs (later) win.
+                position: "relative",
               }}
               onMouseEnter={e => { if (!active) (e.currentTarget as HTMLAnchorElement).style.color = "var(--text)"; }}
               onMouseLeave={e => { if (!active) (e.currentTarget as HTMLAnchorElement).style.color = "var(--text-3)"; }}
             >
               <span style={{
+                position: "relative",
                 display: "flex",
                 alignItems: "center",
                 height: "100%",
-                boxShadow: active ? "inset 0 -1.25px 0 var(--text)" : "none",
               }}>
                 {label}
+                {/* Filled element rather than an inset box-shadow, snapped to
+                    whole device pixels — see lib/hairline. The old shadow left
+                    a faint 1px seam up this tab's right edge, which is what
+                    made the active tab, and only the active tab, look cut. */}
+                {active && (
+                  <span
+                    aria-hidden="true"
+                    style={{
+                      position: "absolute",
+                      left: 0,
+                      right: 0,
+                      bottom: 0,
+                      height: snapToDevicePx(1.5, dpr),
+                      background: "var(--text)",
+                    }}
+                  />
+                )}
               </span>
             </Link>
           );
