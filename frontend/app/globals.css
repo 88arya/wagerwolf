@@ -25,11 +25,11 @@
   --border-3:     #94A3B8;
 
   /* ── Accent Blue ── */
-  --accent:       #1A2A6E;
-  --accent-hover: #141f54;
-  --accent-muted: #2d47b8;
-  --accent-dim:   rgba(26, 42, 110, 0.10);
-  --accent-glow:  rgba(26, 42, 110, 0.18);
+  --accent:       #2B5DE3;
+  --accent-hover: #234CBA;
+  --accent-muted: #5A81E9;
+  --accent-dim:   rgba(43, 93, 227, 0.10);
+  --accent-glow:  rgba(43, 93, 227, 0.18);
 
   /* ── Header ── */
   --navy:         #FFFFFF;
