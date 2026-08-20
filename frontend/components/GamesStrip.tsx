@@ -45,6 +45,17 @@ const DATE_STRIP_BG = "var(--surface-3)";
 // Only the teams area moves; the date band keeps its own background.
 const CARD_BG_HOVER = "var(--surface-2)";
 
+// The one hairline every strip cell is drawn with. Each card carries it on its
+// right and its bottom: the right edges are the dividers between neighbouring
+// cards, and the bottom closes the row off underneath so a card reads as a
+// boxed cell rather than a column of type standing on white. Same weight and
+// token on both, which is what keeps the corner where they meet clean.
+//
+// The cards are stretched to the row height by the container, and they are
+// border-box, so the bottom rule is taken out of the card's own 70px rather
+// than added to the strip — the strip does not get 1px taller.
+const CARD_BORDER = "1px solid var(--border-2)";
+
 // One card's natural height, measured: the date band + two flush 26px team
 // rows sitting in 2px of padding top and bottom. The strip reserves this while
 // the week is loading so games arriving don't shove the page down. If the
@@ -96,12 +107,47 @@ function buildTape<T>(base: T[], scrollerW: number): T[] {
   return out;
 }
 
-// The strip is mounted by two different layouts — app/(user)/layout.tsx and
-// app/leagues/[leagueId]/layout.tsx — so navigating between a league and /home
-// crosses a layout boundary and swaps one instance for another. Caching the
-// week per league lets the new instance paint from memory instead of flashing
-// an empty bar while it refetches.
+// Week data, cached per league so a fresh mount paints from memory instead of
+// flashing an empty bar while it refetches. Predates AppChrome, when the strip
+// was mounted by two different layouts and crossing between a league and /home
+// swapped one instance for another; it still earns its place on a hard reload.
 const weekCache = new Map<string, any>();
+
+// ── Auto-scroll preference ──────────────────────────────────────────────────
+// Off means off everywhere, across navigation and across sessions, until it is
+// switched back on. Two layers, because they solve different halves:
+//
+//   autoScrollPref — module-level, so a remount paints the right state on its
+//     first frame. Reading localStorage in the effect below is a frame too
+//     late, and the toggle would visibly flick back on before settling.
+//   localStorage   — survives a reload, which the module variable does not.
+//
+// Never read in a useState initializer: that runs during SSR, where there is no
+// localStorage and the server would render the default while the client
+// rendered the stored value — a hydration mismatch. The initializer takes the
+// module variable (safe on both sides, since it starts at the default), and the
+// stored value is folded in from an effect on mount.
+const AUTO_SCROLL_KEY = "strip_autoscroll";
+
+let autoScrollPref = true;
+
+function readStoredAutoScroll(): boolean {
+  if (typeof window === "undefined") return autoScrollPref;
+  // Only an explicit "0" turns it off. A missing key, a cleared store, or a
+  // value written by some older build all fall through to on, which is the
+  // default the strip should have when nothing is known.
+  return localStorage.getItem(AUTO_SCROLL_KEY) !== "0";
+}
+
+function writeAutoScroll(on: boolean) {
+  autoScrollPref = on;
+  try {
+    localStorage.setItem(AUTO_SCROLL_KEY, on ? "1" : "0");
+  } catch {
+    // Private mode or a full quota. The module variable already took the value,
+    // so the preference still holds for this session — it just won't outlive it.
+  }
+}
 
 // The two things the strip can show. NFL is the default; MATCHUPS reuses the
 // exact same card shape with league members in place of teams.
@@ -148,8 +194,10 @@ const TEAM_META = {
 
 // Odds keep the nfl.com record metrics but take the accent, matching how odds
 // numbers are treated everywhere else in the app, and run bolder than the 500
-// a record would use.
-const TEAM_ODDS = { ...TEAM_META, color: ACCENT, fontWeight: 600 };
+// a record would use — 700, level with the date band above them, so the two
+// pieces of Inter Tight on the card carry the same weight and only colour and
+// size separate them.
+const TEAM_ODDS = { ...TEAM_META, color: ACCENT, fontWeight: 700 };
 
 // The date in the top band runs bolder than nfl.com's 500 — it is the card's
 // only label up there, so it carries more weight than a stat line would.
@@ -161,7 +209,7 @@ function fmtOdds(american: number): string {
 
 export default function GamesStrip({ leagueId, interactive = true }: { leagueId: string; interactive?: boolean }) {
   const router = useRouter();
-  const cached = leagueId ? weekCache.get(leagueId) : null;
+  const cached = weekCache.get(leagueId || "__public__") ?? null;
   const [week, setWeek] = useState<any>(cached ?? null);
   // Whether the fetch has settled. Distinguishes "still loading" (reserve the
   // height) from "resolved, nothing to show" (collapse for real).
@@ -173,8 +221,21 @@ export default function GamesStrip({ leagueId, interactive = true }: { leagueId:
   const [mode, setMode] = useState<StripMode>("NFL");
   const [matchupRows, setMatchupRows] = useState<any[] | null>(null);
   // The toggle in the header cell. On by default; off stops the drift and hands
-  // scrolling to the user via drag.
-  const [autoScroll, setAutoScroll] = useState(true);
+  // scrolling to the user via drag. Global and sticky — see the autoScrollPref
+  // block above for why the initial value comes from the module variable and
+  // the stored one is folded in from an effect.
+  const [autoScroll, setAutoScrollState] = useState(autoScrollPref);
+
+  useEffect(() => {
+    const stored = readStoredAutoScroll();
+    autoScrollPref = stored;
+    setAutoScrollState(stored);
+  }, []);
+
+  function setAutoScroll(on: boolean) {
+    writeAutoScroll(on);
+    setAutoScrollState(on);
+  }
   // Hovering anywhere on the strip halts the drift so a card can be read (and
   // clicked) without it sliding out from under the cursor. Only relevant while
   // autoScroll is on — with it off there is no drift to pause.
@@ -188,12 +249,32 @@ export default function GamesStrip({ leagueId, interactive = true }: { leagueId:
   const gamesScrollRef = useRef<HTMLDivElement>(null);
   // Set by the anchor effect, consumed by the drift loop on its next start.
   const startPosRef = useRef<number | null>(null);
+
+  // Which week the tape has already been positioned for. The anchor below is a
+  // one-time placement, not something to re-apply: `week` takes a fresh object
+  // identity on every refetch — crossing a route boundary, and once a minute
+  // while a game is live — and re-running on identity slammed the strip back to
+  // the first upcoming game each time, which is what made the ticker visibly
+  // restart when switching pages. Keyed on the week itself, so a genuinely
+  // different week still gets anchored.
+  const anchoredKeyRef = useRef<string | null>(null);
   // Drag-to-scroll bookkeeping, in a ref rather than state: these change on
   // every mousemove and none of them should trigger a re-render.
   //   moved — total distance travelled, used to tell a drag from a click
   const dragRef = useRef({ active: false, startX: 0, startScroll: 0, moved: 0 });
 
   const drifting = autoScroll && !hovering;
+
+  // Which week this is, as a primitive. `week` is replaced wholesale by every
+  // refetch — a route change, or the live-score poll once a minute — even when
+  // it is the same week showing the same cards. Effects that only care *which*
+  // week it is key off this instead of the object, so a score update no longer
+  // tears down the drift loop and the observers underneath it.
+  const weekKey = week?.id ?? week?.number ?? null;
+
+  // Hoisted for the same reason: the poll's own dependency is whether anything
+  // is live, not the week object it read that from.
+  const hasLive = Boolean(week?.games?.some((g: any) => g.status === "IN_PROGRESS"));
 
   // Drop cached matchups when the league or week changes. Without this the
   // `if (matchupRows)` guard below would keep showing the previous league's
@@ -218,13 +299,24 @@ export default function GamesStrip({ leagueId, interactive = true }: { leagueId:
   }, [mode]);
 
   useEffect(() => {
-    if (!leagueId) return;
-    const hit = weekCache.get(leagueId);
+    // Three cases now that the strip runs on public routes too:
+    //
+    //  - a league and a token  -> that league's current week, as before
+    //  - no league, or no token -> /weeks/public/current, which needs neither
+    //
+    // The public endpoint carries games but no props or game lines, which is
+    // all this component draws. Cached under a fixed key so the landing page
+    // and the auth funnel share one fetch.
+    const token = typeof window !== "undefined" && localStorage.getItem("token");
+    const scoped = Boolean(leagueId && token);
+    const key = scoped ? leagueId : "__public__";
+
+    const hit = weekCache.get(key);
     if (hit) { setWeek(hit); setLoaded(true); }
-    if (!localStorage.getItem("token")) return;
-    api(`/weeks?current=true&leagueId=${leagueId}`)
+
+    api(scoped ? `/weeks?current=true&leagueId=${leagueId}` : "/weeks/public/current")
       .then((weeks: any) => {
-        if (weeks?.[0]) { weekCache.set(leagueId, weeks[0]); setWeek(weeks[0]); }
+        if (weeks?.[0]) { weekCache.set(key, weeks[0]); setWeek(weeks[0]); }
       })
       .catch(() => {})
       .finally(() => setLoaded(true));
@@ -240,7 +332,7 @@ export default function GamesStrip({ leagueId, interactive = true }: { leagueId:
     const ro = new ResizeObserver(([entry]) => setScrollerW(entry.contentRect.width));
     ro.observe(el);
     return () => ro.disconnect();
-  }, [mode, week]);
+  }, [mode, weekKey]);
 
   // Anchor scroll to the first upcoming game. NFL mode only — the indices are
   // game indices, and applying them to the matchup list would scroll to an
@@ -251,6 +343,13 @@ export default function GamesStrip({ leagueId, interactive = true }: { leagueId:
     if (!games.length) return;
     const el = gamesScrollRef.current;
     if (!el) return;
+
+    // Mode is in the key because the two lists hold different cards, so coming
+    // back to NFL does want re-anchoring. Recorded only once the element exists,
+    // so an early render with no scroller doesn't burn the key.
+    const key = `${mode}:${weekKey ?? ""}`;
+    if (anchoredKeyRef.current === key) return;
+    anchoredKeyRef.current = key;
 
     const now = new Date();
     const firstUpcoming = games.findIndex(
@@ -266,7 +365,7 @@ export default function GamesStrip({ leagueId, interactive = true }: { leagueId:
     // by the game count would report a fraction of a card.
     startPosRef.current = targetIndex * CARD_W;
     el.scrollLeft = startPosRef.current;
-  }, [week, mode]);
+  }, [weekKey, mode, week]);
 
   // Drift the cards leftward on their own. Driven by rAF rather than an
   // interval so the step is proportional to the real frame time — a dropped
@@ -306,11 +405,12 @@ export default function GamesStrip({ leagueId, interactive = true }: { leagueId:
     };
     raf = requestAnimationFrame(step);
     return () => cancelAnimationFrame(raf);
-  }, [drifting, mode, week, matchupRows]);
+  }, [drifting, mode, weekKey, matchupRows]);
 
-  // Poll every 60s when any game is live
+  // Poll every 60s when any game is live. Keyed on `hasLive` rather than the
+  // week object: keyed on the object, every poll replaced `week` and so
+  // restarted its own interval, and the loop below it.
   useEffect(() => {
-    const hasLive = week?.games?.some((g: any) => g.status === "IN_PROGRESS");
     if (!hasLive || !leagueId) return;
     const interval = setInterval(async () => {
       try {
@@ -319,7 +419,7 @@ export default function GamesStrip({ leagueId, interactive = true }: { leagueId:
       } catch {}
     }, 60000);
     return () => clearInterval(interval);
-  }, [week, leagueId]);
+  }, [hasLive, leagueId]);
 
   // Only NFL mode collapses when empty. In matchups mode the frame has to stay
   // up regardless — it carries the mode selector, and returning null would take
@@ -360,7 +460,7 @@ export default function GamesStrip({ leagueId, interactive = true }: { leagueId:
         aria-checked={autoScroll}
         aria-label="Auto-scroll games"
         title={autoScroll ? "Auto-scroll on — click to stop and drag manually" : "Auto-scroll off — drag the strip to scroll"}
-        onClick={() => setAutoScroll((v) => !v)}
+        onClick={() => setAutoScroll(!autoScroll)}
         style={{
           flexShrink: 0, position: "relative", padding: 0,
           width: TOGGLE_W, height: TOGGLE_H, borderRadius: TOGGLE_H / 2,
@@ -510,8 +610,12 @@ export default function GamesStrip({ leagueId, interactive = true }: { leagueId:
                   flex: `0 0 ${CARD_W}px`,
                   boxSizing: "border-box",
                   background: STRIP_BG,
-                  borderRight: "1px solid var(--border-2)",
-                  minHeight: STRIP_ROW_H,
+                  borderRight: CARD_BORDER,
+                  borderBottom: CARD_BORDER,
+                  // Border-box, so the hairline comes out of STRIP_ROW_H rather
+                  // than pushing past it — same reasoning as the game card.
+                  height: STRIP_ROW_H,
+                  minHeight: 0,
                 }}>
                   <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                     {side(mu.awayUser)}
@@ -550,8 +654,21 @@ export default function GamesStrip({ leagueId, interactive = true }: { leagueId:
                   gap: 0,
                   flex: `0 0 ${CARD_W}px`,
                   boxSizing: "border-box",
+                  // The card's content measures out to exactly STRIP_ROW_H, so
+                  // `align-items: stretch` alone is not enough once there is a
+                  // bottom border: min-height:auto floors the item at its
+                  // content height and the border lands a pixel *below* the
+                  // strip, where the nav (z-index 200, opaque) paints over it.
+                  // Pinning the border box to STRIP_ROW_H and releasing the
+                  // floor takes the hairline out of the 70px instead of adding
+                  // to it. STRIP_ROW_H rather than `height: 100%`: the scroller
+                  // between this card and the fixed-height row is itself auto,
+                  // so a percentage has nothing to resolve against.
+                  height: STRIP_ROW_H,
+                  minHeight: 0,
                   background: STRIP_BG,
-                  borderRight: "1px solid var(--border-2)",
+                  borderRight: CARD_BORDER,
+                  borderBottom: CARD_BORDER,
                   transition: "background 0.12s",
                   cursor: interactive ? "pointer" : "default",
                 }}>

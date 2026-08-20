@@ -1,7 +1,9 @@
 import type { Metadata } from "next";
-import { Fugaz_One, Inter_Tight, Poppins } from "next/font/google";
+import { Fugaz_One, Inter_Tight } from "next/font/google";
 import "./globals.css";
+import AppChrome from "@/components/AppChrome";
 import GoogleProvider from "@/components/GoogleProvider";
+import SiteFooter from "@/components/SiteFooter";
 
 const interTight = Inter_Tight({
   subsets: ["latin"],
@@ -9,19 +11,14 @@ const interTight = Inter_Tight({
   display: "swap",
 });
 
-// Logo only — the UI stays on Inter Tight. Poppins ships as discrete weights
-// rather than a variable font, so the weights have to be named up front; these
-// are the three the wordmark might plausibly use.
-const poppins = Poppins({
-  subsets: ["latin"],
-  weight: ["400", "500", "600"],
-  variable: "--font-poppins",
-  display: "swap",
-});
-
-// Team abbreviations in the games strip only. Fugaz One is a single-face
-// display font — weight 400, normal, and nothing else — so both have to be
-// named explicitly and neither can be varied.
+// Team abbreviations in the games strip, and the wordmark. Fugaz One is a
+// single-face display font — weight 400, normal, and nothing else — so both
+// have to be named explicitly and neither can be varied.
+//
+// The UI stays on Inter Tight. This is the only exception: Poppins, Lexend
+// Deca, Viga, Anton and Passion One each had a turn as a wordmark-only third
+// face and each was a separate fetch. Pointing the lockup at the font the games
+// strip already loads costs nothing.
 const fugazOne = Fugaz_One({
   subsets: ["latin"],
   weight: "400",
@@ -37,9 +34,24 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={`${interTight.variable} ${poppins.variable} ${fugazOne.variable}`} suppressHydrationWarning>
+    <html lang="en" className={`${interTight.variable} ${fugazOne.variable}`} suppressHydrationWarning>
       <body suppressHydrationWarning>
-        <GoogleProvider>{children}</GoogleProvider>
+        {/* Utility bar + games strip, global to every signed-in page. Mounted
+            here rather than per-layout so navigating between /home and a league
+            doesn't tear them down and rebuild them. AppChrome renders a
+            fragment, so both stay direct flex children of <body>. */}
+        <GoogleProvider>
+          <AppChrome />
+          {/* The app's single scroll region, holding the page and the footer as
+              its two children — that pairing is the whole reason it exists, so
+              the footer follows the content instead of pinning to the viewport.
+              The chrome above stays outside it and does not scroll. See
+              .app-scroll in globals.css. */}
+          <div className="app-scroll">
+            {children}
+            <SiteFooter />
+          </div>
+        </GoogleProvider>
       </body>
     </html>
   );

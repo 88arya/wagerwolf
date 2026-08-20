@@ -35,6 +35,13 @@
   --navy:         #FFFFFF;
   --navy-2:       #F5F7FA;
 
+  /* ── Chrome ── */
+  /* Fill for the two bars that bookend the app: the utility bar at the top and
+     the site footer at the bottom. Its own near-black with a warm cast —
+     deliberately not --text and not a step on the --surface ramp. One token so
+     the two cannot drift apart; it used to be a BAR_BG literal in TopBar.tsx. */
+  --bar-bg:       #272731;
+
   /* ── Status ── */
   --win:          #16A34A;
   --win-bg:       rgba(22, 163, 74, 0.10);
@@ -250,8 +257,125 @@ button.dark:hover { opacity: 0.86; background: var(--text); border-color: var(--
 
 /* ── Page wrappers ── */
 /* Full-width scroll containers — content centered via padding so scrollbar sits at viewport right edge */
-.page { flex: 1; min-height: 0; overflow-y: auto; scrollbar-gutter: stable; width: 100%; padding: 16px max(14px, calc((100% - 612px) / 2)) 24px; }
-.page-wide { flex: 1; min-height: 0; overflow-y: auto; scrollbar-gutter: stable; width: 100%; padding: 20px var(--rail) 24px; }
+/* The app's one scroll region, rendered by the root layout around every page.
+   Scrolling used to live on .page/.page-wide, which made each page its own
+   scrollport. That had to move: the site footer has to sit *after* the page's
+   content, and a footer outside the scroller pins to the viewport instead of
+   following the content, while there is no way to inject one inside a scroller
+   that each page renders for itself. So the scroller moved up a level and the
+   page and the footer are its two children.
+
+   `overflow-y: scroll` rather than `auto`: with the footer always below the
+   fold (see .page) something is always overflowing, so the two now behave the
+   same — `scroll` is kept because it is deterministic and does not depend on
+   that staying true. The reserved ~15px gutter is why page content's right edge
+   sits that far inboard of the nav's while the left edges align exactly. */
+.app-scroll { flex: 1; min-height: 0; overflow-y: scroll; display: flex; flex-direction: column; }
+
+/* `min-height: 100%` — a full viewport's worth on its own — is what keeps the
+   footer **off screen until you scroll for it**. It is deliberately not the
+   usual `flex: 1 0 auto` sticky footer: that grows the page into the *remaining*
+   space, which parks the footer against the bottom of the window on any short
+   page, so a half-empty page shows a black bar under it. Filling the height
+   outright pushes the footer past the fold instead, on every page, and the only
+   way to reach it is to scroll.
+   Percentage resolves against .app-scroll, which has a definite height (flex: 1
+   inside a 100dvh body). box-sizing is border-box globally, so the padding below
+   is inside the 100%, not added to it. */
+.page { flex: 0 0 auto; min-height: 100%; width: 100%; padding: 16px max(14px, calc((100% - 612px) / 2)) 24px; }
+.page-wide { flex: 0 0 auto; min-height: 100%; width: 100%; padding: 20px var(--rail) 24px; }
+
+/* ── Site footer ──
+   Bookends the app against the utility bar: same --bar-bg fill, same full-bleed
+   background with contents inset by --rail, so the bar, the nav, the page and
+   the footer all share one left and right edge. Sits inside .app-scroll as the
+   sibling after the page, which is what makes it follow the content rather than
+   pin to the viewport. */
+.site-footer {
+  flex-shrink: 0;
+  background: var(--bar-bg);
+  color: #FFFFFF;
+  padding: 44px var(--rail) 26px;
+}
+
+/* Three equal columns, one per link group. There is no fourth track any more:
+   the brand column that used to lead this row is gone, and leaving its track in
+   place would bunch the links to the left against an empty quarter. */
+.site-footer-cols {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 44px;
+  align-items: start;
+}
+@media (max-width: 900px) {
+  .site-footer-cols { grid-template-columns: 1fr 1fr; gap: 34px; }
+}
+@media (max-width: 560px) {
+  .site-footer-cols { grid-template-columns: 1fr; gap: 28px; }
+}
+
+/* The design system's micro-label, restated for a dark ground: white at 45%
+   stands in for --text-3, which would disappear here. */
+.site-footer-heading {
+  font-size: 0.625rem;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.45);
+  margin-bottom: 15px;
+}
+
+.site-footer-links { display: flex; flex-direction: column; gap: 10px; }
+
+/* Lighter than the utility bar's 0.66rem/800 links: those are two wayfinding
+   items and have to hold the top of the page, these are a list of six and would
+   shout if set the same way. */
+.site-footer-link {
+  font-size: 0.8rem;
+  font-weight: 450;
+  color: rgba(255, 255, 255, 0.72);
+  width: fit-content;
+  transition: color 0.12s;
+}
+.site-footer-link:hover { color: #FFFFFF; }
+
+.site-footer-rule {
+  margin-top: 40px;
+  padding-top: 18px;
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.site-footer-fine {
+  font-size: 0.72rem;
+  color: rgba(255, 255, 255, 0.42);
+}
+
+/* ── Legal / static copy pages ──
+   /privacy, /terms, /responsible-gaming, /contact. These need ordinary reading
+   sub-headings, and the global h2 is a 0.63rem uppercase micro-label — right
+   for a section eyebrow in the app, wrong for prose. Scoped so nothing else
+   moves. */
+.legal h2 {
+  font-size: 0.95rem;
+  font-weight: 500;
+  text-transform: none;
+  letter-spacing: -0.01em;
+  color: var(--text);
+  margin: 30px 0 8px;
+}
+.legal p, .legal li {
+  font-size: 0.88rem;
+  line-height: 1.65;
+  color: var(--text-2);
+}
+.legal p { margin-bottom: 12px; }
+.legal ul { margin: 0 0 12px 18px; }
+.legal li { margin-bottom: 6px; }
+.legal a { color: var(--accent); }
 
 /* ── Typography ── */
 h1 {
@@ -815,7 +939,11 @@ hr { border: none; border-top: 1px solid var(--border); margin: 14px 0; }
   position: absolute;
   left: 0;
   right: 0;
-  bottom: -5px;
+  /* Tucked close to the baseline. It sat at -5px, which read as a detached rule
+     under the word rather than an underline of it — and the gap cost twice,
+     because the label is skewed and the shear displaces this bar in proportion
+     to how far below the pivot it sits. Closer is both tighter and straighter. */
+  bottom: -2px;
   height: 1px;
   background: currentColor;
   /* Revealed left-to-right by clipping, not by scaleX. The bar is always laid
@@ -920,3 +1048,386 @@ button.utility-link:active {
 .standings-row:hover { background: var(--surface-2); }
 .standings-row.is-me { background: var(--accent-dim); }
 .standings-row.is-me:hover { background: rgba(2, 209, 138, 0.14); }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Modern surface — the vocabulary the utility bar and nav were rebuilt in
+   ═══════════════════════════════════════════════════════════════════════════
+
+   Everything below exists because the account, league-profile and league-finder
+   screens were still drawn in the older `.card` idiom — a stack of bordered
+   boxes, each with its own padded header, set in weight 700–900 — while the
+   chrome above them had already moved to hairlines, whitespace and weight
+   400–500. The two read as different applications.
+
+   The rules:
+     · structure is a 1px rule or a gap, never a shadow and never a nested box
+     · the heaviest weight anywhere in here is 500
+     · hierarchy comes from size and colour (--text → --text-2 → --text-3)
+     · one accent, on the thing you are meant to click or the thing that is on
+
+   Shadows appear on exactly one element, `.sheet`, because a modal genuinely
+   floats. Nothing else takes one. */
+
+/* ── Page header: a big light title, a rule, nothing else ── */
+.mx-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 4px;
+}
+.mx-title {
+  font-size: 1.5rem;
+  font-weight: 400;
+  letter-spacing: -0.028em;
+  line-height: 1.05;
+  color: var(--text);
+  margin: 0;
+}
+.mx-sub {
+  font-size: 0.8rem;
+  font-weight: 400;
+  color: var(--text-3);
+  margin: 5px 0 0;
+}
+
+/* ── Section: a micro-label and its rows. No border, no background — the
+      label plus the rows' own rules is all the structure it needs. ── */
+.mx-section { margin-top: 30px; }
+.mx-section-title {
+  font-size: 0.625rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--text-3);
+  margin-bottom: 2px;
+}
+
+/* ── Row: label on the left, value or control on the right, hairline under.
+      The label column is fixed so every row's control starts on one edge. ── */
+.mx-row {
+  display: grid;
+  grid-template-columns: 190px minmax(0, 1fr);
+  gap: 20px;
+  align-items: center;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--border);
+}
+.mx-row:last-child { border-bottom: none; }
+.mx-row-label {
+  font-size: 0.82rem;
+  font-weight: 400;
+  color: var(--text);
+}
+.mx-row-hint {
+  display: block;
+  font-size: 0.72rem;
+  font-weight: 400;
+  color: var(--text-3);
+  margin-top: 3px;
+  line-height: 1.35;
+}
+.mx-row-value {
+  font-size: 0.82rem;
+  font-weight: 400;
+  color: var(--text-2);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* Under ~620px the two columns stop being two columns — a 190px label beside a
+   select leaves the select about 90px wide. */
+@media (max-width: 620px) {
+  .mx-row { grid-template-columns: minmax(0, 1fr); gap: 8px; }
+}
+
+/* ── Fields: flat, 1px, no fill. Overrides the global input rule, which is a
+      1.5px border on a grey fill — correct for the older screens, too heavy
+      beside a hairline row. ── */
+.mx-field,
+input.mx-field,
+select.mx-field,
+textarea.mx-field {
+  width: 100%;
+  background: var(--surface);
+  border: 1px solid var(--border-2);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 0.85rem;
+  font-weight: 400;
+  padding: 9px 11px;
+  outline: none;
+  transition: border-color 0.12s, box-shadow 0.12s;
+  appearance: none;
+  box-sizing: border-box;
+}
+textarea.mx-field { resize: vertical; min-height: 68px; line-height: 1.45; }
+input.mx-field:focus,
+select.mx-field:focus,
+textarea.mx-field:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-dim);
+}
+input.mx-field:disabled, select.mx-field:disabled {
+  color: var(--text-3);
+  background: var(--surface-2);
+  cursor: not-allowed;
+}
+/* Native selects lose their arrow to `appearance: none`, so draw one. The URI
+   is a chevron in --text-3; it cannot read a CSS variable, hence the literal. */
+select.mx-field {
+  padding-right: 30px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2394A3B8' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+}
+
+/* ── Buttons. `button` globally is a filled accent pill at weight 700; these
+      three are the flat set. Each needs its own :hover/:active override
+      because the global rules would otherwise repaint them accent. ── */
+.mx-btn,
+.mx-btn:hover,
+.mx-btn:active {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-family: inherit;
+  font-size: 0.8rem;
+  font-weight: 500;
+  letter-spacing: 0;
+  padding: 8px 15px;
+  border-radius: var(--radius-sm);
+  border: 1px solid transparent;
+  cursor: pointer;
+  transform: none;
+  box-shadow: none;
+  white-space: nowrap;
+  transition: background 0.12s, border-color 0.12s, color 0.12s, opacity 0.12s;
+}
+.mx-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.mx-btn.is-primary, .mx-btn.is-primary:active { background: var(--accent); color: #FFFFFF; border-color: var(--accent); }
+.mx-btn.is-primary:hover:not(:disabled) { background: var(--accent-hover); border-color: var(--accent-hover); }
+
+.mx-btn.is-quiet, .mx-btn.is-quiet:active { background: transparent; color: var(--text-2); border-color: var(--border-2); }
+.mx-btn.is-quiet:hover:not(:disabled) { background: var(--surface-2); color: var(--text); border-color: var(--border-3); }
+
+.mx-btn.is-bare, .mx-btn.is-bare:active { background: transparent; color: var(--text-2); border-color: transparent; padding: 6px 8px; }
+.mx-btn.is-bare:hover:not(:disabled) { background: var(--surface-2); color: var(--text); }
+
+.mx-btn.is-danger, .mx-btn.is-danger:active { background: transparent; color: var(--loss); border-color: var(--loss-border); }
+.mx-btn.is-danger:hover:not(:disabled) { background: var(--loss-bg); border-color: var(--loss); }
+
+/* ── Chips: the filter row. `is-on` is the one accent in the finder. ── */
+.mx-chip,
+.mx-chip:hover,
+.mx-chip:active {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-family: inherit;
+  font-size: 0.75rem;
+  font-weight: 400;
+  padding: 5px 11px;
+  border-radius: 100px;
+  border: 1px solid var(--border-2);
+  background: transparent;
+  color: var(--text-2);
+  cursor: pointer;
+  transform: none;
+  box-shadow: none;
+  white-space: nowrap;
+  transition: background 0.12s, border-color 0.12s, color 0.12s;
+}
+.mx-chip:hover:not(.is-on) { border-color: var(--border-3); color: var(--text); }
+.mx-chip.is-on, .mx-chip.is-on:hover, .mx-chip.is-on:active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #FFFFFF;
+  font-weight: 500;
+}
+.mx-chip:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* ── Tag: a static label, not a control. Same pill, quieter. ── */
+.mx-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.66rem;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  padding: 2px 8px;
+  border-radius: 100px;
+  border: 1px solid var(--border);
+  color: var(--text-3);
+  white-space: nowrap;
+}
+.mx-tag.is-near { border-color: var(--accent); color: var(--accent); }
+.mx-tag.is-locked { border-color: var(--pending-border); color: var(--pending); }
+
+/* ── Notice: the inline result of an action. Left rule only — a full box would
+      be another card. ── */
+.mx-notice {
+  font-size: 0.78rem;
+  font-weight: 400;
+  line-height: 1.45;
+  padding: 9px 0 9px 12px;
+  border-left: 2px solid var(--border-2);
+  color: var(--text-2);
+}
+.mx-notice.is-good { border-left-color: var(--win); color: var(--win); }
+.mx-notice.is-bad { border-left-color: var(--loss); color: var(--loss); }
+.mx-notice.is-warn { border-left-color: var(--pending); color: var(--pending); }
+
+/* ── Modal. The one place a shadow is correct: it is genuinely above the page.
+      `.sheet` is square-cornered at the top like the nav menus but rounded,
+      because unlike them it is not hanging off an edge. ── */
+.mx-scrim {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.38);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  overflow-y: auto;
+}
+.mx-sheet {
+  width: 100%;
+  max-width: 400px;
+  background: var(--surface);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-lg);
+  padding: 20px 22px 22px;
+  margin: auto;
+}
+.mx-sheet-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 16px;
+}
+.mx-sheet-title {
+  font-size: 1rem;
+  font-weight: 400;
+  letter-spacing: -0.018em;
+  color: var(--text);
+}
+.mx-sheet-close,
+.mx-sheet-close:hover,
+.mx-sheet-close:active {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-3);
+  cursor: pointer;
+  transform: none;
+  box-shadow: none;
+  flex-shrink: 0;
+}
+.mx-sheet-close:hover { background: var(--surface-2); color: var(--text); }
+
+/* ── Stacked form inside a sheet: label above field, generous gap. ── */
+.mx-stack { display: flex; flex-direction: column; gap: 16px; }
+.mx-label {
+  display: block;
+  font-size: 0.625rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--text-3);
+  margin-bottom: 6px;
+}
+
+/* ── League finder rows. A list separated by rules, not a grid of boxes. The
+      whole row is the hit target; the join control sits at its right. ── */
+.mx-list { border-top: 1px solid var(--border); }
+.mx-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 18px;
+  align-items: center;
+  padding: 15px 10px 15px 0;
+  border-bottom: 1px solid var(--border);
+  transition: background 0.12s;
+}
+.mx-item:hover { background: var(--surface-2); }
+.mx-item.is-blocked { opacity: 0.58; }
+.mx-item.is-blocked:hover { background: transparent; }
+.mx-item-name {
+  font-size: 0.92rem;
+  font-weight: 500;
+  letter-spacing: -0.012em;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mx-item-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  margin-top: 6px;
+  font-size: 0.74rem;
+  font-weight: 400;
+  color: var(--text-3);
+}
+.mx-item-meta strong { font-weight: 500; color: var(--text-2); }
+@media (max-width: 560px) {
+  .mx-item { grid-template-columns: minmax(0, 1fr); gap: 10px; }
+}
+
+/* ── Capacity bar: how full a league is, as a 2px rule. ── */
+.mx-meter {
+  width: 54px;
+  height: 2px;
+  background: var(--surface-4);
+  border-radius: 2px;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+.mx-meter > span { display: block; height: 100%; background: var(--text-3); }
+.mx-meter.is-nearly-full > span { background: var(--accent); }
+
+/* ── Empty state ── */
+.mx-empty {
+  padding: 44px 0;
+  text-align: center;
+  font-size: 0.82rem;
+  font-weight: 400;
+  color: var(--text-3);
+  line-height: 1.6;
+}
+
+/* ── Checkboxes and radios ──
+   The global `input` rule above sets `appearance: none` along with a fill, a
+   1.5px border and `width: 100%` — right for text fields, wrong for a box
+   whose entire job is to show a tick. Stripped of its appearance a checkbox
+   renders as an empty grey rectangle that reads as unchecked whatever its
+   state, and stretches to the width of its row. Hand both back to the
+   platform; `accent-color` is the one thing we keep. */
+input[type="checkbox"],
+input[type="radio"] {
+  appearance: auto;
+  -webkit-appearance: auto;
+  width: auto;
+  padding: 0;
+  border: none;
+  background: none;
+  accent-color: var(--accent);
+}

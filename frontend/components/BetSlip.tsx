@@ -216,16 +216,29 @@ export default function BetSlip({ leagueId }: { leagueId: string }) {
   // align on one kind of route and miss on the other. Deliberately not rounded:
   // the nav stack can land on a fractional y, and rounding reintroduces the
   // few-tenths gap this is meant to close.
+  //
+  // Measured off the scroll container, not off .page itself. This slip is
+  // position: fixed, so it needs a viewport-relative y — and .page stopped
+  // being the scrollport when scrolling moved up to .app-scroll (see
+  // globals.css). Its rect top now slides up as the user scrolls, so reading it
+  // would peg the slip to wherever the page happened to be scrolled at the
+  // moment of the last measure. .app-scroll's own top is fixed under the nav
+  // stack, which is the number this actually wants; .page still supplies the
+  // padding, since that is what separates the scrollport from the first card.
   const [contentTop, setContentTop] = useState(CONTENT_TOP_FALLBACK);
   useEffect(() => {
+    const scroller = document.querySelector(".app-scroll");
     const page = document.querySelector(".page, .page-wide");
-    if (!page) return;
+    if (!scroller || !page) return;
     const measure = () => {
       const padTop = parseFloat(getComputedStyle(page).paddingTop) || 0;
-      setContentTop(page.getBoundingClientRect().top + padTop);
+      setContentTop(scroller.getBoundingClientRect().top + padTop);
     };
     measure();
+    // The scroller for its top moving when the chrome above it changes height,
+    // the page for its padding changing with the viewport.
     const ro = new ResizeObserver(measure);
+    ro.observe(scroller);
     ro.observe(page);
     window.addEventListener("resize", measure);
     return () => { ro.disconnect(); window.removeEventListener("resize", measure); };

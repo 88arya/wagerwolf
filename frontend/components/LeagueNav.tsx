@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import HelmetAvatar from "@/components/HelmetAvatar";
+import LeagueProfileModal from "@/components/LeagueProfileModal";
 import { ACCENT } from "@/lib/constants";
 import { useDevicePixelRatio, snapToDevicePx } from "@/lib/hairline";
 
@@ -23,8 +24,7 @@ function ChevronDown() {
 }
 
 // Solid person-in-circle. Filled rather than stroked, so it takes `fill` from
-// currentColor and ignores strokeWidth. Duplicated verbatim in UserNav — keep
-// the two in step.
+// currentColor and ignores strokeWidth.
 function UserIcon() {
   return (
     <svg width="26" height="26" viewBox="0 0 512 512" fill="currentColor" aria-hidden="true">
@@ -41,6 +41,10 @@ export default function LeagueNav({ leagueId }: { leagueId: string }) {
   const [myDisplayName, setMyDisplayName] = useState("");
   const [open, setOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
+  // The identity editor is mounted here rather than reached by routing —
+  // see the header comment in LeagueProfileModal for why the old
+  // ?edit=profile round trip could not work from the league home page.
+  const [editorOpen, setEditorOpen] = useState(false);
   const [hoveredGroup, setHoveredGroup] = useState<string | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const profileRef = useRef<HTMLDivElement>(null);
@@ -287,7 +291,7 @@ export default function LeagueNav({ leagueId }: { leagueId: string }) {
               <button
                 type="button"
                 className="navmenu-league"
-                onClick={() => { router.push("/leagues"); setOpen(false); }}
+                onClick={() => { router.push("/home"); setOpen(false); }}
               >
                 <span>+ Add Another League</span>
               </button>
@@ -327,13 +331,16 @@ export default function LeagueNav({ leagueId }: { leagueId: string }) {
                   running the full width of the panel: 8px of row padding plus
                   9px inside the rectangle. */}
               <div style={{ borderTop: "1px solid var(--border)", margin: "3px 17px" }} />
-              {/* The identity editor is a modal owned by the league home page,
-                  which this nav cannot reach directly, so route there with a
-                  flag and let that page open it once its members have loaded. */}
+              {/* Opens the editor mounted at the bottom of this component.
+                  It used to push `${base}?edit=profile` and let the home page
+                  pick the flag up, which silently did nothing when you were
+                  already on the home page — App Router does not remount a page
+                  for a query-string-only change, so the effect watching for the
+                  parameter never re-ran. */}
               <button
                 type="button"
                 className="navmenu-profile"
-                onClick={() => { router.push(`${base}?edit=profile`); setProfileOpen(false); }}
+                onClick={() => { setEditorOpen(true); setProfileOpen(false); }}
               >
                 <span>Edit Profile</span>
               </button>
@@ -350,6 +357,11 @@ export default function LeagueNav({ leagueId }: { leagueId: string }) {
 
       </div>
     </nav>
+
+    {/* Rendered unconditionally but inert until opened: it returns null while
+        closed and only fetches once it is open, so every page in the league
+        carries it for free. */}
+    <LeagueProfileModal leagueId={leagueId} open={editorOpen} onClose={() => setEditorOpen(false)} />
 
     {/* Sub-nav extension: tabs of the active group */}
     {activeGroup && (
