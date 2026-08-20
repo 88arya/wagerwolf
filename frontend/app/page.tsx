@@ -2,10 +2,10 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import Logo from "@/components/Logo";
-import LogoWordmark from "@/components/LogoWordmark";
+import { SIGNUP_EVENT } from "@/components/TopBar";
 import { GoogleLogin } from "@react-oauth/google";
 import { api } from "@/lib/api";
+import { setToken, signOut } from "@/lib/auth";
 
 const STEPS = [
   { n: "01", title: "Join a league", desc: "Create a private league and invite friends, or drop into a public one. Leagues run the full NFL season." },
@@ -29,6 +29,17 @@ export default function HomePage() {
   const [authError, setAuthError] = useState("");
   const [authView, setAuthView] = useState<"signin" | "signup" | null>(null);
 
+
+  // Fired by TopBar's "Get Started", which replaced this page's own header
+  // buttons. An event rather than a query parameter: App Router does not
+  // remount for a query-string-only change, so a parameter would do nothing
+  // when the bar is clicked on the page it lives above.
+  useEffect(() => {
+    const open = () => { setAuthError(""); setAuthView("signup"); };
+    window.addEventListener(SIGNUP_EVENT, open);
+    return () => window.removeEventListener(SIGNUP_EVENT, open);
+  }, []);
+
   useEffect(() => {
     const token = localStorage.getItem("token");
     if (token) {
@@ -38,7 +49,7 @@ export default function HomePage() {
   }, []);
 
   function logout() {
-    localStorage.removeItem("token");
+    signOut();
     localStorage.removeItem("userId");
     localStorage.removeItem("displayName");
     setIsLoggedIn(false);
@@ -49,14 +60,14 @@ export default function HomePage() {
     setAuthError("");
     try {
       const res = await api("/users/auth/google", { method: "POST", body: JSON.stringify({ credential: credentialResponse.credential }) });
-      localStorage.setItem("token", res.token);
+      setToken(res.token);
       localStorage.setItem("userId", res.userId);
       localStorage.setItem("displayName", res.displayName);
       setIsLoggedIn(true);
       setDisplayName(res.displayName || "");
       // The server decides whether onboarding is owed, so the rule lives in one
       // place rather than being re-derived from the fields on the client.
-      router.push(res.needsOnboarding ? "/onboarding" : "/leagues");
+      router.push(res.needsOnboarding ? "/onboarding" : "/home");
     } catch (err: any) {
       try { setAuthError(JSON.parse(err.message).error); } catch { setAuthError(err.message); }
     }
@@ -69,55 +80,21 @@ export default function HomePage() {
   const PAD = "0 max(24px, calc((100% - 1120px) / 2))";
 
   return (
-    <div style={{ flex: 1, minHeight: 0, overflowY: "auto", background: "var(--bg)" }}>
+    // Was its own scroll container. Scrolling now lives on .app-scroll in the
+    // root layout so the global footer can sit after this content — so all this
+    // needs is the same contract as .page/.page-wide: a full viewport's worth of
+    // height on its own, which keeps the footer below the fold.
+    <div style={{ flex: "0 0 auto", minHeight: "100%", background: "var(--bg)" }}>
 
-      {/* ── Header ── */}
-      <header
-        style={{
-          position: "sticky",
-          top: 0,
-          zIndex: 50,
-          background: "var(--bg)",
-          borderBottom: "1px solid var(--border)",
-          height: 60,
-          display: "flex",
-          alignItems: "center",
-          padding: PAD,
-        }}
-      >
-        <div style={{ display: "flex", alignItems: "center", gap: 9, marginRight: "auto" }}>
-          <Logo size={24} />
-          <span style={{ fontSize: "1.05rem", fontWeight: 500, letterSpacing: "-0.03em" }}>Wagerwolf</span>
-        </div>
+      {/* No header here any more. AppChrome mounts the utility bar on every
+          route including this one, and it carries the wordmark plus the
+          right-hand control — "Get Started" signed out, "My Account" signed in.
+          Two sticky headers stacked was the alternative, and the second one was
+          saying the same things as the first.
 
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <a
-            href="/how-to-play"
-            style={{ fontSize: "0.85rem", fontWeight: 450, color: "var(--text-2)", padding: "6px 12px" }}
-          >
-            How to play
-          </a>
-          {isLoggedIn ? (
-            <button type="button" className="dark" onClick={() => router.push("/leagues")}>
-              My leagues
-            </button>
-          ) : (
-            <>
-              <button
-                type="button"
-                className="ghost"
-                onClick={() => { setAuthError(""); setAuthView("signin"); }}
-              >
-                Sign in
-              </button>
-              <button type="button" onClick={() => { setAuthError(""); setAuthView("signup"); }}>
-                Get started
-              </button>
-            </>
-          )}
-        </div>
-      </header>
-
+          "How to play" and the separate "Sign in" went with it: the page's own
+          How to Play section is directly below, and one Get Started that opens
+          the modal is less to read than a sign-in / sign-up pair. */}
       {/* ── Hero ── */}
       <section
         className="dot-grid"
@@ -214,7 +191,7 @@ export default function HomePage() {
             <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
               <button
                 type="button"
-                onClick={() => router.push("/leagues")}
+                onClick={() => router.push("/home")}
                 style={{ padding: "12px 26px", fontSize: "0.95rem" }}
               >
                 Continue as {displayName || "you"} →
@@ -299,25 +276,11 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* ── Footer ── */}
-      <footer style={{ padding: PAD, borderTop: "1px solid var(--border)" }}>
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 12,
-            padding: "24px 0",
-            flexWrap: "wrap",
-          }}
-        >
-          {/* Wordmark carries the name itself, so it stands in for the icon
-              plus the "Wagerwolf" label the footer used to pair. */}
-          <LogoWordmark height={22} />
-          <span style={{ fontSize: "0.8rem", color: "var(--text-3)", marginLeft: "auto" }}>
-            Fake money. Real NFL data.
-          </span>
-        </div>
-      </footer>
+      {/* No footer here any more. This page used to end in one of its own; the
+          global SiteFooter in the root layout now renders on every route, this
+          one included, and it carries the wordmark that used to sit here. Its
+          "Fake money. Real NFL data." tagline is gone — the hero above still
+          makes the point, and the footer's copyright row took that slot. */}
     </div>
   );
 }
