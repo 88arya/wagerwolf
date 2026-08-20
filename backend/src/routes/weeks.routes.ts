@@ -23,6 +23,68 @@ async function fetchWeekWithGames(weekId: string) {
   });
 }
 
+/**
+ * The current NFL week, for anyone — no token required.
+ *
+ * Exists so the games strip can run on the landing page and the auth funnel,
+ * where there is no session yet. Everything else under /weeks stays behind
+ * requireAuth.
+ *
+ * Deliberately NOT the same payload as `GET /?current=true`. That one embeds
+ * every prop and game line for the week, which is the whole betting market;
+ * this returns only what the strip actually draws — teams, kickoff, status and
+ * score. Public data either way (it is the NFL schedule), but there is no
+ * reason to hand the market to an unauthenticated caller.
+ */
+router.get("/public/current", async (_req: any, res: any) => {
+  try {
+    const now = new Date();
+    const withGames = {
+      games: {
+        orderBy: [asc(games.gameDate), asc(games.id)],
+        columns: {
+          id: true, weekId: true, homeTeam: true, awayTeam: true, gameDate: true,
+          status: true, homeScore: true, awayScore: true, statusDetail: true,
+        },
+        // The two moneylines, and nothing else. The strip prints them on
+        // scheduled cards, so leaving them out rendered a bare card on the
+        // landing page — which is what this endpoint exists to fill.
+        //
+        // Still not the whole market: spreads, totals, alt lines and every
+        // player prop stay behind requireAuth. A moneyline beside a fixture is
+        // what any scoreboard shows; the rest is the thing you sign in to bet
+        // into.
+        with: {
+          gameLines: {
+            where: inArray(gameLines.market, ["MONEYLINE_HOME", "MONEYLINE_AWAY"]),
+            columns: { id: true, gameId: true, market: true, label: true, odds: true },
+          },
+        },
+      },
+    } as const;
+
+    // Same three-step fallback the authenticated branch uses: the week we are
+    // inside, else the next one to start, else the first unresolved week at all.
+    let week =
+      (await db.query.weeks.findFirst({
+        where: and(eq(weeks.resolved, false), lte(weeks.startDate, now), gte(weeks.endDate, now)),
+        orderBy: asc(weeks.number), with: withGames,
+      })) ??
+      (await db.query.weeks.findFirst({
+        where: and(eq(weeks.resolved, false), gt(weeks.startDate, now)),
+        orderBy: asc(weeks.startDate), with: withGames,
+      })) ??
+      (await db.query.weeks.findFirst({
+        where: eq(weeks.resolved, false),
+        orderBy: asc(weeks.number), with: withGames,
+      }));
+
+    res.json(week ? [week] : []);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 router.get("/", requireAuth, async (req: any, res: any) => {
   try {
     const { current, leagueId } = req.query;
