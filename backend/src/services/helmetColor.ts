@@ -27,18 +27,27 @@ const HELMET_COLORS = [
   // (white is reserved for the ghost user)
 ];
 
-export async function pickHelmetColor(leagueId: string): Promise<string> {
-  console.log("[helmetColor] called for leagueId:", leagueId);
+/** The palette, for callers that need to validate a colour against it. */
+export const HELMET_COLOR_LIST: readonly string[] = HELMET_COLORS;
+
+/**
+ * A colour for a new membership, unique within the league where possible.
+ *
+ * `preferred` is the user's default from My Account. It is honoured only if
+ * nobody in this league already has it — uniqueness wins, because two identical
+ * helmets in one league is a bug the user cannot fix, whereas a default that
+ * quietly lost is a mild disappointment. Falls through to the old random pick.
+ */
+export async function pickHelmetColor(leagueId: string, preferred?: string | null): Promise<string> {
   try {
     const taken = await db.query.memberships.findMany({
       where: eq(memberships.leagueId, leagueId),
     });
     const takenSet = new Set(taken.map((m) => m.helmetColor));
+    if (preferred && HELMET_COLORS.includes(preferred) && !takenSet.has(preferred)) return preferred;
     const available = HELMET_COLORS.filter(c => !takenSet.has(c));
     const pool = available.length > 0 ? available : HELMET_COLORS;
-    const picked = pool[Math.floor(Math.random() * pool.length)];
-    console.log("[helmetColor] taken:", [...takenSet], "picked:", picked);
-    return picked;
+    return pool[Math.floor(Math.random() * pool.length)];
   } catch (err) {
     console.error("[helmetColor] failed, using random fallback:", err);
     return HELMET_COLORS[Math.floor(Math.random() * HELMET_COLORS.length)];
