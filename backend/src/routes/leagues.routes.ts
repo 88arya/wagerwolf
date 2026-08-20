@@ -1,9 +1,10 @@
 import { Router } from "express";
 import { db } from "../db/db";
 import { eq, and, inArray, count, sql } from "drizzle-orm";
-import { leagues, memberships, weeks, parlays, parlayLegs, gamePicks, picks, matchups } from "../db/schema";
+import { leagues, memberships, users, weeks, parlays, parlayLegs, gamePicks, picks, matchups } from "../db/schema";
 import { requireAuth } from "../middleware/auth";
 import { getNearestTuesdayNoon } from "../services/scheduleMatchups";
+import { coerceLevel } from "../services/leagueLevel";
 
 const MAX_NFL_WEEK = 17;
 
@@ -19,7 +20,10 @@ function nextSmallestPowerOf2(n: number): number {
 
 router.post("/", requireAuth, async (req: any, res: any) => {
   try {
-    const { name, weeklyAllowance, maxPlayers, isPublic, maxPublicPlayers, maxBetsPerWeek, maxStakePerBet, startWeek } = req.body;
+    const {
+      name, weeklyAllowance, maxPlayers, isPublic, maxPublicPlayers,
+      maxBetsPerWeek, maxStakePerBet, startWeek, skillLevel,
+    } = req.body;
     // weeklyAllowance is in cents ($1,000,000 = 100,000,000 cents)
     if (!name || !weeklyAllowance || Number(weeklyAllowance) <= 0 || Number(weeklyAllowance) > 100000000) {
       res.status(400).json({ error: "Weekly allowance must be between $1 and $1,000,000" });
@@ -69,6 +73,7 @@ router.post("/", requireAuth, async (req: any, res: any) => {
 
     const [league] = await db.insert(leagues).values({
       name,
+      skillLevel: coerceLevel(skillLevel),
       weeklyAllowance: Number(weeklyAllowance),
       inviteCode,
       creatorId: req.userId,
@@ -101,7 +106,10 @@ router.patch("/:id", requireAuth, async (req: any, res: any) => {
     if (league.creatorId !== req.userId) { res.status(403).json({ error: "Commissioner only" }); return; }
     if (league.seasonStarted) { res.status(400).json({ error: "Cannot change settings after season has started" }); return; }
 
-    const { name, weeklyAllowance, startWeek, regularSeasonWeeks, playoffSize, consolationWeeks, isPublic, maxPublicPlayers } = req.body;
+    const {
+      name, weeklyAllowance, startWeek, regularSeasonWeeks, playoffSize, consolationWeeks,
+      isPublic, maxPublicPlayers, skillLevel,
+    } = req.body;
 
     if (name !== undefined) {
       const trimmed = String(name).trim();
@@ -156,6 +164,8 @@ router.patch("/:id", requireAuth, async (req: any, res: any) => {
       updateData.maxPublicPlayers = Math.max(0, Number(maxPublicPlayers));
     }
     if (autoStartAt !== undefined) updateData.autoStartAt = autoStartAt;
+
+    if (skillLevel !== undefined) updateData.skillLevel = coerceLevel(skillLevel);
 
     const [updated] = await db.update(leagues).set(updateData).where(eq(leagues.id, req.params.id)).returning();
 

@@ -8,59 +8,18 @@ import { pickHelmetColor } from "../services/helmetColor";
 import { generateAbbreviation } from "../services/abbreviation";
 import { generateLeagueName } from "../services/leagueName";
 import { tallyRecords, compareStandings } from "../services/standings";
+import { matchAndJoin, selectableStartWeeks } from "../services/matchmaking";
+import { LEAGUE_LEVELS } from "../services/leagueLevel";
+import { isUniqueViolation } from "../db/pgErrors";
 
 const router = Router();
 
-async function ensureOpenPublicLeague(creatorId: string) {
-  const open = await db.query.leagues.findFirst({
-    where: and(eq(leagues.isPublic, true), eq(leagues.seasonStarted, false)),
-    with: { memberships: { where: eq(memberships.status, "ACTIVE") } },
-  }) as any;
-  if (open && open.memberships.length < open.maxPlayers) return;
+// `ensureOpenPublicLeague` used to live here: it topped the pool up with a
+// fresh public league whenever one filled. Quick Join replaced it — when
+// nothing fits, it creates a league and seats the user as commissioner, so
+// supply is replenished by the person who needed it rather than by a
+// side effect of somebody else's join. See services/matchmaking.ts.
 
-  const [{ value: leagueCount }] = await db
-    .select({ value: sql<number>`count(*)::int` })
-    .from(leagues)
-    .where(eq(leagues.isPublic, true));
-
-  const playoffSize = 6;
-  const playoffWeeks = Math.ceil(Math.log2(playoffSize));
-  const maxPlayers = 10;
-
-  const firstUnresolved = await db.query.weeks.findFirst({
-    where: eq(weeks.resolved, false),
-    orderBy: (weeks, { asc }) => [asc(weeks.number)],
-  });
-  let startWeek = 1;
-  if (firstUnresolved) startWeek = firstUnresolved.number === 1 ? 2 : firstUnresolved.number;
-  const regularSeasonWeeks = Math.max(1, 18 - startWeek - playoffWeeks + 1);
-
-  let inviteCode = Math.random().toString(36).substring(2, 8).toUpperCase();
-  while (true) {
-    const [existing] = await db
-      .select({ id: leagues.id })
-      .from(leagues)
-      .where(eq(leagues.inviteCode, inviteCode))
-      .limit(1);
-    if (!existing) break;
-    inviteCode = Math.random().toString(36).substring(2, 8).toUpperCase();
-  }
-
-  await db.insert(leagues).values({
-    name: generateLeagueName(),
-    weeklyAllowance: 30000, // $300 in cents
-    inviteCode,
-    creatorId,
-    isPublic: true,
-    maxPlayers,
-    startWeek,
-    regularSeasonWeeks,
-    playoffWeeks,
-    playoffSize,
-    consolationTeams: maxPlayers - playoffSize,
-    consolationWeeks: 2,
-  });
-}
 
 // Active memberships only (shown in "My Leagues" list)
 router.get("/", requireAuth, async (req: any, res: any) => {
@@ -287,13 +246,18 @@ router.post("/join-by-code", requireAuth, async (req: any, res: any) => {
       res.status(400).json({ error: "This league has already started" }); return;
     }
 
-    const [helmetColor, joiningUser] = await Promise.all([
-      pickHelmetColor(league.id),
-      db.query.users.findFirst({
-        where: eq(users.id, req.userId),
-      }),
-    ]);
-    const abbreviation = generateAbbreviation(joiningUser?.displayName ?? "");
+    // Deliberately no seat claim: this creates a PENDING request, and a queue
+    // entry must not hold a seat or one unanswered request would block a league
+    // forever. The seat is taken when the commissioner accepts — see
+    // approvePendingMembership.
+    // The user has to be loaded before the colour, not alongside it: the
+    // account default feeds pickHelmetColor, which is what makes a join-by-code
+    // request use the same identity as every other join path.
+    const joiningUser = await db.query.users.findFirst({
+      where: eq(users.id, req.userId),
+    });
+    const helmetColor = await pickHelmetColor(league.id, joiningUser?.defaultHelmetColor);
+    const abbreviation = joiningUser?.defaultAbbreviation || generateAbbreviation(joiningUser?.displayName ?? "");
 
     try {
       const [membership] = await db.insert(memberships).values({
@@ -308,7 +272,7 @@ router.post("/join-by-code", requireAuth, async (req: any, res: any) => {
 
       res.status(201).json({ ...membership, league });
     } catch (insertErr: any) {
-      if (insertErr.code === "23505") {
+      if (isUniqueViolation(insertErr)) {
         res.status(409).json({ error: "You already have a membership or pending request for this league" });
       } else {
         throw insertErr;
@@ -319,151 +283,73 @@ router.post("/join-by-code", requireAuth, async (req: any, res: any) => {
   }
 });
 
-// Public join: first try pure public leagues, then public-fill private leagues
+/**
+ * Legacy quick-join. Kept because it is a live route with clients in the wild;
+ * it delegates to the same matchmaking as /quick-join rather than carrying its
+ * own copy of "find an open league", which had drifted into a different (and
+ * unbounded) implementation.
+ */
 router.post("/join-public", requireAuth, async (req: any, res: any) => {
   try {
-    const [existingMembershipsRows, publicUser] = await Promise.all([
-      db.select({ leagueId: memberships.leagueId }).from(memberships).where(eq(memberships.userId, req.userId)),
-      db.query.users.findFirst({ where: eq(users.id, req.userId) }),
-    ]);
-    const abbreviation = generateAbbreviation(publicUser?.displayName ?? "");
-    const existingLeagueIds = existingMembershipsRows.map((m) => m.leagueId);
+    const result = await matchAndJoin(req.userId, {});
+    res.status(201).json({ ...result.membership, league: result.league });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
-    // 1. Try pure public leagues
-    const publicLeagueRows = await db.query.leagues.findMany({
-      where: and(
-        eq(leagues.isPublic, true),
-        eq(leagues.seasonStarted, false),
-        or(isNull(leagues.autoStartAt), gt(leagues.autoStartAt, new Date()))
-      ),
-      with: {
-        memberships: {
-          where: eq(memberships.status, "ACTIVE"),
-        },
-      },
-    }) as any[];
-
-    // Filter out leagues where user is already a member
-    const filteredPublic = existingLeagueIds.length > 0
-      ? publicLeagueRows.filter((l: any) => !existingLeagueIds.includes(l.id))
-      : publicLeagueRows;
-
-    const availablePublic = filteredPublic
-      .filter((l: any) => l.memberships.length < l.maxPlayers)
-      .sort((a: any, b: any) => b.memberships.length - a.memberships.length);
-
-    if (availablePublic.length > 0) {
-      const league = availablePublic[0];
-      const maxWeek = league.startWeek + league.regularSeasonWeeks + league.playoffWeeks - 1;
-      const activeWeek = await db.query.weeks.findFirst({
-        where: and(
-          eq(weeks.resolved, false),
-          gte(weeks.number, league.startWeek),
-          lte(weeks.number, maxWeek)
-        ),
-        orderBy: (weeks, { asc }) => [asc(weeks.number)],
-      });
-      const helmetColor = await pickHelmetColor(league.id);
-
-      try {
-        const [membership] = await db.insert(memberships).values({
-          userId: req.userId,
-          leagueId: league.id,
-          balance: activeWeek ? league.weeklyAllowance : 0,
-          status: "ACTIVE",
-          isPublicFill: false,
-          helmetColor,
-          abbreviation,
-          displayName: publicUser?.displayName ?? "",
-        }).returning();
-
-        await scheduleMatchups(league.id);
-
-        // If this join filled the public league, ensure another is open
-        const freshLeagueMemberships = await db
-          .select({ id: memberships.id })
-          .from(memberships)
-          .where(and(eq(memberships.leagueId, league.id), eq(memberships.status, "ACTIVE")));
-        if (freshLeagueMemberships.length >= league.maxPlayers) {
-          await ensureOpenPublicLeague(league.creatorId);
-        }
-
-        res.status(201).json({ ...membership, league });
-        return;
-      } catch (insertErr: any) {
-        if (insertErr.code === "23505") {
-          res.status(409).json({ error: "Already a member of this league" });
-          return;
-        }
-        throw insertErr;
-      }
-    }
-
-    // 2. Try public-fill slots in private leagues
-    const privateLeagueRows = await db.query.leagues.findMany({
-      where: and(
-        eq(leagues.isPublic, false),
-        eq(leagues.seasonStarted, false),
-        gt(leagues.maxPublicPlayers, 0),
-        or(isNull(leagues.autoStartAt), gt(leagues.autoStartAt, new Date()))
-      ),
-      with: {
-        memberships: {
-          where: eq(memberships.status, "ACTIVE"),
-        },
-      },
-    }) as any[];
-
-    // Filter out leagues where user is already a member
-    const filteredPrivate = existingLeagueIds.length > 0
-      ? privateLeagueRows.filter((l: any) => !existingLeagueIds.includes(l.id))
-      : privateLeagueRows;
-
-    const availableFill = filteredPrivate
-      .filter((l: any) => {
-        const publicFillCount = l.memberships.filter((m: any) => m.isPublicFill).length;
-        return publicFillCount < l.maxPublicPlayers && l.memberships.length < l.maxPlayers;
-      })
-      .sort((a: any, b: any) => b.memberships.length - a.memberships.length);
-
-    if (availableFill.length === 0) {
-      res.status(404).json({ error: "No public leagues available right now" }); return;
-    }
-
-    const league = availableFill[0];
-    const maxWeekFill = league.startWeek + league.regularSeasonWeeks + league.playoffWeeks - 1;
-    const activeWeekFill = await db.query.weeks.findFirst({
-      where: and(
-        eq(weeks.resolved, false),
-        gte(weeks.number, league.startWeek),
-        lte(weeks.number, maxWeekFill)
-      ),
-      orderBy: (weeks, { asc }) => [asc(weeks.number)],
+/**
+ * Quick Join — the only way into a public league.
+ *
+ * There is no directory endpoint any more. `GET /discover` returned a ranked,
+ * cursor-paginated page of open leagues with search, skill-band and
+ * country/region filters; players are now assigned rather than shown a list, so
+ * all of it went. `POST /join/:leagueId` went with it — with nothing listing
+ * league ids, the only way to name a specific league is an invite code, which
+ * is `/join-by-code`.
+ *
+ * Three inputs: how many teams, beginner or pro, and which NFL week the season
+ * starts. Only the first can be compromised on.
+ */
+router.post("/quick-join", requireAuth, async (req: any, res: any) => {
+  try {
+    const { maxPlayers, level, startWeek } = req.body ?? {};
+    const result = await matchAndJoin(req.userId, {
+      maxPlayers: maxPlayers ? Number(maxPlayers) : null,
+      level: typeof level === "string" ? level.toUpperCase() : null,
+      startWeek: startWeek ? Number(startWeek) : null,
     });
-    const helmetColor = await pickHelmetColor(league.id);
 
-    try {
-      const [membership] = await db.insert(memberships).values({
-        userId: req.userId,
-        leagueId: league.id,
-        balance: activeWeekFill ? league.weeklyAllowance : 0,
-        status: "ACTIVE",
-        isPublicFill: true,
-        helmetColor,
-        abbreviation,
-        displayName: publicUser?.displayName ?? "",
-      }).returning();
+    res.status(201).json({
+      ...result.membership,
+      league: result.league,
+      // The client says what it could not honour. A silent compromise is how
+      // someone ends up in an 8-team league having asked for 12 and never
+      // finds out why.
+      relaxedSize: result.relaxedSize,
+      created: result.created,
+      startWeek: result.startWeek,
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
-      await scheduleMatchups(league.id);
-
-      res.status(201).json({ ...membership, league });
-    } catch (insertErr: any) {
-      if (insertErr.code === "23505") {
-        res.status(409).json({ error: "Already a member of this league" });
-      } else {
-        throw insertErr;
-      }
-    }
+/**
+ * What the join sheet can offer.
+ *
+ * Start weeks come from the Week table rather than a hardcoded 1..17, because
+ * a week that has already resolved is not a start week. Levels ride along so
+ * the two pickers have one source and cannot drift apart.
+ */
+router.get("/join-options", requireAuth, async (_req: any, res: any) => {
+  try {
+    const startWeeks = await selectableStartWeeks();
+    res.json({
+      startWeeks: startWeeks.map(w => ({ number: w.number, startDate: w.startDate })),
+      defaultStartWeek: startWeeks[0]?.number ?? 1,
+      levels: LEAGUE_LEVELS,
+    });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }

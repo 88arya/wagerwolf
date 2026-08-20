@@ -8,6 +8,8 @@ import {
   gameLines, gamePicks, parlays, leagueMessages, matchups,
 } from "../db/schema";
 import { requireAuth } from "../middleware/auth";
+import { approvePendingMembership, joinLeague } from "../services/joinLeague";
+import { releaseSeat } from "../services/leagueSeats";
 import { scheduleMatchups } from "../services/scheduleMatchups";
 import { pickHelmetColor } from "../services/helmetColor";
 import { generateAbbreviation } from "../services/abbreviation";
@@ -24,37 +26,20 @@ router.post("/join", requireAuth, async (req: any, res: any) => {
     const league = await db.query.leagues.findFirst({ where: eq(leagues.id, leagueId) });
     if (!league) { res.status(404).json({ error: "League not found" }); return; }
 
-    const maxWeek = league.startWeek + league.regularSeasonWeeks + league.playoffWeeks - 1;
-    const [firstActiveWeek] = await db.select().from(weeks)
-      .where(and(eq(weeks.resolved, false), gte(weeks.number, league.startWeek), lte(weeks.number, maxWeek)))
-      .orderBy(asc(weeks.number))
-      .limit(1);
-    const initialBalance = firstActiveWeek ? league.weeklyAllowance : 0;
-
-    const [helmetColor, user] = await Promise.all([
-      pickHelmetColor(leagueId),
-      db.query.users.findFirst({ where: eq(users.id, userId) }),
-    ]);
-    const abbreviation = generateAbbreviation(user?.displayName ?? "");
-    const [membership] = await db.insert(memberships).values({
-      userId,
-      leagueId,
-      balance: initialBalance,
-      status: "ACTIVE",
-      helmetColor,
-      abbreviation,
-      displayName: user?.displayName ?? "",
-    }).returning();
-
-    await scheduleMatchups(leagueId);
-
-    res.status(201).json(membership);
-  } catch (err: any) {
-    if (err.code === "23505") {
-      res.status(409).json({ error: "Already a member of this league" });
-    } else {
-      res.status(500).json({ error: err.message });
+    // Seat claim + membership insert, atomically — see services/joinLeague.ts.
+    // This used to read capacity separately and then insert, which let two
+    // people take the same last seat.
+    const outcome = await joinLeague(userId, league);
+    if (!outcome.ok) {
+      if (outcome.reason === "DUPLICATE") { res.status(409).json({ error: "Already a member of this league" }); return; }
+      if (outcome.reason === "MISSING") { res.status(404).json({ error: "League not found" }); return; }
+      res.status(400).json({ error: "This league is full" });
+      return;
     }
+
+    res.status(201).json(outcome.membership);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
   }
 });
 
@@ -207,28 +192,16 @@ router.post("/members/:memberId/accept", requireAuth, async (req: any, res: any)
     }
 
     const maxWeek = league.startWeek + league.regularSeasonWeeks + league.playoffWeeks - 1;
-    const [firstActiveWeek] = await db.select().from(weeks)
-      .where(and(eq(weeks.resolved, false), gte(weeks.number, league.startWeek), lte(weeks.number, maxWeek)))
-      .orderBy(asc(weeks.number))
-      .limit(1);
-    const initialBalance = firstActiveWeek ? league.weeklyAllowance : 0;
-
-    const [helmetColor, acceptedUser] = await Promise.all([
-      pickHelmetColor(leagueId),
-      db.query.users.findFirst({ where: eq(users.id, memberId) }),
-    ]);
-    const abbreviation = generateAbbreviation(acceptedUser?.displayName ?? "");
-    const result = await db.update(memberships)
-      .set({ status: "ACTIVE", balance: initialBalance, helmetColor, abbreviation })
-      .where(and(
-        eq(memberships.userId, memberId),
-        eq(memberships.leagueId, leagueId),
-        eq(memberships.status, "PENDING"),
-      ))
-      .returning();
-    if (result.length === 0) { res.status(404).json({ error: "No pending request found" }); return; }
-
-    await scheduleMatchups(leagueId);
+    // A queued request holds no seat, so approving one has to claim it — and
+    // can therefore fail if the league filled while the request sat in the
+    // queue. Previously this flipped the status unconditionally and could push
+    // a league past maxPlayers.
+    const outcome = await approvePendingMembership(memberId, league);
+    if (!outcome.ok) {
+      if (outcome.reason === "MISSING") { res.status(404).json({ error: "No pending request found" }); return; }
+      res.status(400).json({ error: "The league is full — free a spot before accepting" });
+      return;
+    }
 
     res.json({ message: "Member accepted" });
   } catch (err: any) {
@@ -253,9 +226,15 @@ router.delete("/members/:memberId", requireAuth, async (req: any, res: any) => {
       res.status(400).json({ error: "Cannot remove members after season has started" }); return;
     }
 
-    await db.delete(memberships).where(
-      and(eq(memberships.userId, memberId), eq(memberships.leagueId, leagueId))
-    );
+    // Only an ACTIVE membership holds a seat; rejecting a PENDING request must
+    // not decrement, which is why the deleted row is inspected rather than the
+    // delete count.
+    const removed = await db.delete(memberships)
+      .where(and(eq(memberships.userId, memberId), eq(memberships.leagueId, leagueId)))
+      .returning();
+    for (const m of removed) {
+      if (m.status === "ACTIVE") await releaseSeat(leagueId, { isPublicFill: m.isPublicFill });
+    }
     res.json({ message: "Member removed" });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -277,6 +256,11 @@ router.post("/leave", requireAuth, async (req: any, res: any) => {
       .where(and(eq(memberships.userId, userId), eq(memberships.leagueId, leagueId)))
       .returning();
     if (deleted.length === 0) { res.status(404).json({ error: "Not a member of this league" }); return; }
+
+    // Hand the seat back so the league becomes joinable again.
+    for (const m of deleted) {
+      if (m.status === "ACTIVE") await releaseSeat(leagueId, { isPublicFill: m.isPublicFill });
+    }
 
     res.json({ message: "Left league" });
   } catch (err: any) {

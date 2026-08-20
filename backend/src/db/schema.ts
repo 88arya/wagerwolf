@@ -1,7 +1,7 @@
 import {
-  pgTable, pgEnum, text, integer, boolean, timestamp, real, uniqueIndex,
+  pgTable, pgEnum, text, integer, boolean, timestamp, date, real, index, uniqueIndex,
 } from "drizzle-orm/pg-core";
-import { relations } from "drizzle-orm";
+import { relations, sql } from "drizzle-orm";
 import { randomUUID } from "crypto";
 
 // ─── Enums ───────────────────────────────────────────────────────────────────
@@ -35,6 +35,55 @@ export const users = pgTable("User", {
   // checks for — a user with no firstName has not been through it yet.
   firstName:   text("firstName"),
   lastName:    text("lastName"),
+  // NOTE: there is deliberately no yearsExperience column. Experience is
+  // *derived* from createdAt — see services/experience.ts. It was briefly a
+  // self-reported integer, which meant the one number leagues gate on was a
+  // free-text field anyone could type "20" into, so a rookie could walk into a
+  // veterans-only league by lying. Tenure cannot be typed.
+  // IANA zone name, e.g. "America/Detroit". Auto-detected from the browser and
+  // refreshed whenever it changes, so it follows a user who travels. Not a
+  // preference and not editable — it is a fact the device already knows.
+  //
+  // Replaced `country` and `region`. Those were kept when the league directory
+  // was deleted, on the theory that location was still worth having; it turned
+  // out the only thing the app ever wanted location FOR was time. Deriving time
+  // from a country is strictly worse than asking the browser — the US spans six
+  // zones — and the old Detect button did exactly that backwards: it read the
+  // IANA zone, mapped it to a country, and threw the zone away.
+  //
+  // Nothing needs this to render a kickoff time; the client formats in the
+  // viewer's own zone with no server input. It exists for the server-side case
+  // — notifications sent at a sane local hour, where there is no browser to ask.
+  timeZone:    text("timeZone"),
+  // Defaults for the per-league identity on Membership. A league still owns its
+  // own copy — the whole point of that model is that you can be "The Fridge" in
+  // one league and yourself in another — but joining a league with nothing set
+  // used to mean an abbreviation generated from your display name and a colour
+  // picked at random. These are what it reaches for first.
+  //
+  // Both nullable, and null means "work it out": generateAbbreviation() and a
+  // random unused colour, exactly as before.
+  //
+  // NOTE the colour is a *preference*, not a guarantee. pickHelmetColor keeps
+  // colours unique within a league, so if someone already took yours you get
+  // another one. A default that silently loses is better than a duplicate.
+  defaultAbbreviation: text("defaultAbbreviation"),
+  defaultHelmetColor:  text("defaultHelmetColor"),
+  // Soft, reversible deactivation. Set by POST /users/me/deactivate, cleared by
+  // signing in with Google again — see that route for what it does to seats.
+  // A timestamp rather than a boolean so there is a record of when.
+  deactivatedAt: timestamp("deactivatedAt"),
+  // Age gate. A `date`, not a timestamp: a birthday is a calendar day, and
+  // giving it a time would make it drift across time zones — someone born on
+  // the 1st could read as the 31st to a server an hour behind them.
+  //
+  // Nullable for the same reason firstName is: accounts predating the gate have
+  // none, and that absence is what sends them through onboarding. Stored as a
+  // string ("YYYY-MM-DD") rather than a Date for the same time-zone reason.
+  //
+  // Self-attested and unverified — see services/age.ts for what that is and is
+  // not worth.
+  dateOfBirth: date("dateOfBirth"),
   createdAt:   timestamp("createdAt").defaultNow().notNull(),
 });
 
@@ -62,8 +111,45 @@ export const leagues = pgTable("League", {
   maxBetsPerWeek:     integer("maxBetsPerWeek"),
   maxParlayLegs:      integer("maxParlayLegs").default(10),
   feedVisibility:     text("feedVisibility").default("AFTER_KICKOFF").notNull(),
+  // "BEGINNER" | "PRO" — see services/leagueLevel.ts. The only thing
+  // matchmaking filters on besides size, and the only thing it will never
+  // compromise on.
+  //
+  // This is all that remains of a browsable directory: there were also
+  // `listed`, `description`, `minExperience`, `maxExperience`, `locationScope`,
+  // `country` and `region`, backing search, five skill tiers and
+  // country/region restriction. Players no longer see a list of open leagues at
+  // all — they state a size and a level and are assigned — so every one of
+  // those columns was machinery for a screen that does not exist. Do not
+  // reintroduce them without the screen.
+  skillLevel:         text("skillLevel").default("BEGINNER").notNull(),
+  // ─── Denormalized occupancy ────────────────────────────────────────────
+  // Counts of ACTIVE memberships. PENDING requests do not count — a queued
+  // join has not taken a seat.
+  //
+  // These exist for two reasons, and the second is the important one:
+  //
+  //  1. Discovery filters on "has room", which without a counter means loading
+  //     every league's memberships to count them. That was the whole N+1.
+  //  2. They are the lock. Claiming a seat is a single conditional UPDATE that
+  //     increments and asserts capacity together, so two people cannot both
+  //     take the last seat. See services/leagueSeats.ts.
+  //
+  // Every write goes through that service. Never `insert` a membership and
+  // adjust these by hand, and never trust them over a recount when repairing.
+  activeMemberCount:     integer("activeMemberCount").default(0).notNull(),
+  activePublicFillCount: integer("activePublicFillCount").default(0).notNull(),
   createdAt:          timestamp("createdAt").defaultNow().notNull(),
-});
+}, (t) => ({
+  // Partial: `seasonStarted = false` is the predicate matchmaking opens with,
+  // and it gets more selective over time — finished leagues accumulate forever
+  // while open ones stay a small working set. Indexing only that slice keeps
+  // the index small no matter how many seasons ship. The columns are exactly
+  // what the candidate query filters on.
+  matchIdx: index("League_match_idx")
+    .on(t.skillLevel, t.startWeek, t.maxPlayers, t.isPublic)
+    .where(sql`"seasonStarted" = false`),
+}));
 
 export const matchups = pgTable("Matchup", {
   id:             text("id").primaryKey().$defaultFn(() => randomUUID()),
@@ -94,7 +180,18 @@ export const memberships = pgTable("Membership", {
   displayName:    text("displayName").default("").notNull(),
   abbreviation:   text("abbreviation").default("").notNull(),
   createdAt:      timestamp("createdAt").defaultNow().notNull(),
-});
+}, (t) => ({
+  // Every join path already catches Postgres 23505 to mean "already a member".
+  // Until this existed that catch was dead code and a double join quietly
+  // created two memberships — `join-by-code` had no other guard at all, so the
+  // same user could queue for one league twice.
+  userLeagueUniq: uniqueIndex("Membership_userId_leagueId_key").on(t.userId, t.leagueId),
+  // "What leagues am I in" and "who is in this league" are the two hottest
+  // lookups in the app and both were sequential scans — this table had nothing
+  // but a primary key on a random UUID.
+  userIdx:   index("Membership_userId_idx").on(t.userId),
+  leagueIdx: index("Membership_leagueId_idx").on(t.leagueId),
+}));
 
 export const weeks = pgTable("Week", {
   id:                   text("id").primaryKey().$defaultFn(() => randomUUID()),
