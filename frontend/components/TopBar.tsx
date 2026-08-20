@@ -1,17 +1,28 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import type { CSSProperties } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { api } from "@/lib/api";
-import Logo from "@/components/Logo";
+import { signOut, useAuthed } from "@/lib/auth";
+import LogoWordmark, { SLANT_DEG, WORDMARK_FONT_RATIO, WORDMARK_TEXT } from "@/components/LogoWordmark";
 
 /**
  * Thin utility strip above everything else.
  *
- * Exists because /home and /leagues are unreachable once you are inside a
- * league — LeagueNav's links all stay within the league — so without this there
- * is no way out except the browser back button or the logo.
+ * Exists because /home is unreachable once you are inside a league —
+ * LeagueNav's links all stay within the league — so without this there is no
+ * way out except the browser back button or the logo.
+ *
+ * It is now on EVERY route, signed in or not, including the landing page, which
+ * gave up its own sticky header to avoid stacking two. So the right-hand
+ * control has two states: "My Account" with its menu, or "Get Started" for a
+ * visitor. Get Started opens the landing page's auth modal — by dispatching
+ * SIGNUP_EVENT if we are already on `/`, and by navigating there otherwise. An
+ * event rather than a query parameter for the reason in LeagueProfileModal:
+ * App Router does not remount a page for a query-string-only change, so a
+ * parameter read in an effect silently does nothing on the page you are on.
  *
  * It also owns the *global* account: the identity that follows the user across
  * every league (real name, email, password). The per-league identity — team
@@ -19,48 +30,72 @@ import Logo from "@/components/Logo";
  * LeagueNav instead, so the two are never confused for one another.
  */
 
-const BAR_BG = "#272731";
+// --bar-bg in globals.css. Shared with SiteFooter, which is the whole point of
+// it being a token: the two bars bookend the app and must stay the same black.
+const BAR_BG = "var(--bar-bg)";
 
-// Full-bleed, matching GamesStrip: this bar deliberately opts out of the
-// --rail content inset so it spans the whole window, with the logo tile flush
-// to the left edge the way the strip's NFL cell is. The nav below and the page
-// content still inset by --rail, so these edges are not meant to align.
+// The bar's dark fill is full-bleed, but its *contents* inset by --rail — the
+// same token `.nav` uses — so the logo starts on the same left edge as
+// LeagueNav's first control and the page content below it, and "My Account"
+// ends on the same right edge as the nav's profile control. One rail down the
+// whole page.
 //
-// The links keep their own left offset from the logo rather than from the
-// window, so nothing but the logo touches the edge.
-const LINKS_GAP = 34;
+// GamesStrip is the deliberate exception: it runs full-bleed contents and all,
+// so it is not meant to line up with either of these. See --rail in globals.css.
 
 const BAR_H = 37;
 
-// The logo tile sits inside the bar with air above and below rather than
-// filling its height — at 37px square it read as a block capping the bar
-// instead of a mark within it.
-const LOGO_SIZE = 22;
+/**
+ * Fired by "Get Started" when the landing page is already mounted, so it can
+ * open its auth modal. Exported for that page to listen on — the same
+ * event-instead-of-URL-state pattern LeagueProfileModal uses.
+ */
+export const SIGNUP_EVENT = "wagerwolf:signup";
 
-// Space between the logo tile and the first link. Smaller than LINKS_GAP: the
-// logo is a filled block rather than a word, so it needs less air to read as
-// separate than two labels do.
-const LOGO_GAP = 20;
-
-// Right-hand inset for the account control. The rail's own floor value, so the
-// bar's right edge still feels related to the railed content below it.
-const EDGE_PAD = 20;
-
-const LINKS = [
-  { label: "Home", href: "/home" },
-  { label: "Leagues", href: "/leagues" },
-];
+// The lockup sits inside the bar with air above and below rather than filling
+// its height — at 37px it read as a block capping the bar instead of a mark
+// within it.
+//
+// There is no LINKS array and no gap token any more. Both existed to space a
+// left cluster of three (mark, Home, Leagues); the cluster is one element now.
+const LOCKUP_H = 20;
 
 // The hover rule itself lives in globals.css under .utility-link — it is a
 // pseudo-element that scales in from the left, which inline styles cannot
 // express. Everything here is just the type.
-const linkStyle = {
-  fontSize: "0.66rem",
-  fontWeight: 800,
-  letterSpacing: "0.1em",
-  textTransform: "uppercase" as const,
+// "My Account" is set exactly as the wordmark at the other end of the bar:
+// same face, weight, tracking and size, and no uppercase. The two are the only
+// text in the utility bar, so anything that differed between them read as a
+// mismatch rather than a hierarchy.
+//
+// Size is the one thing WORDMARK_TEXT cannot carry, because the lockup derives
+// it from its own height. Computed from the same two values rather than the
+// 14px they currently produce, so changing LOCKUP_H moves both ends together.
+//
+// Only colour is the bar's own — the lockup takes white from currentColor on
+// its Link, this states it.
+// How far the skewed text overhangs its own box, in px — on the LEFT.
+//
+// SLANT_DEG is positive, which is a backslant: the word leans left as it rises,
+// so its ink reaches further left at the cap line than its layout box does, and
+// transforms do not affect layout so the box never learns about it. Separately,
+// the hover underline is a ::after at `bottom: -5px` — below the baseline pivot,
+// where the same shear pushes it the other way, right.
+//
+// Both errors point the same direction, which is why the rule reads as sitting
+// to the right of the word. Padding the LEFT edge widens the box that way so
+// the rule covers the lean. (Padding the right was the first attempt and made
+// it worse.)
+const LEAN_PX = Math.round(
+  LOCKUP_H * WORDMARK_FONT_RATIO * 0.72 * Math.tan((SLANT_DEG * Math.PI) / 180)
+);
+
+const linkStyle: CSSProperties = {
+  ...WORDMARK_TEXT,
+  fontSize: LOCKUP_H * WORDMARK_FONT_RATIO,
   color: "#FFFFFF",
-  whiteSpace: "nowrap" as const,
+  // Overrides the `padding: 0` in globals' button.utility-link reset.
+  paddingLeft: LEAN_PX,
 };
 
 // Outlined person-in-circle, used beside the name at the head of the account
@@ -79,18 +114,23 @@ function AccountIcon() {
 
 export default function TopBar() {
   const router = useRouter();
+  const pathname = usePathname() ?? "";
   const [open, setOpen] = useState(false);
   const [fullName, setFullName] = useState("");
+  // Reactive, so signing in or out flips this control without a reload — the
+  // bar is mounted once in the root layout and never remounts on navigation.
+  const authed = useAuthed();
   const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    if (!authed) { setFullName(""); return; }
     api("/users/me").then((u: any) => {
       // Falls back to the display name for accounts that predate onboarding and
       // so have no first/last on record.
       const full = [u.firstName, u.lastName].filter(Boolean).join(" ");
       setFullName(full || u.displayName || u.name || "");
     }).catch(() => {});
-  }, []);
+  }, [authed]);
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
@@ -101,8 +141,7 @@ export default function TopBar() {
   }, []);
 
   function logout() {
-    localStorage.removeItem("token");
-    localStorage.removeItem("userId");
+    signOut();
     router.push("/");
   }
 
@@ -113,40 +152,60 @@ export default function TopBar() {
       height: BAR_H,
       display: "flex",
       alignItems: "center",
+      // Fill stays full-bleed; only the contents inset. Same token as `.nav`.
+      padding: "0 var(--rail)",
+      boxSizing: "border-box",
       // The account menu hangs below the bar and must clear the games strip and
       // nav underneath it.
       position: "relative",
       zIndex: 300,
     }}>
-      {/* Leftmost element in the bar. Inset by EDGE_PAD rather than sitting on
-          the window edge, mirroring the account control on the right.
-          Moved here from LeagueNav so the mark sits in the one bar that is
-          present on every page, league or not.
+      {/* Leftmost element in the bar, and now the only thing on this side of
+          it. No inset of its own — the bar's --rail padding puts it on the
+          page's left edge, level with LeagueNav's first control (which likewise
+          has no padding of its own). It lives in this bar rather than LeagueNav
+          so the mark is present on every page, league or not.
 
-          `bare` — the head alone, no accent tile. The bar already has its own
-          dark fill, so a second filled block would read as a sticker stuck on
-          top of it. Colour comes from `color` below via currentColor. */}
+          The full lockup, and no "Home" link beside it: the wordmark *is* the
+          home link. A word next to it pointed at the same route, which is two
+          controls doing one thing — invisible while "Leagues" sat alongside,
+          glaring once that moved to the rail on /home.
+
+          `bare` draws head and name in currentColor. It is the same call
+          SiteFooter makes, on the same --bar-bg fill, so the two bars that
+          bookend the app share a lockup as well as a colour. Without it the
+          mark carries its accent tile, and a filled block on an already-dark
+          bar reads as a sticker stuck on top of it. */}
       <Link
         href="/home"
         aria-label="Wagerwolf home"
-        style={{ display: "flex", alignItems: "center", flexShrink: 0, marginLeft: EDGE_PAD, color: "#FFFFFF" }}
+        style={{ display: "flex", alignItems: "center", flexShrink: 0, color: "#FFFFFF" }}
       >
-        <Logo size={LOGO_SIZE} bare />
+        <LogoWordmark height={LOCKUP_H} bare />
       </Link>
 
-      <div style={{ display: "flex", alignItems: "center", gap: LINKS_GAP, marginLeft: LOGO_GAP }}>
-        {LINKS.map(({ label, href }) => (
-          <Link key={href} href={href} className="utility-link" style={linkStyle}>
-            {label}
-          </Link>
-        ))}
-      </div>
-
       {/* Pushed to the far right: an account link is not wayfinding, so it
-          reads better set apart from the others than appended to them.
-          EDGE_PAD keeps the label off the window edge — the bar is full-bleed,
-          but its text should not actually touch the glass. */}
-      <div ref={menuRef} style={{ marginLeft: "auto", marginRight: EDGE_PAD, position: "relative", display: "flex", alignItems: "center" }}>
+          reads better set apart from the others than appended to them. Its
+          right edge is the bar's --rail padding, so it lands on the same edge
+          as the nav's profile control below. */}
+      <div ref={menuRef} style={{ marginLeft: "auto", position: "relative", display: "flex", alignItems: "center" }}>
+        {/* Nothing until the token check lands. Rendering either label as the
+            default flashes the wrong one at half the audience — "My Account" at
+            a visitor on the landing page, or "Get Started" at a signed-in user
+            on every page. An empty slot for one frame says nothing false. */}
+        {authed === null ? null : authed === false ? (
+          <button
+            type="button"
+            className="utility-link"
+            style={linkStyle}
+            onClick={() => {
+              if (pathname === "/") window.dispatchEvent(new CustomEvent(SIGNUP_EVENT));
+              else router.push("/");
+            }}
+          >
+            Get Started
+          </button>
+        ) : (
         <button
           type="button"
           className="utility-link"
@@ -155,8 +214,9 @@ export default function TopBar() {
         >
           My Account
         </button>
+        )}
 
-        {open && (
+        {open && authed !== false && (
           // Same panel treatment as LeagueNav's menus: square, no border, shadow
           // only, 6px of vertical padding. Name and email are label rows, then a
           // rule, then the actions.
