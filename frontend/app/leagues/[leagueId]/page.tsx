@@ -5,7 +5,8 @@ import { useRouter } from "next/navigation";
 import { ACCENT } from "@/lib/constants";
 import { api } from "@/lib/api";
 import { fmtMoney } from "@/lib/money";
-import HelmetAvatar, { HELMET_COLORS } from "@/components/HelmetAvatar";
+import HelmetAvatar from "@/components/HelmetAvatar";
+import LeagueProfileModal from "@/components/LeagueProfileModal";
 
 function PencilIcon() {
   return (
@@ -28,9 +29,6 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
   const [weekMatchups, setWeekMatchups] = useState<any[]>([]);
   const [myHelmetColor, setMyHelmetColor] = useState(ACCENT);
   const [showIdentityEditor, setShowIdentityEditor] = useState(false);
-  const [pendingColor, setPendingColor] = useState(ACCENT);
-  const [nameInput, setNameInput] = useState("");
-  const [abrInput, setAbrInput] = useState("");
   const [liveBetsCount, setLiveBetsCount] = useState(0);
   const [showChat, setShowChat] = useState(false);
   const [chatMessages, setChatMessages] = useState<any[]>([]);
@@ -83,73 +81,30 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
     load();
   }, []);
 
-  function openIdentityEditor() {
-    const me = members.find(m => m.userId === userId);
-    setPendingColor(myHelmetColor);
-    setNameInput(me?.displayName ?? "");
-    setAbrInput(me?.abbreviation ?? "");
-    setShowIdentityEditor(true);
-  }
-
-  // LeagueNav's profile menu offers "Edit Profile" from every page in the
-  // league, but this modal lives here — so it routes to this page with
-  // ?edit=profile and this opens it. Held until members and userId have landed,
-  // since the editor prefills from them; fires once, then strips the parameter
-  // so a refresh or a back-navigation does not reopen it.
-  // window.location rather than useSearchParams: this page is entirely client
-  // rendered, and useSearchParams would force a Suspense boundary around it.
-  const editParamHandledRef = useRef(false);
+  // The editor is `components/LeagueProfileModal`, mounted below and also by
+  // LeagueNav so "Edit Profile" works from every page in the league. It reads
+  // and writes its own copy of the membership, so all this page has to do is
+  // re-read the board once it reports a change — which it does through the
+  // same `league-profile-updated` event the nav already listens for, so a save
+  // made from the nav on this page refreshes the cards behind it too.
   useEffect(() => {
-    if (editParamHandledRef.current) return;
-    if (!leagueId || !userId || members.length === 0) return;
-    if (new URLSearchParams(window.location.search).get("edit") !== "profile") return;
-    editParamHandledRef.current = true;
-    openIdentityEditor();
-    router.replace(`/leagues/${leagueId}`, { scroll: false });
-  }, [leagueId, userId, members, myHelmetColor]);
-
-  async function saveIdentity() {
-    const trimmedName = nameInput.trim();
-    if (trimmedName.length < 3 || trimmedName.length > 20) return;
-    let trimmedAbr = abrInput.trim().toUpperCase();
-    if (!trimmedAbr) {
-      trimmedAbr = trimmedName.replace(/[^A-Za-z]/g, "").toUpperCase().slice(0, 3);
-      while (trimmedAbr.length < 3) trimmedAbr = trimmedAbr + (trimmedAbr[0] ?? "X");
-      setAbrInput(trimmedAbr);
+    if (!leagueId) return;
+    async function refresh() {
+      try {
+        const board = await api(`/leagues/${leagueId}/leaderboard`);
+        setMembers(board ?? []);
+        const me = (board ?? []).find((m: any) => m.userId === userId);
+        if (me?.helmetColor) setMyHelmetColor(me.helmetColor);
+        if (week?.number) {
+          const ms = await api(`/leagues/${leagueId}/matchups?weekNumber=${week.number}`);
+          setWeekMatchups(ms ?? []);
+        }
+      } catch {}
     }
-    if (trimmedAbr.length !== 3) return;
+    window.addEventListener("league-profile-updated", refresh);
+    return () => window.removeEventListener("league-profile-updated", refresh);
+  }, [leagueId, userId, week?.number]);
 
-    const { leagueId: lId } = await params;
-    const uid = localStorage.getItem("userId") ?? "";
-    const me = members.find(m => m.userId === uid);
-    const colorChanged = pendingColor !== myHelmetColor;
-    const nameChanged = trimmedName !== me?.displayName;
-    const abrChanged = trimmedAbr !== me?.abbreviation;
-
-    setShowIdentityEditor(false);
-    setMyHelmetColor(pendingColor);
-    setMembers(prev => prev.map(m => m.userId === uid ? {
-      ...m,
-      helmetColor: pendingColor,
-      displayName: trimmedName,
-      abbreviation: trimmedAbr,
-    } : m));
-    setWeekMatchups(prev => prev.map(matchup => {
-      if (matchup.homeUserId !== uid && matchup.awayUserId !== uid) return matchup;
-      return {
-        ...matchup,
-        ...(matchup.homeUserId === uid ? { homeUser: { ...matchup.homeUser, displayName: trimmedName } } : {}),
-        ...(matchup.awayUserId === uid ? { awayUser: { ...matchup.awayUser, displayName: trimmedName } } : {}),
-      };
-    }));
-
-    await Promise.allSettled([
-      colorChanged ? api(`/leagues/${lId}/my-helmet`, { method: "PATCH", body: JSON.stringify({ helmetColor: pendingColor }) }) : Promise.resolve(),
-      nameChanged ? api(`/leagues/${lId}/my-display-name`, { method: "PATCH", body: JSON.stringify({ displayName: trimmedName }) }) : Promise.resolve(),
-      abrChanged ? api(`/leagues/${lId}/my-abbreviation`, { method: "PATCH", body: JSON.stringify({ abbreviation: trimmedAbr }) }) : Promise.resolve(),
-    ]);
-    window.dispatchEvent(new Event("league-profile-updated"));
-  }
 
 
   async function loadChatMessages() {
@@ -185,7 +140,6 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
     if (showChat) setTimeout(() => chatBottomRef.current?.scrollIntoView({ behavior: "auto" }), 60);
   }, [showChat]);
 
-  const takenColors = new Set(members.filter(m => m.userId !== userId).map(m => m.helmetColor));
 
   const helmetColors: Record<string, string> = {};
   members.forEach(m => { helmetColors[m.userId] = m.helmetColor ?? ACCENT; });
@@ -296,7 +250,7 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
                   </div>
                 </div>
                 <button
-                  onClick={openIdentityEditor}
+                  onClick={() => setShowIdentityEditor(true)}
                   style={{ background: "none", border: "none", padding: 3, cursor: "pointer", color: "var(--text-3)", display: "flex", alignItems: "center", borderRadius: 4, lineHeight: 1, flexShrink: 0 }}
                   title="Edit your league identity"
                 >
@@ -656,99 +610,11 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
         </div>
       </div>
 
-      {showIdentityEditor && (
-        <div
-          onClick={() => setShowIdentityEditor(false)}
-          style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}
-        >
-          <div className="card" onClick={e => e.stopPropagation()} style={{ width: "100%", maxWidth: 380, padding: 24 }}>
-            {/* Header */}
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
-              <div style={{ fontWeight: 800, fontSize: "1rem", color: "var(--text)" }}>League Profile</div>
-              <button onClick={() => setShowIdentityEditor(false)} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-3)", padding: 4, display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "none", borderRadius: "var(--radius-sm)", lineHeight: 1 }}
-                onMouseEnter={e => { e.currentTarget.style.color = "var(--text)"; e.currentTarget.style.background = "var(--surface-2)"; }}
-                onMouseLeave={e => { e.currentTarget.style.color = "var(--text-3)"; e.currentTarget.style.background = "none"; }}>
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-                  <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
-                </svg>
-              </button>
-            </div>
-
-            {/* Preview row */}
-            <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 18 }}>
-              <HelmetAvatar color={pendingColor} initials={(abrInput || nameInput || myRecord?.displayName || "").slice(0, 2)} size={44} />
-              <div style={{ minWidth: 0 }}>
-                <div style={{ fontWeight: 700, fontSize: "0.9rem", color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                  {nameInput || myRecord?.displayName || "—"}
-                </div>
-                <div style={{ fontSize: "0.62rem", color: "var(--text)", fontWeight: 700, fontStyle: "italic", letterSpacing: "0.1em", marginTop: 1 }}>
-                  {abrInput || "—"}
-                </div>
-              </div>
-            </div>
-
-            <div className="form">
-              <div>
-                <div className="label">Display Name</div>
-                <input
-                  autoFocus
-                  value={nameInput}
-                  onChange={e => setNameInput(e.target.value.replace(/[^A-Za-z ]/g, "").replace(/ {2,}/g, " ").slice(0, 20))}
-                  onKeyDown={e => { if (e.key === "Escape") setShowIdentityEditor(false); }}
-                  minLength={3}
-                  maxLength={20}
-                  placeholder="Your name in this league"
-                />
-              </div>
-
-              <div>
-                <div className="label">Abbreviation (2–3 letters)</div>
-                <input
-                  value={abrInput}
-                  onChange={e => setAbrInput(e.target.value.toUpperCase().replace(/[^A-Z]/g, "").slice(0, 3))}
-                  onKeyDown={e => { if (e.key === "Enter") saveIdentity(); if (e.key === "Escape") setShowIdentityEditor(false); }}
-                  minLength={3}
-                  maxLength={3}
-                  placeholder="e.g. NYG"
-                  style={{ letterSpacing: "0.2em", fontWeight: 800, textTransform: "uppercase", maxWidth: 120 }}
-                />
-              </div>
-
-              <div>
-                <div className="label">Helmet Color</div>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(6, 28px)", gap: 8, marginTop: 6 }}>
-                  {HELMET_COLORS.map(c => {
-                    const taken = takenColors.has(c);
-                    const selected = pendingColor === c;
-                    return (
-                      <button
-                        key={c}
-                        type="button"
-                        onClick={() => !taken && setPendingColor(c)}
-                        style={{
-                          width: 28, height: 28, borderRadius: 6, background: c, padding: 0, border: "none",
-                          cursor: taken ? "not-allowed" : "pointer",
-                          opacity: taken ? 0.25 : 1,
-                          outline: selected ? "2.5px solid var(--accent)" : "2px solid transparent",
-                          outlineOffset: 2, flexShrink: 0,
-                        }}
-                      />
-                    );
-                  })}
-                </div>
-              </div>
-
-              <button
-                onClick={saveIdentity}
-                style={{ width: "100%", padding: "11px", fontSize: "0.9rem", fontWeight: 700 }}
-              >
-                Save Profile
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
+      <LeagueProfileModal
+        leagueId={leagueId}
+        open={showIdentityEditor}
+        onClose={() => setShowIdentityEditor(false)}
+      />
 
     </>
   );
