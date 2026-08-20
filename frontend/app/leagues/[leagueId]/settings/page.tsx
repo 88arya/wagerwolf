@@ -122,7 +122,7 @@ export default function LeagueSettingsPage({ params }: PageProps<"/leagues/[leag
     if (!confirm(`Permanently delete "${league?.name}"? This cannot be undone.`)) return;
     try {
       await api(`/leagues/${leagueId}`, { method: "DELETE" });
-      router.push("/leagues");
+      router.push("/home");
     } catch (err: any) {
       try { alert(JSON.parse(err.message).error); } catch { alert(err.message); }
     }
@@ -175,7 +175,7 @@ export default function LeagueSettingsPage({ params }: PageProps<"/leagues/[leag
     if (!confirm(`Leave "${league?.name}"?`)) return;
     try {
       await api(`/leagues/${leagueId}/leave`, { method: "POST", body: JSON.stringify({}) });
-      router.push("/leagues");
+      router.push("/home");
     } catch (err: any) {
       try { alert(JSON.parse(err.message).error); } catch { alert(err.message); }
     }
