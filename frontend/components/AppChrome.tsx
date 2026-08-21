@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import { useAuthed } from "@/lib/auth";
 import { api } from "@/lib/api";
@@ -36,7 +36,7 @@ const STRIP_LEAGUE_KEY = "strip_league_id";
 //  - /logo is the wordmark preview, where a second wordmark in the bar above
 //    the specimens is just confusing.
 //
-// Everything else works signed out: TopBar shows "Get Started" instead of the
+// Everything else works signed out: TopBar shows "Play now" instead of the
 // account menu, and the strip falls back to /weeks/public/current, which needs
 // no token.
 const NO_CHROME = ["/onboarding", "/logo"];
@@ -64,6 +64,7 @@ export default function AppChrome() {
   // the strip holds its space. Once resolved with no started league it's
   // dropped entirely rather than leaving an empty bar.
   const [resolved, setResolved] = useState(false);
+  const chromeRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (publicRoute) return;
@@ -108,6 +109,34 @@ export default function AppChrome() {
     }).catch(() => {}).finally(() => setResolved(true));
   }, [publicRoute, routeLeagueId, authed]);
 
+  // Publishes the chrome's rendered height as --chrome-h.
+  //
+  // The chrome now lives INSIDE .app-scroll, so it counts toward that
+  // scroller's content. Without this, .page's `min-height: 100%` would be a
+  // full viewport of page stacked under a full-height header, and every page —
+  // however short — would carry the chrome's worth of dead scroll before
+  // reaching the footer. .page subtracts this instead.
+  //
+  // Measured rather than hardcoded because the height is not constant: the
+  // strip is absent on some routes and while it is still resolving, and it
+  // collapses to its selector row when a week has no games.
+  useEffect(() => {
+    const el = chromeRef.current;
+    const root = document.documentElement;
+    if (!el) {
+      root.style.setProperty("--chrome-h", "0px");
+      return;
+    }
+    const write = () => root.style.setProperty("--chrome-h", `${el.getBoundingClientRect().height}px`);
+    write();
+    const ro = new ResizeObserver(write);
+    ro.observe(el);
+    return () => {
+      ro.disconnect();
+      root.style.setProperty("--chrome-h", "0px");
+    };
+  }, [publicRoute]);
+
   if (publicRoute) return null;
 
   // Signed out there is no league to scope to, so the strip runs in its public
@@ -121,9 +150,17 @@ export default function AppChrome() {
   const showStrip = authed === false || interactive || !resolved || Boolean(fallbackLeagueId);
 
   return (
-    <>
+    // One sticky wrapper rather than two sticky siblings. Stacking two would
+    // mean the strip's `top` had to equal the bar's height — a constant in
+    // TopBar.tsx that CSS would have to be kept in step with by hand.
+    //
+    // This is also what fixes the rail mismatch: --rail's `100%` used to
+    // resolve against <body> for the chrome and against .app-scroll for the
+    // page, which put the page's right edge a scrollbar's width inboard of the
+    // nav's. Both sit inside the same scroller now, so both edges agree.
+    <div ref={chromeRef} className="app-chrome">
       <TopBar />
       {showStrip && <GamesStrip leagueId={leagueId} interactive={interactive} />}
-    </>
+    </div>
   );
 }

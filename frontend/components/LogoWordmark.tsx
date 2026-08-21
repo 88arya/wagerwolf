@@ -14,23 +14,30 @@ import Logo from "@/components/Logo";
  * beside it is hidden from assistive tech (aria-hidden on its wrapper) so the
  * pair announces once, not twice.
  *
- * Fugaz One, not the UI's Inter Tight — loaded in app/layout.tsx as
- * --font-fugaz-one. Settled on after Poppins, Lexend Deca, Viga, Anton and
- * Passion One, and the only candidate already in the bundle: GamesStrip sets
- * team abbreviations in it, so the lockup costs no font fetch of its own.
+ * Inter Tight, the UI face — --font-sans, loaded in app/layout.tsx. The lockup
+ * went Poppins → Lexend Deca → Viga → Anton → Passion One → Fugaz One and now
+ * lands on the face the rest of the app is already set in, which is the one
+ * option that costs nothing to load and cannot drift away from the UI.
  *
- * Set in caps, which is what changed the verdict — its lowercase has
- * brush-derived terminals that read as informal across ten letters, but the
- * uppercase is square and holds up.
+ * Set in sentence case, not caps.
  *
- * Weight 400 and no choice about it: a single-face display font, so there is no
- * 500 to reach for. That satisfies the design system's 400–500 cap numerically
- * but not visually; its strokes are heavy for a 400, which is what a display
- * face is for.
+ * Fugaz One has NOT left the bundle — GamesStrip still sets team abbreviations
+ * in it, so --font-fugaz-one stays in layout.tsx. It is simply no longer the
+ * wordmark's face, and the two no longer share one.
  *
- * Note the wordmark and the games-strip abbreviations now share a face — the
- * strip runs it obliqued forward at +0.04em, the lockup backslanted via
- * skewX at +0.03em.
+ * Three things left with it, all of them face-specific and none of them worth
+ * carrying over:
+ *   • the skew. It existed to fight Fugaz One's *drawn* forward lean; Inter
+ *     Tight is upright, so the same transform would be a real 10deg backslant
+ *     rather than a correction. Gone, along with TopBar's LEAN_PX, which only
+ *     ever padded for the shear.
+ *   • the optical shift. Re-derived below — see OPTICAL_SHIFT_EM.
+ *   • the weight argument. Fugaz One ships one cut, so 400 was forced, and its
+ *     strokes were heavy enough for a display face that 400 still read as
+ *     emphatic. Inter Tight at the same number does not — it is the body face,
+ *     so 400 made the name look like running text with a logo next to it. The
+ *     lockup is set at 500, the top of the design system's 400–500 range, which
+ *     is a real cut on the variable axis rather than a synthesised one.
  */
 
 // Type size and gap as fractions of the lockup height, so a single `height`
@@ -72,60 +79,89 @@ const GAP_RATIO = 0.34;
  *   it spreads this object
  */
 /**
- * How far the name leans, in degrees. Positive is a backslant — the letters
- * lean left, against the reading direction. Negative leans forward.
- *
- * NOTE THE MECHANISM: this is `transform: skewX`, not `font-style: oblique`.
- * Oblique was tried first and cannot do this. Chrome clamps a *negative*
- * synthesised oblique to zero, so `oblique -25deg` rendered pixel-identical to
- * `normal` — verified by diffing screenshots of the two. Positive oblique works
- * fine; there is simply no backslant on that property for a font with no italic
- * cut, and Fugaz One has none.
- *
- * skewX honours both signs. The sign convention is inverted relative to
- * oblique — `oblique N` is equivalent to `skewX(-N)` — so positive here leans
- * back. GamesStrip slants team abbreviations forward with `oblique 12deg`;
- * this is its mirror.
- *
- * Note also that Fugaz One is *drawn* with a forward lean, so 0 here is not
- * upright — it is the face's own slant, and a backslant has to overcome that
- * before it reads as leaning back at all.
- */
-export const SLANT_DEG = 10;
-
-/**
  * Optical centring correction, in em. Nudges the type down so the *caps* sit on
  * the vertical centre rather than the line box.
  *
- * `align-items: center` centres the inline box, and that box is built from the
- * face's ascent and descent — 1046 and 422 against a 1000 upm for Fugaz One, so
- * its centre lands 312 units above the baseline. The lockup is set in caps, and
- * caps run baseline to cap height (720), so the *ink* centre is at 360. The
- * text therefore renders 48 units — 0.048em — above where it looks like it
- * should, which reads as too much space beneath it in the 37px utility bar.
+ * `align-items: center` centres the inline box, which is built from the face's
+ * ascent and descent, so the baseline lands at (ascent - descent) / 2 below the
+ * centre. The lockup is set in caps, whose ink centre is capHeight / 2 above the
+ * baseline. The gap between those two is the correction:
  *
- * Applied as `position: relative; top`, not a margin or a transform: a margin
- * would change the box the parent is centring and only move it half as far, and
- * the transform slot is already taken by the skew.
+ *     capHeight / 2 - (ascent - descent) / 2
  *
- * FACE-SPECIFIC, like WORDMARK_FONT_RATIO. Re-derive as
- * (ascent - descent) / 2 - capHeight / 2, over upm, if the font changes.
+ * Cap height and not x-height, even though the word is now sentence case: the
+ * eye centres a word on its capital, and the descender on the g is ignored the
+ * same way the one on "My Account"'s y is.
+ *
+ * MEASURE the three values, do not read them off the font's tables. Under Fugaz
+ * One this was 0.048, taken from that face's nominal 1046 / 422 / 720 against a
+ * 1000 upm, and it was wrong — Chrome did not lay the face out on those numbers.
+ * Measuring in the browser gave a `normal` line-height box of 1.4835em against
+ * the 1.468em they imply, (ascent - descent) of 0.6027em against 0.624em, and a
+ * cap height of 0.723em from an 8x raster scan, putting the real correction at
+ * 0.3615 - 0.3014 = 0.060em.
+ *
+ * The measurement is easy to repeat, and it is the reason this reads 0 today.
+ * `align-items: center` makes the shift cancel out of the box algebra, so an
+ * unshifted baseline measured against the bar centre yields (ascent - descent)
+ * / 2 on its own; a raster scan of the caps yields capHeight; subtract.
+ *
+ * ZERO IS A PLACEHOLDER, NOT A MEASUREMENT. Inter Tight's metrics have not been
+ * measured in the browser, and Fugaz One's 0.060 is meaningless for a different
+ * face, so carrying it over would have been worse than no correction at all.
+ * Inter's vertical metrics are drawn to centre well unaided, so 0 should be
+ * close — but "should be close" is exactly the guess the 0.048 above was, and
+ * that one was out by 25%.
+ *
+ * Applied as `position: relative; top`, not a margin: a margin would change the
+ * box the parent is centring and so only move the type half as far.
+ *
+ * This gets the *layout* right. Landing it on a device pixel is the other half,
+ * and that is BAR_H in TopBar — which was picked for Fugaz One's ideal baseline
+ * and wants re-checking against this face too. See the note there.
+ *
+ * FACE-SPECIFIC, like WORDMARK_FONT_RATIO. Re-measure if the font changes.
  */
-const OPTICAL_SHIFT_EM = 0.048;
+const OPTICAL_SHIFT_EM = 0;
 
 export const WORDMARK_TEXT: CSSProperties = {
-  fontFamily: "var(--font-fugaz-one), var(--font-sans), system-ui, sans-serif",
-  fontWeight: 400,
-  letterSpacing: "-0.01em",
-  textTransform: "uppercase",
-  // inline-block so the transform applies; the lockup's flex container would
-  // blockify this anyway, but "My Account" spreads the same object.
+  fontFamily: "var(--font-sans), system-ui, sans-serif",
+  // 500, not 400 — see the note above. The design system's ceiling; do not
+  // reach past it for 600+ if the name still reads light, raise
+  // WORDMARK_FONT_RATIO instead. Hierarchy here is size, not weight.
+  fontWeight: 500,
+  // Normal, and stated rather than omitted: letter-spacing inherits, so leaving
+  // it out would let whatever a parent happens to set leak into an object that
+  // is spread into several different places.
+  //
+  // The -0.01em it replaces came in with Fugaz One, whose caps needed pulling
+  // together. It does not transfer: Inter Tight is spaced for running text at
+  // this size already, and the design system reserves tight tracking for large
+  // display type — the bar is 13–14px, the opposite end of that range.
+  letterSpacing: "normal",
+  textTransform: "none",
+  // Explicit, and not inherited, because this object is spread onto elements
+  // sitting in two very different boxes: the lockup row below, which sets
+  // line-height 1 so its height equals the `height` prop, and TopBar's bare
+  // <button>, which is left at `normal`. Line-height was the one property the
+  // shared style did not carry, so "the same type treatment" rendered two
+  // different boxes — and `align-items: center` centres the *box*, so the two
+  // baselines landed 0.469px apart in the utility bar. Measured, not
+  // guessed: the lockup's box was 14.002px tall against the button's 20.769px.
+  //
+  // It moved the skew as well. transformOrigin is `left bottom`, which is the
+  // box bottom and not the baseline, so a shorter box put the pivot nearer the
+  // caps and sheared them less far left. Equal boxes fix both at once.
+  //
+  // `normal` specifically, rather than a number: OPTICAL_SHIFT_EM below is
+  // derived assuming half-leading is zero, which is only true when the box is
+  // exactly the font's ascent + descent. A numeric line-height would silently
+  // invalidate that constant.
+  lineHeight: "normal",
+  // Kept inline-block now that there is no transform to enable: it gives the
+  // same box in the lockup's flex row and in TopBar's <button>, which is the
+  // whole point of this object being shared.
   display: "inline-block",
-  transform: `skewX(${SLANT_DEG}deg)`,
-  // Pivot at the baseline rather than the centre (the default). A drawn italic
-  // leans from its baseline; shearing about the middle swings the bottom of the
-  // word one way and the top the other, sliding it sideways in its own box.
-  transformOrigin: "left bottom",
   position: "relative",
   top: `${OPTICAL_SHIFT_EM}em`,
   whiteSpace: "nowrap",

@@ -37,10 +37,19 @@
 
   /* ── Chrome ── */
   /* Fill for the two bars that bookend the app: the utility bar at the top and
-     the site footer at the bottom. Its own near-black with a warm cast —
-     deliberately not --text and not a step on the --surface ramp. One token so
-     the two cannot drift apart; it used to be a BAR_BG literal in TopBar.tsx. */
-  --bar-bg:       #272731;
+     the site footer at the bottom. One token so the two cannot drift apart; it
+     used to be a BAR_BG literal in TopBar.tsx.
+
+     Now true black. It was #272731, a near-black with a warm cast that was
+     deliberately neither --text nor a step on the --surface ramp — which left
+     it reading as a very dark grey rather than as black. #000000 is off the
+     palette by design: --text (#0A0A0B) is the near-black the type uses, and
+     the point here is that the bars are NOT that. */
+  --bar-bg:       #000000;
+
+  /* Rendered height of the sticky chrome, written by AppChrome. 0 until it
+     measures, and on the routes that render no chrome at all. */
+  --chrome-h:     0px;
 
   /* ── Status ── */
   --win:          #16A34A;
@@ -272,6 +281,19 @@ button.dark:hover { opacity: 0.86; background: var(--text); border-color: var(--
    sits that far inboard of the nav's while the left edges align exactly. */
 .app-scroll { flex: 1; min-height: 0; overflow-y: scroll; display: flex; flex-direction: column; }
 
+/* The utility bar and games strip, pinned to the top of the scroller.
+   `sticky`, not `fixed`: fixed would take them out of flow and let the content
+   start underneath them, and it would put them back outside the scroll region
+   this move was meant to bring them into.
+   flex-shrink: 0 because .app-scroll is a flex column — without it the chrome
+   would compress as page content grows. */
+.app-chrome {
+  position: sticky;
+  top: 0;
+  z-index: 300;
+  flex-shrink: 0;
+}
+
 /* `min-height: 100%` — a full viewport's worth on its own — is what keeps the
    footer **off screen until you scroll for it**. It is deliberately not the
    usual `flex: 1 0 auto` sticky footer: that grows the page into the *remaining*
@@ -281,9 +303,14 @@ button.dark:hover { opacity: 0.86; background: var(--text); border-color: var(--
    way to reach it is to scroll.
    Percentage resolves against .app-scroll, which has a definite height (flex: 1
    inside a 100dvh body). box-sizing is border-box globally, so the padding below
-   is inside the 100%, not added to it. */
-.page { flex: 0 0 auto; min-height: 100%; width: 100%; padding: 16px max(14px, calc((100% - 612px) / 2)) 24px; }
-.page-wide { flex: 0 0 auto; min-height: 100%; width: 100%; padding: 20px var(--rail) 24px; }
+   is inside the 100%, not added to it.
+
+   Minus --chrome-h because the sticky chrome is a sibling inside this same
+   scroller and counts toward its content height. A flat 100% would put a full
+   viewport of page under a full-height header, so every page — however short —
+   would carry the chrome's worth of dead scroll before the footer appeared. */
+.page { flex: 0 0 auto; min-height: calc(100% - var(--chrome-h)); width: 100%; padding: 16px max(14px, calc((100% - 612px) / 2)) 24px; }
+.page-wide { flex: 0 0 auto; min-height: calc(100% - var(--chrome-h)); width: 100%; padding: 20px var(--rail) 24px; }
 
 /* ── Site footer ──
    Bookends the app against the utility bar: same --bar-bg fill, same full-bleed
@@ -1027,6 +1054,65 @@ button.utility-link:active {
   cursor: pointer;
   transform: none;
   font-family: inherit;
+}
+
+/* The landing bar's countdown CTA. Same chrome-stripping as .utility-link
+   above, with two differences.
+
+   The rule under it is permanent, not the hover reveal .utility-link animates:
+   this one sits at the end of a sentence, so it has to look like a link before
+   the pointer is anywhere near it.
+
+   And `font: inherit` rather than only font-family, so it takes size, weight
+   and line-height from the sentence wrapping it. The link and the words either
+   side of it are one continuous piece of type — anything it set for itself
+   would show up as a step mid-sentence. */
+button.utility-cta,
+button.utility-cta:hover,
+button.utility-cta:active {
+  background: none;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  padding: 0;
+  cursor: pointer;
+  transform: none;
+  font: inherit;
+  letter-spacing: inherit;
+  color: inherit;
+  /* ascent - descent for Inter Tight: 0.96885 - 0.24115, measured in the
+     browser at 2000px so device-pixel snapping washes out. (`normal` is
+     1.21em for reference.)
+
+     That specific value collapses the line box so its BOTTOM EDGE falls
+     exactly on the baseline: half-leading becomes (0.7277 - 1.21) / 2 =
+     -0.24115em, which is precisely minus the descent, so the box bottom and
+     the baseline coincide. The rule below then anchors to the baseline
+     without a hardcoded pixel offset anywhere.
+
+     Unitless, so it scales with the element's own font-size — the link is
+     13px against the sentence's 14px, and the row aligns the two by baseline,
+     which is the alignment this depends on. Re-measure if the face changes;
+     it is as face-specific as OPTICAL_SHIFT_EM in LogoWordmark. */
+  line-height: 0.7277;
+  position: relative;
+  /* Not text-decoration: that draws at the font's own underline position, a
+     per-face depth below the baseline that cannot be aimed at the sentence
+     beside it. */
+  text-decoration: none;
+}
+button.utility-cta::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  /* The box bottom is the baseline, so this sits the rule's TOP edge on it —
+     immediately under the feet of the type, level with where the sentence
+     alongside bottoms out. `bottom: 0` would put it one pixel higher, over the
+     last row of ink rather than under it. */
+  top: 100%;
+  height: 1px;
+  background: currentColor;
 }
 
 /* ── Standings table ── */

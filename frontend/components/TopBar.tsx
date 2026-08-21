@@ -6,7 +6,8 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import { signOut, useAuthed } from "@/lib/auth";
-import LogoWordmark, { SLANT_DEG, WORDMARK_FONT_RATIO, WORDMARK_TEXT } from "@/components/LogoWordmark";
+import LogoWordmark, { WORDMARK_FONT_RATIO, WORDMARK_TEXT } from "@/components/LogoWordmark";
+import SeasonCountdown from "@/components/SeasonCountdown";
 
 /**
  * Thin utility strip above everything else.
@@ -17,8 +18,8 @@ import LogoWordmark, { SLANT_DEG, WORDMARK_FONT_RATIO, WORDMARK_TEXT } from "@/c
  *
  * It is now on EVERY route, signed in or not, including the landing page, which
  * gave up its own sticky header to avoid stacking two. So the right-hand
- * control has two states: "My Account" with its menu, or "Get Started" for a
- * visitor. Get Started opens the landing page's auth modal — by dispatching
+ * control has two states: "My Account" with its menu, or "Play now" for a
+ * visitor. Play now opens the landing page's auth modal — by dispatching
  * SIGNUP_EVENT if we are already on `/`, and by navigating there otherwise. An
  * event rather than a query parameter for the reason in LeagueProfileModal:
  * App Router does not remount a page for a query-string-only change, so a
@@ -43,17 +44,31 @@ const BAR_BG = "var(--bar-bg)";
 // GamesStrip is the deliberate exception: it runs full-bleed contents and all,
 // so it is not meant to line up with either of these. See --rail in globals.css.
 
-const BAR_H = 37;
+// KEEP THIS EVEN. Chrome snaps text baselines to whole *device* pixels, and an
+// odd bar height puts the centre on a half pixel, which the baseline can never
+// sit on. At 37 that cost ~0.5px: the type sat visibly high against the wolf
+// mark next to it, which is vector and renders at its true subpixel position.
+//
+// Even is the half of that reasoning which still holds. The other half does
+// not: 36 was picked because Fugaz One's ideal baseline landed at 23.06, a
+// whisker off a whole CSS pixel and so clean at 1x, 1.3x and 2x alike. The
+// lockup is Inter Tight now, with different metrics and a different ideal
+// baseline, so that argument does not transfer and 40 is not a regression from
+// it — neither height has been measured against this face.
+//
+// Measuring it is the open item, together with OPTICAL_SHIFT_EM in
+// LogoWordmark, which is currently 0 as a placeholder for the same reason.
+const BAR_H = 40;
 
 /**
- * Fired by "Get Started" when the landing page is already mounted, so it can
+ * Fired by "Play now" when the landing page is already mounted, so it can
  * open its auth modal. Exported for that page to listen on — the same
  * event-instead-of-URL-state pattern LeagueProfileModal uses.
  */
 export const SIGNUP_EVENT = "wagerwolf:signup";
 
 // The lockup sits inside the bar with air above and below rather than filling
-// its height — at 37px it read as a block capping the bar instead of a mark
+// its height — at 36px it read as a block capping the bar instead of a mark
 // within it.
 //
 // There is no LINKS array and no gap token any more. Both existed to space a
@@ -74,28 +89,17 @@ const LOCKUP_H = 20;
 //
 // Only colour is the bar's own — the lockup takes white from currentColor on
 // its Link, this states it.
-// How far the skewed text overhangs its own box, in px — on the LEFT.
 //
-// SLANT_DEG is positive, which is a backslant: the word leans left as it rises,
-// so its ink reaches further left at the cap line than its layout box does, and
-// transforms do not affect layout so the box never learns about it. Separately,
-// the hover underline is a ::after at `bottom: -5px` — below the baseline pivot,
-// where the same shear pushes it the other way, right.
-//
-// Both errors point the same direction, which is why the rule reads as sitting
-// to the right of the word. Padding the LEFT edge widens the box that way so
-// the rule covers the lean. (Padding the right was the first attempt and made
-// it worse.)
-const LEAN_PX = Math.round(
-  LOCKUP_H * WORDMARK_FONT_RATIO * 0.72 * Math.tan((SLANT_DEG * Math.PI) / 180)
-);
-
+// There is no LEAN_PX any more. It padded the left edge by ~2px to cover the
+// skew: the label leaned back, so its ink reached further left at the cap line
+// than its layout box did, and the hover underline — a ::after spanning that
+// box — trailed to the right of the word. Inter Tight is upright and the skew
+// went with Fugaz One, so the ink and the box agree again and the rule lands
+// under the word on its own.
 const linkStyle: CSSProperties = {
   ...WORDMARK_TEXT,
   fontSize: LOCKUP_H * WORDMARK_FONT_RATIO,
   color: "#FFFFFF",
-  // Overrides the `padding: 0` in globals' button.utility-link reset.
-  paddingLeft: LEAN_PX,
 };
 
 // Outlined person-in-circle, used beside the name at the head of the account
@@ -121,6 +125,9 @@ export default function TopBar() {
   // bar is mounted once in the root layout and never remounts on navigation.
   const authed = useAuthed();
   const menuRef = useRef<HTMLDivElement>(null);
+  // `/` swaps the lockup for the season countdown and drops the right-hand
+  // Play now, since the countdown ends in the same call to action.
+  const isLanding = pathname === "/";
 
   useEffect(() => {
     if (!authed) { setFullName(""); return; }
@@ -143,6 +150,14 @@ export default function TopBar() {
   function logout() {
     signOut();
     router.push("/");
+  }
+
+  // The landing page's modal is opened by event when it is already mounted and
+  // by navigation when it is not — see SIGNUP_EVENT above. Shared so the
+  // countdown's link and the right-hand control cannot drift apart.
+  function startSignup() {
+    if (isLanding) window.dispatchEvent(new CustomEvent(SIGNUP_EVENT));
+    else router.push("/");
   }
 
   return (
@@ -176,35 +191,80 @@ export default function TopBar() {
           bookend the app share a lockup as well as a colour. Without it the
           mark carries its accent tile, and a filled block on an already-dark
           bar reads as a sticker stuck on top of it. */}
-      <Link
-        href="/home"
-        aria-label="Wagerwolf home"
-        style={{ display: "flex", alignItems: "center", flexShrink: 0, color: "#FFFFFF" }}
-      >
-        <LogoWordmark height={LOCKUP_H} bare />
-      </Link>
+      {isLanding ? (
+        // The mark is the hero's job on this page; a second one in the bar above
+        // it was the same asset twice on one screen.
+        //
+        // Centred by a spacer here and a matching `flex: 1 1 0` on the account
+        // slot below, rather than by auto margins or an absolute left: 50%.
+        // Auto margins would centre the sentence in the space *left over* after
+        // the account menu, which is half a menu-width off the real centre
+        // whenever someone signed in visits `/`. Absolute would take the
+        // sentence out of flow and cost it the truncation below — and would
+        // collide with the `top` the shared type object sets.
+        <>
+          <div style={{ flex: "1 1 0" }} />
+          <SeasonCountdown
+            style={{ ...linkStyle, minWidth: 0 }}
+            onGetStarted={authed === false ? startSignup : undefined}
+          />
+        </>
+      ) : authed === false ? (
+        // Signed out only. `=== false` and not `!authed`, so nothing renders
+        // while the token check is still outstanding — the same rule the
+        // account control follows: an empty slot for one frame says nothing
+        // false, a lockup that vanishes a frame later is a flicker.
+        //
+        // NOTE: this lockup was the only route back to /home from inside a
+        // league — LeagueNav's Home goes to the *league* home, not the app's —
+        // so signed-in users now have no way out of a league but the browser
+        // back button. See the header comment above.
+        <Link
+          href="/home"
+          aria-label="Wagerwolf home"
+          style={{ display: "flex", alignItems: "center", flexShrink: 0, color: "#FFFFFF" }}
+        >
+          <LogoWordmark height={LOCKUP_H} bare />
+        </Link>
+      ) : null}
 
       {/* Pushed to the far right: an account link is not wayfinding, so it
           reads better set apart from the others than appended to them. Its
           right edge is the bar's --rail padding, so it lands on the same edge
           as the nav's profile control below. */}
-      <div ref={menuRef} style={{ marginLeft: "auto", position: "relative", display: "flex", alignItems: "center" }}>
+      <div
+        ref={menuRef}
+        style={{
+          // Off the landing page this is the only thing on the right, so an
+          // auto margin is enough. On it, the slot has to be the same width as
+          // the spacer opposite for the sentence between them to be centred —
+          // hence the equal flex basis. No minWidth: 0, so the menu is never
+          // squashed narrower than its own label.
+          ...(isLanding ? { flex: "1 1 0", justifyContent: "flex-end" } : { marginLeft: "auto" }),
+          position: "relative",
+          display: "flex",
+          alignItems: "center",
+        }}
+      >
         {/* Nothing until the token check lands. Rendering either label as the
             default flashes the wrong one at half the audience — "My Account" at
-            a visitor on the landing page, or "Get Started" at a signed-in user
+            a visitor on the landing page, or "Play now" at a signed-in user
             on every page. An empty slot for one frame says nothing false. */}
+        {/* On `/` the Play now state is dropped — the countdown beside it
+            already ends in that call to action, and two identical CTAs in one
+            36px bar is one too many. The signed-in state is untouched: a
+            signed-in visitor to the landing page keeps their account menu. */}
         {authed === null ? null : authed === false ? (
-          <button
-            type="button"
-            className="utility-link"
-            style={linkStyle}
-            onClick={() => {
-              if (pathname === "/") window.dispatchEvent(new CustomEvent(SIGNUP_EVENT));
-              else router.push("/");
-            }}
-          >
-            Get Started
-          </button>
+          isLanding ? null : (
+            <button
+              type="button"
+              className="utility-link"
+              style={linkStyle}
+              onClick={startSignup}
+            >
+              Play now
+            </button>
+          )
         ) : (
         <button
           type="button"

@@ -217,28 +217,37 @@ export default function BetSlip({ leagueId }: { leagueId: string }) {
   // the nav stack can land on a fractional y, and rounding reintroduces the
   // few-tenths gap this is meant to close.
   //
-  // Measured off the scroll container, not off .page itself. This slip is
-  // position: fixed, so it needs a viewport-relative y — and .page stopped
-  // being the scrollport when scrolling moved up to .app-scroll (see
-  // globals.css). Its rect top now slides up as the user scrolls, so reading it
-  // would peg the slip to wherever the page happened to be scrolled at the
-  // moment of the last measure. .app-scroll's own top is fixed under the nav
-  // stack, which is the number this actually wants; .page still supplies the
-  // padding, since that is what separates the scrollport from the first card.
+  // Measured off the sticky chrome's BOTTOM, not off .page itself. This slip is
+  // position: fixed, so it needs a viewport-relative y — and .page's rect top
+  // slides up as the user scrolls, so reading it would peg the slip to wherever
+  // the page happened to be scrolled at the moment of the last measure.
+  //
+  // It used to read .app-scroll's top, which was the right number while the
+  // chrome sat outside the scroller: the scroller began under the nav stack.
+  // The chrome is inside now and .app-scroll starts at the top of the viewport,
+  // so that reading would tuck the slip up behind the utility bar. The chrome
+  // is sticky at top: 0, so its bottom edge is where content actually begins
+  // and is the number this wants. .page still supplies the padding, since that
+  // is what separates the scrollport from the first card.
   const [contentTop, setContentTop] = useState(CONTENT_TOP_FALLBACK);
   useEffect(() => {
+    const chrome = document.querySelector(".app-chrome");
     const scroller = document.querySelector(".app-scroll");
     const page = document.querySelector(".page, .page-wide");
     if (!scroller || !page) return;
     const measure = () => {
       const padTop = parseFloat(getComputedStyle(page).paddingTop) || 0;
-      setContentTop(scroller.getBoundingClientRect().top + padTop);
+      // No chrome on the routes that render none — then content starts at the
+      // scroller's own top, which is what the fallback below resolves to.
+      const top = chrome ? chrome.getBoundingClientRect().bottom : scroller.getBoundingClientRect().top;
+      setContentTop(top + padTop);
     };
     measure();
-    // The scroller for its top moving when the chrome above it changes height,
-    // the page for its padding changing with the viewport.
+    // The chrome for its height changing (the strip is absent on some routes
+    // and collapses when a week has no games), the page for its padding
+    // changing with the viewport.
     const ro = new ResizeObserver(measure);
-    ro.observe(scroller);
+    if (chrome) ro.observe(chrome);
     ro.observe(page);
     window.addEventListener("resize", measure);
     return () => { ro.disconnect(); window.removeEventListener("resize", measure); };

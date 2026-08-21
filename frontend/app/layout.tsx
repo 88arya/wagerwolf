@@ -11,14 +11,16 @@ const interTight = Inter_Tight({
   display: "swap",
 });
 
-// Team abbreviations in the games strip, and the wordmark. Fugaz One is a
+// Team abbreviations in the games strip, and nothing else now. Fugaz One is a
 // single-face display font — weight 400, normal, and nothing else — so both
 // have to be named explicitly and neither can be varied.
 //
-// The UI stays on Inter Tight. This is the only exception: Poppins, Lexend
-// Deca, Viga, Anton and Passion One each had a turn as a wordmark-only third
-// face and each was a separate fetch. Pointing the lockup at the font the games
-// strip already loads costs nothing.
+// The wordmark used to share it, which was the argument for keeping a third
+// face at all: Poppins, Lexend Deca, Viga, Anton and Passion One each had a
+// turn as a wordmark-only face and each was its own fetch, so pointing the
+// lockup at the font the strip already loaded cost nothing. The lockup is on
+// Inter Tight now, so that argument is gone and this face is carried for the
+// strip alone.
 const fugazOne = Fugaz_One({
   subsets: ["latin"],
   weight: "400",
@@ -41,13 +43,20 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             doesn't tear them down and rebuild them. AppChrome renders a
             fragment, so both stay direct flex children of <body>. */}
         <GoogleProvider>
-          <AppChrome />
-          {/* The app's single scroll region, holding the page and the footer as
-              its two children — that pairing is the whole reason it exists, so
-              the footer follows the content instead of pinning to the viewport.
-              The chrome above stays outside it and does not scroll. See
-              .app-scroll in globals.css. */}
+          {/* The app's single scroll region — and it now genuinely is single.
+              The chrome used to sit outside it as a <body> sibling, which meant
+              a wheel event over the utility bar or the games strip had no
+              scrollable ancestor to move: the page simply did not respond, and
+              the scrollbar began below the strip rather than spanning the
+              window, which is what made the header read as detached from the
+              page under it.
+
+              Inside, and pinned with `position: sticky` (see .app-chrome), it
+              stays exactly as visible while the whole viewport becomes one
+              scrollport. The footer still follows the content rather than
+              pinning, since it is still the last child here. */}
           <div className="app-scroll">
+            <AppChrome />
             {children}
             <SiteFooter />
           </div>

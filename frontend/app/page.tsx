@@ -30,7 +30,7 @@ export default function HomePage() {
   const [authView, setAuthView] = useState<"signin" | "signup" | null>(null);
 
 
-  // Fired by TopBar's "Get Started", which replaced this page's own header
+  // Fired by TopBar's "Play now", which replaced this page's own header
   // buttons. An event rather than a query parameter: App Router does not
   // remount for a query-string-only change, so a parameter would do nothing
   // when the bar is clicked on the page it lives above.
@@ -88,12 +88,12 @@ export default function HomePage() {
 
       {/* No header here any more. AppChrome mounts the utility bar on every
           route including this one, and it carries the wordmark plus the
-          right-hand control — "Get Started" signed out, "My Account" signed in.
+          right-hand control — "Play now" signed out, "My Account" signed in.
           Two sticky headers stacked was the alternative, and the second one was
           saying the same things as the first.
 
           "How to play" and the separate "Sign in" went with it: the page's own
-          How to Play section is directly below, and one Get Started that opens
+          How to Play section is directly below, and one Play now that opens
           the modal is less to read than a sign-in / sign-up pair. */}
       {/* ── Hero ── */}
       <section
