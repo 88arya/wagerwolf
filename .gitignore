@@ -1,6 +1,8 @@
 node_modules/
-.env
-.env.local
+# Every env variant, not just these two. .env.production holding a live
+# database password was one `git add` away from being committed.
+.env*
+!.env.example
 dist/
 build/
 .claude/
