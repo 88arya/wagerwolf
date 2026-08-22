@@ -17,13 +17,18 @@ import SeasonCountdown from "@/components/SeasonCountdown";
  * way out except the browser back button or the logo.
  *
  * It is now on EVERY route, signed in or not, including the landing page, which
- * gave up its own sticky header to avoid stacking two. So the right-hand
- * control has two states: "My Account" with its menu, or "Play now" for a
- * visitor. Play now opens the landing page's auth modal — by dispatching
- * SIGNUP_EVENT if we are already on `/`, and by navigating there otherwise. An
- * event rather than a query parameter for the reason in LeagueProfileModal:
- * App Router does not remount a page for a query-string-only change, so a
- * parameter read in an effect silently does nothing on the page you are on.
+ * gave up its own sticky header to avoid stacking two.
+ *
+ * The bar is three slots: the lockup on the left, the season countdown in the
+ * middle on `/` only, and one control on the right with two states — "My
+ * Account" with its menu, or "Play now" for a visitor. Both outer slots carry
+ * `flex: 1 1 0` so they stay equal, which is what keeps the countdown on the
+ * bar's true centre instead of the centre of the space left over.
+ *
+ * Play now routes to /signup, which is a bare page carrying its own wordmark.
+ * It has been a landing-page section, then a modal, and is now a route: a
+ * dialog had no URL, so there was nothing to link to and no way to send anyone
+ * straight to it.
  *
  * It also owns the *global* account: the identity that follows the user across
  * every league (real name, email, password). The per-league identity — team
@@ -60,12 +65,10 @@ const BAR_BG = "var(--bar-bg)";
 // LogoWordmark, which is currently 0 as a placeholder for the same reason.
 const BAR_H = 40;
 
-/**
- * Fired by "Play now" when the landing page is already mounted, so it can
- * open its auth modal. Exported for that page to listen on — the same
- * event-instead-of-URL-state pattern LeagueProfileModal uses.
- */
-export const SIGNUP_EVENT = "wagerwolf:signup";
+// SIGNUP_EVENT is gone. It existed to open a sign-in dialog without a
+// navigation, first on the landing page and then from the root layout. Sign-up
+// is the /signup route now, so the thing the event was avoiding — a navigation
+// — is the whole point, and a plain router.push says it more directly.
 
 // The lockup sits inside the bar with air above and below rather than filling
 // its height — at 36px it read as a block capping the bar instead of a mark
@@ -78,26 +81,51 @@ const LOCKUP_H = 20;
 // The hover rule itself lives in globals.css under .utility-link — it is a
 // pseudo-element that scales in from the left, which inline styles cannot
 // express. Everything here is just the type.
-// "My Account" is set exactly as the wordmark at the other end of the bar:
-// same face, weight, tracking and size, and no uppercase. The two are the only
-// text in the utility bar, so anything that differed between them read as a
-// mismatch rather than a hierarchy.
-//
-// Size is the one thing WORDMARK_TEXT cannot carry, because the lockup derives
-// it from its own height. Computed from the same two values rather than the
-// 14px they currently produce, so changing LOCKUP_H moves both ends together.
-//
-// Only colour is the bar's own — the lockup takes white from currentColor on
-// its Link, this states it.
-//
 // There is no LEAN_PX any more. It padded the left edge by ~2px to cover the
 // skew: the label leaned back, so its ink reached further left at the cap line
 // than its layout box did, and the hover underline — a ::after spanning that
 // box — trailed to the right of the word. Inter Tight is upright and the skew
 // went with Fugaz One, so the ink and the box agree again and the rule lands
 // under the word on its own.
+// The UI face at the design system's 500 ceiling. Only the season countdown
+// uses this now — a whole sentence, which wants the body face rather than the
+// display one the lockup and the right-hand control share.
+//
+// It used to dress "My Account" as well, and before that it spread
+// WORDMARK_TEXT so both ends of the bar were set identically. Size is still
+// derived from LOCKUP_H, so it scales with the lockup even though it no longer
+// matches its face.
 const linkStyle: CSSProperties = {
+  fontFamily: "var(--font-sans), system-ui, sans-serif",
+  fontWeight: 500,
+  letterSpacing: "normal",
+  textTransform: "none",
+  lineHeight: "normal",
+  display: "inline-block",
+  whiteSpace: "nowrap",
+  fontSize: LOCKUP_H * WORDMARK_FONT_RATIO,
+  color: "#FFFFFF",
+};
+
+// "Play now", set as the lockup at the other end of the bar: same face, weight,
+// tracking and case, and already the same size — linkStyle derives its fontSize
+// from LOCKUP_H x WORDMARK_FONT_RATIO, which is exactly what the lockup gives
+// its own text. So this differs from linkStyle only in the three things
+// WORDMARK_TEXT carries that the UI face does not: Arca Majora, weight 700, and
+// lowercase. It draws as "play now".
+//
+// Spread rather than restated, so it cannot drift from the mark it is matching.
+//
+// textTransform is overridden back to `none`. WORDMARK_TEXT lowercases, which is
+// right for a logo and wrong for a label — it would render "play now" and "my
+// account", losing the capital that marks the start of a phrase. The capitals
+// live in the strings themselves, one each, where they belong.
+//
+// Both states of the right-hand control share this, so they match each other as
+// well as the lockup.
+const ctaStyle: CSSProperties = {
   ...WORDMARK_TEXT,
+  textTransform: "none",
   fontSize: LOCKUP_H * WORDMARK_FONT_RATIO,
   color: "#FFFFFF",
 };
@@ -125,8 +153,9 @@ export default function TopBar() {
   // bar is mounted once in the root layout and never remounts on navigation.
   const authed = useAuthed();
   const menuRef = useRef<HTMLDivElement>(null);
-  // `/` swaps the lockup for the season countdown and drops the right-hand
-  // Play now, since the countdown ends in the same call to action.
+  // `/` is the only route that carries the season countdown, between the
+  // lockup and the control. Neither of those is conditional any more — the
+  // countdown is now the only thing this flag decides.
   const isLanding = pathname === "/";
 
   useEffect(() => {
@@ -152,12 +181,11 @@ export default function TopBar() {
     router.push("/");
   }
 
-  // The landing page's modal is opened by event when it is already mounted and
-  // by navigation when it is not — see SIGNUP_EVENT above. Shared so the
-  // countdown's link and the right-hand control cannot drift apart.
+  // Sign-up is a page now, not a dialog. It went landing-page section -> modal
+  // -> route: a dialog had no URL, so there was nothing to link to, nothing to
+  // come back to, and no way to send someone straight to it.
   function startSignup() {
-    if (isLanding) window.dispatchEvent(new CustomEvent(SIGNUP_EVENT));
-    else router.push("/");
+    router.push("/signup");
   }
 
   return (
@@ -191,42 +219,76 @@ export default function TopBar() {
           bookend the app share a lockup as well as a colour. Without it the
           mark carries its accent tile, and a filled block on an already-dark
           bar reads as a sticker stuck on top of it. */}
-      {isLanding ? (
-        // The mark is the hero's job on this page; a second one in the bar above
-        // it was the same asset twice on one screen.
-        //
-        // Centred by a spacer here and a matching `flex: 1 1 0` on the account
-        // slot below, rather than by auto margins or an absolute left: 50%.
-        // Auto margins would centre the sentence in the space *left over* after
-        // the account menu, which is half a menu-width off the real centre
-        // whenever someone signed in visits `/`. Absolute would take the
-        // sentence out of flow and cost it the truncation below — and would
-        // collide with the `top` the shared type object sets.
-        <>
-          <div style={{ flex: "1 1 0" }} />
-          <SeasonCountdown
-            style={{ ...linkStyle, minWidth: 0 }}
-            onGetStarted={authed === false ? startSignup : undefined}
-          />
-        </>
-      ) : authed === false ? (
-        // Signed out only. `=== false` and not `!authed`, so nothing renders
-        // while the token check is still outstanding — the same rule the
-        // account control follows: an empty slot for one frame says nothing
-        // false, a lockup that vanishes a frame later is a flicker.
-        //
-        // NOTE: this lockup was the only route back to /home from inside a
-        // league — LeagueNav's Home goes to the *league* home, not the app's —
-        // so signed-in users now have no way out of a league but the browser
-        // back button. See the header comment above.
-        <Link
-          href="/home"
-          aria-label="Wagerwolf home"
-          style={{ display: "flex", alignItems: "center", flexShrink: 0, color: "#FFFFFF" }}
-        >
-          <LogoWordmark height={LOCKUP_H} bare />
-        </Link>
-      ) : null}
+      {/* The lockup is now unconditional — every route, signed in or out, `/`
+          included. It used to be hidden in two cases, and both are gone:
+
+          - On `/` it gave way to the season countdown, on the grounds that the
+            landing hero already carried a mark and a second one was the same
+            asset twice on one screen. The countdown still runs there, centred
+            between this slot and the control opposite; it just no longer has
+            the left edge to itself.
+          - When signed in it was hidden everywhere, which left a signed-in user
+            inside a league with no route back to /home at all — LeagueNav's
+            Home goes to the *league* home. That was a documented gap, and
+            showing the lockup always is what closes it: the wordmark IS the
+            home link.
+
+          The slot takes `flex: 1 1 0` so it balances the control opposite,
+          which is what keeps the countdown between them on the true centre of
+          the bar rather than the centre of whatever space is left over. Off `/`
+          there is nothing in the middle and the two slots simply split the bar,
+          putting the lockup on the left edge and the control on the right.
+
+          `bare` draws head and name in currentColor. It is the same call
+          SiteFooter makes, on the same --bar-bg fill, so the two bars that
+          bookend the app share a lockup as well as a colour. Without it the
+          mark carries its accent tile, and a filled block on an already-dark
+          bar reads as a sticker stuck on top of it. */}
+      {/* A link ONLY when signed in. /home sits behind the guard in
+          app/(user)/layout.tsx, which bounces anyone without a token back to
+          `/` — so signed out this link went /` -> /home -> `/`, a round trip
+          that lands you where you started and can flash the guarded page on the
+          way. There is nowhere else useful to send a visitor either: `/` is
+          where they already are on the one route this matters most.
+
+          `=== true`, not truthy, so the mark is inert while the token check is
+          still outstanding. A link that works for one frame and then stops is
+          worse than one that was never offered.
+
+          The static branch needs no aria-label: the lockup draws "Wagerwolf" as
+          real text, so the name is already in the accessibility tree. On the
+          link it stays, because there it has to say where the link GOES. */}
+      <div style={{ flex: "1 1 0", display: "flex", alignItems: "center", minWidth: 0 }}>
+        {authed === true ? (
+          <Link
+            href="/home"
+            aria-label="Wagerwolf home"
+            style={{ display: "flex", alignItems: "center", flexShrink: 0, color: "#FFFFFF" }}
+          >
+            <LogoWordmark height={LOCKUP_H} bare />
+          </Link>
+        ) : (
+          <span style={{ display: "flex", alignItems: "center", flexShrink: 0, color: "#FFFFFF" }}>
+            <LogoWordmark height={LOCKUP_H} bare />
+          </span>
+        )}
+      </div>
+
+      {/* Signed-out visitors only. The sentence is a pitch — it counts down to
+          kickoff and exists to get someone to start playing — so showing it to
+          someone who already has an account is selling them what they bought.
+          They see the wordmark and their account link, nothing between.
+
+          `authed === false`, not `!authed`, so it does not flash on during the
+          token check and vanish a frame later. Same rule the lockup and the
+          right-hand control follow.
+
+          No onGetStarted any more, so the countdown renders its sentence and
+          nothing else. Its trailing "Play now" link — and the invisible mirror
+          that balanced it — existed when the bar had no right-hand CTA on this
+          route. There is one on every route now, so the link was the second of
+          two identical calls to action in a 40px bar. */}
+      {isLanding && authed === false && <SeasonCountdown style={{ ...linkStyle, minWidth: 0 }} />}
 
       {/* Pushed to the far right: an account link is not wayfinding, so it
           reads better set apart from the others than appended to them. Its
@@ -235,12 +297,14 @@ export default function TopBar() {
       <div
         ref={menuRef}
         style={{
-          // Off the landing page this is the only thing on the right, so an
-          // auto margin is enough. On it, the slot has to be the same width as
-          // the spacer opposite for the sentence between them to be centred —
-          // hence the equal flex basis. No minWidth: 0, so the menu is never
-          // squashed narrower than its own label.
-          ...(isLanding ? { flex: "1 1 0", justifyContent: "flex-end" } : { marginLeft: "auto" }),
+          // Always the same width as the lockup slot opposite. On `/` that is
+          // what puts the countdown between them on the bar's true centre
+          // rather than the centre of the space left over; off it the two
+          // slots just split the bar and this one ends on the right edge. No
+          // minWidth: 0, so the control is never squashed narrower than its
+          // own label.
+          flex: "1 1 0",
+          justifyContent: "flex-end",
           position: "relative",
           display: "flex",
           alignItems: "center",
@@ -250,29 +314,29 @@ export default function TopBar() {
             default flashes the wrong one at half the audience — "My Account" at
             a visitor on the landing page, or "Play now" at a signed-in user
             on every page. An empty slot for one frame says nothing false. */}
-        {/* On `/` the Play now state is dropped — the countdown beside it
-            already ends in that call to action, and two identical CTAs in one
-            36px bar is one too many. The signed-in state is untouched: a
-            signed-in visitor to the landing page keeps their account menu. */}
+        {/* One control, two states, on EVERY route including `/`. The landing
+            page used to be an exception that rendered nothing here when signed
+            out, because the countdown carried the call to action instead. The
+            countdown's link is gone, so this is now the only way in — and an
+            exception that leaves a visitor with no visible way to start is not
+            one worth keeping. */}
         {authed === null ? null : authed === false ? (
-          isLanding ? null : (
-            <button
-              type="button"
-              className="utility-link"
-              style={linkStyle}
-              onClick={startSignup}
-            >
-              Play now
-            </button>
-          )
+          <button
+            type="button"
+            className="utility-link"
+            style={ctaStyle}
+            onClick={startSignup}
+          >
+            Play now
+          </button>
         ) : (
         <button
           type="button"
           className="utility-link"
-          style={linkStyle}
+          style={ctaStyle}
           onClick={() => setOpen(o => !o)}
         >
-          My Account
+          My account
         </button>
         )}
 

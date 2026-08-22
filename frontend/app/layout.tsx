@@ -3,7 +3,16 @@ import { Fugaz_One, Inter_Tight } from "next/font/google";
 import "./globals.css";
 import AppChrome from "@/components/AppChrome";
 import GoogleProvider from "@/components/GoogleProvider";
+// The wordmark's face. Declared in wordmarkFonts.ts alongside the other
+// candidates and mounted here rather than there, because the lockup appears in
+// the utility bar, the footer and /signup — i.e. on every route — so it cannot
+// be scoped to one page the way a specimen can.
+// arcaMajora is the wordmark's face; lemonMilk sets the games strip's team
+// abbreviations. Both declared in wordmarkFonts.ts and mounted here because
+// both appear on every route.
+import { arcaMajora, lemonMilk } from "./wordmarkFonts";
 import SiteFooter from "@/components/SiteFooter";
+import FooterSlot from "@/components/FooterSlot";
 
 const interTight = Inter_Tight({
   subsets: ["latin"],
@@ -36,7 +45,7 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={`${interTight.variable} ${fugazOne.variable}`} suppressHydrationWarning>
+    <html lang="en" className={`${interTight.variable} ${fugazOne.variable} ${arcaMajora.variable} ${lemonMilk.variable}`} suppressHydrationWarning>
       <body suppressHydrationWarning>
         {/* Utility bar + games strip, global to every signed-in page. Mounted
             here rather than per-layout so navigating between /home and a league
@@ -58,7 +67,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <div className="app-scroll">
             <AppChrome />
             {children}
-            <SiteFooter />
+            {/* Wrapped so /signup can opt out — see FooterSlot. SiteFooter is
+                a server component and cannot read the pathname itself, so it is
+                passed through as children rather than made a client one. */}
+            <FooterSlot>
+              <SiteFooter />
+            </FooterSlot>
           </div>
         </GoogleProvider>
       </body>
