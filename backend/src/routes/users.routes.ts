@@ -58,12 +58,63 @@ function mePayload(user: MeRow) {
 
 router.post("/auth/google", authLimiter, async (req: any, res: any) => {
   try {
-    const { credential } = req.body;
-    if (!credential) { res.status(400).json({ error: "Google credential required" }); return; }
+    // Two ways in, both ending at the same verified ID token.
+    //
+    //   `credential` — an ID token straight from Google's own GSI button.
+    //   `code`       — an authorization code from the JS code client, which is
+    //                  what lets the frontend draw its OWN button instead of
+    //                  embedding Google's unstyleable iframe. Google hands the
+    //                  browser a code rather than a token in this flow, so the
+    //                  exchange happens here, where the client secret can live.
+    //
+    // The credential path is kept because it costs nothing and is the fallback
+    // if the code flow ever needs backing out.
+    const { credential, code } = req.body;
+    if (!credential && !code) {
+      res.status(400).json({ error: "Google credential or code required" });
+      return;
+    }
 
-    const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
+    // "postmessage" is the redirect_uri Google requires for the popup-based JS
+    // code client — there is no redirect, the popup posts back to the opener.
+    // It is a literal, not a placeholder.
+    const client = new OAuth2Client(
+      process.env.GOOGLE_CLIENT_ID,
+      process.env.GOOGLE_CLIENT_SECRET,
+      "postmessage",
+    );
+
+    let idToken: string | undefined = credential;
+    if (!idToken) {
+      // Fail loudly rather than letting Google reject the exchange with
+      // something opaque: a missing secret is a deployment problem, not a
+      // user's bad input.
+      if (!process.env.GOOGLE_CLIENT_SECRET) {
+        console.error("[auth] GOOGLE_CLIENT_SECRET is not set — the code exchange cannot run");
+        res.status(500).json({ error: "Google sign-in is not configured on this server" });
+        return;
+      }
+      // Google's own wording here is for us, not for the person signing in:
+      // a rejected exchange surfaces as "invalid_grant", which means nothing to
+      // a user and would be shown to them verbatim by the generic catch below.
+      // The real reason is almost always a code that has already been redeemed
+      // or has expired, and the fix for both is to press the button again.
+      let tokens;
+      try {
+        ({ tokens } = await client.getToken(code));
+      } catch (err: any) {
+        const reason = err?.response?.data?.error ?? err?.message ?? "unknown";
+        console.error("[auth] Google code exchange failed:", reason);
+        // 400, not 500: the server is fine, the code was not.
+        res.status(400).json({ error: "That sign-in attempt expired. Please try again." });
+        return;
+      }
+      idToken = tokens.id_token ?? undefined;
+      if (!idToken) { res.status(400).json({ error: "Google returned no ID token" }); return; }
+    }
+
     const ticket = await client.verifyIdToken({
-      idToken: credential,
+      idToken,
       audience: process.env.GOOGLE_CLIENT_ID,
     });
     const payload = ticket.getPayload();
