@@ -2,20 +2,6 @@ import { db } from "../src/db/db";
 import { eq, count } from "drizzle-orm";
 import { weeks, games } from "../src/db/schema";
 import { syncESPNGames } from "../src/services/syncWeek";
-import { seedFakePropsForWeek } from "../src/services/fakeSync";
-
-const FAKE_GAMES: Array<{ homeTeam: string; awayTeam: string; offsetDays: number; hour: number }> = [
-  { homeTeam: "KC",  awayTeam: "BUF", offsetDays: 3, hour: 13 },
-  { homeTeam: "PHI", awayTeam: "DAL", offsetDays: 3, hour: 16 },
-  { homeTeam: "SF",  awayTeam: "LAR", offsetDays: 3, hour: 16 },
-  { homeTeam: "MIA", awayTeam: "CIN", offsetDays: 3, hour: 13 },
-  { homeTeam: "BAL", awayTeam: "HOU", offsetDays: 3, hour: 13 },
-  { homeTeam: "DET", awayTeam: "MIN", offsetDays: 3, hour: 13 },
-  { homeTeam: "GB",  awayTeam: "ATL", offsetDays: 3, hour: 16 },
-  { homeTeam: "PIT", awayTeam: "CLE", offsetDays: 3, hour: 20 },
-  { homeTeam: "DAL", awayTeam: "WAS", offsetDays: 4, hour: 20 },
-  { homeTeam: "TB",  awayTeam: "NO",  offsetDays: 1, hour: 20 },
-];
 
 async function main() {
   const fromArg = process.argv.find((a) => a.startsWith("--from="));
@@ -57,17 +43,10 @@ async function main() {
       console.log(`  Skipped (${existingCount} games already exist)`);
     }
 
+    // No invented fallback: a week ESPN has not published yet stays empty until
+    // it does. Odds come separately, from scripts/seedRealProps.ts.
     const [{ value: gameCount }] = await db.select({ value: count() }).from(games).where(eq(games.weekId, week.id));
-    if (gameCount === 0) {
-      for (const g of FAKE_GAMES) {
-        const gameDate = new Date(startDate);
-        gameDate.setUTCDate(startDate.getUTCDate() + g.offsetDays);
-        gameDate.setUTCHours(g.hour, 0, 0, 0);
-        await db.insert(games).values({ weekId: week.id, homeTeam: g.homeTeam, awayTeam: g.awayTeam, gameDate });
-      }
-      const result = await seedFakePropsForWeek(week.id);
-      console.log(`  Fake fallback: ${FAKE_GAMES.length} games, ${result.props} props`);
-    }
+    if (gameCount === 0) console.log(`  No ESPN schedule yet — left empty`);
   }
 
   console.log("All weeks seeded.");

@@ -6,6 +6,7 @@ import { requireAuth } from "../middleware/auth";
 import { betLimiter } from "../middleware/rateLimit";
 import { calcParlayOdds, calcParlayPayout, fmtMoney } from "../lib/payout";
 import { findFirstConflict, conflictMessage, type ConflictLeg } from "../services/betConflicts";
+import { altOddsFor } from "../services/propOdds";
 
 const router = Router();
 
@@ -51,17 +52,6 @@ function toConflictLeg(leg: ResolvedLeg): ConflictLeg {
 // the line values and the favoured side are actually taken into account. See
 // that file for the model.
 
-const STAT_STEP: Record<string, number> = {
-  PASSING_YARDS: 5, RUSHING_YARDS: 5, RECEIVING_YARDS: 5,
-  TOUCHDOWNS: 0.5, RECEPTIONS: 0.5,
-};
-
-function calcPropAltOdds(baseOdds: number, baseLine: number, altLine: number, statType: string, direction: string): number {
-  const step = STAT_STEP[statType] ?? 0.5;
-  const steps = (altLine - baseLine) / step;
-  const favSteps = direction === "OVER" ? -steps : steps;
-  return Math.max(-500, Math.min(500, baseOdds - Math.round(favSteps * 15)));
-}
 
 function calcGameLineAltOdds(baseOdds: number, baseLine: number, altLine: number, market: string): number {
   const steps = (altLine - baseLine) / 0.5;
@@ -206,9 +196,7 @@ router.post("/", requireAuth, betLimiter, async (req: any, res: any) => {
         });
         if (!firstWeekId) firstWeekId = prop.game.week.id;
 
-        const propOdds = (leg.altLine != null && prop.line != null)
-          ? calcPropAltOdds(prop.odds, prop.line, leg.altLine, prop.statType, leg.direction!)
-          : prop.odds;
+        const propOdds = altOddsFor(prop, leg.altLine, leg.direction!);
         resolvedLegs.push({ propId: leg.propId, direction: leg.direction, odds: propOdds, altLine: leg.altLine });
       } else if (leg.gameLineId) {
         const gameLine = await db.query.gameLines.findFirst({
@@ -341,9 +329,7 @@ router.post("/round-robin", requireAuth, betLimiter, async (req: any, res: any) 
         if (prop.game.status === "CANCELLED") { res.status(400).json({ error: "Cannot include cancelled game" }); return; }
         if (prop.game.week.locked || prop.game.week.resolved) { res.status(400).json({ error: "Cannot include locked/resolved props" }); return; }
         if (new Date(prop.game.gameDate) <= new Date()) { res.status(400).json({ error: "Game has already kicked off" }); return; }
-        const odds = leg.altLine != null && prop.line != null
-          ? calcPropAltOdds(prop.odds, prop.line, leg.altLine, prop.statType, leg.direction!)
-          : prop.odds;
+        const odds = altOddsFor(prop, leg.altLine, leg.direction!);
         if (!firstWeekId) firstWeekId = prop.game.week.id;
         resolved.push({
           propId: leg.propId, direction: leg.direction, odds, altLine: leg.altLine,

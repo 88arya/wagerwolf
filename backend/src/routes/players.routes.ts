@@ -3,7 +3,7 @@ import { db } from "../db/db";
 import { eq, asc } from "drizzle-orm";
 import { players } from "../db/schema";
 import { requireAuth, requireCron } from "../middleware/auth";
-import { searchEspnPlayerId, espnImageUrl, getAthleteJersey } from "../services/espnApi";
+import { searchEspnPlayerId, espnImageUrl, getAthleteDetails } from "../services/espnApi";
 
 const router = Router();
 
@@ -41,13 +41,23 @@ router.get("/:id/image", requireAuth, async (req: any, res: any) => {
 
     if (!espnId) { res.json({ imageUrl: null, jersey: null }); return; }
 
+    // "FLEX" means the odds feed gave no position — usually a player who only
+    // shows up in the anytime-touchdown market. Backfill it off the same lookup
+    // the jersey needs, so it self-heals the first time the avatar renders.
     let jersey = player.jersey;
-    if (!jersey) jersey = await getAthleteJersey(espnId);
-
-    if (espnId !== player.espnId || jersey !== player.jersey) {
-      await db.update(players).set({ espnId, imageUrl: espnImageUrl(espnId), jersey }).where(eq(players.id, player.id));
+    let position = player.position;
+    if (!jersey || position === "FLEX") {
+      const details = await getAthleteDetails(espnId);
+      jersey = jersey ?? details.jersey;
+      if (position === "FLEX" && details.position) position = details.position;
     }
-    res.json({ imageUrl: espnImageUrl(espnId), jersey });
+
+    if (espnId !== player.espnId || jersey !== player.jersey || position !== player.position) {
+      await db.update(players)
+        .set({ espnId, imageUrl: espnImageUrl(espnId), jersey, position })
+        .where(eq(players.id, player.id));
+    }
+    res.json({ imageUrl: espnImageUrl(espnId), jersey, position });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }

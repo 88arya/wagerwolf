@@ -5,20 +5,10 @@ import { picks, memberships, leagues, props, games, gamePicks, gameLines } from 
 import { requireAuth } from "../middleware/auth";
 import { betLimiter } from "../middleware/rateLimit";
 import { calcProfit, fmtMoney } from "../lib/payout";
+import { altOddsFor } from "../services/propOdds";
 
 const router = Router();
 
-const STAT_STEP: Record<string, number> = {
-  PASSING_YARDS: 5, RUSHING_YARDS: 5, RECEIVING_YARDS: 5,
-  TOUCHDOWNS: 0.5, RECEPTIONS: 0.5,
-};
-
-function calcPropAltOdds(baseOdds: number, baseLine: number, altLine: number, statType: string, direction: string): number {
-  const step = STAT_STEP[statType] ?? 0.5;
-  const steps = (altLine - baseLine) / step;
-  const favSteps = direction === "OVER" ? -steps : steps;
-  return Math.max(-500, Math.min(500, baseOdds - Math.round(favSteps * 15)));
-}
 
 router.post("/", requireAuth, betLimiter, async (req: any, res: any) => {
   try {
@@ -118,9 +108,7 @@ router.post("/", requireAuth, betLimiter, async (req: any, res: any) => {
       }
     }
 
-    const effectiveOdds = (altLine != null && prop.line != null)
-      ? calcPropAltOdds(prop.odds, prop.line, Number(altLine), prop.statType, direction)
-      : prop.odds;
+    const effectiveOdds = altOddsFor(prop, altLine != null ? Number(altLine) : null, direction);
 
     const [pick] = await db.insert(picks).values({
       userId, leagueId, propId, direction, stake: Number(stake),

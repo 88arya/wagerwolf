@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db } from "../db/db";
-import { eq, inArray, isNotNull } from "drizzle-orm";
+import { eq, and, inArray, isNotNull } from "drizzle-orm";
 import { props, games } from "../db/schema";
 import { requireAuth, requireCron } from "../middleware/auth";
 
@@ -58,7 +58,7 @@ router.get("/", requireAuth, async (req: any, res: any) => {
       const gameIds = weekGames.map((g) => g.id);
       if (gameIds.length === 0) { res.json([]); return; }
       const rows = await db.query.props.findMany({
-        where: inArray(props.gameId, gameIds),
+        where: and(inArray(props.gameId, gameIds), eq(props.available, true)),
         with: { player: true, game: true },
       });
       res.json(rows);

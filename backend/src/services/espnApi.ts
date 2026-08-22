@@ -40,16 +40,31 @@ export async function searchEspnPlayerId(name: string): Promise<string | null> {
 // Jersey number lives on the "core" ESPN API, not the "site" API used elsewhere in this file
 const CORE = "https://sports.core.api.espn.com/v3/sports/football/nfl";
 
-export async function getAthleteJersey(espnId: string): Promise<string | null> {
+/**
+ * Jersey and position for one athlete.
+ *
+ * Position matters because the odds feed never states one: a player who only
+ * appears in the anytime-touchdown market gives no hint at all, and 46 of them
+ * were being filed as "FLEX". One request already being made for the jersey
+ * answers both.
+ */
+export async function getAthleteDetails(espnId: string): Promise<{ jersey: string | null; position: string | null }> {
   try {
     const res = await fetch(`${CORE}/athletes/${espnId}`);
-    if (!res.ok) return null;
-    const data = await res.json();
-    return data.jersey ?? null;
+    if (!res.ok) return { jersey: null, position: null };
+    const data: any = await res.json();
+    return {
+      jersey: data.jersey ?? null,
+      position: data.position?.abbreviation ?? null,
+    };
   } catch (e) {
-    console.error(`ESPN jersey lookup error for athlete ${espnId}:`, e);
-    return null;
+    console.error(`ESPN athlete lookup error for ${espnId}:`, e);
+    return { jersey: null, position: null };
   }
+}
+
+export async function getAthleteJersey(espnId: string): Promise<string | null> {
+  return (await getAthleteDetails(espnId)).jersey;
 }
 
 export interface ESPNGame {

@@ -1,5 +1,5 @@
 import {
-  pgTable, pgEnum, text, integer, boolean, timestamp, date, real, index, uniqueIndex,
+  pgTable, pgEnum, text, integer, boolean, timestamp, date, real, jsonb, index, uniqueIndex,
 } from "drizzle-orm/pg-core";
 import { relations, sql } from "drizzle-orm";
 import { randomUUID } from "crypto";
@@ -19,7 +19,10 @@ export const statTypeEnum = pgEnum("StatType", [
 
 export const directionEnum = pgEnum("Direction", ["OVER", "UNDER"]);
 export const membershipStatusEnum = pgEnum("MembershipStatus", ["PENDING", "ACTIVE"]);
-export const outcomeEnum = pgEnum("Outcome", ["PENDING", "WIN", "LOSS", "VOID"]);
+// PUSH = result landed exactly on the line; stake refunded, no profit. VOID =
+// cashed out or cancelled. They are distinct: a push is a graded bet that
+// happened to tie, a void never resolved.
+export const outcomeEnum = pgEnum("Outcome", ["PENDING", "WIN", "LOSS", "VOID", "PUSH"]);
 
 // ─── Tables ──────────────────────────────────────────────────────────────────
 
@@ -211,8 +214,15 @@ export const games = pgTable("Game", {
   awayTeam:     text("awayTeam").notNull(),
   gameDate:     timestamp("gameDate").notNull(),
   status:       text("status").default("SCHEDULED").notNull(),
+  // SportsGameOdds eventID. (Previously held a SharpAPI event id; SharpAPI is gone.)
   externalId:   text("externalId").unique(),
   espnId:       text("espnId").unique(),
+  // Last time odds were pulled for this game. Drives the tiered poller — the
+  // cadence is a function of time-to-kickoff, so this is what makes "is this
+  // game due?" answerable without tracking schedules per game.
+  oddsPolledAt: timestamp("oddsPolledAt"),
+  // Set once the post-game settlement fetch has graded this game's markets.
+  oddsSettledAt: timestamp("oddsSettledAt"),
   homeScore:    integer("homeScore"),
   awayScore:    integer("awayScore"),
   statusDetail: text("statusDetail").default("").notNull(),
@@ -237,6 +247,9 @@ export const players = pgTable("Player", {
   team:     text("team").notNull(),
   position: text("position").notNull(),
   espnId:   text("espnId").unique(),
+  // SportsGameOdds playerID, e.g. "PUKA_NACUA_1_NFL" — stable, and the key the
+  // odds feed uses, so props never have to be matched by name.
+  sgoId:    text("sgoId").unique(),
   imageUrl: text("imageUrl"),
   jersey:   text("jersey"),
 }, (t) => ({
@@ -251,6 +264,22 @@ export const props = pgTable("Prop", {
   line:     real("line").notNull(),
   odds:     integer("odds").default(-110).notNull(),
   result:   real("result"),
+  // "SHARP" = real book line from SharpAPI. The generator that wrote "FAKE"
+  // rows is gone, so every row written now is SHARP; the column stays as the
+  // marker that told the two apart and as the guard on any future import.
+  source:   text("source").default("FAKE").notNull(),
+  // False once a sync stops returning this market — the book pulled it. Kept
+  // rather than deleted because bets may already be riding on it; hidden from
+  // the board, still settled (or voided) at game end.
+  available: boolean("available").default(true).notNull(),
+  // SportsGameOdds oddID, e.g. "receiving_receptions-PUKA_NACUA_1_NFL-game-ou-over".
+  // Settlement reads the graded value straight off this market rather than
+  // matching a player name against an ESPN box score.
+  oddID:    text("oddID"),
+  // Real alternate-line ladder from the book, when we have one. Each entry is a
+  // full over/under pair at that line. Null means "fabricate one" — the old
+  // linear model in services/propOdds.ts.
+  altLadder: jsonb("altLadder").$type<Array<{ line: number; over: number; under: number }>>(),
 }, (t) => ({
   gamePlayerStatUniq: uniqueIndex("Prop_gameId_playerId_statType_key").on(t.gameId, t.playerId, t.statType),
 }));
@@ -267,6 +296,7 @@ export const picks = pgTable("Pick", {
   outcome:   outcomeEnum("outcome").default("PENDING").notNull(),
   cashedOut: boolean("cashedOut").default(false).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
+  voidReason: text("voidReason"),
 });
 
 export const gameLines = pgTable("GameLine", {
@@ -277,6 +307,12 @@ export const gameLines = pgTable("GameLine", {
   odds:    integer("odds").notNull(),
   line:    real("line"),
   result:  boolean("result"),
+  // Exact tie against the line (NFL games do tie, and a whole-number total or
+  // spread lands on the number). `result` alone cannot express it, and grading
+  // a push as a loss quietly takes money a real book refunds.
+  pushed:  boolean("pushed").default(false).notNull(),
+  available: boolean("available").default(true).notNull(),
+  oddID:   text("oddID"),
 }, (t) => ({
   gameIdMarketUniq: uniqueIndex("GameLine_gameId_market_key").on(t.gameId, t.market),
 }));
@@ -292,6 +328,7 @@ export const gamePicks = pgTable("GamePick", {
   outcome:    outcomeEnum("outcome").default("PENDING").notNull(),
   cashedOut:  boolean("cashedOut").default(false).notNull(),
   createdAt:  timestamp("createdAt").defaultNow().notNull(),
+  voidReason: text("voidReason"),
 });
 
 export const parlays = pgTable("Parlay", {
@@ -304,6 +341,7 @@ export const parlays = pgTable("Parlay", {
   outcome:   outcomeEnum("outcome").default("PENDING").notNull(),
   cashedOut: boolean("cashedOut").default(false).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
+  voidReason: text("voidReason"),
 });
 
 export const parlayLegs = pgTable("ParlayLeg", {

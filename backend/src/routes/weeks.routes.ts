@@ -4,10 +4,16 @@ import { eq, and, inArray, gte, lte, gt, lt, asc, desc, isNull } from "drizzle-o
 import { weeks, games, props, picks, gameLines, gamePicks, parlayLegs, parlays, memberships, matchups, leagues } from "../db/schema";
 import { requireAuth, requireCron } from "../middleware/auth";
 import { calcProfit } from "../lib/payout";
+import { attachBetCounts, betCountsForWeek } from "../services/betCounts";
 
 const router = Router();
 
 // Helper: deeply fetch a week with games → props (with player) + gameLines
+//
+// Only markets still on offer. A prop or line the book has pulled is kept in
+// the table (bets may be riding on it, and it still has to settle) but must not
+// come back to the board, or players could keep betting a price no sportsbook
+// is quoting any more.
 async function fetchWeekWithGames(weekId: string) {
   return db.query.weeks.findFirst({
     where: eq(weeks.id, weekId),
@@ -15,8 +21,8 @@ async function fetchWeekWithGames(weekId: string) {
       games: {
         orderBy: [asc(games.gameDate), asc(games.id)],
         with: {
-          props: { with: { player: true } },
-          gameLines: true,
+          props: { where: eq(props.available, true), with: { player: true } },
+          gameLines: { where: eq(gameLines.available, true) },
         },
       },
     },
@@ -79,7 +85,32 @@ router.get("/public/current", async (_req: any, res: any) => {
         orderBy: asc(weeks.number), with: withGames,
       }));
 
+    if (week) await attachBetCounts(week);
     res.json(week ? [week] : []);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * Bet counts for one week's games: { gameId: n }.
+ *
+ * UNAUTHENTICATED, like /public/current above and for the same reason — the
+ * games strip runs on the landing page for signed-out visitors, and the counts
+ * are platform-wide rather than league-scoped, so there is no league to scope
+ * to and nothing here is private to one.
+ *
+ * Separate from the week payload deliberately. The counts change while the week
+ * does not, and refetching the week to refresh them would drag every prop,
+ * player and game line across the wire to update a handful of integers — and
+ * would replace the client's `week` object, which restarts the strip's ticker
+ * and scroll anchor. See the note on strip continuity in CLAUDE.md.
+ *
+ * Cached for 15s in betCounts.ts.
+ */
+router.get("/:weekId/bet-counts", async (req: any, res: any) => {
+  try {
+    res.json(await betCountsForWeek(req.params.weekId));
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
@@ -130,6 +161,7 @@ router.get("/", requireAuth, async (req: any, res: any) => {
             with: { games: { orderBy: [asc(games.gameDate), asc(games.id)], with: { props: { with: { player: true } }, gameLines: true } } },
           });
         }
+        if (week) await attachBetCounts(week);
         res.json(week ? [week] : []);
         return;
       }
@@ -154,6 +186,7 @@ router.get("/", requireAuth, async (req: any, res: any) => {
           with: { games: { orderBy: [asc(games.gameDate), asc(games.id)], with: { props: { with: { player: true } }, gameLines: true } } },
         });
       }
+      if (week) await attachBetCounts(week);
       res.json(week ? [week] : []);
       return;
     }

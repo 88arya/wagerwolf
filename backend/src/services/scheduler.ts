@@ -4,7 +4,8 @@ import { db } from "../db/db";
 import { eq } from "drizzle-orm";
 import { weeks, leagues } from "../db/schema";
 import { resolveWeekById } from "./resolveWeek";
-import { syncESPNGames, syncOddsAllWeeks, syncScores } from "./syncWeek";
+import { syncESPNGames, syncScores } from "./syncWeek";
+import { pollDueGames, discoverWeekEvents } from "./oddsPoller";
 import { getNFLWeekDates, nflYear } from "./espnApi";
 import { distributeWeeklyAllowances } from "./distributeAllowances";
 import { startLeagueSeason } from "./startSeason";
@@ -14,10 +15,12 @@ import { settlePendingBetsOnFinalGames } from "./settleGame";
 const RESOLVE_SCHEDULE = "0 11 * * 2";
 // Tuesday 6:00 PM UTC — sync ESPN games for upcoming week
 const GAME_SYNC_SCHEDULE = "0 18 * * 2";
-// Wednesday 2:00 PM UTC — sync odds for upcoming week
-const ODDS_SYNC_SCHEDULE = "0 14 * * 3";
-// Friday 2:00 PM UTC — re-sync odds (line movements)
-const ODDS_REFRESH_SCHEDULE = "0 14 * * 5";
+// Every 30 minutes — tiered odds poll. The tick itself costs nothing; each run
+// refreshes only the games whose time-to-kickoff says they are due, so spend is
+// concentrated near kickoff instead of spread flat across the week. Replaced a
+// Wed+Fri pair, which under per-event billing would have been both too coarse
+// near kickoff and wasteful far from it. See services/oddsPoller.ts.
+const ODDS_POLL_SCHEDULE = "*/30 * * * *";
 // Every minute — sync scores only when a game has kicked off but isn't final yet
 const SCORE_SYNC_SCHEDULE = "* * * * *";
 
@@ -26,8 +29,7 @@ const QUEUE_NAME = "cron-jobs";
 const JOB = {
   RESOLVE_AND_ALLOWANCES: "resolve-and-allowances",
   ESPN_GAME_SYNC: "espn-game-sync",
-  ODDS_SYNC: "odds-sync",
-  ODDS_REFRESH: "odds-refresh",
+  ODDS_POLL: "odds-poll",
   SCORE_SYNC: "score-sync",
 } as const;
 
@@ -139,15 +141,25 @@ async function runESPNGameSync() {
   } catch (err) {
     console.error(`[cron] ESPN game sync failed for week ${week!.number}:`, err);
   }
+
+  // One date-ranged pull to stamp each new game with its SGO eventID. From here
+  // the poller addresses games by id, so this is the only broad odds query in
+  // the whole week — everything after it spends only on games actually due.
+  try {
+    const matched = await discoverWeekEvents(week!.id);
+    console.log(`[cron] Discovered SGO events for week ${week!.number}: ${matched} games`);
+  } catch (err) {
+    console.error(`[cron] SGO discovery failed for week ${week!.number}:`, err);
+  }
+
   await runAutoStartLeagues(week!.number);
 }
 
-async function runOddsSync() {
-  // One SharpAPI fetch covers every unresolved week (lines post months ahead)
+async function runOddsPoll() {
   try {
-    await syncOddsAllWeeks();
+    await pollDueGames();
   } catch (err) {
-    console.error("[cron] Odds sync failed:", err);
+    console.error("[cron] Odds poll failed:", err);
   }
 }
 
@@ -180,8 +192,7 @@ async function runScoreSync() {
 const HANDLERS: Record<string, () => Promise<void>> = {
   [JOB.RESOLVE_AND_ALLOWANCES]: runResolveAndAllowances,
   [JOB.ESPN_GAME_SYNC]: runESPNGameSync,
-  [JOB.ODDS_SYNC]: runOddsSync,
-  [JOB.ODDS_REFRESH]: runOddsSync,
+  [JOB.ODDS_POLL]: runOddsPoll,
   [JOB.SCORE_SYNC]: runScoreSync,
 };
 
@@ -203,15 +214,16 @@ export async function startScheduler() {
     { name: JOB.ESPN_GAME_SYNC }
   );
   await cronQueue.upsertJobScheduler(
-    JOB.ODDS_SYNC,
-    { pattern: ODDS_SYNC_SCHEDULE, tz: "UTC" },
-    { name: JOB.ODDS_SYNC }
+    JOB.ODDS_POLL,
+    { pattern: ODDS_POLL_SCHEDULE, tz: "UTC" },
+    { name: JOB.ODDS_POLL }
   );
-  await cronQueue.upsertJobScheduler(
-    JOB.ODDS_REFRESH,
-    { pattern: ODDS_REFRESH_SCHEDULE, tz: "UTC" },
-    { name: JOB.ODDS_REFRESH }
-  );
+  // The retired Wed/Fri jobs would otherwise keep firing from Redis, since
+  // schedulers persist by id and nothing removes one just because the code
+  // stopped registering it.
+  for (const stale of ["odds-sync", "odds-refresh"]) {
+    try { await cronQueue.removeJobScheduler(stale); } catch { /* not present */ }
+  }
   await cronQueue.upsertJobScheduler(
     JOB.SCORE_SYNC,
     { pattern: SCORE_SYNC_SCHEDULE, tz: "UTC" },

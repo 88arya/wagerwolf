@@ -1,45 +1,8 @@
 import { db } from "../db/db";
-import { eq, and, isNull, inArray } from "drizzle-orm";
-import { weeks, games, gameLines, players, props } from "../db/schema";
+import { eq, and, isNull, inArray, count } from "drizzle-orm";
+import { weeks, games, gameLines, players, props, picks, gamePicks, parlayLegs } from "../db/schema";
 import { getNFLWeekGames } from "./espnApi";
-import { getNFLWeekData, NFLGameData } from "./sharpApi";
-import { seedFakePropsForWeek } from "./fakeSync";
-
-const MARKET_TO_STAT: Record<string, string> = {
-  passing_yards: "PASSING_YARDS",
-  passing_touchdowns: "PASSING_TOUCHDOWNS",
-  passing_completions: "PASSING_COMPLETIONS",
-  passing_attempts: "PASSING_ATTEMPTS",
-  passing_interceptions: "PASSING_INTERCEPTIONS",
-  passing_longest: "PASSING_LONGEST",
-  rushing_yards: "RUSHING_YARDS",
-  rushing_touchdowns: "RUSHING_TOUCHDOWNS",
-  rushing_attempts: "RUSHING_ATTEMPTS",
-  rushing_longest: "RUSHING_LONGEST",
-  receiving_yards: "RECEIVING_YARDS",
-  receiving_touchdowns: "RECEIVING_TOUCHDOWNS",
-  receiving_longest: "RECEIVING_LONGEST",
-  receiving_targets: "RECEIVING_TARGETS",
-  receptions: "RECEPTIONS",
-  sacks: "SACKS",
-  tackles_assists: "TACKLES_ASSISTS",
-  interceptions: "DEFENSIVE_INTERCEPTIONS",
-  field_goals_made: "FIELD_GOALS_MADE",
-  field_goal_longest: "FIELD_GOAL_LONGEST",
-  kicking_points: "KICKING_POINTS",
-  extra_points_made: "EXTRA_POINTS_MADE",
-  touchdowns: "TOUCHDOWNS",
-};
-
-const MARKET_TO_POSITION: Record<string, string> = {
-  passing_yards: "QB", passing_touchdowns: "QB", passing_completions: "QB",
-  passing_attempts: "QB", passing_interceptions: "QB", passing_longest: "QB",
-  rushing_yards: "RB", rushing_touchdowns: "RB", rushing_attempts: "RB", rushing_longest: "RB",
-  receiving_yards: "WR", receiving_touchdowns: "WR", receiving_longest: "WR",
-  receiving_targets: "WR", receptions: "WR",
-  sacks: "DE", tackles_assists: "LB", interceptions: "CB",
-  field_goals_made: "K", field_goal_longest: "K", kicking_points: "K", extra_points_made: "K",
-};
+import { SGOEvent, SGOProp, fetchEventsByID, fetchEventsByDate } from "./sportsGameOdds";
 
 export async function syncESPNGames(weekId: string): Promise<{ synced: number }> {
   const week = await db.query.weeks.findFirst({ where: eq(weeks.id, weekId) });
@@ -87,7 +50,6 @@ export async function syncESPNGames(weekId: string): Promise<{ synced: number }>
     synced++;
   }
 
-  await seedFakePropsForWeek(weekId);
   console.log(`[sync] ESPN games for week ${week.number}: ${synced} synced`);
   return { synced };
 }
@@ -125,101 +87,251 @@ export async function syncScores(weekId: string): Promise<{ updated: number }> {
   return { updated };
 }
 
-async function applyOddsToWeek(
-  week: { id: string; number: number; startDate: Date; endDate: Date },
-  allData: NFLGameData[],
-): Promise<{ games: number; lines: number; props: number }> {
-  // 24h buffer on the start — SharpAPI kickoff times can sit minutes before
-  // the ESPN-derived week start; adjacent weeks stay >1 day apart regardless
-  const start = new Date(new Date(week.startDate).getTime() - 24 * 3600 * 1000);
-  const end = new Date(week.endDate);
-  const inRange = allData.filter(({ commenceTime }) => {
-    const d = new Date(commenceTime);
-    return d >= start && d <= end;
+const POSITION_HINT: Record<string, string> = {
+  PASSING_YARDS: "QB", PASSING_TOUCHDOWNS: "QB", PASSING_COMPLETIONS: "QB",
+  PASSING_ATTEMPTS: "QB", PASSING_INTERCEPTIONS: "QB", PASSING_LONGEST: "QB",
+  RUSHING_YARDS: "RB", RUSHING_TOUCHDOWNS: "RB", RUSHING_ATTEMPTS: "RB", RUSHING_LONGEST: "RB",
+  RECEIVING_YARDS: "WR", RECEIVING_TOUCHDOWNS: "WR", RECEIVING_LONGEST: "WR", RECEPTIONS: "WR",
+  SACKS: "DE", TACKLES_ASSISTS: "LB", DEFENSIVE_INTERCEPTIONS: "CB",
+  FIELD_GOALS_MADE: "K", FIELD_GOAL_LONGEST: "K", KICKING_POINTS: "K", EXTRA_POINTS_MADE: "K",
+};
+
+/**
+ * Find (or create) the Player a SportsGameOdds prop belongs to.
+ *
+ * SGO gives a stable `playerID` and the player's `teamID`, so this is an id
+ * lookup, not the name-and-roster search the SharpAPI path needed. Name
+ * matching survives only as a one-time bridge, so a player we already created
+ * from ESPN gains an sgoId instead of being duplicated.
+ */
+async function resolveSGOPlayer(p: SGOProp, positionHint?: string): Promise<{ id: string } | null> {
+  const bySgo = await db.query.players.findFirst({ where: eq(players.sgoId, p.sgoPlayerId) });
+  if (bySgo) {
+    if (bySgo.team !== p.team) {
+      await db.update(players).set({ team: p.team }).where(eq(players.id, bySgo.id));
+    }
+    return bySgo;
+  }
+
+  const byName = await db.query.players.findFirst({
+    where: (pl, { and, eq }) => and(eq(pl.name, p.playerName), eq(pl.team, p.team)),
   });
+  if (byName) {
+    await db.update(players).set({ sgoId: p.sgoPlayerId }).where(eq(players.id, byName.id));
+    return byName;
+  }
 
-  // Match SharpAPI events to games already created by the ESPN sync —
-  // both sides use the same team abbreviations (KC, BUF…)
-  const weekGames = await db.select().from(games).where(eq(games.weekId, week.id));
-  const byMatchup = new Map(weekGames.map((g) => [`${g.awayTeam}@${g.homeTeam}`, g]));
+  // Position is a hint only — the bet page groups by stat type. The lazy image
+  // route fills espnId and the headshot on first render.
+  const [created] = await db.insert(players)
+    .values({
+      name: p.playerName, team: p.team,
+      position: positionHint ?? POSITION_HINT[p.statType] ?? "FLEX", sgoId: p.sgoPlayerId,
+    })
+    .onConflictDoNothing()
+    .returning();
+  if (created) return created;
 
-  let gamesSynced = 0, linesSynced = 0, propsSynced = 0;
-  for (const { eventId, commenceTime, homeTeam, awayTeam, lines, props: rawProps } of inRange) {
-    let game = byMatchup.get(`${awayTeam}@${homeTeam}`);
-    if (!game) {
-      [game] = await db.insert(games)
-        .values({ weekId: week.id, homeTeam, awayTeam, gameDate: new Date(commenceTime), externalId: eventId })
-        .onConflictDoUpdate({
-          target: games.externalId,
-          set: { homeTeam, awayTeam, gameDate: new Date(commenceTime) },
-        })
-        .returning();
-      byMatchup.set(`${awayTeam}@${homeTeam}`, game);
-    } else if (!game.externalId) {
-      await db.update(games).set({ externalId: eventId }).where(eq(games.id, game.id));
-    }
-    // Never move lines on a game that has kicked off
-    if (new Date(game.gameDate) <= new Date()) continue;
-    gamesSynced++;
+  return (await db.query.players.findFirst({
+    where: (pl, { and, eq }) => and(eq(pl.name, p.playerName), eq(pl.team, p.team)),
+  })) ?? null;
+}
 
-    for (const raw of lines) {
-      await db.insert(gameLines)
-        .values({ gameId: game.id, market: raw.market, label: raw.label, odds: raw.odds, line: raw.line })
-        .onConflictDoUpdate({
-          target: [gameLines.gameId, gameLines.market],
-          set: { label: raw.label, odds: raw.odds, line: raw.line },
-        });
-      linesSynced++;
-    }
+/**
+ * Write one event's lines and props onto a Game we already hold.
+ *
+ * A sync *replaces* the game's board rather than adding to it. The upsert-only
+ * version accreted: once a market was written it lived forever, so a prop the
+ * book pulled — an injury scratch, a suspended line — stayed bettable at a
+ * stale price no sportsbook was still offering.
+ *
+ * Anything the feed no longer returns is therefore retired. Rows nothing is
+ * riding on are deleted outright; rows with bets on them are kept but flagged
+ * `available: false`, because deleting a market someone holds a wager on would
+ * strand the wager with nothing to settle against.
+ */
+export async function applyEvent(
+  ev: SGOEvent,
+  game: { id: string; gameDate: Date },
+): Promise<{ lines: number; props: number; retired: number }> {
+  // Never move a price on a game that has kicked off — bets are locked there.
+  if (new Date(game.gameDate) <= new Date()) return { lines: 0, props: 0, retired: 0 };
 
-    for (const raw of rawProps) {
-      const statType = MARKET_TO_STAT[raw.market];
-      if (!statType) continue;
-      let player = await db.query.players.findFirst({ where: eq(players.name, raw.playerName) });
-      if (!player) {
-        [player] = await db.insert(players)
-          .values({ name: raw.playerName, team: "", position: MARKET_TO_POSITION[raw.market] ?? "FLEX" })
-          .returning();
-      }
-      const existing = await db.query.props.findFirst({
-        where: (p, { and, eq }) => and(eq(p.gameId, game.id), eq(p.playerId, player!.id), eq(p.statType, statType as any)),
+  const liveMarkets = new Set<string>();
+  let lineCount = 0;
+  for (const l of ev.lines) {
+    await db.insert(gameLines)
+      .values({ gameId: game.id, market: l.market, label: l.label, odds: l.odds, line: l.line, oddID: l.oddID, available: true })
+      .onConflictDoUpdate({
+        target: [gameLines.gameId, gameLines.market],
+        set: { label: l.label, odds: l.odds, line: l.line, oddID: l.oddID, available: true },
       });
-      if (existing) {
-        await db.update(props).set({ line: raw.line, odds: raw.odds }).where(eq(props.id, existing.id));
+    liveMarkets.add(l.market);
+    lineCount++;
+  }
+
+  // Work out each player's position from *all* their markets before writing any
+  // of them. Taken per-prop, whoever happened to be written first decided it —
+  // and "touchdowns" implies no position at all, so anyone whose anytime-TD
+  // market landed first was filed as FLEX.
+  const hintByPlayer = new Map<string, string>();
+  for (const p of ev.props) {
+    const hint = POSITION_HINT[p.statType];
+    if (hint && !hintByPlayer.has(p.sgoPlayerId)) hintByPlayer.set(p.sgoPlayerId, hint);
+  }
+
+  const livePropKeys = new Set<string>();
+  let propCount = 0;
+  for (const p of ev.props) {
+    const player = await resolveSGOPlayer(p, hintByPlayer.get(p.sgoPlayerId));
+    if (!player) continue;
+    const values = {
+      line: p.line,
+      odds: p.odds,
+      source: "SHARP",
+      altLadder: p.ladder.length > 0 ? p.ladder : null,
+      oddID: p.oddID,
+      available: true,
+    };
+    await db.insert(props)
+      .values({ gameId: game.id, playerId: player.id, statType: p.statType as any, ...values })
+      .onConflictDoUpdate({
+        target: [props.gameId, props.playerId, props.statType],
+        set: values,
+      });
+    livePropKeys.add(`${player.id}:${p.statType}`);
+    propCount++;
+  }
+
+  const retired = await retireMissingMarkets(game.id, liveMarkets, livePropKeys);
+
+  await db.update(games)
+    .set({ oddsPolledAt: new Date(), externalId: ev.eventID })
+    .where(eq(games.id, game.id));
+  return { lines: lineCount, props: propCount, retired };
+}
+
+/**
+ * Retire everything on this game the feed stopped returning.
+ *
+ * Only ever called with a non-empty live set — an event that came back with no
+ * markets at all (a transient upstream blank) must not wipe the board.
+ */
+async function retireMissingMarkets(
+  gameId: string,
+  liveMarkets: Set<string>,
+  livePropKeys: Set<string>,
+): Promise<number> {
+  let retired = 0;
+
+  if (liveMarkets.size > 0) {
+    const existing = await db.select().from(gameLines).where(eq(gameLines.gameId, gameId));
+    const stale = existing.filter((gl) => !liveMarkets.has(gl.market));
+    for (const gl of stale) {
+      const [betOn] = await db.select({ n: count() })
+        .from(gamePicks).where(eq(gamePicks.gameLineId, gl.id));
+      const [leggedOn] = await db.select({ n: count() })
+        .from(parlayLegs).where(eq(parlayLegs.gameLineId, gl.id));
+      if ((betOn?.n ?? 0) + (leggedOn?.n ?? 0) > 0) {
+        if (gl.available) {
+          await db.update(gameLines).set({ available: false }).where(eq(gameLines.id, gl.id));
+          retired++;
+        }
       } else {
-        await db.insert(props).values({ gameId: game.id, playerId: player!.id, statType: statType as any, line: raw.line, odds: raw.odds });
+        await db.delete(gameLines).where(eq(gameLines.id, gl.id));
+        retired++;
       }
-      propsSynced++;
     }
   }
 
-  console.log(`[sync] Odds for week ${week.number}: ${gamesSynced} games, ${linesSynced} lines, ${propsSynced} props`);
-  return { games: gamesSynced, lines: linesSynced, props: propsSynced };
+  if (livePropKeys.size > 0) {
+    const existing = await db.select().from(props).where(eq(props.gameId, gameId));
+    const stale = existing.filter((p) => !livePropKeys.has(`${p.playerId}:${p.statType}`));
+    for (const p of stale) {
+      const [betOn] = await db.select({ n: count() }).from(picks).where(eq(picks.propId, p.id));
+      const [leggedOn] = await db.select({ n: count() }).from(parlayLegs).where(eq(parlayLegs.propId, p.id));
+      if ((betOn?.n ?? 0) + (leggedOn?.n ?? 0) > 0) {
+        if (p.available) {
+          await db.update(props).set({ available: false }).where(eq(props.id, p.id));
+          retired++;
+        }
+      } else {
+        await db.delete(props).where(eq(props.id, p.id));
+        retired++;
+      }
+    }
+  }
+
+  return retired;
 }
 
+/**
+ * Match a week's games to SGO events by date range and write their odds.
+ *
+ * Costs one entity per event returned. Used to discover eventIDs for a new
+ * week; routine refreshes go through syncOddsForGames, which spends only on the
+ * games actually due.
+ */
 export async function syncOdds(weekId: string): Promise<{ games: number; lines: number; props: number }> {
   const week = await db.query.weeks.findFirst({ where: eq(weeks.id, weekId) });
   if (!week) throw new Error("Week not found");
-  const allData = await getNFLWeekData();
-  return applyOddsToWeek(week, allData);
+
+  const weekGames = await db.select().from(games).where(eq(games.weekId, week.id));
+  if (weekGames.length === 0) return { games: 0, lines: 0, props: 0 };
+
+  const start = new Date(new Date(week.startDate).getTime() - 24 * 3600 * 1000);
+  const end = new Date(new Date(week.endDate).getTime() + 24 * 3600 * 1000);
+  const events = await fetchEventsByDate(start, end, weekGames.length + 4);
+
+  const byMatchup = new Map(weekGames.map((g) => [`${g.awayTeam}@${g.homeTeam}`, g]));
+  let gamesSynced = 0, lines = 0, propsWritten = 0;
+  for (const ev of events) {
+    const game = byMatchup.get(`${ev.awayTeam}@${ev.homeTeam}`);
+    if (!game) continue;
+    const r = await applyEvent(ev, game);
+    if (r.lines || r.props) gamesSynced++;
+    lines += r.lines;
+    propsWritten += r.props;
+  }
+
+  console.log(`[sync] Odds for week ${week.number}: ${gamesSynced} games, ${lines} lines, ${propsWritten} props`);
+  return { games: gamesSynced, lines, props: propsWritten };
 }
 
-// One SharpAPI fetch applied across every unresolved week — SharpAPI posts
-// lines months ahead, and the 12 req/min cap makes per-week fetches wasteful
+/** Refresh a hand-picked set of games by their known SGO eventID. */
+export async function syncOddsForGames(
+  gameRows: Array<{ id: string; gameDate: Date; externalId: string | null }>,
+): Promise<{ games: number; lines: number; props: number }> {
+  const withIds = gameRows.filter((g) => g.externalId);
+  if (withIds.length === 0) return { games: 0, lines: 0, props: 0 };
+
+  const events = await fetchEventsByID(withIds.map((g) => g.externalId!));
+  const byEvent = new Map(withIds.map((g) => [g.externalId!, g]));
+
+  let gamesSynced = 0, lines = 0, propsWritten = 0;
+  for (const ev of events) {
+    const game = byEvent.get(ev.eventID);
+    if (!game) continue;
+    const r = await applyEvent(ev, game);
+    if (r.lines || r.props) gamesSynced++;
+    lines += r.lines;
+    propsWritten += r.props;
+  }
+  return { games: gamesSynced, lines, props: propsWritten };
+}
+
+/** Every unresolved week, one date-ranged pull each. Scripts only, never cron. */
 export async function syncOddsAllWeeks(): Promise<{ weeks: number; games: number; lines: number; props: number }> {
   const weekList = await db.query.weeks.findMany({
     where: (w, { eq }) => eq(w.resolved, false),
     orderBy: (w, { asc }) => [asc(w.number)],
   });
-  if (weekList.length === 0) return { weeks: 0, games: 0, lines: 0, props: 0 };
-
-  const allData = await getNFLWeekData();
-  let gamesSynced = 0, linesSynced = 0, propsSynced = 0;
+  let gamesSynced = 0, lines = 0, propsWritten = 0;
   for (const week of weekList) {
-    const r = await applyOddsToWeek(week, allData);
+    const r = await syncOdds(week.id);
     gamesSynced += r.games;
-    linesSynced += r.lines;
-    propsSynced += r.props;
+    lines += r.lines;
+    propsWritten += r.props;
   }
-  return { weeks: weekList.length, games: gamesSynced, lines: linesSynced, props: propsSynced };
+  return { weeks: weekList.length, games: gamesSynced, lines, props: propsWritten };
 }
