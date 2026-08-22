@@ -16,3 +16,7 @@ sportsgameoddsapi.txt
 todolist.txt
 sharpapi.md
 sharpapi_nfl.md
+
+# Font archives dropped in root while picking a wordmark face. The files that
+# are actually used are extracted into frontend/app/fonts; the zips are scratch.
+*.zip

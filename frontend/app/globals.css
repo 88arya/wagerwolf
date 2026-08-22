@@ -1115,6 +1115,49 @@ button.utility-cta::after {
   background: currentColor;
 }
 
+/* ══ TEMPORARY ALIGNMENT GUIDE — delete this whole block when done ══════════
+   Two red hairlines on the content rail's left and right edges.
+
+   Hung off .app-chrome, NOT off <body>. --rail is max(20px, (100% - 1220px)/2),
+   and that 100% resolves against whatever box the element is positioned in. On
+   a fixed element that is the viewport (1968px here); the page resolves it
+   against .app-scroll (1953px, the viewport less the scrollbar gutter). The
+   two differ by half the gutter, so body-anchored guides sat ~7.5px outside the
+   content they were meant to trace — the guide was wrong, not the layout.
+
+   .app-chrome is position: sticky, so it is a positioned ancestor AND it is
+   inside .app-scroll: an absolutely positioned child of it resolves the same
+   100% the page does, and lands on exactly the same edges. Sticky at top: 0
+   also means the lines hold their place as the page scrolls.
+
+   Not drawn on routes that render no chrome (/onboarding, /logo).
+
+   CURRENTLY HIDDEN. `display: none` below is the only switch — delete that one
+   line to bring the guides back. Everything else is left intact deliberately:
+   the reasoning above about --rail resolving against .app-chrome rather than
+   <body> took a while to work out and is worth not having to re-derive. */
+.app-chrome::before,
+.app-chrome::after {
+  /* Remove this line to show the guides again. */
+  display: none;
+  content: "";
+  position: absolute;
+  top: 0;
+  height: 100dvh;
+  /* 2px, not 1. At 1.3x scaling a 1px line is 1.297 device pixels, so it never
+     fits one column and is always split across two — and the split is mirrored
+     between the two guides (left [0.50, 0.80], right [0.80, 0.50]). Identical
+     ink, opposite distribution, which reads as the left one being thinner.
+     2.6 device pixels gives each a solid core that dominates its soft edges. */
+  width: 2px;
+  background: red;
+  pointer-events: none;
+  z-index: 9999;
+}
+.app-chrome::before { left: var(--rail); }
+.app-chrome::after { right: var(--rail); }
+/* ══ END TEMPORARY ALIGNMENT GUIDE ═════════════════════════════════════════ */
+
 /* ── Standings table ── */
 .standings-header {
   display: grid;
@@ -1182,6 +1225,21 @@ button.utility-cta::after {
 /* ── Section: a micro-label and its rows. No border, no background — the
       label plus the rows' own rules is all the structure it needs. ── */
 .mx-section { margin-top: 30px; }
+
+/* The content column's own heading. It used to be .mx-section-title — 0.625rem
+   uppercase, which is this system's EYEBROW treatment — while the rail beside
+   it carried a 1.5rem .mx-title. So the navigation was set four times larger
+   than the thing it was navigating, and the pane you were actually reading had
+   no anchor at all. A step below the rail's title, not level with it: the rail
+   names the page, this names the section inside it. */
+.mx-pane-title {
+  font-size: 1.15rem;
+  font-weight: 400;
+  letter-spacing: -0.022em;
+  line-height: 1.1;
+  color: var(--text);
+  margin: 0 0 6px;
+}
 .mx-section-title {
   font-size: 0.625rem;
   font-weight: 500;
@@ -1191,42 +1249,85 @@ button.utility-cta::after {
   margin-bottom: 2px;
 }
 
-/* ── Row: label on the left, value or control on the right, hairline under.
-      The label column is fixed so every row's control starts on one edge. ── */
+/* ── Row: everything the field IS stacks on the left — name, current value,
+      explanation — and the one thing you can DO with it sits on the right.
+      Hairline under each.
+
+      This replaced a `190px | 1fr` grid whose second column held the control
+      AND the value. Two problems with that: a fixed label column starved the
+      hints, which are full sentences here, and putting a value in the same
+      column as an input made a page you read look like a page you fill in.
+      Reading is the common case — most of these fields are set once or derived
+      and never touched again. ── */
 .mx-row {
-  display: grid;
-  grid-template-columns: 190px minmax(0, 1fr);
-  gap: 20px;
-  align-items: center;
-  padding: 14px 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 28px;
+  padding: 18px 0;
   border-bottom: 1px solid var(--border);
 }
 .mx-row:last-child { border-bottom: none; }
+.mx-row-main { min-width: 0; flex: 1; }
+/* Never shrinks: the action is the smaller element and the label beside it
+   wraps far more gracefully than "Not provided" would. */
+.mx-row-side { flex-shrink: 0; display: flex; align-items: center; gap: 8px; }
+
 .mx-row-label {
-  font-size: 0.82rem;
-  font-weight: 400;
+  font-size: 0.85rem;
+  font-weight: 500;
   color: var(--text);
 }
-.mx-row-hint {
-  display: block;
-  font-size: 0.72rem;
-  font-weight: 400;
-  color: var(--text-3);
-  margin-top: 3px;
-  line-height: 1.35;
-}
 .mx-row-value {
-  font-size: 0.82rem;
+  font-size: 0.85rem;
   font-weight: 400;
   color: var(--text-2);
+  margin-top: 4px;
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  overflow-wrap: anywhere;
 }
-/* Under ~620px the two columns stop being two columns — a 190px label beside a
-   select leaves the select about 90px wide. */
+/* An empty field says so. "—" reads as "this has no value to show"; "Not set"
+   reads as "you have not filled this in", which is the true and actionable
+   one. */
+.mx-row-value.is-empty { color: var(--text-3); }
+.mx-row-hint {
+  display: block;
+  font-size: 0.75rem;
+  font-weight: 400;
+  color: var(--text-3);
+  margin-top: 5px;
+  line-height: 1.45;
+  max-width: 54ch;
+}
+
+/* The row's verb. A text link, not a button: it opens an editor rather than
+   committing anything, and a filled control would out-weigh the label it
+   belongs to on every single row. Underlined so it reads as actionable
+   without colour — the accent is spent elsewhere on this page. */
+.mx-row-action,
+.mx-row-action:hover,
+.mx-row-action:active {
+  font-family: inherit;
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--text);
+  background: none;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  transform: none;
+  padding: 0;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-thickness: 1px;
+}
+.mx-row-action:hover { color: var(--accent); }
+.mx-row-action:disabled { color: var(--text-3); cursor: default; text-decoration-color: var(--border-2); }
+
+/* Under ~620px the action drops under the label rather than squeezing it. */
 @media (max-width: 620px) {
-  .mx-row { grid-template-columns: minmax(0, 1fr); gap: 8px; }
+  .mx-row { flex-direction: column; align-items: stretch; gap: 12px; }
 }
 
 /* ── Fields: flat, 1px, no fill. Overrides the global input rule, which is a
@@ -1307,6 +1408,128 @@ select.mx-field {
 
 .mx-btn.is-danger, .mx-btn.is-danger:active { background: transparent; color: var(--loss); border-color: var(--loss-border); }
 .mx-btn.is-danger:hover:not(:disabled) { background: var(--loss-bg); border-color: var(--loss); }
+
+/* ── Auth field (/signup) ──
+   Label and input share one rectangle, so the border belongs to the wrapper and
+   the input inside it has none of its own. That means overriding the global
+   `input` rule wholesale — it ships a fill, a 1.5px border, its own radius and
+   padding, all of which would draw a second box inside this one. */
+/* The two stacked controls on /signup are the same size, so the height is one
+   token rather than a number written twice. box-sizing is border-box globally,
+   so this covers each one's 1px border and they match exactly. */
+:root { --auth-control-h: 60px; }
+
+.auth-field {
+  position: relative;
+  display: block;
+  /* Fixed height so the label has somewhere to rest and somewhere to rise to.
+     An auto-height box would resize as the label shrinks, and the field would
+     twitch on every focus. */
+  height: var(--auth-control-h);
+  border: 1px solid var(--border-2);
+  /* Square, like the button under it. */
+  border-radius: 0;
+  background: var(--surface);
+  padding: 0 12px;
+  cursor: text;
+  transition: border-color 0.15s;
+}
+/* Black on focus, not the accent: the accent belongs to the thing you press.
+   focus-within, not focus — the rectangle owns the border but the input inside
+   it is what actually takes focus. */
+.auth-field:focus-within { border-color: var(--text); }
+
+/* Rests vertically centred, reading as the placeholder, and rises to the top
+   of the box on focus or once there is something to label. Absolute so it can
+   move without the input moving with it, and pointer-events: none so a click
+   lands on the field rather than selecting the word. */
+.auth-field-label {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  /* 1rem, the same size as the Continue label below the field. */
+  font-size: 1rem;
+  font-weight: 450;
+  color: var(--text-3);
+  pointer-events: none;
+  /* The label is absolutely positioned, so it has no column to wrap inside —
+     "(required)" must not fold onto a second line. */
+  white-space: nowrap;
+  transition: top 0.14s ease, font-size 0.14s ease, transform 0.14s ease;
+}
+/* Replaces the asterisk once Continue has been pressed on an empty field.
+   Deliberately inherits the label's colour rather than turning red: it was
+   asked for as a swapped character, not a new error treatment. Making it read
+   as an error is a one-line change — `color: var(--loss)`. */
+.auth-field-required { color: inherit; }
+/* `is-filled` is set from React rather than :placeholder-shown or :has(), both
+   of which would work but neither of which is needed — the input is already a
+   controlled component, so the page knows whether it is empty. */
+.auth-field:focus-within .auth-field-label,
+.auth-field.is-filled .auth-field-label {
+  top: 9px;
+  transform: translateY(0);
+  /* Was 0.68 against a 0.9rem resting size; kept at the same ~0.75 ratio now
+     that the resting size is 1rem, so the label shrinks by the same amount. */
+  font-size: 0.75rem;
+}
+
+/* Pinned to the bottom of the box, where the text sits once the label is out
+   of the way. width: auto because left/right already size it, and the global
+   `input` rule's width: 100% would otherwise push it past the right edge. */
+.auth-field-input,
+.auth-field-input:focus {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: 8px;
+  width: auto;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  padding: 0;
+  outline: none;
+  box-shadow: none;
+  /* Matches the resting label, so the text you type is the size of the
+     placeholder it replaced. */
+  font-size: 1rem;
+  /* 450, the same weight as the label above it and the "Have an account
+     already?" line below. Without this the input inherits the body's 400 —
+     the one piece of text on the form set lighter than everything around it,
+     and only visible once someone had typed. */
+  font-weight: 450;
+  color: var(--text);
+}
+
+/* Continue, sized to match the field above it. Composed onto .mx-btn.is-primary,
+   which keeps the accent fill and its hover — this only sets geometry.
+   Height instead of vertical padding: padding would have to be recomputed
+   against the line box every time the type size moved, whereas .mx-btn is
+   already an inline-flex with align-items: center, so a fixed height centres
+   the label on its own.
+   The :hover/:active repetition is the same rule the other .mx-btn variants
+   follow: the global `button` rule is a filled pill with its own padding and
+   radius, and without these selectors it repaints the button on interaction. */
+.auth-submit,
+.auth-submit:hover,
+.auth-submit:active {
+  width: 100%;
+  height: var(--auth-control-h);
+  padding: 0 15px;
+  border-radius: 0;
+  /* 1rem = 16px at the 16px root. Stated in rem like everything else here, so
+     it follows a changed root size rather than pinning to a pixel. */
+  font-size: 1rem;
+}
+
+/* The secondary half of a two-button pair: white fill, near-black hairline.
+   is-quiet is the usual partner to is-primary, but its grey-on-transparent
+   border reads as disabled next to a filled accent button. This states the
+   border in --text so the two carry equal weight and only colour separates
+   them. Used by AuthModal's "Sign in" under its accent "Get started". */
+.mx-btn.is-outline, .mx-btn.is-outline:active { background: var(--surface); color: var(--text); border-color: var(--text); }
+.mx-btn.is-outline:hover:not(:disabled) { background: var(--surface-2); color: var(--text); border-color: var(--text); }
 
 /* ── Chips: the filter row. `is-on` is the one accent in the finder. ── */
 .mx-chip,
