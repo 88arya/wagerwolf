@@ -35,11 +35,15 @@ const STRIP_LEAGUE_KEY = "strip_league_id";
 //    reach the app, and a nav bar out of it defeats that.
 //  - /logo is the wordmark preview, where a second wordmark in the bar above
 //    the specimens is just confusing.
+//  - /signup carries its own wordmark top-left. With the bar on, that is two
+//    wordmarks stacked with the games strip in between, on the one screen in
+//    the app meant to be nothing but itself. The bar would also offer "Play
+//    now" — a link to the page you are already on.
 //
 // Everything else works signed out: TopBar shows "Play now" instead of the
 // account menu, and the strip falls back to /weeks/public/current, which needs
 // no token.
-const NO_CHROME = ["/onboarding", "/logo"];
+const NO_CHROME = ["/onboarding", "/logo", "/signup"];
 
 function isPublicRoute(pathname: string) {
   return NO_CHROME.some(p => pathname === p || pathname.startsWith(`${p}/`));
