@@ -26,6 +26,8 @@ function outcomeColor(outcome: string, cashedOut?: boolean): string {
   if (outcome === "LOSS") return "var(--loss)";
   if (outcome === "PENDING") return "var(--pending)";
   if (outcome === "VOID" && cashedOut) return "var(--pending)";
+  // PUSH and an uncashed VOID are both stake-returned, no P&L — deliberately
+  // neutral rather than borrowing the win or loss colour.
   return "var(--text-3)";
 }
 
@@ -35,6 +37,8 @@ function OutcomeBadge({ outcome, cashedOut }: { outcome: string; cashedOut?: boo
   if (label === "LOSS") return <span className="badge badge-red">LOSS</span>;
   if (label === "CASHED") return <span className="badge" style={{ color: "var(--pending)", borderColor: "rgba(245,158,11,0.3)", background: "var(--pending-bg)" }}>CASHED</span>;
   if (label === "PENDING") return <span className="badge badge-yellow">PENDING</span>;
+  // PUSH: the result landed exactly on the line and the stake came back.
+  if (label === "PUSH") return <span className="badge" style={{ color: "var(--text-2)" }}>PUSH</span>;
   return <span className="badge">{label}</span>;
 }
 
@@ -110,7 +114,8 @@ function normalize(kind: BetKind, data: any): Normalized {
       totalOdds: odds,
       stake,
       settled: data.outcome === "WIN" ? calcProfit(stake, odds)
-             : data.outcome === "LOSS" ? -stake : null,
+             : data.outcome === "LOSS" ? -stake
+             : data.outcome === "PUSH" ? 0 : null,
       toWin: calcProfit(stake, odds),
       firstGameDate: game?.gameDate,
       rows: [{
@@ -137,7 +142,8 @@ function normalize(kind: BetKind, data: any): Normalized {
       totalOdds: odds,
       stake,
       settled: data.outcome === "WIN" ? calcProfit(stake, odds)
-             : data.outcome === "LOSS" ? -stake : null,
+             : data.outcome === "LOSS" ? -stake
+             : data.outcome === "PUSH" ? 0 : null,
       toWin: calcProfit(stake, odds),
       firstGameDate: game?.gameDate,
       rows: [{
@@ -169,7 +175,8 @@ function normalize(kind: BetKind, data: any): Normalized {
     totalOdds: data.totalOdds,
     stake,
     settled: data.outcome === "WIN" ? payout - stake
-           : data.outcome === "LOSS" ? -stake : null,
+           : data.outcome === "LOSS" ? -stake
+           : data.outcome === "PUSH" ? 0 : null,
     toWin: payout - stake,
     // Matches the pre-existing cash-out rule: gated on the first leg's game.
     firstGameDate: (legs[0]?.prop?.game ?? legs[0]?.gameLine?.game)?.gameDate,
@@ -254,6 +261,17 @@ export default function PlacedBetCard({
           <OutcomeBadge outcome={data.outcome} cashedOut={data.cashedOut} />
         </div>
       </div>
+
+      {/* A refund with no explanation reads as a bug. Say why the stake came
+          back — the player never took the field, or every leg pushed. */}
+      {data.voidReason && !data.cashedOut && (
+        <div style={{
+          padding: "8px 14px", borderTop: "1px solid var(--border)",
+          fontSize: "0.7rem", color: "var(--text-2)",
+        }}>
+          {data.voidReason}
+        </div>
+      )}
     </div>
   );
 }

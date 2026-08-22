@@ -68,6 +68,11 @@ export default function SettingsPage() {
   const [lastName, setLastName] = useState("");
   const [abbrev, setAbbrev] = useState("");
 
+  // Which field's editor is open, if any. Read-first: a row shows what the
+  // value IS and one link to change it, and the input appears only once you ask
+  // for it. Only one at a time — two open editors on a summary page turn it
+  // back into the form this was trying to stop being.
+  const [editing, setEditing] = useState<FieldKey | null>(null);
   const [savingField, setSavingField] = useState<FieldKey | null>(null);
   const [savedField, setSavedField] = useState<FieldKey | null>(null);
   const [error, setError] = useState("");
@@ -110,6 +115,7 @@ export default function SettingsPage() {
       // views fall back to it before /users/me has answered.
       if (updated.displayName) localStorage.setItem("displayName", updated.displayName);
       setSavedField(field);
+      setEditing(null);
       if (savedTimer.current) clearTimeout(savedTimer.current);
       savedTimer.current = setTimeout(() => setSavedField(null), 2400);
     } catch (err: any) {
@@ -133,7 +139,7 @@ export default function SettingsPage() {
   }
 
   if (loading) {
-    return <div className="page-wide"><div className="mx-empty">Loading your account…</div></div>;
+    return <div className="page-wide" style={{ paddingTop: 56 }}><div className="mx-empty">Loading your account…</div></div>;
   }
 
   const nameChanged = firstName !== (user?.firstName ?? "") || lastName !== (user?.lastName ?? "");
@@ -150,6 +156,19 @@ export default function SettingsPage() {
     v ? new Date(`${String(v).slice(0, 10)}T00:00:00Z`).toLocaleDateString(undefined, {
       month: "long", day: "numeric", year: "numeric", timeZone: "UTC",
     }) : "—";
+
+  const fullName = [user?.firstName, user?.lastName].filter(Boolean).join(" ");
+
+  // Reseeds the inputs from the stored user before opening, so cancelling an
+  // edit and reopening it never resurrects a half-typed value from last time.
+  function openEdit(field: FieldKey) {
+    setError("");
+    setFirstName(user?.firstName ?? "");
+    setLastName(user?.lastName ?? "");
+    setDisplayName(user?.displayName ?? "");
+    setAbbrev(user?.defaultAbbreviation ?? "");
+    setEditing(field);
+  }
 
   const memberSince = user?.createdAt
     ? new Date(user.createdAt).toLocaleDateString(undefined, { month: "long", day: "numeric", year: "numeric" })
@@ -173,7 +192,11 @@ export default function SettingsPage() {
   }
 
   return (
-    <div className="page-wide">
+    // paddingTop overrides the 20px .page-wide gives every page. That is fine
+    // for a page that opens on a dense grid, but here the first thing under the
+    // chrome is a heading, and 20px left it crammed against the games strip.
+    // Local rather than a change to .page-wide, which ~18 other routes share.
+    <div className="page-wide" style={{ paddingTop: 56 }}>
       {/* Rail then content. `align-items: start` so the rail does not stretch to
           the height of the tallest tab and hang a rule into empty space. */}
       <div
@@ -221,87 +244,104 @@ export default function SettingsPage() {
 
           {tab === "personal" && (
             <section className="mx-section">
-              <div className="mx-section-title">Personal information</div>
+              <h2 className="mx-pane-title">Personal information</h2>
 
               <div className="mx-row">
-                <div className="mx-row-label">
-                  Full name
+                <div className="mx-row-main">
+                  <div className="mx-row-label">Full name</div>
+                  {editing === "name" ? (
+                    <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginTop: 8 }}>
+                      <input className="mx-field" value={firstName} maxLength={40} placeholder="First" onChange={(e) => setFirstName(e.target.value)} style={{ maxWidth: 150 }} />
+                      <input className="mx-field" value={lastName} maxLength={40} placeholder="Last" onChange={(e) => setLastName(e.target.value)} style={{ maxWidth: 150 }} />
+                    </div>
+                  ) : (
+                    <div className={fullName ? "mx-row-value" : "mx-row-value is-empty"}>{fullName || "Not set"}</div>
+                  )}
                   <span className="mx-row-hint">Private. Never shown to other players.</span>
                 </div>
-                <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-                  <input className="mx-field" value={firstName} maxLength={40} placeholder="First" onChange={(e) => setFirstName(e.target.value)} style={{ maxWidth: 150 }} />
-                  <input className="mx-field" value={lastName} maxLength={40} placeholder="Last" onChange={(e) => setLastName(e.target.value)} style={{ maxWidth: 150 }} />
-                  <SaveButton
-                    field="name"
-                    disabled={!firstName.trim() || !lastName.trim() || !nameChanged}
-                    onClick={() => save("name", { firstName: firstName.trim(), lastName: lastName.trim() })}
-                  />
+                <div className="mx-row-side">
+                  {editing === "name" ? (
+                    <>
+                      <button type="button" className="mx-row-action" onClick={() => setEditing(null)}>Cancel</button>
+                      <SaveButton
+                        field="name"
+                        disabled={!firstName.trim() || !lastName.trim() || !nameChanged}
+                        onClick={() => save("name", { firstName: firstName.trim(), lastName: lastName.trim() })}
+                      />
+                    </>
+                  ) : (
+                    <button type="button" className="mx-row-action" onClick={() => openEdit("name")}>
+                      {fullName ? "Edit" : "Add"}
+                    </button>
+                  )}
                 </div>
               </div>
 
               <div className="mx-row">
-                <div className="mx-row-label">
-                  Email
+                <div className="mx-row-main">
+                  <div className="mx-row-label">Email</div>
+                  <div className="mx-row-value">{user?.email ?? "Not set"}</div>
                   <span className="mx-row-hint">From your Google account.</span>
                 </div>
-                <div className="mx-row-value">{user?.email ?? "—"}</div>
               </div>
 
               {/* Write-once at onboarding: it is the field the age gate rests
                   on, and leaving it editable would let someone walk it back the
-                  day after clearing the gate. Backend refuses a second write. */}
+                  day after clearing the gate. The backend refuses a second
+                  write, so this row carries no action at all rather than one
+                  that would fail. */}
               <div className="mx-row">
-                <div className="mx-row-label">
-                  Date of birth
+                <div className="mx-row-main">
+                  <div className="mx-row-label">Date of birth</div>
+                  <div className="mx-row-value">{fmtDay(user?.dateOfBirth)}</div>
                   <span className="mx-row-hint">Set once when you signed up. Contact support if it&rsquo;s wrong.</span>
                 </div>
-                <div className="mx-row-value">{fmtDay(user?.dateOfBirth)}</div>
               </div>
 
               <div className="mx-row">
-                <div className="mx-row-label">
-                  Time zone
+                <div className="mx-row-main">
+                  <div className="mx-row-label">Time zone</div>
+                  <div className="mx-row-value">{user?.timeZone ?? "Not set"}</div>
                   <span className="mx-row-hint">
                     Taken from your device, so kickoff times show in your local time. Updates on its own if you move.
                   </span>
                 </div>
-                <div className="mx-row-value">{user?.timeZone ?? "—"}</div>
               </div>
 
               <div className="mx-row">
-                <div className="mx-row-label">
-                  Member since
+                <div className="mx-row-main">
+                  <div className="mx-row-label">Member since</div>
+                  <div className="mx-row-value">{memberSince}</div>
                   <span className="mx-row-hint">The day this account was created.</span>
                 </div>
-                <div className="mx-row-value">{memberSince}</div>
               </div>
             </section>
           )}
 
           {tab === "security" && (
             <section className="mx-section">
-              <div className="mx-section-title">Login &amp; security</div>
+              <h2 className="mx-pane-title">Login &amp; security</h2>
 
               <div className="mx-row">
-                <div className="mx-row-label">
-                  Google
+                <div className="mx-row-main">
+                  <div className="mx-row-label">Google</div>
+                  <div className="mx-row-value">{user?.email ?? "Not set"}</div>
                   <span className="mx-row-hint">
                     The only way into this account. There is no password to set or lose.
                   </span>
                 </div>
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <div className="mx-row-side">
                   <span className="mx-tag">{user?.hasGoogle ? "Connected" : "Not connected"}</span>
-                  <span style={{ fontSize: "0.78rem", color: "var(--text-3)" }}>{user?.email}</span>
                 </div>
               </div>
 
               <div className="mx-row">
-                <div className="mx-row-label">
-                  Sign out
+                <div className="mx-row-main">
+                  <div className="mx-row-label">Sign out</div>
                   <span className="mx-row-hint">Ends this session on this device.</span>
                 </div>
-                <div>
-                  <button type="button" className="mx-btn is-quiet" onClick={() => { signOut(); router.push("/"); }}>
+                <div className="mx-row-side">
+                  <button type="button" className="mx-row-action" onClick={() => { signOut(); router.push("/"); }}>
                     Sign out
                   </button>
                 </div>
@@ -309,22 +349,19 @@ export default function SettingsPage() {
 
               {/* Two-step, and the second step spells out the irreversible part
                   rather than asking "are you sure?" — the seats go back, and a
-                  league that refilled is not waiting when you return. */}
+                  league that refilled is not waiting when you return. The
+                  confirmation stays a filled danger button rather than a row
+                  link: it is the one thing on this page that cannot be undone,
+                  and it should not look like Edit. */}
               <div className="mx-row">
-                <div className="mx-row-label">
-                  Deactivate account
+                <div className="mx-row-main">
+                  <div className="mx-row-label">Deactivate account</div>
                   <span className="mx-row-hint">
                     Leaves every league and hides your account. Signing in with Google brings it
                     back — but your leagues will have moved on without you.
                   </span>
-                </div>
-                <div style={{ display: "flex", flexDirection: "column", gap: 10, alignItems: "flex-start" }}>
-                  {!confirmOff ? (
-                    <button type="button" className="mx-btn is-danger" onClick={() => setConfirmOff(true)}>
-                      Deactivate
-                    </button>
-                  ) : (
-                    <>
+                  {confirmOff && (
+                    <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 10, alignItems: "flex-start" }}>
                       <div className="mx-notice is-warn" style={{ margin: 0 }}>
                         You&rsquo;ll leave every league you&rsquo;re in and your seats will be given up. Your
                         bets and results stay on record for the leagues you played in. Signing back in
@@ -338,114 +375,168 @@ export default function SettingsPage() {
                           {deactivating ? "Deactivating…" : "Yes, deactivate"}
                         </button>
                       </div>
-                    </>
+                    </div>
                   )}
                 </div>
+                {!confirmOff && (
+                  <div className="mx-row-side">
+                    <button type="button" className="mx-row-action" onClick={() => setConfirmOff(true)}>
+                      Deactivate
+                    </button>
+                  </div>
+                )}
               </div>
             </section>
           )}
 
           {tab === "league" && (
             <section className="mx-section">
-              <div className="mx-section-title">League profile</div>
+              <h2 className="mx-pane-title">League profile</h2>
 
               {/* What a new membership is seeded from. A league keeps its own
                   copy of all three — that is the point of the per-league
                   identity — so changing anything here affects the NEXT league
                   you join, not the ones you are already in. */}
               <div className="mx-row">
-                <div className="mx-row-label">
-                  Display name
+                <div className="mx-row-main">
+                  <div className="mx-row-label">Display name</div>
+                  {editing === "displayName" ? (
+                    <div style={{ marginTop: 8 }}>
+                      <input
+                        className="mx-field"
+                        value={displayName}
+                        maxLength={32}
+                        onChange={(e) => setDisplayName(e.target.value)}
+                        style={{ maxWidth: 260 }}
+                      />
+                    </div>
+                  ) : (
+                    <div className={user?.displayName ? "mx-row-value" : "mx-row-value is-empty"}>
+                      {user?.displayName || "Not set"}
+                    </div>
+                  )}
                   <span className="mx-row-hint">
                     The name new leagues start you with. Rename yourself inside any league without
                     touching this.
                   </span>
                 </div>
-                <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                  <input
-                    className="mx-field"
-                    value={displayName}
-                    maxLength={32}
-                    onChange={(e) => setDisplayName(e.target.value)}
-                    style={{ maxWidth: 260 }}
-                  />
-                  <SaveButton
-                    field="displayName"
-                    disabled={!displayName.trim() || displayName === user?.displayName}
-                    onClick={() => save("displayName", { displayName: displayName.trim() })}
-                  />
+                <div className="mx-row-side">
+                  {editing === "displayName" ? (
+                    <>
+                      <button type="button" className="mx-row-action" onClick={() => setEditing(null)}>Cancel</button>
+                      <SaveButton
+                        field="displayName"
+                        disabled={!displayName.trim() || displayName === user?.displayName}
+                        onClick={() => save("displayName", { displayName: displayName.trim() })}
+                      />
+                    </>
+                  ) : (
+                    <button type="button" className="mx-row-action" onClick={() => openEdit("displayName")}>Edit</button>
+                  )}
                 </div>
               </div>
 
               <div className="mx-row">
-                <div className="mx-row-label">
-                  Abbreviation
+                <div className="mx-row-main">
+                  <div className="mx-row-label">Abbreviation</div>
+                  {editing === "abbreviation" ? (
+                    <div style={{ marginTop: 8 }}>
+                      <input
+                        className="mx-field"
+                        value={abbrev}
+                        maxLength={3}
+                        placeholder="Auto"
+                        onChange={(e) => setAbbrev(e.target.value.toUpperCase().replace(/[^A-Z]/g, "").slice(0, 3))}
+                        style={{ maxWidth: 96, letterSpacing: "0.22em", textTransform: "uppercase" }}
+                      />
+                    </div>
+                  ) : (
+                    <div className={user?.defaultAbbreviation ? "mx-row-value" : "mx-row-value is-empty"}>
+                      {user?.defaultAbbreviation || "Generated for each league"}
+                    </div>
+                  )}
                   <span className="mx-row-hint">
                     Two or three letters. Left empty, each league generates one from your display name.
                   </span>
                 </div>
-                <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                  <input
-                    className="mx-field"
-                    value={abbrev}
-                    maxLength={3}
-                    placeholder="Auto"
-                    onChange={(e) => setAbbrev(e.target.value.toUpperCase().replace(/[^A-Z]/g, "").slice(0, 3))}
-                    style={{ maxWidth: 96, letterSpacing: "0.22em", textTransform: "uppercase" }}
-                  />
-                  <SaveButton
-                    field="abbreviation"
-                    disabled={!abbrevChanged || (abbrev.length > 0 && abbrev.length < 2)}
-                    onClick={() => save("abbreviation", { defaultAbbreviation: abbrev || null })}
-                  />
+                <div className="mx-row-side">
+                  {editing === "abbreviation" ? (
+                    <>
+                      <button type="button" className="mx-row-action" onClick={() => setEditing(null)}>Cancel</button>
+                      <SaveButton
+                        field="abbreviation"
+                        disabled={!abbrevChanged || (abbrev.length > 0 && abbrev.length < 2)}
+                        onClick={() => save("abbreviation", { defaultAbbreviation: abbrev || null })}
+                      />
+                    </>
+                  ) : (
+                    <button type="button" className="mx-row-action" onClick={() => openEdit("abbreviation")}>
+                      {user?.defaultAbbreviation ? "Edit" : "Add"}
+                    </button>
+                  )}
                 </div>
               </div>
 
-              {/* Saved on click rather than behind a Save button: a swatch grid
-                  where the selection does nothing until you press something
-                  else reads as broken. */}
+              {/* The swatches save on click — a grid where the selection does
+                  nothing until you press something else reads as broken — so
+                  this row's verb opens the palette rather than an editor, and
+                  there is nothing to confirm once you have picked. */}
               <div className="mx-row">
-                <div className="mx-row-label">
-                  Helmet colour
+                <div className="mx-row-main">
+                  <div className="mx-row-label">Helmet colour</div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 6 }}>
+                    <HelmetAvatar
+                      color={user?.defaultHelmetColor ?? "var(--border-2)"}
+                      initials={(user?.defaultAbbreviation || user?.displayName || "?").slice(0, 2)}
+                      size={30}
+                    />
+                    <span
+                      className={user?.defaultHelmetColor ? "mx-row-value" : "mx-row-value is-empty"}
+                      style={{ marginTop: 0 }}
+                    >
+                      {user?.defaultHelmetColor ?? "Picked for you in each league"}
+                    </span>
+                  </div>
+                  {editing === "helmet" && (
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 6, maxWidth: 420, marginTop: 12 }}>
+                      {palette.map((c) => (
+                        <button
+                          key={c}
+                          type="button"
+                          aria-label={c}
+                          aria-pressed={user?.defaultHelmetColor === c}
+                          disabled={savingField === "helmet"}
+                          onClick={() => save("helmet", { defaultHelmetColor: c })}
+                          style={{
+                            width: 22, height: 22, padding: 0, borderRadius: "var(--radius-sm)", background: c,
+                            border: "none", boxShadow: "none", transform: "none", cursor: "pointer", flexShrink: 0,
+                            outline: user?.defaultHelmetColor === c ? "2px solid var(--accent)" : "2px solid transparent",
+                            outlineOffset: 2,
+                          }}
+                        />
+                      ))}
+                    </div>
+                  )}
                   <span className="mx-row-hint">
                     Colours stay unique inside a league, so if someone got there first you&rsquo;ll be
                     given another one.
                   </span>
                 </div>
-                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                    <HelmetAvatar
-                      color={user?.defaultHelmetColor ?? "var(--border-2)"}
-                      initials={(user?.defaultAbbreviation || user?.displayName || "?").slice(0, 2)}
-                      size={34}
-                    />
-                    <span style={{ fontSize: "0.78rem", color: "var(--text-3)" }}>
-                      {user?.defaultHelmetColor ? user.defaultHelmetColor : "No default — a colour is picked for you"}
-                    </span>
-                    {user?.defaultHelmetColor && (
-                      <button type="button" className="mx-btn is-bare" onClick={() => save("helmet", { defaultHelmetColor: null })}>
-                        Clear
-                      </button>
-                    )}
-                  </div>
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6, maxWidth: 420 }}>
-                    {palette.map((c) => (
-                      <button
-                        key={c}
-                        type="button"
-                        aria-label={c}
-                        aria-pressed={user?.defaultHelmetColor === c}
-                        disabled={savingField === "helmet"}
-                        onClick={() => save("helmet", { defaultHelmetColor: c })}
-                        style={{
-                          width: 22, height: 22, padding: 0, borderRadius: "var(--radius-sm)", background: c,
-                          border: "none", boxShadow: "none", transform: "none", cursor: "pointer", flexShrink: 0,
-                          outline: user?.defaultHelmetColor === c ? "2px solid var(--accent)" : "2px solid transparent",
-                          outlineOffset: 2,
-                        }}
-                      />
-                    ))}
-                  </div>
+                <div className="mx-row-side">
+                  {editing === "helmet" ? (
+                    <>
+                      {user?.defaultHelmetColor && (
+                        <button type="button" className="mx-row-action" onClick={() => save("helmet", { defaultHelmetColor: null })}>
+                          Clear
+                        </button>
+                      )}
+                      <button type="button" className="mx-row-action" onClick={() => setEditing(null)}>Done</button>
+                    </>
+                  ) : (
+                    <button type="button" className="mx-row-action" onClick={() => setEditing("helmet")}>
+                      {user?.defaultHelmetColor ? "Change" : "Choose"}
+                    </button>
+                  )}
                 </div>
               </div>
 
@@ -453,24 +544,24 @@ export default function SettingsPage() {
                   which made the one figure leagues could sort on a free-text
                   field anyone could put "20" into. */}
               <div className="mx-row">
-                <div className="mx-row-label">
-                  Seasons played
+                <div className="mx-row-main">
+                  <div className="mx-row-label">Seasons played</div>
+                  <div style={{ display: "flex", gap: 10, alignItems: "baseline", flexWrap: "wrap", marginTop: 4 }}>
+                    <span style={{ fontSize: "1.4rem", fontWeight: 400, letterSpacing: "-0.028em", color: "var(--text)", lineHeight: 1 }}>
+                      {seasons}
+                    </span>
+                    {nextSeason && (
+                      <span style={{ fontSize: "0.78rem", color: "var(--text-3)" }}>
+                        {seasons === 0
+                          ? `You start with the ${nextSeason} season`
+                          : `Your next season is ${nextSeason}`}
+                      </span>
+                    )}
+                  </div>
                   <span className="mx-row-hint">
                     Counted from the day you joined, not self-reported. It goes up on its own with
                     each new NFL season.
                   </span>
-                </div>
-                <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-                  <span style={{ fontSize: "1.4rem", fontWeight: 400, letterSpacing: "-0.028em", color: "var(--text)", lineHeight: 1 }}>
-                    {seasons}
-                  </span>
-                  {nextSeason && (
-                    <span style={{ fontSize: "0.74rem", color: "var(--text-3)" }}>
-                      {seasons === 0
-                        ? `You start with the ${nextSeason} season`
-                        : `Your next season is ${nextSeason}`}
-                    </span>
-                  )}
                 </div>
               </div>
             </section>

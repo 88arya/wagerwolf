@@ -187,7 +187,7 @@ export default function MemberProfilePage({ params }: PageProps<"/leagues/[leagu
                       </div>
                       <div style={{ textAlign: "right", flexShrink: 0, marginLeft: 8 }}>
                         <div style={{ fontSize: "0.72rem", fontWeight: 700, color: outcomeColor }}>
-                          {pick.outcome === "WIN" ? "WIN" : pick.outcome === "LOSS" ? "LOSS" : "—"}
+                          {pick.outcome === "WIN" ? "WIN" : pick.outcome === "LOSS" ? "LOSS" : pick.outcome === "PUSH" ? "PUSH" : "—"}
                         </div>
                         <div style={{ fontSize: "0.68rem", color: "var(--text-3)", fontVariantNumeric: "tabular-nums" }}>
                           {fmtMoney(pick.stake)}

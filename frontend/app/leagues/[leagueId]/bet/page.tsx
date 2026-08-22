@@ -61,24 +61,43 @@ function propBlockOdds(baseOdds: number, baseLine: number, altLine: number, stat
   return Math.max(-500, Math.min(500, baseOdds - Math.round(favSteps * 15)));
 }
 
-// Index into PROP_OFFSETS whose Over odds land closest to even money (+100)
-function closestToEvenOffsetIdx(prop: any): number {
+// The alternate lines this prop can be bet at.
+//
+// `altLadder` is the book's own ladder, written by the SharpAPI sync — FanDuel
+// posts prop alternates as milestones ("Cooper Kupp 4+ Receptions"), which is
+// what the boxes below already draw. When it is absent (anything fakeSync
+// generated) fall back to fixed offsets around the main line.
+//
+// Mirrors services/propOdds.ts on the backend, which is what actually prices a
+// bet — this side only decides what to show.
+function propLadderLines(prop: any): number[] {
+  if (prop.altLadder?.length) return prop.altLadder.map((r: any) => r.line);
   const step = propStep(prop.statType);
+  return PROP_OFFSETS
+    .map((o) => propBlockLine(prop.line, o, step))
+    .filter((l) => l > 0);
+}
+
+function propLadderOdds(prop: any, line: number, direction: "OVER" | "UNDER"): number {
+  const rung = prop.altLadder?.find((r: any) => Math.abs(r.line - line) < 0.001);
+  if (rung) return direction === "OVER" ? rung.over : rung.under;
+  return propBlockOdds(prop.odds ?? -110, prop.line, line, prop.statType, direction);
+}
+
+// Index into propLadderLines whose Over odds land closest to even money (+100)
+function closestToEvenOffsetIdx(prop: any): number {
   let bestIdx = 0;
   let bestDist = Infinity;
-  PROP_OFFSETS.forEach((offset, idx) => {
-    const blockLine = propBlockLine(prop.line, offset, step);
-    const odds = propBlockOdds(prop.odds ?? -110, prop.line, blockLine, prop.statType, "OVER");
-    const dist = Math.abs(odds - 100);
+  propLadderLines(prop).forEach((line, idx) => {
+    const dist = Math.abs(propLadderOdds(prop, line, "OVER") - 100);
     if (dist < bestDist) { bestDist = dist; bestIdx = idx; }
   });
   return bestIdx;
 }
 
 function closestToEvenLine(prop: any): number {
-  const step = propStep(prop.statType);
-  const idx = closestToEvenOffsetIdx(prop);
-  return propBlockLine(prop.line, PROP_OFFSETS[idx], step);
+  const lines = propLadderLines(prop);
+  return lines[closestToEvenOffsetIdx(prop)] ?? prop.line;
 }
 
 const PR_BOX_W = 110;
@@ -128,11 +147,16 @@ function PropPlayerRow({ prop, slipLegs, submittedPropIds, pendingPropDirs, week
   const step = propStep(prop.statType);
   const placed = submittedPropIds.has(prop.id);
   const pendingDir = pendingPropDirs.get(prop.id);
-  const [scrollIdx, setScrollIdx] = useState(() => {
-    const bestIdx = closestToEvenOffsetIdx(prop);
-    return Math.min(2, Math.max(0, bestIdx - 1));
-  });
-  const visibleIndices = [scrollIdx, scrollIdx + 1, scrollIdx + 2];
+  // Real ladders vary in length (3 rungs for a QB's passing TDs, 9 for Puka
+  // Nacua's receptions), so the window is clamped to what this prop actually
+  // has rather than the fixed 5 the generated ladder always had.
+  const ladderLines = propLadderLines(prop);
+  const maxScrollIdx = Math.max(0, ladderLines.length - 3);
+  const [scrollIdx, setScrollIdx] = useState(() =>
+    Math.min(maxScrollIdx, Math.max(0, closestToEvenOffsetIdx(prop) - 1)),
+  );
+  const visibleIndices = [scrollIdx, scrollIdx + 1, scrollIdx + 2]
+    .filter((i) => i < ladderLines.length);
 
   function isDirBlocked(dir: "OVER" | "UNDER"): boolean {
     // Rule 2: cannot bet opposite direction while a pending pick exists
@@ -197,12 +221,11 @@ function PropPlayerRow({ prop, slipLegs, submittedPropIds, pendingPropDirs, week
 
         <div style={{ display: "flex", gap: BOX_GAP }}>
           {visibleIndices.map((offsetIdx) => {
-            const offset = PROP_OFFSETS[offsetIdx];
-            const blockLine = propBlockLine(prop.line, offset, step);
+            const blockLine = ladderLines[offsetIdx];
             const plusLine = Math.round((blockLine + 0.5) * 100) / 100;
             const overLeg = getActiveLeg("OVER", blockLine);
             const isSelected = !!overLeg;
-            const overOdds = propBlockOdds(prop.odds ?? -110, prop.line, blockLine, prop.statType, "OVER");
+            const overOdds = propLadderOdds(prop, blockLine, "OVER");
             const blocked = isDirBlocked("OVER") && !isSelected;
             const clickable = !weekLocked && !blocked;
 
@@ -237,8 +260,8 @@ function PropPlayerRow({ prop, slipLegs, submittedPropIds, pendingPropDirs, week
         </div>
 
         <button type="button"
-          onClick={() => setScrollIdx(s => Math.min(2, s + 1))}
-          style={{ width: 16, height: PR_BOX_H, background: "none", border: "none", padding: 0, cursor: scrollIdx < 2 ? "pointer" : "default", color: scrollIdx < 2 ? "var(--text-2)" : "transparent", fontSize: "1rem", display: "flex", alignItems: "center", justifyContent: "center" }}
+          onClick={() => setScrollIdx(s => Math.min(maxScrollIdx, s + 1))}
+          style={{ width: 16, height: PR_BOX_H, background: "none", border: "none", padding: 0, cursor: scrollIdx < maxScrollIdx ? "pointer" : "default", color: scrollIdx < maxScrollIdx ? "var(--text-2)" : "transparent", fontSize: "1rem", display: "flex", alignItems: "center", justifyContent: "center" }}
         >›</button>
       </div>
     </div>
@@ -450,7 +473,12 @@ export default function BetPage({ params }: PageProps<"/leagues/[leagueId]/bet">
     addToSlip({
       type: "prop", id: prop.id, direction,
       label: `${prop.player?.name} ${direction} ${blockLine} ${(prop.statType as string).split("_").join(" ")}`,
-      odds: prop.odds ?? -110,
+      // The price for the rung actually clicked, not the main line. The slip
+      // used to store prop.odds for every alt selection, so it showed one
+      // number while the server priced the bet at another — Stafford's 3+
+      // passing TDs displayed -146 (his 2+ price) and would have been struck
+      // at +270. Parlay totals were built from the same wrong numbers.
+      odds: propLadderOdds(prop, blockLine, direction),
       line: prop.line, statType: prop.statType,
       altLine: isDefault ? undefined : blockLine,
       gameId: prop.gameId,
@@ -545,7 +573,35 @@ export default function BetPage({ params }: PageProps<"/leagues/[leagueId]/bet">
       <div style={{ background: "var(--surface)", borderRadius: "var(--radius)", overflow: "hidden" }}>
         {markets.map(([statType, groupProps], marketIdx) => {
           // Order players by their line closest to even odds, largest to smallest
-          const sorted = [...groupProps].sort((a, b) => closestToEvenLine(b) - closestToEvenLine(a));
+          // Best player first, where "best" is whatever the book's pricing says.
+          //
+          // Two signals, in order:
+          //
+          //  1. The line at which this player is roughly even money
+          //     (closestToEvenLine). Across a yardage or receptions market this
+          //     IS the quality ranking — a book puts its best receiver at 90.5
+          //     yards and its fourth option at 20.5.
+          //
+          //  2. The price itself, ascending. This is what actually orders
+          //     Touchdowns: every anytime-TD market sits on the same 0.5 line,
+          //     so signal 1 ties for every player and sorted output was
+          //     effectively arbitrary. Ascending American odds is exactly
+          //     descending implied probability (-300 → 75%, -160 → 61%,
+          //     +500 → 17%), so the likeliest scorer comes first.
+          //
+          // The middle key is the book's actual line, and it matters: two players
+          // can land on the same even-money rung from different starting lines
+          // (McCaffrey at 4.5 receptions, Evans at 3.5), and comparing their
+          // main prices directly would rank prices struck at different lines
+          // against each other. The higher line is the better player.
+          //
+          // The last key then breaks a genuine tie: same line, ranked by which
+          // one the book favours.
+          const sorted = [...groupProps].sort((a, b) =>
+            (closestToEvenLine(b) - closestToEvenLine(a)) ||
+            (b.line - a.line) ||
+            ((a.odds ?? -110) - (b.odds ?? -110))
+          );
           return renderMarketCard(statType, sorted, marketIdx);
         })}
       </div>
@@ -609,27 +665,44 @@ export default function BetPage({ params }: PageProps<"/leagues/[leagueId]/bet">
       );
     }
 
-    const DEFENSE_TYPES = new Set(["SACKS","TACKLES_ASSISTS","DEFENSIVE_INTERCEPTIONS"]);
-    const KICKING_TYPES = new Set(["FIELD_GOALS_MADE","FIELD_GOAL_LONGEST","KICKING_POINTS","EXTRA_POINTS_MADE"]);
+    // Tabs are keyed off the STAT, not the player's position.
+    //
+    // Position-based grouping silently dropped markets: "Touchdowns" is neither
+    // a rushing nor a receiving stat, so an anytime-TD prop on any non-QB
+    // matched no group and rendered nowhere. That hid 68 of 136 props — the
+    // single most-bet NFL market — while looking perfectly fine.
+    //
+    // Every StatType therefore maps to exactly one tab, and PROP_TAB_OF is
+    // exhaustive by construction: anything unmapped falls into "Other" rather
+    // than disappearing.
+    const PROP_TAB_OF = (statType: string): string => {
+      if (statType.startsWith("PASSING_")) return "qb";
+      if (statType.startsWith("RUSHING_")) return "rushing";
+      if (statType.startsWith("RECEIVING_") || statType === "RECEPTIONS") return "receiving";
+      if (statType === "TOUCHDOWNS") return "touchdowns";
+      if (statType === "SACKS" || statType === "TACKLES_ASSISTS" || statType === "DEFENSIVE_INTERCEPTIONS") return "defense";
+      if (statType.startsWith("FIELD_GOAL") || statType === "KICKING_POINTS" || statType === "EXTRA_POINTS_MADE") return "kicking";
+      return "other";
+    };
 
-    const qbProps = gameProps.filter((p: any) => p.player?.position === "QB");
-    const rushingProps = gameProps.filter((p: any) =>
-      (p.statType as string).includes("RUSHING") && p.player?.position !== "QB"
-    );
-    const receivingProps = gameProps.filter((p: any) =>
-      ((p.statType as string).includes("RECEIVING") || p.statType === "RECEPTIONS" || p.statType === "RECEIVING_TARGETS") &&
-      p.player?.position !== "QB"
-    );
-    const defenseProps = gameProps.filter((p: any) => DEFENSE_TYPES.has(p.statType));
-    const kickingProps = gameProps.filter((p: any) => KICKING_TYPES.has(p.statType));
+    const byTab = (key: string) => gameProps.filter((p: any) => PROP_TAB_OF(p.statType) === key);
+    const qbProps        = byTab("qb");
+    const rushingProps   = byTab("rushing");
+    const receivingProps = byTab("receiving");
+    const touchdownProps = byTab("touchdowns");
+    const defenseProps   = byTab("defense");
+    const kickingProps   = byTab("kicking");
+    const otherProps     = byTab("other");
 
     const tabs = [
       { key: "lines", label: "Game Lines" },
+      ...(touchdownProps.length > 0 ? [{ key: "touchdowns", label: "Touchdowns" }] : []),
       ...(qbProps.length > 0 ? [{ key: "qb", label: "Passing Props" }] : []),
       ...(rushingProps.length > 0 ? [{ key: "rushing", label: "Rushing Props" }] : []),
       ...(receivingProps.length > 0 ? [{ key: "receiving", label: "Receiving Props" }] : []),
       ...(defenseProps.length > 0 ? [{ key: "defense", label: "Defensive Props" }] : []),
       ...(kickingProps.length > 0 ? [{ key: "kicking", label: "Kicking Props" }] : []),
+      ...(otherProps.length > 0 ? [{ key: "other", label: "Other Props" }] : []),
     ];
 
     const activeSection = tabs.some((t) => t.key === betSection) ? betSection : "lines";
@@ -880,7 +953,7 @@ export default function BetPage({ params }: PageProps<"/leagues/[leagueId]/bet">
                 <div style={{ paddingTop: 8 }}>
                   <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "flex-end", padding: "0px 12px 3px", height: 22 }}>
                     <div style={{ display: "flex", flexDirection: "row", gap: BOX_GAP }}>
-                      {(["Spread", "Total", "Moneyline"] as const).map((h) => (
+                      {(["Spread", "Moneyline", "Total"] as const).map((h) => (
                         <div key={h} style={{ width: SL_BOX_W, textAlign: "center", fontSize: "0.48rem", color: "var(--text-2)", letterSpacing: "0.07em", textTransform: "uppercase" }}>{h}</div>
                       ))}
                     </div>
@@ -902,11 +975,11 @@ export default function BetPage({ params }: PageProps<"/leagues/[leagueId]/bet">
                     </div>
                     <div style={{ flexShrink: 0, display: "grid", gridTemplateColumns: `repeat(3, ${SL_BOX_W}px)`, gridTemplateRows: `${SL_BOX_H}px ${SL_BOX_H}px`, columnGap: BOX_GAP, rowGap: BOX_GAP }}>
                       {renderLineBox(slSpAway, slSpAway?.line != null ? String(slSpAway.line > 0 ? `+${slSpAway.line}` : slSpAway.line) : undefined)}
-                      {renderLineBox(slTotOver, slTotOver?.line != null ? `O ${slTotOver.line}` : undefined)}
                       {renderLineBox(slMlAway)}
+                      {renderLineBox(slTotOver, slTotOver?.line != null ? `O ${slTotOver.line}` : undefined)}
                       {renderLineBox(slSpHome, slSpHome?.line != null ? String(slSpHome.line > 0 ? `+${slSpHome.line}` : slSpHome.line) : undefined)}
-                      {renderLineBox(slTotUnder, slTotUnder?.line != null ? `U ${slTotUnder.line}` : undefined)}
                       {renderLineBox(slMlHome)}
+                      {renderLineBox(slTotUnder, slTotUnder?.line != null ? `U ${slTotUnder.line}` : undefined)}
                     </div>
                   </div>
                   <div style={{ height: 12 }} />
@@ -1053,11 +1126,13 @@ export default function BetPage({ params }: PageProps<"/leagues/[leagueId]/bet">
             );
           })()}
 
+          {activeSection === "touchdowns" && renderPropSection(touchdownProps)}
           {activeSection === "qb" && renderPropSection(qbProps)}
           {activeSection === "rushing" && renderPropSection(rushingProps)}
           {activeSection === "receiving" && renderPropSection(receivingProps)}
           {activeSection === "defense" && renderPropSection(defenseProps)}
           {activeSection === "kicking" && renderPropSection(kickingProps)}
+          {activeSection === "other" && renderPropSection(otherProps)}
 
           {gameLinesList.length === 0 && gameProps.length === 0 && (
             <div className="card">
@@ -1190,7 +1265,7 @@ export default function BetPage({ params }: PageProps<"/leagues/[leagueId]/bet">
                     {/* Header: column labels only */}
                     <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "flex-end", padding: "0px 12px 3px", height: 22 }}>
                       <div style={{ display: "flex", flexDirection: "row", gap: BOX_GAP, flexShrink: 0 }}>
-                        {(["Spread", "Total", "Moneyline"] as const).map((h) => (
+                        {(["Spread", "Moneyline", "Total"] as const).map((h) => (
                           <div key={h} style={{ width: BOX_W, textAlign: "center", fontSize: "0.48rem", color: "var(--text-2)", letterSpacing: "0.07em", textTransform: "uppercase" }}>{h}</div>
                         ))}
                       </div>
@@ -1217,11 +1292,11 @@ export default function BetPage({ params }: PageProps<"/leagues/[leagueId]/bet">
                       {/* Right: market boxes — 2-row grid, both gaps from same property so they're identical */}
                       <div style={{ flexShrink: 0, display: "grid", gridTemplateColumns: `repeat(3, ${BOX_W}px)`, gridTemplateRows: `${BOX_H}px ${BOX_H}px`, columnGap: BOX_GAP, rowGap: BOX_GAP }}>
                         <OddsBlock line={spAway} topLabel={spAway?.line != null ? String(spAway.line > 0 ? `+${spAway.line}` : spAway.line) : undefined} />
-                        <OddsBlock line={totOver} topLabel={totOver?.line != null ? `O ${totOver.line}` : undefined} />
                         <OddsBlock line={mlAway} />
+                        <OddsBlock line={totOver} topLabel={totOver?.line != null ? `O ${totOver.line}` : undefined} />
                         <OddsBlock line={spHome} topLabel={spHome?.line != null ? String(spHome.line > 0 ? `+${spHome.line}` : spHome.line) : undefined} />
-                        <OddsBlock line={totUnder} topLabel={totUnder?.line != null ? `U ${totUnder.line}` : undefined} />
                         <OddsBlock line={mlHome} />
+                        <OddsBlock line={totUnder} topLabel={totUnder?.line != null ? `U ${totUnder.line}` : undefined} />
                       </div>
                     </div>
 
