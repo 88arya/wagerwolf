@@ -21,9 +21,24 @@ import Logo from "@/components/Logo";
  *
  * Set in sentence case, not caps.
  *
- * Fugaz One has NOT left the bundle — GamesStrip still sets team abbreviations
- * in it, so --font-fugaz-one stays in layout.tsx. It is simply no longer the
- * wordmark's face, and the two no longer share one.
+ * TWO VARIANTS, and they differ only in ground:
+ *   • default — mark and name share ONE accent panel and one white foreground.
+ *     Previously the head sat in its own accent square and the name was set in
+ *     --text beside it, so the two halves of a single lockup stood on different
+ *     grounds in different colours and read as one object only because they
+ *     were adjacent. One panel, one colour.
+ *   • `bare` — no panel at all; both halves take currentColor, and the parent
+ *     decides. What TopBar, SiteFooter and /signup use, because those surfaces
+ *     already carry a ground of their own and a filled block on top of one
+ *     reads as a sticker.
+ *
+ * The mark is drawn `bare` in both cases — Logo's own tile would be a filled
+ * square inside a filled panel. See MARK_RATIO for how the panel reproduces the
+ * padding that tile used to supply.
+ *
+ * Fugaz One is no longer used ANYWHERE. It stopped being the wordmark's face,
+ * and on 22 Aug 2026 GamesStrip's team abbreviations moved to Lemon Milk too,
+ * so --font-fugaz-one is still loaded in layout.tsx with nothing consuming it.
  *
  * Three things left with it, all of them face-specific and none of them worth
  * carrying over:
@@ -50,7 +65,106 @@ import Logo from "@/components/Logo";
 // which was tried and reverted — it made the name shout over the mark rather
 // than sit beside it.
 export const WORDMARK_FONT_RATIO = 0.7;
-const GAP_RATIO = 0.34;
+
+/**
+ * Space between mark and name, as a fraction of THE MARK'S DRAWN SIZE — not of
+ * `height`.
+ *
+ * That distinction matters since the panel variant arrived. It draws the head
+ * at height × MARK_RATIO (0.731) so the panel's padding can supply the rest,
+ * but the gap was still keyed to the full height — so the mark shrank by 27%
+ * while the space beside it did not, and the name drifted away from the wolf.
+ * Keying it to the mark means the gap tracks whatever is actually sitting next
+ * to it, in both variants.
+ *
+ * 0.30, down from the 0.34 inherited from the landing header's hand-tuned
+ * pairing (a 1.05rem label beside a 24px mark at a 9px gap). That value was set
+ * when the mark carried its own tile, which contributed ~0.134 × height of
+ * internal padding on its right edge — so the apparent gap was always well
+ * wider than the number suggested. The tile is gone from the lockup, and the
+ * number had to come down to match what it used to look like.
+ *
+ * Applies to BOTH variants, so this moves the utility bar and the footer too.
+ */
+const GAP_RATIO = 0.3;
+
+/**
+ * The head's share of the mark's 100-unit artboard.
+ *
+ * Logo's tiled variant draws a full-bleed 100×100 accent square with the head
+ * sitting inside it at bbox 13.37–86.47, so the head occupies 73.1 units and
+ * the tile supplies the remaining 26.9 as padding. The bare variant crops to
+ * MARK_VIEWBOX, i.e. to the head itself, so a bare mark at size N is visually
+ * BIGGER than a tiled one at the same N.
+ *
+ * The panel below rebuilds that relationship by hand: it draws the mark bare at
+ * `height × MARK_RATIO` and pads back the difference, so `height` keeps meaning
+ * the height of the whole block — the same thing it meant when the block was
+ * just the tile.
+ *
+ * 0.721 is the ink's own height as a fraction of the 100-unit artboard
+ * (14.00 -> 86.10). It was 0.731 while the bare crop was squared off at
+ * 73.1 x 73.1, because `size` then meant the height of that padded box rather
+ * than of the paint inside it. The crop is exact now, so `size` IS the ink
+ * height and this is the real number. Derived from the path, not guessed.
+ */
+const MARK_RATIO = 0.721;
+/** Half the leftover, so the head sits in the panel exactly as it sat in the tile. */
+const PANEL_PAD_RATIO = (1 - MARK_RATIO) / 2;
+
+/**
+ * How much of the horizontal gap the stacked arrangement keeps.
+ *
+ * Vertical space reads wider than the identical number set horizontally: side
+ * by side, the mark and the name brace the gap and give the eye its scale,
+ * whereas stacked there is nothing flanking it. 0.7 is a starting point, not a
+ * measurement — tune it against the specimen on /logo.
+ */
+const STACKED_GAP_SCALE = 0.7;
+
+/**
+ * Arca Majora 3's cap height: sCapHeight 770 / unitsPerEm 1000, read from the
+ * face's own OS/2 table. The mark is drawn at fontSize x this, so its height
+ * equals the height of the word and the two read as one object.
+ *
+ * NOT the hhea ascender (900), which reserves room for diacritics that
+ * "wagerwolf" never uses and would leave the mark ~17% too tall.
+ *
+ * Face-specific. Re-read it from the new font if the wordmark's face changes.
+ */
+const WORDMARK_CAP_RATIO = 0.77;
+
+/**
+ * Drops the whole lockup so its INK centres, not its box.
+ *
+ * `align-items: center` on the bar centres the lockup's box. That box is not
+ * symmetric about what you actually see: it reserves the face's full ascent
+ * above the baseline (0.900em) and full descent below it (0.260em), while the
+ * ink — the mark, and the letters from ascender down to baseline — occupies
+ * only capHeight (0.770em) and stops AT the baseline, because the mark's bottom
+ * sits on it. So the box holds 1.82px of dead air above the ink and 3.64px
+ * below, at the bar's 14px, and centring it leaves the lockup reading ~0.9px
+ * high.
+ *
+ *     shift = capHeight / 2 - (ascent - descent) / 2
+ *           = 0.385 - 0.320 = 0.065em
+ *
+ * Arca Majora 3, from its own OS/2 and hhea tables: cap 770, ascent 900,
+ * descent 260, upem 1000.
+ *
+ * APPLIED TO THE CONTAINER, not to the text. It used to live in WORDMARK_TEXT
+ * as OPTICAL_SHIFT_EM, which was right when the mark was centred on the text's
+ * line box — moving the text moved it relative to a mark that was not tracking
+ * it. It is wrong now: the mark is baseline-aligned to the text, `position:
+ * relative` is paint-only so it does not move the baseline flexbox aligns on,
+ * and a text-only shift would slide the letters off the mark. Shifting the
+ * whole lockup keeps the pair rigid.
+ *
+ * FROM NOMINAL METRICS, NOT MEASURED. The note on OPTICAL_SHIFT_EM below is the
+ * warning that matters here: Fugaz One's nominal tables were out by 25% against
+ * what Chrome actually laid out. Verify this in a browser before trusting it.
+ */
+const LOCKUP_INK_SHIFT_EM = 0.065;
 
 /**
  * The lockup's face. Exported because TopBar's "My Account" sits on it too —
@@ -125,11 +239,14 @@ const GAP_RATIO = 0.34;
 const OPTICAL_SHIFT_EM = 0;
 
 export const WORDMARK_TEXT: CSSProperties = {
-  fontFamily: "var(--font-sans), system-ui, sans-serif",
-  // 500, not 400 — see the note above. The design system's ceiling; do not
-  // reach past it for 600+ if the name still reads light, raise
-  // WORDMARK_FONT_RATIO instead. Hierarchy here is size, not weight.
-  fontWeight: 500,
+  // Arca Majora 3, mounted globally in app/layout.tsx because the lockup shows
+  // up on every route. Falls back to the UI face rather than a system default,
+  // so a failed fetch degrades to the rest of the app.
+  fontFamily: "var(--font-arca-majora), var(--font-sans), system-ui, sans-serif",
+  // 700 — Bold, and the LIGHTEST cut Arca Majora ships (the only other is Heavy
+  // 900). The design system's 400-500 ceiling governs UI text and does not
+  // reach here: this is a logo, set in a display face that has no 500.
+  fontWeight: 700,
   // Normal, and stated rather than omitted: letter-spacing inherits, so leaving
   // it out would let whatever a parent happens to set leak into an object that
   // is spread into several different places.
@@ -139,7 +256,10 @@ export const WORDMARK_TEXT: CSSProperties = {
   // this size already, and the design system reserves tight tracking for large
   // display type — the bar is 13–14px, the opposite end of that range.
   letterSpacing: "normal",
-  textTransform: "none",
+  // Lowercase, and paint-only: the markup still reads "Wagerwolf", so the name
+  // stays copyable, searchable and correctly announced while drawing as
+  // "wagerwolf".
+  textTransform: "lowercase",
   // Explicit, and not inherited, because this object is spread onto elements
   // sitting in two very different boxes: the lockup row below, which sets
   // line-height 1 so its height equals the `height` prop, and TopBar's bare
@@ -170,6 +290,12 @@ export const WORDMARK_TEXT: CSSProperties = {
 export default function LogoWordmark({
   height = 28,
   bare = false,
+  fontFamily,
+  fontWeight,
+  layout = "mark-right",
+  textTransform,
+  align = "baseline",
+  markScale = WORDMARK_CAP_RATIO,
 }: {
   /** Height of the mark. The type is sized from it, so this sizes the lockup. */
   height?: number;
@@ -181,25 +307,164 @@ export default function LogoWordmark({
    * accent tile would read as a sticker stuck on the bar.
    */
   bare?: boolean;
+  /**
+   * Draw the name in a different face. FOR THE /logo SPECIMEN PAGE ONLY —
+   * everywhere in the app proper leaves this alone, so there is one lockup and
+   * it cannot drift.
+   *
+   * It has to be a prop rather than inherited CSS because WORDMARK_TEXT sets
+   * fontFamily inline, and an inline style beats any rule a parent could write.
+   *
+   * Two things this does NOT adjust, both measured against Inter Tight:
+   * WORDMARK_FONT_RATIO and OPTICAL_SHIFT_EM. A swapped face is therefore
+   * sized and centred on another font's metrics and may sit high, low, or a
+   * shade too large. That is fine for comparing letterforms and inevitable for
+   * a preview — but re-measure both before adopting anything.
+   */
+  fontFamily?: string;
+  /**
+   * Draw the name at a different weight. FOR THE /logo SPECIMEN PAGE ONLY,
+   * same as `fontFamily`.
+   *
+   * Needed because weight is not comparable between families: the number is
+   * nominal, so two faces set at 500 can sit visibly apart in colour, and a
+   * candidate can only be judged against the mark at whatever weight actually
+   * matches it. The app's own lockup stays at WORDMARK_TEXT's 500 — the design
+   * system's ceiling — and this does not move it.
+   *
+   * The weight must be one the face actually ships and next/font actually
+   * loaded, or the browser synthesises a fake bold and the specimen is a
+   * drawing of something that does not exist.
+   */
+  fontWeight?: number;
+  /**
+   * Where the mark sits relative to the name.
+   *
+   *   mark-left   the original, and what every surface in the app uses
+   *   mark-right  mirrored — the name reads first, the mark closes it
+   *   mark-top    stacked and centred, for square-ish spaces
+   *
+   * `height` means the same thing in all three: it sizes the mark and, through
+   * WORDMARK_FONT_RATIO, the name. What changes is the block those two make —
+   * mark-top is roughly twice as tall and much narrower, so it is NOT a drop-in
+   * for a 40px utility bar. Size it by the space it is going into.
+   */
+  layout?: "mark-left" | "mark-right" | "mark-top";
+  /**
+   * Re-case the name. FOR THE /logo SPECIMEN PAGE ONLY, like `fontFamily` and
+   * `fontWeight` — WORDMARK_TEXT pins `none`, and the app's lockup stays
+   * sentence case.
+   *
+   * The markup still reads "Wagerwolf" whatever this says: text-transform is a
+   * paint-time rule, so the name is copied, searched and announced with its
+   * capital intact no matter how it is drawn. That is the reason to do it here
+   * rather than by writing a different string.
+   *
+   * `uppercase` cannot rescue a face with no lowercase — see the Lemon Milk
+   * note in wordmarkFonts.ts. It is the other direction that is interesting:
+   * `lowercase` on a face with real lowercase forms.
+   */
+  textTransform?: "none" | "lowercase" | "uppercase";
+  /**
+   * How the mark lines up with the name, in the side-by-side arrangements.
+   *
+   *   center    (default) the mark is centred on the name's LINE BOX — the full
+   *             ascender-to-descender span. Correct for sentence case, where
+   *             the capital anchors the left edge.
+   *   baseline  the mark's bottom edge sits on the text BASELINE, the line a, c,
+   *             e and o stand on. Descenders — g, j, p, y — then hang below the
+   *             mark instead of pulling it down with them.
+   *
+   * The difference only shows on a word with descenders, which is why it turns
+   * up on the lowercase candidates: "wagerwolf" has a g, so centring on the line
+   * box floats the mark roughly half a descender high.
+   *
+   * Implemented as `align-items: baseline`. A flex item with no text of its own
+   * — the mark's wrapper — synthesises its baseline from its bottom margin
+   * edge, so aligning baselines puts the mark's bottom on the text's. No
+   * per-face descender measurement needed, which matters because that would be
+   * a different number for every candidate.
+   *
+   * Ignored by `mark-top`, where align-items governs horizontal centring
+   * instead and baseline would knock the stack off centre.
+   */
+  align?: "center" | "baseline";
+  /**
+   * Size the mark from the TEXT instead of from `height`: the mark's height
+   * becomes fontSize × markScale, and its width follows MARK_ASPECT, so it
+   * scales proportionally and never distorts.
+   *
+   * The number is a font metric, in em. For a baseline-aligned lockup the
+   * useful one is baseline-to-cap/ascender, which is what the eye reads as the
+   * height of the word. Read it out of the face's own OS/2 table (sCapHeight ÷
+   * unitsPerEm) rather than eyeballing it — Arca Majora 3 is 770/1000 = 0.77,
+   * where its hhea ascender of 900 would be wrong because that includes room
+   * for diacritics no letter in "wagerwolf" uses.
+   *
+   * FOR THE /logo SPECIMEN PAGE ONLY, and per-face by necessity: 0.77 is Arca
+   * Majora's number and means nothing for any other family.
+   */
+  markScale?: number | null;
 }) {
+  // The mark is drawn bare in BOTH variants now. Tiled, the tile has grown to
+  // span the whole lockup, so a second filled square around just the head would
+  // be a block inside a block.
+  const fontSize = height * WORDMARK_FONT_RATIO;
+  // markScale ties the mark to the type; without it the mark is sized from
+  // `height` and the type from it separately, so the two only ever agree by
+  // coincidence.
+  const markSize =
+    markScale != null ? fontSize * markScale : bare ? height : height * MARK_RATIO;
+  const stacked = layout === "mark-top";
+
   return (
     <span
       style={{
         display: "inline-flex",
-        alignItems: "center",
-        gap: height * GAP_RATIO,
+        // row-reverse rather than reordering the markup: the mark stays first
+        // in the DOM, which is where its aria-hidden wrapper belongs, and only
+        // the paint order changes.
+        flexDirection: stacked ? "column" : layout === "mark-right" ? "row-reverse" : "row",
+        // Stacked, this axis is the horizontal one and must stay centred.
+        alignItems: !stacked && align === "baseline" ? "baseline" : "center",
+        // Stacked wants less air than side-by-side — vertical space between a
+        // mark and the word under it reads wider than the same number does
+        // horizontally, because nothing sits beside it to measure against.
+        gap: markSize * GAP_RATIO * (stacked ? STACKED_GAP_SCALE : 1),
         lineHeight: 1,
-        // Untiled, everything inherits. Tiled, the name takes --text: the mark
-        // is carrying the accent already, and a second accent element would
-        // leave the lockup with no anchor.
-        ...(bare ? null : { color: "var(--text)" }),
+        // Paint-only, so the lockup's box and everything laid out around it are
+        // untouched — only what you see moves. See LOCKUP_INK_SHIFT_EM.
+        position: "relative",
+        top: fontSize * LOCKUP_INK_SHIFT_EM,
+        // Bare: everything inherits, and the parent decides.
+        //
+        // Tiled: ONE background behind mark and name together, and one colour
+        // for both. It used to be a square accent tile around the head with the
+        // name set in --text beside it, which meant the two halves of a single
+        // lockup sat on different grounds in different colours and only read as
+        // one object because they were adjacent. The panel is the same accent
+        // the tile was, so the mark is unchanged in spirit — the name simply
+        // moved inside it.
+        ...(bare
+          ? null
+          : {
+              background: "var(--accent)",
+              color: "#FFFFFF",
+              padding: `${height * PANEL_PAD_RATIO}px ${height * PANEL_PAD_RATIO * 1.6}px`,
+            }),
       }}
     >
       <span aria-hidden="true" style={{ display: "flex" }}>
-        <Logo size={height} bare={bare} />
+        <Logo size={markSize} bare />
       </span>
       <span
-        style={{ ...WORDMARK_TEXT, fontSize: height * WORDMARK_FONT_RATIO }}
+        style={{
+          ...WORDMARK_TEXT,
+          fontSize,
+          ...(fontFamily ? { fontFamily } : null),
+          ...(fontWeight ? { fontWeight } : null),
+          ...(textTransform ? { textTransform } : null),
+        }}
       >
         Wagerwolf
       </span>
