@@ -7,12 +7,13 @@ import TeamLogo from "@/components/TeamLogo";
 import HelmetAvatar from "@/components/HelmetAvatar";
 import { ACCENT } from "@/lib/constants";
 import { fmtMoney } from "@/lib/money";
+import { useOpticalAlign } from "@/lib/useOpticalAlign";
 
 const STRIP_BG = "var(--bg)";
 
 // The mode selector's fill. Back to the accent token after a spell in the NFL's
-// own navy (#013369) — as a token it tracks --accent rather than pinning a
-// third-party brand value into the strip.
+// own navy (#013369) and a spell in --surface-3 — as a token it tracks --accent
+// rather than pinning a third-party brand value into the strip.
 const SELECTOR_BG = ACCENT;
 
 // Inset of the label and the switch from their own edges of the header cell.
@@ -86,6 +87,14 @@ const AUTO_SCROLL_PX_PER_SEC = 45;
 // How far the cards fade out at each end of the scroller, and the mask that
 // does it. Opaque through the middle, transparent at both edges, so cards
 // dissolve as they enter and leave rather than being clipped mid-glyph.
+//
+// A mask, not a tinted overlay, and that is the point: only its alpha channel is
+// read, so the `#000` here is arbitrary and the cards fade to TRANSPARENT rather
+// than to a colour. Whatever the strip sits on shows through, which stays right
+// on its own if the background ever changes. Tinting the ends in the accent was
+// tried and reverted — it has to be painted OVER the cards, so it only reads as
+// a dissolve where the colour matches the backdrop, and the right-hand end has
+// nothing behind it to match.
 const FADE_W = 44;
 const FADE_MASK =
   `linear-gradient(to right, transparent 0, #000 ${FADE_W}px, #000 calc(100% - ${FADE_W}px), transparent 100%)`;
@@ -157,27 +166,55 @@ const MODE_LABEL: Record<StripMode, string> = {
   MATCHUPS: "MATCHUPS",
 };
 
-// Team abbreviations and the small meta text beside them, both matched to the
-// nfl.com scoreboard strip: 12px/700 italic with 0.04em tracking for the
+// Team abbreviations and the small meta text beside them, both sized from the
+// nfl.com scoreboard strip: 12px/700 with 0.04em tracking for the
 // abbreviation, 10px/500 with the same tracking in grey for everything else.
 //
-// The abbreviation is the one place in the app that departs from Inter Tight —
-// Fugaz One, loaded in app/layout.tsx as --font-fugaz-one. Weight stays at 400
-// because that is the only cut the family ships: asking for 700 would make the
-// browser fake a bold on top of an already-heavy display face.
-// How far the abbreviations lean, in degrees. Fugaz One ships no italic cut,
-// so `oblique <angle>` has the browser synthesise the slant at exactly this
-// angle rather than leaving it to the default faux-italic. 0 renders upright;
-// a drawn italic is typically 8–14deg.
-const ABBR_SLANT_DEG = 12;
+// The abbreviation is the one place in the app that departs from the UI face.
+// It was Fugaz One at 400, slanted 12deg; it is Lemon Milk at 700, upright, as
+// of 22 Aug 2026 — see TEAM_ABBR below for why each of those three changed.
+// FUGAZ ONE IS NOW UNUSED: still loaded in app/layout.tsx, consumed by nothing.
+
+/**
+ * Drops the abbreviation onto the logo's optical centre.
+ *
+ * `align-items: center` centres the abbreviation's LINE BOX against the 24px
+ * logo. The eye does not read a line box: for all-caps text with no descenders
+ * it reads the middle of the CAPS, and Fugaz One is not symmetric about that.
+ *
+ * The value is MEASURED AT RUNTIME by lib/useOpticalAlign, because no constant
+ * can be correct — Chrome rounds the face's ascent and descent to whole device
+ * pixels independently, and browser zoom changes what a device pixel is. Read
+ * the header of that file before touching any of these; it is the reason the
+ * old hardcoded nudges kept drifting.
+ *
+ * The logos are not the culprit and were checked: all of them are ink-centred
+ * in their own bitmap to within 0.0025 of frame height.
+ *
+ * Fallbacks are the pure-geometry values — what a display with no rounding
+ * error would want. They paint for the frame or two before the hook reports.
+ */
+const ABBR_OPTICAL_SHIFT = "var(--strip-abbr-shift, 0.5663px)";
 
 const TEAM_ABBR = {
-  fontFamily: "var(--font-fugaz-one), system-ui, sans-serif",
-  fontWeight: 400,
-  fontStyle: `oblique ${ABBR_SLANT_DEG}deg`,
+  // Lemon Milk, not Fugaz One. An all-caps display face is a liability for a
+  // ten-letter name and an asset for a three-letter team code, which is caps by
+  // nature — so the property that disqualified it as a wordmark costs nothing
+  // here. Mounted globally in app/layout.tsx.
+  fontFamily: "var(--font-lemon-milk), system-ui, sans-serif",
+  // 700, a real cut. Fugaz One sat at 400 because it ships exactly one weight
+  // and asking for more would have had the browser fake a bold on an already
+  // heavy face. Lemon Milk carries 400/500/700, so 700 is drawn, not synthesised.
+  fontWeight: 700,
+  // Upright. The 12deg oblique existed because Fugaz One has no italic cut, so
+  // the slant was synthesised — a shear applied to upright letterforms rather
+  // than a drawn italic. Dropped with the face that needed it.
+  fontStyle: "normal",
   fontSize: "0.75rem",
   letterSpacing: "0.04em",
   color: "var(--text)",
+  position: "relative" as const,
+  top: ABBR_OPTICAL_SHIFT,
 };
 
 // nfl.com sets records in this; we keep odds in that slot and only borrow the
@@ -197,11 +234,83 @@ const TEAM_META = {
 // a record would use — 700, level with the date band above them, so the two
 // pieces of Inter Tight on the card carry the same weight and only colour and
 // size separate them.
-const TEAM_ODDS = { ...TEAM_META, color: ACCENT, fontWeight: 700 };
+/**
+ * Baseline corrections for the three pairs that sit one face beside another in
+ * a centred row. All MEASURED AT RUNTIME — see lib/useOpticalAlign.
+ *
+ * These were hardcoded as -0.385, -0.769 and 0.385. Every one of those is a
+ * whole or half DEVICE pixel divided by one machine's 1.3 dpr: the numbers were
+ * read off a rendered screen that Chrome had already rounded, so what got
+ * recorded was that display's rounding wearing font geometry's clothes. Bake in
+ * a rounding artifact from one dpr and it is wrong at every other dpr — and
+ * browser zoom changes the dpr. That is the whole reason alignment in this
+ * strip kept looking right at one zoom and a pixel out at the next.
+ *
+ * The odds one was also just wrong: its true offset is +0.104, so a -0.385
+ * nudge moved the odds AWAY from the abbreviation's baseline, leaving them
+ * ~0.49px worse off than no correction at all.
+ *
+ * The odds and score sit beside the abbreviation and must stay locked to its
+ * baseline, so the hook folds ABBR_OPTICAL_SHIFT into both — the abbreviation
+ * moved down to meet the logo, and they go with it. The matchup row has no
+ * Fugaz One and no logo, so its value takes its own delta alone.
+ *
+ * `position: relative` is paint-only, so row heights are untouched — which is
+ * the point. Baseline-aligning the row instead does fix the pairing, but it
+ * changes what drives the row's height and lifts the whole text group off the
+ * logo.
+ *
+ * Nothing here needs re-tuning when a face or size changes. The hook reads the
+ * sizes off REM in its own file and measures whatever face is actually
+ * resolving, so keep those two in step with the objects below and it follows.
+ */
+const ODDS_BASELINE_NUDGE = "var(--strip-odds-shift, 0.6703px)";
+const SCORE_BASELINE_NUDGE = "var(--strip-score-shift, -0.0529px)";
+const MATCHUP_VALUE_NUDGE = "var(--strip-value-shift, 0.2885px)";
+
+// The live/final score that replaces the odds. Hoisted out of the two inline
+// objects it used to be duplicated into, so the nudge cannot be applied to one
+// row and forgotten on the other.
+const TEAM_SCORE = {
+  fontSize: "0.75rem",
+  fontWeight: 700,
+  fontVariantNumeric: "tabular-nums" as const,
+  color: "var(--text)",
+  position: "relative" as const,
+  top: SCORE_BASELINE_NUDGE,
+};
+const TEAM_ODDS = {
+  ...TEAM_META,
+  color: ACCENT,
+  fontWeight: 700,
+  position: "relative" as const,
+  top: ODDS_BASELINE_NUDGE,
+};
 
 // The date in the top band runs bolder than nfl.com's 500 — it is the card's
 // only label up there, so it carries more weight than a stat line would.
 const TEAM_DATE = { ...TEAM_META, fontWeight: 700 };
+
+/**
+ * Bet count as it appears on a card.
+ *
+ * Up to three digits it prints plainly — 1, 42, 999. From 1000 it becomes one
+ * decimal and a k: 1.2k, 12.3k. CARD_W is 128px and the date on the left of the
+ * same row already takes most of it ("SUN 10:00 PM" is the worst case), so a
+ * fourth digit is where the two would meet in the middle.
+ *
+ * "1.2k" is four glyphs against "1234"'s four, so the swap costs no width — it
+ * just stops the number growing without bound. The integer part is deliberately
+ * uncapped: a million would print as 1000.0k. Silly, but it is orders of
+ * magnitude past anything this app will see, and an M branch for it would be
+ * dead code.
+ *
+ * toFixed rounds rather than truncates, so 1250 is 1.3k and 9999 is 10.0k.
+ */
+function fmtBetCount(n: number): string {
+  if (n < 1000) return String(n);
+  return `${(n / 1000).toFixed(1)}k`;
+}
 
 function fmtOdds(american: number): string {
   return american > 0 ? `+${american}` : `${american}`;
@@ -209,6 +318,9 @@ function fmtOdds(american: number): string {
 
 export default function GamesStrip({ leagueId, interactive = true }: { leagueId: string; interactive?: boolean }) {
   const router = useRouter();
+  // Publishes --strip-*-shift, the vertical text offsets the cards below read.
+  // Must be measured rather than hardcoded; the hook's header explains why.
+  useOpticalAlign();
   const cached = weekCache.get(leagueId || "__public__") ?? null;
   const [week, setWeek] = useState<any>(cached ?? null);
   // Whether the fetch has settled. Distinguishes "still loading" (reserve the
@@ -220,6 +332,15 @@ export default function GamesStrip({ leagueId, interactive = true }: { leagueId:
   // switch back is a UI change only.
   const [mode, setMode] = useState<StripMode>("NFL");
   const [matchupRows, setMatchupRows] = useState<any[] | null>(null);
+  // Bet counts live in their OWN state, keyed by game id, and are never merged
+  // back into `week`. Calling setWeek on a 30s cadence would replace the week
+  // object wholesale and restart everything keyed off it — the drift loop, the
+  // scroll anchor — which is the exact failure the weekKey/anchoredKeyRef
+  // guards below exist to prevent. See "Strip continuity" in CLAUDE.md.
+  const [betCounts, setBetCounts] = useState<Record<string, number>>({});
+  // The hovered count's tooltip. Position is viewport coordinates, because the
+  // popup is position: fixed — see where it renders, at the foot of this file.
+  const [tip, setTip] = useState<{ text: string; x: number; y: number } | null>(null);
   // The toggle in the header cell. On by default; off stops the drift and hands
   // scrolling to the user via drag. Global and sticky — see the autoScrollPref
   // block above for why the initial value comes from the module variable and
@@ -275,6 +396,21 @@ export default function GamesStrip({ leagueId, interactive = true }: { leagueId:
   // Hoisted for the same reason: the poll's own dependency is whether anything
   // is live, not the week object it read that from.
   const hasLive = Boolean(week?.games?.some((g: any) => g.status === "IN_PROGRESS"));
+
+  // Whether any game has yet to kick off — the window in which a bet count can
+  // still move. Deliberately the inverse of hasLive above: bets lock at kickoff
+  // and cashout is refused after it, so once every game has started the numbers
+  // are frozen and polling them is pure waste. A boolean, so the poll's effect
+  // does not restart on every re-render the way a `week` dependency would.
+  const hasUpcoming = Boolean(
+    week?.games?.some(
+      (g: any) =>
+        g.status !== "FINAL" &&
+        g.status !== "CANCELLED" &&
+        g.gameDate &&
+        new Date(g.gameDate).getTime() > Date.now()
+    )
+  );
 
   // Drop cached matchups when the league or week changes. Without this the
   // `if (matchupRows)` guard below would keep showing the previous league's
@@ -421,6 +557,33 @@ export default function GamesStrip({ leagueId, interactive = true }: { leagueId:
     return () => clearInterval(interval);
   }, [hasLive, leagueId]);
 
+  // Bet counts, on their own endpoint and their own cadence.
+  //
+  // No leagueId gate, unlike the score poll above: the counts are platform-wide
+  // and the endpoint is unauthenticated, so this runs on the landing page for
+  // signed-out visitors too — who would otherwise see a number frozen at page
+  // load forever.
+  //
+  // 30s against a 15s server-side cache, so a crowd all watching the same week
+  // costs a fixed handful of queries a minute rather than one per viewer.
+  useEffect(() => {
+    const weekId = week?.id;
+    if (!weekId || !hasUpcoming) return;
+    let alive = true;
+    const load = async () => {
+      try {
+        const counts = await api(`/weeks/${weekId}/bet-counts`);
+        if (alive && counts && typeof counts === "object") setBetCounts(counts);
+      } catch {}
+    };
+    load();
+    const interval = setInterval(load, 30000);
+    return () => {
+      alive = false;
+      clearInterval(interval);
+    };
+  }, [hasUpcoming, week?.id]);
+
   // Only NFL mode collapses when empty. In matchups mode the frame has to stay
   // up regardless — it carries the mode selector, and returning null would take
   // away the only control for switching back.
@@ -465,7 +628,7 @@ export default function GamesStrip({ leagueId, interactive = true }: { leagueId:
           flexShrink: 0, position: "relative", padding: 0,
           width: TOGGLE_W, height: TOGGLE_H, borderRadius: TOGGLE_H / 2,
           // Filled white when on, a faint wash when off — both legible on the
-          // navy, without introducing a colour outside the two already here.
+          // accent, without introducing a colour outside the two already here.
           background: autoScroll ? "#FFFFFF" : "rgba(255,255,255,0.26)",
           border: "none", boxShadow: "none", cursor: "pointer",
           // The track animates; the global button transform does not apply. See
@@ -572,8 +735,14 @@ export default function GamesStrip({ leagueId, interactive = true }: { leagueId:
           onDragStart={(e) => e.preventDefault()}
           style={{
             flex: 1, overflow: "hidden", position: "relative",
-            maskImage: autoScroll ? FADE_MASK : undefined,
-            WebkitMaskImage: autoScroll ? FADE_MASK : undefined,
+            // Always on, drift or no drift. It used to be gated on autoScroll,
+            // on the reasoning that a stopped strip is one you are dragging and
+            // reading, so dissolving the ends would hide cards you are reaching
+            // for. In practice the ends stayed soft while it moved and went
+            // hard the moment you touched it, which read as the edge treatment
+            // flickering in and out rather than as a considered state.
+            maskImage: FADE_MASK,
+            WebkitMaskImage: FADE_MASK,
             // Only advertise dragging when the drift is off — with it running,
             // the pointer is for reading and clicking cards.
             cursor: autoScroll ? "default" : dragging ? "grabbing" : "grab",
@@ -595,7 +764,7 @@ export default function GamesStrip({ leagueId, interactive = true }: { leagueId:
                       {u?.abbreviation || u?.displayName || "—"}
                     </span>
                   </div>
-                  <span style={{ fontSize: "0.7rem", fontWeight: 550, fontVariantNumeric: "tabular-nums", color: "var(--text)", whiteSpace: "nowrap" }}>
+                  <span style={{ fontSize: "0.7rem", fontWeight: 550, fontVariantNumeric: "tabular-nums", color: "var(--text)", whiteSpace: "nowrap", position: "relative", top: MATCHUP_VALUE_NUDGE }}>
                     {u?.balance != null ? fmtMoney(u.balance) : "—"}
                   </span>
                 </div>
@@ -628,6 +797,10 @@ export default function GamesStrip({ leagueId, interactive = true }: { leagueId:
               const isLive = game.status === "IN_PROGRESS" ||
                 (game.status !== "FINAL" && game.status !== "CANCELLED" && game.gameDate && new Date(game.gameDate) <= now);
               const isScheduled = !isLive && game.status !== "FINAL" && game.status !== "CANCELLED";
+              // Polled value wins; the week payload's own betCount is the
+              // starting point, so the number is right on the first paint
+              // rather than after the first poll.
+              const betCount = betCounts[game.id] ?? game.betCount ?? 0;
               const awayML = isScheduled ? game.gameLines?.find((l: any) => l.market === "MONEYLINE_AWAY") : null;
               const homeML = isScheduled ? game.gameLines?.find((l: any) => l.market === "MONEYLINE_HOME") : null;
               return (
@@ -673,39 +846,83 @@ export default function GamesStrip({ leagueId, interactive = true }: { leagueId:
                   cursor: interactive ? "pointer" : "default",
                 }}>
                   {/* Top row — date and open-arrow, on its own band */}
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", lineHeight: 1, background: DATE_STRIP_BG, padding: "4px 8px" }}>
+                  {/* alignItems baseline, not centre: the count is a hair smaller than the
+                      date opposite it, and centring two different sizes puts them on two
+                      different baselines — they read as one line only if they sit on one.
+                      The 8px of padding is symmetric, so the date's left inset and the
+                      count chip's right inset are the same distance from the card edge. */}
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", lineHeight: 1, background: DATE_STRIP_BG, padding: "4px 8px" }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                      {isLive ? (
+                      {/* The kickoff, whatever the game's state — no LIVE badge,
+                          no FINAL, no CANCELLED. Every card now reads the same
+                          way: date, bet count, teams, and a number on the right
+                          that is the odds before kickoff and the score after.
+                          The state is carried by WHICH number that is, so the
+                          band does not have to say it as well.
+
+                          No timeZone option — weekday and time both render in
+                          the viewer's own zone, matching the game-card footers. */}
+                      {game.gameDate && (
                         <>
-                          <div style={{ width: 5, height: 5, borderRadius: "50%", background: "var(--win)", flexShrink: 0 }} />
-                          <span style={{ fontSize: "0.62rem", color: "var(--win)", fontWeight: 700, letterSpacing: "0.04em" }}>LIVE</span>
-                        </>
-                      ) : isScheduled && game.gameDate ? (
-                        <>
-                          {/* No timeZone option — weekday and time both render in the
-                              viewer's own zone, matching the game-card footers. */}
                           <span style={{ ...TEAM_DATE, textTransform: "uppercase" }}>{new Date(game.gameDate).toLocaleDateString("en-US", { weekday: "short" })}</span>
                           <span style={TEAM_DATE}>{new Date(game.gameDate).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}</span>
                         </>
-                      ) : game.status === "CANCELLED" ? (
-                        <span style={{ fontSize: "0.62rem", color: "var(--loss)", fontWeight: 700 }}>CANCELLED</span>
-                      ) : (
-                        <span style={{ fontSize: "0.62rem", fontWeight: 700, color: "var(--text-3)" }}>FINAL</span>
                       )}
                     </div>
-                    {/* Live games show the clock here. Scheduled ones used to
-                        show an open-in-page arrow; it is gone, but the card
-                        itself is still a link to the bet page — the onClick and
-                        the pointer cursor above are what carry that, not this
-                        icon. */}
-                    {isLive && game.statusDetail ? (
-                      <span style={{ fontSize: "0.62rem", color: "var(--text-3)", fontWeight: 700, whiteSpace: "nowrap" }}>{game.statusDetail}</span>
+                    {/* How many bets are riding on this game, across every
+                        league. Replaces the live game clock that used to hold
+                        this slot — the two cannot share it at CARD_W 128, which
+                        leaves about 44px beside the date.
+
+                        Zero renders as nothing rather than as "0". Most cards
+                        are zero most of the time, and a column of noughts down
+                        the strip reads as a broken feature rather than a quiet
+                        one.
+
+                        Static once the game starts, so nothing here polls for
+                        it: placement locks at kickoff and cashout is refused
+                        after it, which between them freeze the number. It rides
+                        along on the week payload the strip already fetches. */}
+                    {betCount > 0 ? (
+                      <span
+                        style={{ fontSize: "0.62rem", fontWeight: 700, whiteSpace: "nowrap", cursor: "default", color: "var(--text)" }}
+                        onMouseEnter={e => {
+                          const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                          setTip({
+                            // Singular reads badly pluralised: "1 bets have".
+                            text: betCount === 1
+                              ? "1 bet has been placed on this game."
+                              : `${betCount} bets have been placed on this game.`,
+                            x: r.left + r.width / 2,
+                            y: r.bottom + 6,
+                          });
+                        }}
+                        onMouseLeave={() => setTip(null)}
+                      >
+                        {fmtBetCount(betCount)}
+                      </span>
                     ) : null}
                   </div>
                   {/* Teams + scores. Spacing copied from the nfl.com scoreboard
                       card: the two rows sit flush against each other with no
                       gap, each carrying 2px of padding on its outer edge only,
-                      and the logo sits 8px from the abbreviation. */}
+                      and the logo sits 8px from the abbreviation.
+
+                      alignItems is CENTRE here, and switching it to baseline is
+                      a dead end that was tried: the abbreviation is Fugaz One at
+                      0.75rem and the odds beside it Inter Tight at 0.625rem, so
+                      baseline alignment does line those two up — but it also
+                      changes what drives the row's height, and the whole text
+                      group rides up off the logo.
+
+                      Centring the row is therefore only half the job: it centres
+                      LINE BOXES, and neither the abbreviation's caps nor the
+                      odds' baseline sit at their line box's centre. Three
+                      paint-only nudges finish it — ABBR_OPTICAL_SHIFT drops the
+                      caps onto the logo's centre, and the odds and score follow
+                      the abbreviation down. All three are derived from font
+                      metrics rather than read off the screen; see the note above
+                      ODDS_BASELINE_NUDGE for why that matters. */}
                   <div style={{ display: "flex", flexDirection: "column", gap: 0, padding: "0 8px" }}>
                     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 7, padding: "2px 0 0" }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -713,7 +930,7 @@ export default function GamesStrip({ leagueId, interactive = true }: { leagueId:
                         <span style={TEAM_ABBR}>{game.awayTeam}</span>
                       </div>
                       {(isLive || game.status === "FINAL") ? (
-                        <span style={{ fontSize: "0.75rem", fontWeight: 700, fontVariantNumeric: "tabular-nums", color: "var(--text)" }}>{game.awayScore}</span>
+                        <span style={TEAM_SCORE}>{game.awayScore}</span>
                       ) : awayML ? (
                         <span style={TEAM_ODDS}>{fmtOdds(awayML.odds)}</span>
                       ) : null}
@@ -724,7 +941,7 @@ export default function GamesStrip({ leagueId, interactive = true }: { leagueId:
                         <span style={TEAM_ABBR}>{game.homeTeam}</span>
                       </div>
                       {(isLive || game.status === "FINAL") ? (
-                        <span style={{ fontSize: "0.75rem", fontWeight: 700, fontVariantNumeric: "tabular-nums", color: "var(--text)" }}>{game.homeScore}</span>
+                        <span style={TEAM_SCORE}>{game.homeScore}</span>
                       ) : homeML ? (
                         <span style={TEAM_ODDS}>{fmtOdds(homeML.odds)}</span>
                       ) : null}
@@ -736,6 +953,60 @@ export default function GamesStrip({ leagueId, interactive = true }: { leagueId:
           </div>
         </div>
       </div>
+
+      {/* Hover popup for a card's bet count.
+
+          position: fixed, not absolute. The scroller above is overflow: hidden
+          and the tape overflowX: auto, so an absolutely positioned popup would
+          be clipped to the card it belongs to — and the sentence is wider than
+          CARD_W 128 on its own. Fixed escapes both, since nothing in the strip's
+          ancestry sets a transform or filter that would make it a containing
+          block for fixed children.
+
+          Anchoring to a card in a moving strip is safe because hovering already
+          stops the drift: `drifting` is `autoScroll && !hovering`, so the card
+          cannot slide out from under the pointer while this is up.
+
+          Opens downward, always. The strip sits at the top of the viewport with
+          only the utility bar above it, so there is no room above to open into.
+
+          translateX(-50%) centres it on the number, and the clamp keeps it on
+          screen for the cards at either end of the strip, where half the popup
+          would otherwise sit outside the window.
+
+          --shadow-md is the overlay shadow the design system reserves for
+          exactly this, and it still earns its place on a black fill: it is what
+          separates the rectangle from the card edges behind it. pointerEvents
+          none so it can never eat a click meant for the card underneath. */}
+      {tip ? (
+        <div
+          role="tooltip"
+          style={{
+            position: "fixed",
+            left: Math.min(Math.max(tip.x, 96), (typeof window !== "undefined" ? window.innerWidth : 0) - 96),
+            top: tip.y,
+            transform: "translateX(-50%)",
+            // Black, square, borderless. --bar-bg rather than a literal #000 so
+            // the app keeps ONE black: the popup, the utility bar and the
+            // footer move together if it is ever changed. A hairline border
+            // would do nothing on a black fill against a white card, and the
+            // house 6px radius is dropped here on purpose — this is the one
+            // overlay drawn as a hard rectangle.
+            background: "var(--bar-bg)",
+            border: "none",
+            borderRadius: 0,
+            boxShadow: "var(--shadow-md)",
+            padding: "6px 9px",
+            fontSize: "0.68rem",
+            color: "#FFFFFF",
+            whiteSpace: "nowrap",
+            pointerEvents: "none",
+            zIndex: 400,
+          }}
+        >
+          {tip.text}
+        </div>
+      ) : null}
     </div>
   );
 }
