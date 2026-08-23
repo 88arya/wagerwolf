@@ -9,7 +9,37 @@ import { ACCENT } from "@/lib/constants";
 import { fmtMoney } from "@/lib/money";
 import { useOpticalAlign } from "@/lib/useOpticalAlign";
 
-const STRIP_BG = "var(--bg)";
+/**
+ * The game cards are GLASS: a mostly-opaque white over a blurred copy of
+ * whatever is behind them.
+ *
+ * The strip is sticky at the top of .app-scroll, so page content scrolls
+ * underneath it. With an opaque card that is invisible; with this, the content
+ * passing behind smears through and the strip reads as a pane laid over the
+ * page rather than a bar cut out of it. On a white stretch it looks like plain
+ * white, which is the point — the effect only appears when there is something
+ * to see.
+ *
+ * FOR THIS TO WORK, NOTHING OPAQUE MAY SIT BETWEEN THE CARD AND THE PAGE.
+ * backdrop-filter samples the element's actual backdrop, so an opaque ancestor
+ * is all it will ever find — the strip's outer container used to be a solid
+ * --surface and had to be let go transparent below. If the glass ever looks
+ * like flat white everywhere, that is the first thing to check.
+ *
+ * saturate() alongside blur() because a plain blur greys out what it samples;
+ * lifting saturation back keeps team colours reading through as colour.
+ */
+const CARD_GLASS_BG = "rgba(255, 255, 255, 0.8)";
+const CARD_GLASS_FILTER = "blur(20px) saturate(500%)";
+
+// Hover: the same glass, a little more opaque, so the card firms up under the
+// cursor instead of changing hue.
+const CARD_GLASS_BG_HOVER = "rgba(255, 255, 255, 0.72)";
+
+const STRIP_BG = CARD_GLASS_BG;
+
+// The card inherits Gilroy from --font-sans like the rest of the app. Only
+// TEAM_ABBR names a face of its own.
 
 // The mode selector's fill. Back to the accent token after a spell in the NFL's
 // own navy (#013369) and a spell in --surface-3 — as a token it tracks --accent
@@ -44,7 +74,7 @@ const DATE_STRIP_BG = "var(--surface-3)";
 // erase the card outline instead of highlighting it. --surface-2 stays clear of
 // DATE_STRIP_BG below it, so the card's two tones remain distinct while hovered.
 // Only the teams area moves; the date band keeps its own background.
-const CARD_BG_HOVER = "var(--surface-2)";
+const CARD_BG_HOVER = CARD_GLASS_BG_HOVER;
 
 // The one hairline every strip cell is drawn with. Each card carries it on its
 // right and its bottom: the right edges are the dividers between neighbouring
@@ -136,6 +166,37 @@ const weekCache = new Map<string, any>();
 // rendered the stored value — a hydration mismatch. The initializer takes the
 // module variable (safe on both sides, since it starts at the default), and the
 // stored value is folded in from an effect on mount.
+// ── Collapsed preference ────────────────────────────────────────────────────
+// Same two-layer shape as the auto-scroll preference below, and for the same
+// reasons: the module variable so a remount paints the right state on its first
+// frame, localStorage so it survives a reload. Never read in a useState
+// initializer — that runs during SSR and mismatches on hydration.
+//
+// Collapsed hides the whole strip and leaves only the tab, so this has to be
+// right on the first frame: a strip that appears and then vanishes is worse
+// than one that was never shown.
+const COLLAPSED_KEY = "strip_collapsed";
+
+let collapsedPref = false;
+
+function readStoredCollapsed(): boolean {
+  if (typeof window === "undefined") return collapsedPref;
+  // Only an explicit "1" collapses. Anything else — missing, cleared, written
+  // by an older build — falls through to expanded, the state the strip should
+  // have when nothing is known about the user's preference.
+  return localStorage.getItem(COLLAPSED_KEY) === "1";
+}
+
+function writeCollapsed(on: boolean) {
+  collapsedPref = on;
+  try {
+    localStorage.setItem(COLLAPSED_KEY, on ? "1" : "0");
+  } catch {
+    // Private mode or a full quota — the module variable still holds it for
+    // this session, it just will not outlive it.
+  }
+}
+
 const AUTO_SCROLL_KEY = "strip_autoscroll";
 
 let autoScrollPref = true;
@@ -346,12 +407,25 @@ export default function GamesStrip({ leagueId, interactive = true }: { leagueId:
   // block above for why the initial value comes from the module variable and
   // the stored one is folded in from an effect.
   const [autoScroll, setAutoScrollState] = useState(autoScrollPref);
+  const [collapsed, setCollapsedState] = useState(collapsedPref);
 
   useEffect(() => {
     const stored = readStoredAutoScroll();
     autoScrollPref = stored;
     setAutoScrollState(stored);
   }, []);
+
+  useEffect(() => {
+    const stored = readStoredCollapsed();
+    collapsedPref = stored;
+    setCollapsedState(stored);
+  }, []);
+
+  function toggleCollapsed() {
+    const next = !collapsed;
+    writeCollapsed(next);
+    setCollapsedState(next);
+  }
 
   function setAutoScroll(on: boolean) {
     writeAutoScroll(on);
@@ -384,7 +458,10 @@ export default function GamesStrip({ leagueId, interactive = true }: { leagueId:
   //   moved — total distance travelled, used to tell a drag from a click
   const dragRef = useRef({ active: false, startX: 0, startScroll: 0, moved: 0 });
 
-  const drifting = autoScroll && !hovering;
+  // Also stops while collapsed. The row stays mounted through the slide so it
+  // can animate, so without this the rAF loop would keep scrolling a strip that
+  // is folded away — burning a frame's work every frame for nothing.
+  const drifting = autoScroll && !hovering && !collapsed;
 
   // Which week this is, as a primitive. `week` is replaced wholesale by every
   // refetch — a route change, or the live-score poll once a minute — even when
@@ -703,14 +780,65 @@ export default function GamesStrip({ leagueId, interactive = true }: { leagueId:
     // left edge. Everything else — TopBar, the nav and sub-nav, BetSlip,
     // .page-wide — still insets by --rail, so the strip's edges intentionally
     // do not line up with the content below it.
-    <div style={{ flexShrink: 0, background: "var(--surface)" }}>
+    // THE BLUR LIVES HERE, not on the cards, and that is not a style choice.
+    //
+    // The scroller below carries a maskImage for its edge fade, and a mask
+    // creates a new BACKDROP ROOT: backdrop-filter on anything inside it has
+    // nothing left to sample, so the cards came out see-through but perfectly
+    // sharp — translucency working, blur silently doing nothing. This wrapper is
+    // outside the mask, so its backdrop is the real page behind the strip.
+    //
+    // The cards then sit on top as translucent white and read as glass over the
+    // blurred pane. Same result, one layer up.
+    //
+    // background stays transparent: an opaque fill would be the only backdrop
+    // there was.
+    //
+    // THE BLUR IS ON THE PANE INSIDE, NOT ON THIS ROOT. It used to be here, and
+    // then the collapse tab was added as the root's last child — which made the
+    // blurred region 16px taller across the WHOLE window, since the tab row is
+    // full-width even though the tab is 34px of it. The result was a band of
+    // blur running the length of the strip with nothing on it.
+    //
+    // Wrapping just the strip fixes it at the source: the pane is exactly as
+    // tall as the thing meant to look like glass, and anything added below it
+    // from now on cannot extend it.
+    <div style={{ flexShrink: 0, background: "transparent" }}>
+      <div
+        style={{
+          backdropFilter: CARD_GLASS_FILTER,
+          WebkitBackdropFilter: CARD_GLASS_FILTER,
+        }}
+      >
       {/* stretch, not center: the selector and the cards are now the same
           height, so letting both fill the row guarantees they share a top and
           bottom edge even if a card's measured height drifts a pixel from
           STRIP_ROW_H. Centring would leave a white sliver above and below the
-          cards while the blue block still ran the full height. */}
-      <div style={{ display: "flex", alignItems: "stretch", height: SELECTOR_H }}>
-        {modeSelector}
+          cards while the blue block still ran the full height.
+
+          The collapse is an ANIMATED slide, not a display toggle. `display:
+          none` cannot be transitioned — the strip would blink out — so the
+          clipper below animates its height while the row inside it translates
+          up by its own height. Height alone would squash the cards as they go;
+          the translate is what makes them look like they slide out of view
+          behind the bar above. */}
+      <div
+        style={{
+          overflow: "hidden",
+          height: collapsed ? 0 : SELECTOR_H,
+          transition: "height 0.26s cubic-bezier(0.4, 0, 0.2, 1)",
+        }}
+      >
+      <div style={{
+        display: "flex", alignItems: "stretch", height: SELECTOR_H,
+        transform: collapsed ? `translateY(-${SELECTOR_H}px)` : "none",
+        transition: "transform 0.26s cubic-bezier(0.4, 0, 0.2, 1)",
+      }}>
+        {/* The NFL cell is gone. It was the strip's header block — the mode
+            label plus the auto-scroll toggle — and it took the toggle with it.
+            The row still sets its own height from SELECTOR_H, so the strip is
+            unchanged in size; `modeSelector` is left defined below in case the
+            toggle needs somewhere else to live. */}
         {/* A mask rather than the two gradient overlays that used to sit here:
             those painted a dark wash over the edges, which reads as a shadow.
             The mask fades the cards themselves out to transparent, so they
@@ -894,7 +1022,11 @@ export default function GamesStrip({ leagueId, interactive = true }: { leagueId:
                               ? "1 bet has been placed on this game."
                               : `${betCount} bets have been placed on this game.`,
                             x: r.left + r.width / 2,
-                            y: r.bottom + 6,
+                            // 2px, not 6. The popup is anchored to a small
+                            // number in the corner of a card and a wider gap
+                            // read as floating free of it rather than belonging
+                            // to it.
+                            y: r.bottom + 2,
                           });
                         }}
                         onMouseLeave={() => setTip(null)}
@@ -953,6 +1085,81 @@ export default function GamesStrip({ leagueId, interactive = true }: { leagueId:
           </div>
         </div>
       </div>
+      </div>
+
+      </div>
+
+      {/* Collapse tab. Sits under the strip, hard against its right edge, and
+          is the ONLY thing left when collapsed — so it is outside the row above
+          rather than inside it.
+
+          The arrowhead points the way the strip will move: up while expanded
+          (press to fold it away), down once collapsed (press to bring it back).
+          A control that shows its current state instead leaves the user
+          guessing which way it will go.
+
+          No border-top: it is attached to the strip, so a line between them
+          would read as two objects rather than a tab on one. The other three
+          sides carry the same hairline the cards use. */}
+      <div style={{ display: "flex", justifyContent: "flex-end" }}>
+        <button
+          type="button"
+          onClick={toggleCollapsed}
+          aria-expanded={!collapsed}
+          aria-label={collapsed ? "Show games" : "Hide games"}
+          title={collapsed ? "Show games" : "Hide games"}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            width: 34,
+            height: 16,
+            padding: 0,
+            marginRight: 100,
+            background: CARD_GLASS_BG,
+            // Its own backdrop-filter, because it is no longer inside the
+            // strip's blurred pane. Scoped to the 34x16 tab, so it cannot leak
+            // a band across the window the way the shared pane did.
+            backdropFilter: CARD_GLASS_FILTER,
+            WebkitBackdropFilter: CARD_GLASS_FILTER,
+            border: CARD_BORDER,
+            borderTop: "none",
+            borderRadius: 0,
+            boxShadow: "none",
+            color: "var(--text-2)",
+            cursor: "pointer",
+            transition: "background 0.12s, color 0.12s",
+          }}
+          onMouseEnter={e => {
+            e.currentTarget.style.background = CARD_GLASS_BG_HOVER;
+            e.currentTarget.style.color = "var(--text)";
+          }}
+          onMouseLeave={e => {
+            e.currentTarget.style.background = CARD_GLASS_BG;
+            e.currentTarget.style.color = "var(--text-2)";
+          }}
+        >
+          {/* One path, flipped. Drawing two chevrons would be two things to keep
+              in step; a rotation cannot disagree with itself. */}
+          <svg
+            width="11"
+            height="11"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={3}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+            style={{
+              transform: collapsed ? "rotate(180deg)" : "none",
+              transition: "transform 0.18s ease",
+            }}
+          >
+            <path d="M6 15 L12 9 L18 15" />
+          </svg>
+        </button>
+      </div>
 
       {/* Hover popup for a card's bet count.
 
@@ -986,13 +1193,14 @@ export default function GamesStrip({ leagueId, interactive = true }: { leagueId:
             left: Math.min(Math.max(tip.x, 96), (typeof window !== "undefined" ? window.innerWidth : 0) - 96),
             top: tip.y,
             transform: "translateX(-50%)",
-            // Black, square, borderless. --bar-bg rather than a literal #000 so
-            // the app keeps ONE black: the popup, the utility bar and the
-            // footer move together if it is ever changed. A hairline border
-            // would do nothing on a black fill against a white card, and the
-            // house 6px radius is dropped here on purpose — this is the one
-            // overlay drawn as a hard rectangle.
-            background: "var(--bar-bg)",
+            // True black, square, borderless. --header-bg rather than --bar-bg:
+            // the two used to be one token, and when they split the footer kept
+            // #272731 while the bar went to #000000. This popup wants the black,
+            // not the near-black. A hairline border would do nothing on a black
+            // fill against a white card, and the house 6px radius is dropped
+            // here on purpose — this is the one overlay drawn as a hard
+            // rectangle.
+            background: "var(--header-bg)",
             border: "none",
             borderRadius: 0,
             boxShadow: "var(--shadow-md)",
