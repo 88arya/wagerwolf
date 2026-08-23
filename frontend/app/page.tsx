@@ -28,8 +28,17 @@
  * where anyone guessing an auth URL lands — and it is blank. /signup is the
  * only real entry point.
  */
+import SignedOutOnly from "@/components/SignedOutOnly";
+
 export default function HomePage() {
   return (
-    <div style={{ flex: "0 0 auto", minHeight: "100%", background: "var(--bg)" }} />
+    <>
+      {/* Signed in, this page has nothing to offer — it is a landing page with
+          its content removed. Without this a signed-in visitor sat on a blank
+          screen with "My account" in the bar, the chrome saying one thing and
+          the page another. */}
+      <SignedOutOnly />
+      <div style={{ flex: "0 0 auto", minHeight: "100%", background: "var(--bg)" }} />
+    </>
   );
 }

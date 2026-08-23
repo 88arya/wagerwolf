@@ -1,5 +1,4 @@
 import type { ReactNode } from "react";
-import { gilroy } from "../wordmarkFonts";
 
 /**
  * Scopes Gilroy to /signup.
@@ -47,12 +46,10 @@ import { gilroy } from "../wordmarkFonts";
  */
 
 export default function SignupLayout({ children }: { children: ReactNode }) {
-  return (
-    <div
-      className={gilroy.variable}
-      style={{ display: "contents", fontFamily: "var(--font-gilroy), var(--font-sans), sans-serif" }}
-    >
-      {children}
-    </div>
-  );
+  // No wrapper any more. Gilroy is mounted globally in app/layout.tsx and is
+  // --font-sans, so this page inherits it like every other. The div that used to
+  // sit here scoped the variable to this route; it is redundant now, and it was
+  // `display: contents`, which quietly broke a `:has(> .bare-route)` selector in
+  // globals.css by sitting in the DOM between .app-scroll and the page.
+  return <>{children}</>;
 }

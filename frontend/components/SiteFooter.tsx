@@ -78,15 +78,30 @@ export default function SiteFooter() {
   return (
     <footer className="site-footer">
       <div className="site-footer-cols">
-        <div>
+        {COLUMNS.map(({ heading, links }) => (
+          <div key={heading}>
+            <div className="site-footer-heading">{heading}</div>
+            <div className="site-footer-links">
+              {links.map(({ label, href }) => (
+                <Link key={label} href={href} className="site-footer-link">
+                  {label}
+                </Link>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* The bottom bar, laid out like the NFL footer this follows: a rule
+          across, then the mark on the left with the socials beneath it, and the
+          fine print held to the right. The mark used to lead the link columns
+          AND repeat here; one lockup, once, is the whole point of the row. */}
+      <div className="site-footer-rule">
+        <div className="site-footer-brand">
           {/* `bare` so the lockup draws in currentColor — the footer sets white
               on .site-footer, and an accent tile would read as a sticker on the
-              dark fill, the same reason TopBar's mark is bare.
-
-              24, matching the landing header, not the 40 it briefly ran at:
-              it leads a column rather than standing alone in one, and the
-              copyright row already carries a second mark below. */}
-          <LogoWordmark height={24} bare />
+              dark fill, the same reason TopBar's mark is bare. */}
+          <LogoWordmark height={26} bare />
 
           <div className="site-footer-social">
             {SOCIALS.map(({ label, href, path }) => {
@@ -97,8 +112,7 @@ export default function SiteFooter() {
               );
               // A span until there is somewhere to go — an <a> with no href is
               // not focusable or announced as a link anyway, so this is the
-              // honest shape rather than a degraded one. Only the anchor gets
-              // the hover, since only the anchor does anything.
+              // honest shape rather than a degraded one.
               return href ? (
                 <a
                   key={label}
@@ -119,30 +133,9 @@ export default function SiteFooter() {
           </div>
         </div>
 
-        {COLUMNS.map(({ heading, links }) => (
-          <div key={heading}>
-            <div className="site-footer-heading">{heading}</div>
-            <div className="site-footer-links">
-              {links.map(({ label, href }) => (
-                <Link key={label} href={href} className="site-footer-link">
-                  {label}
-                </Link>
-              ))}
-            </div>
-          </div>
-        ))}
-      </div>
-
-      <div className="site-footer-rule">
-        {/* Small here on purpose — this is a fine-print row, and the lockup is
-            signing it off rather than announcing the brand the way the one in
-            the column above does. */}
-        <LogoWordmark height={20} bare />
         {/* Year rendered on the server at request time. One that ticks over on
             its own beats one that has to be remembered every January. */}
-        <span className="site-footer-fine" style={{ marginLeft: "auto" }}>
-          © {new Date().getFullYear()} Wagerwolf
-        </span>
+        <p className="site-footer-fine">© {new Date().getFullYear()} Wagerwolf</p>
       </div>
     </footer>
   );

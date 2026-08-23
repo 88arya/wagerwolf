@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import BarePageHeader from "@/components/BarePageHeader";
 
 // Worth carrying even though the money is fake — the product deliberately looks
 // and reads like a sportsbook, and someone who is working through a gambling
@@ -17,7 +18,9 @@ export const metadata: Metadata = {
 
 export default function ResponsibleGamingPage() {
   return (
-    <div className="page legal">
+    <div className="bare-route">
+      <BarePageHeader done />
+      <div className="page legal">
       <h1>Responsible Gaming</h1>
 
       <h2>There is no real money here</h2>
@@ -79,6 +82,7 @@ export default function ResponsibleGamingPage() {
       <p style={{ marginTop: 26 }}>
         You must be 18 or older to use Wagerwolf.
       </p>
+      </div>
     </div>
   );
 }

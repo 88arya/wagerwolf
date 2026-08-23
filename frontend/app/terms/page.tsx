@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import BarePageHeader from "@/components/BarePageHeader";
 
 // NOT LEGALLY REVIEWED. Plain-language terms written to match how the app
 // actually behaves today. Honest, but not advice and not checked by anyone
@@ -15,7 +16,9 @@ const UPDATED = "August 2026";
 
 export default function TermsPage() {
   return (
-    <div className="page legal">
+    <div className="bare-route">
+      <BarePageHeader done />
+      <div className="page legal">
       <h1>Terms of Service</h1>
       <p style={{ marginTop: 8, color: "var(--text-3)", fontSize: "0.78rem" }}>
         Last updated {UPDATED}
@@ -95,6 +98,7 @@ export default function TermsPage() {
       <p style={{ marginTop: 26 }}>
         Questions about any of this go to the <a href="/contact">contact page</a>.
       </p>
+      </div>
     </div>
   );
 }

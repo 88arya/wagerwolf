@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import BarePageHeader from "@/components/BarePageHeader";
 
 // NOT LEGALLY REVIEWED. This is plain-language boilerplate written to describe
 // what the app actually does today — the data it stores, who it goes to, and
@@ -16,7 +17,9 @@ const UPDATED = "August 2026";
 
 export default function PrivacyPage() {
   return (
-    <div className="page legal">
+    <div className="bare-route">
+      <BarePageHeader done />
+      <div className="page legal">
       <h1>Privacy Policy</h1>
       <p style={{ marginTop: 8, color: "var(--text-3)", fontSize: "0.78rem" }}>
         Last updated {UPDATED}
@@ -100,6 +103,7 @@ export default function PrivacyPage() {
         the top and, where the change is significant, tell account holders
         directly.
       </p>
+      </div>
     </div>
   );
 }
