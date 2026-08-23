@@ -253,7 +253,7 @@ export default function LeagueNav({ leagueId }: { leagueId: string }) {
         <div ref={dropdownRef} style={{ position: "relative", alignSelf: "stretch", display: "flex", alignItems: "center" }} onMouseEnter={() => setOpen(true)} onMouseLeave={() => setOpen(false)}>
           <button
             type="button"
-            style={{ display: "flex", alignItems: "center", gap: 5, background: "none", border: "none", padding: "5px 8px", cursor: "pointer", color: "var(--text)", fontWeight: 500, fontSize: "0.82rem", borderRadius: 0, boxShadow: "none" }}
+            style={{ display: "flex", alignItems: "center", gap: 5, background: "none", border: "none", padding: "5px 8px", cursor: "pointer", color: "var(--text)", fontWeight: 900, fontSize: "0.82rem", borderRadius: 0, boxShadow: "none" }}
           >
             <span style={{ whiteSpace: "nowrap" }}>
               {currentLeague?.league?.name ?? "Leagues"}
@@ -386,6 +386,18 @@ export default function LeagueNav({ leagueId }: { leagueId: string }) {
             as a positioned element it would otherwise paint above the in-flow
             links and lay its hairline across the top of the active tab. */}
         <div style={{ position: "absolute", top: 0, left: "var(--rail)", right: "var(--rail)", height: 1, background: "var(--border)", zIndex: 0 }} />
+        {/* And the same hairline under the sub-nav, closing the row the way the
+            one above opens it. Identical treatment on purpose — same colour,
+            same 1px, same --rail inset — so the two read as a pair bracketing
+            the tabs rather than as two unrelated lines.
+
+            zIndex 0 for the same reason as the divider above: the active tab's
+            accent underline sits flush with this edge and is in normal flow, so
+            a positioned line would paint over it and flatten the 3.5px accent
+            to a grey hairline. At zIndex 0 the accent wins and the grey rule
+            runs under the inactive tabs either side of it, which is what a tab
+            bar is supposed to look like. */}
+        <div style={{ position: "absolute", bottom: 0, left: "var(--rail)", right: "var(--rail)", height: 1, background: "var(--border)", zIndex: 0 }} />
         {activeGroup.links.map(({ label, href }) => {
           const active = isActive(href);
           return (
