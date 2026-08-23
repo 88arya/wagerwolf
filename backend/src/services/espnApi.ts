@@ -1,11 +1,31 @@
+import { TEAM_FULL_NAME } from "./sportsGameOdds";
+
 const SITE = "https://site.api.espn.com/apis/site/v2/sports/football/nfl";
 
 export function espnImageUrl(espnId: string): string {
   return `https://a.espncdn.com/i/headshots/nfl/players/full/${espnId}.png`;
 }
 
-// Search ESPN by player name to get their permanent athlete ID
-export async function searchEspnPlayerId(name: string): Promise<string | null> {
+/**
+ * ESPN's permanent athlete id for a player.
+ *
+ * TEAM IS THE TIEBREAK, and it matters more than it looks. A bare name search
+ * for "Josh Allen" returns four NFL hits — the Bills quarterback, the Jaguars
+ * edge rusher, and two retired players — and this used to return whichever came
+ * first. That is how a defensive end ended up wearing a quarterback's number in
+ * the players table.
+ *
+ * SGO states the team on every prop, so we always have it by the time this is
+ * called. ESPN labels each search hit with the full team name in `subtitle`,
+ * which TEAM_FULL_NAME produces from the same ids the odds feed uses.
+ *
+ * A PREFERENCE, NOT A FILTER. If no hit matches the team the first exact-name
+ * one is still returned, because ESPN's subtitle lags a trade and the feed does
+ * not — insisting on agreement would resolve nobody in the window between the
+ * two. Non-NFL hits are dropped outright though; a college player sharing a
+ * name is never the right answer here.
+ */
+export async function searchEspnPlayerId(name: string, team?: string | null): Promise<string | null> {
   try {
     const url = `https://site.web.api.espn.com/apis/search/v2?query=${encodeURIComponent(name)}&sport=football&limit=10`;
     const res = await fetch(url, {
@@ -14,53 +34,98 @@ export async function searchEspnPlayerId(name: string): Promise<string | null> {
     if (!res.ok) { console.error(`ESPN search ${res.status} for "${name}"`); return null; }
     const data = await res.json();
     const nameLower = name.toLowerCase();
+    const wantTeam = team ? TEAM_FULL_NAME[team] : undefined;
+
+    const hits: Array<{ id: string; subtitle: string }> = [];
     for (const result of data.results ?? []) {
       for (const content of result.contents ?? []) {
         // contents[] items ARE the athlete objects directly (not content.data[])
-        if (content.displayName?.toLowerCase() === nameLower) {
-          // UID format: "s:20~l:28~a:3116406" — numeric part after "a:" is the ESPN athlete ID
-          const fromUid = (content.uid as string | undefined)
-            ?.split("~").find((p: string) => p.startsWith("a:"))?.slice(2);
-          if (fromUid) return fromUid;
-          // fallback: extract ID from the headshot URL
-          const imageHref = content.image?.default as string | undefined;
-          const fromImage = imageHref?.match(/\/(\d+)\.png/)?.[1];
-          if (fromImage) return fromImage;
-        }
+        if (content.displayName?.toLowerCase() !== nameLower) continue;
+        if (content.description && content.description !== "NFL") continue;
+        // UID format: "s:20~l:28~a:3116406" — numeric part after "a:" is the ESPN athlete ID
+        const fromUid = (content.uid as string | undefined)
+          ?.split("~").find((p: string) => p.startsWith("a:"))?.slice(2);
+        // fallback: extract ID from the headshot URL
+        const fromImage = (content.image?.default as string | undefined)?.match(/\/(\d+)\.png/)?.[1];
+        const id = fromUid ?? fromImage;
+        if (id) hits.push({ id, subtitle: content.subtitle ?? "" });
       }
     }
-    console.error(`ESPN search: no match found for "${name}"`);
-    return null;
+
+    if (!hits.length) { console.error(`ESPN search: no match found for "${name}"`); return null; }
+
+    if (wantTeam) {
+      const onTeam = hits.find((h) => h.subtitle === wantTeam);
+      if (onTeam) return onTeam.id;
+      if (hits.length > 1) {
+        console.warn(`ESPN search: ${hits.length} hits for "${name}", none on ${wantTeam} — taking the first`);
+      }
+    }
+    return hits[0].id;
   } catch (e) {
     console.error(`ESPN search error for "${name}":`, e);
     return null;
   }
 }
 
-// Jersey number lives on the "core" ESPN API, not the "site" API used elsewhere in this file
-const CORE = "https://sports.core.api.espn.com/v3/sports/football/nfl";
+// Athlete details live on the "core" ESPN API, not the "site" API used
+// elsewhere in this file. TWO VERSIONS OF IT, and they carry different fields:
+//
+//   v3  jersey only. `position` is absent from the payload entirely.
+//   v2  jersey AND `position.abbreviation`.
+//
+// That difference was a silent bug for as long as this function existed. It
+// read `data.position?.abbreviation` — correct for v2 — while pointing at v3,
+// where the key does not exist, so position resolution always returned null and
+// every player the odds feed filed as "FLEX" stayed FLEX forever. Nothing threw;
+// the field was simply never there.
+const CORE_V3 = "https://sports.core.api.espn.com/v3/sports/football/nfl";
+const CORE_V2 = "https://sports.core.api.espn.com/v2/sports/football/leagues/nfl";
+
+type AthleteDetails = { jersey: string | null; position: string | null };
+
+const EMPTY: AthleteDetails = { jersey: null, position: null };
+
+/** One endpoint, never throwing — a dead version must not take the other down. */
+async function fetchAthlete(base: string, espnId: string): Promise<AthleteDetails> {
+  try {
+    const res = await fetch(`${base}/athletes/${espnId}`);
+    if (!res.ok) return EMPTY;
+    const data: any = await res.json();
+    return {
+      jersey: data.jersey ?? null,
+      // Present on v2, absent on v3 — hence the fallback below.
+      position: data.position?.abbreviation ?? null,
+    };
+  } catch (e) {
+    console.error(`ESPN athlete lookup error for ${espnId} on ${base}:`, e);
+    return EMPTY;
+  }
+}
 
 /**
  * Jersey and position for one athlete.
  *
- * Position matters because the odds feed never states one: a player who only
- * appears in the anytime-touchdown market gives no hint at all, and 46 of them
- * were being filed as "FLEX". One request already being made for the jersey
- * answers both.
+ * Position matters because the odds feed does not always state one — a player
+ * who appears only in a market the feed treats as position-less gives no hint
+ * at all, and those were being filed as "FLEX".
+ *
+ * V3 FIRST, V2 ONLY FOR WHAT CAME BACK NULL. Not a straight swap to v2: pinning
+ * everything to one version means a change at ESPN's end takes out both fields
+ * at once. Asking v3 first and topping up from v2 degrades one field at a time
+ * — if v2 disappears the jersey still resolves, and if v3 disappears v2 covers
+ * both. It also costs nothing extra in the case that needs no repair, since the
+ * second request is skipped when v3 answered in full.
  */
-export async function getAthleteDetails(espnId: string): Promise<{ jersey: string | null; position: string | null }> {
-  try {
-    const res = await fetch(`${CORE}/athletes/${espnId}`);
-    if (!res.ok) return { jersey: null, position: null };
-    const data: any = await res.json();
-    return {
-      jersey: data.jersey ?? null,
-      position: data.position?.abbreviation ?? null,
-    };
-  } catch (e) {
-    console.error(`ESPN athlete lookup error for ${espnId}:`, e);
-    return { jersey: null, position: null };
-  }
+export async function getAthleteDetails(espnId: string): Promise<AthleteDetails> {
+  const primary = await fetchAthlete(CORE_V3, espnId);
+  if (primary.jersey && primary.position) return primary;
+
+  const fallback = await fetchAthlete(CORE_V2, espnId);
+  return {
+    jersey: primary.jersey ?? fallback.jersey,
+    position: primary.position ?? fallback.position,
+  };
 }
 
 export async function getAthleteJersey(espnId: string): Promise<string | null> {

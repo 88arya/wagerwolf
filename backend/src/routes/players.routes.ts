@@ -37,19 +37,31 @@ router.get("/:id/image", requireAuth, async (req: any, res: any) => {
     if (!player) { res.status(404).json({ error: "Not found" }); return; }
 
     let espnId = player.espnId;
-    if (!espnId) espnId = await searchEspnPlayerId(player.name);
+    // Team disambiguates same-name players — see searchEspnPlayerId.
+    if (!espnId) espnId = await searchEspnPlayerId(player.name, player.team);
 
     if (!espnId) { res.json({ imageUrl: null, jersey: null }); return; }
 
-    // "FLEX" means the odds feed gave no position — usually a player who only
-    // shows up in the anytime-touchdown market. Backfill it off the same lookup
-    // the jersey needs, so it self-heals the first time the avatar renders.
+    // ESPN OWNS THE POSITION. What the row arrives with is a guess made from
+    // the market it was first seen in (POSITION_HINT in services/syncWeek.ts),
+    // and that guess is wrong for anyone who appears outside their own
+    // position — a quarterback with a rushing-yards prop is filed as RB if the
+    // rushing market happens to come first in the feed's array.
+    //
+    // This used to overwrite only the literal string "FLEX", so it rescued the
+    // players the feed said nothing about and left every confidently-wrong
+    // guess in place forever. Nothing else ever revisits the field: the odds
+    // sync updates `team` on an existing player and never `position`.
+    //
+    // The `!jersey` guard is what keeps this to one request per player. The
+    // jersey is only ever written here, so an empty one means "never resolved",
+    // and once both are filled nothing re-fetches.
     let jersey = player.jersey;
     let position = player.position;
     if (!jersey || position === "FLEX") {
       const details = await getAthleteDetails(espnId);
       jersey = jersey ?? details.jersey;
-      if (position === "FLEX" && details.position) position = details.position;
+      if (details.position) position = details.position;
     }
 
     if (espnId !== player.espnId || jersey !== player.jersey || position !== player.position) {
