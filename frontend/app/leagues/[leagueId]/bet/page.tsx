@@ -242,10 +242,14 @@ function PropPlayerRow({ prop, slipLegs, submittedPropIds, pendingPropDirs, week
                   fontVariantNumeric: "tabular-nums",
                 }}
               >
-                <div style={{ fontSize: "0.62rem", fontWeight: 400, color: isSelected ? "var(--accent)" : blocked ? "var(--text-4)" : "var(--text-2)", lineHeight: 1 }}>
+                {/* The line itself in --text: it is the number you are betting on,
+                    so it reads as content rather than as a label. */}
+                <div style={{ fontSize: "0.62rem", fontWeight: 400, color: isSelected ? "var(--accent)" : blocked ? "var(--text-4)" : "var(--text)", lineHeight: 1 }}>
                   {plusLine}+
                 </div>
-                <div style={{ fontSize: "0.7rem", fontWeight: 400, color: isSelected ? "var(--accent)" : blocked ? "var(--text-4)" : "var(--accent)", lineHeight: 1 }}>
+                {/* 700, matching TEAM_ODDS in the games strip — odds carry the
+                    same weight wherever they appear in the app. */}
+                <div style={{ fontSize: "0.7rem", fontWeight: 700, color: isSelected ? "var(--accent)" : blocked ? "var(--text-4)" : "var(--accent)", lineHeight: 1 }}>
                   {weekLocked || blocked ? "—" : fmtOdds(overOdds)}
                 </div>
                 {blocked && (
@@ -646,11 +650,11 @@ export default function BetPage({ params }: PageProps<"/leagues/[leagueId]/bet">
             }}
           >
             {topLabel && (
-              <div style={{ fontSize: "0.62rem", fontWeight: 400, color: inSlip ? "var(--accent)" : "var(--text-2)", lineHeight: 1 }}>
+              <div style={{ fontSize: "0.62rem", fontWeight: 400, color: inSlip ? "var(--accent)" : "var(--text)", lineHeight: 1 }}>
                 {topLabel}
               </div>
             )}
-            <div style={{ fontSize: "0.7rem", fontWeight: 400, color: "var(--accent)", lineHeight: 1 }}>
+            <div style={{ fontSize: "0.7rem", fontWeight: 700, color: "var(--accent)", lineHeight: 1 }}>
               {fmtOdds(line.odds)}
             </div>
           </button>
@@ -667,19 +671,21 @@ export default function BetPage({ params }: PageProps<"/leagues/[leagueId]/bet">
 
     // Tabs are keyed off the STAT, not the player's position.
     //
-    // Position-based grouping silently dropped markets: "Touchdowns" is neither
-    // a rushing nor a receiving stat, so an anytime-TD prop on any non-QB
-    // matched no group and rendered nowhere. That hid 68 of 136 props — the
-    // single most-bet NFL market — while looking perfectly fine.
+    // Position-based grouping silently dropped markets: a stat that is neither
+    // a rushing nor a receiving one matched no group and rendered nowhere,
+    // while the page looked perfectly fine. Every StatType therefore maps to
+    // exactly one tab, and PROP_TAB_OF is exhaustive by construction: anything
+    // unmapped falls into "Other" rather than disappearing.
     //
-    // Every StatType therefore maps to exactly one tab, and PROP_TAB_OF is
-    // exhaustive by construction: anything unmapped falls into "Other" rather
-    // than disappearing.
+    // There is no Touchdowns tab. The market is no longer ingested at all — see
+    // STAT_MAP in backend/src/services/sportsGameOdds.ts for why. TOUCHDOWNS
+    // still falls through to "Other" rather than being special-cased away,
+    // because that is what the exhaustive rule above is for: an already-settled
+    // bet on it must still render.
     const PROP_TAB_OF = (statType: string): string => {
       if (statType.startsWith("PASSING_")) return "qb";
       if (statType.startsWith("RUSHING_")) return "rushing";
       if (statType.startsWith("RECEIVING_") || statType === "RECEPTIONS") return "receiving";
-      if (statType === "TOUCHDOWNS") return "touchdowns";
       if (statType === "SACKS" || statType === "TACKLES_ASSISTS" || statType === "DEFENSIVE_INTERCEPTIONS") return "defense";
       if (statType.startsWith("FIELD_GOAL") || statType === "KICKING_POINTS" || statType === "EXTRA_POINTS_MADE") return "kicking";
       return "other";
@@ -689,14 +695,12 @@ export default function BetPage({ params }: PageProps<"/leagues/[leagueId]/bet">
     const qbProps        = byTab("qb");
     const rushingProps   = byTab("rushing");
     const receivingProps = byTab("receiving");
-    const touchdownProps = byTab("touchdowns");
     const defenseProps   = byTab("defense");
     const kickingProps   = byTab("kicking");
     const otherProps     = byTab("other");
 
     const tabs = [
       { key: "lines", label: "Game Lines" },
-      ...(touchdownProps.length > 0 ? [{ key: "touchdowns", label: "Touchdowns" }] : []),
       ...(qbProps.length > 0 ? [{ key: "qb", label: "Passing Props" }] : []),
       ...(rushingProps.length > 0 ? [{ key: "rushing", label: "Rushing Props" }] : []),
       ...(receivingProps.length > 0 ? [{ key: "receiving", label: "Receiving Props" }] : []),
@@ -1008,7 +1012,7 @@ export default function BetPage({ params }: PageProps<"/leagues/[leagueId]/bet">
                           outline: "none", fontWeight: 400, position: "relative",
                         }}>
                         <span style={{ fontSize: "0.7rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: inSlip ? "var(--accent)" : "var(--text-2)" }}>{teamLabel}</span>
-                        <span style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", fontSize: "0.7rem", fontVariantNumeric: "tabular-nums", color: "var(--accent)" }}>{fmtOdds(line.odds)}</span>
+                        <span style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", fontSize: "0.7rem", fontWeight: 700, fontVariantNumeric: "tabular-nums", color: "var(--accent)" }}>{fmtOdds(line.odds)}</span>
                         <div style={{ fontSize: "0.85rem", fontVariantNumeric: "tabular-nums", color: inSlip ? "var(--accent)" : "var(--text)" }}>
                           {fmtSpread(line.line)}
                         </div>
@@ -1076,7 +1080,7 @@ export default function BetPage({ params }: PageProps<"/leagues/[leagueId]/bet">
                           outline: "none", fontWeight: 400, position: "relative",
                         }}>
                         <span style={{ fontSize: "0.7rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: inSlip ? "var(--accent)" : "var(--text-2)" }}>{dirLabel}</span>
-                        <span style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", fontSize: "0.7rem", fontVariantNumeric: "tabular-nums", color: "var(--accent)" }}>{fmtOdds(line.odds)}</span>
+                        <span style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", fontSize: "0.7rem", fontWeight: 700, fontVariantNumeric: "tabular-nums", color: "var(--accent)" }}>{fmtOdds(line.odds)}</span>
                         <div style={{ fontSize: "0.85rem", fontVariantNumeric: "tabular-nums", color: inSlip ? "var(--accent)" : "var(--text)" }}>
                           {valLabel}
                         </div>
@@ -1126,7 +1130,6 @@ export default function BetPage({ params }: PageProps<"/leagues/[leagueId]/bet">
             );
           })()}
 
-          {activeSection === "touchdowns" && renderPropSection(touchdownProps)}
           {activeSection === "qb" && renderPropSection(qbProps)}
           {activeSection === "rushing" && renderPropSection(rushingProps)}
           {activeSection === "receiving" && renderPropSection(receivingProps)}
@@ -1221,14 +1224,14 @@ export default function BetPage({ params }: PageProps<"/leagues/[leagueId]/bet">
                       {topLabel && (
                         <div style={{
                           fontSize: "0.62rem", fontWeight: 400,
-                          color: inSlip ? "var(--accent)" : "var(--text-2)",
+                          color: inSlip ? "var(--accent)" : "var(--text)",
                           fontVariantNumeric: "tabular-nums", lineHeight: 1,
                         }}>
                           {topLabel}
                         </div>
                       )}
                       <div style={{
-                        fontSize: "0.7rem", fontWeight: 400,
+                        fontSize: "0.7rem", fontWeight: 700,
                         color: "var(--accent)",
                         lineHeight: 1, letterSpacing: "-0.02em",
                       }}>

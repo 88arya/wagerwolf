@@ -43,6 +43,28 @@ const TEAM_ABBR: Record<string, string> = {
 };
 
 /**
+ * Abbreviation → full team name, e.g. "LAR" → "Los Angeles Rams".
+ *
+ * Derived from TEAM_ABBR's own keys rather than typed out again: the SGO ids
+ * ARE the full names in shouty snake case, so inverting the map and tidying the
+ * key cannot drift from it.
+ *
+ * ESPN's player search labels each hit with exactly this string in `subtitle`,
+ * which is what lets `searchEspnPlayerId` tell two players with the same name
+ * apart. `.split("_").join(" ")` rather than `replaceAll` — ES2020 target.
+ */
+export const TEAM_FULL_NAME: Record<string, string> = Object.fromEntries(
+  Object.entries(TEAM_ABBR).map(([sgoId, abbr]) => [
+    abbr,
+    sgoId
+      .replace(/_NFL$/, "")
+      .split("_")
+      .map((w) => w.charAt(0) + w.slice(1).toLowerCase())
+      .join(" "),
+  ]),
+);
+
+/**
  * SGO statID -> our StatType. 22 of our 23 are covered; RECEIVING_TARGETS has
  * no SGO market and is the only one that can never populate.
  *
@@ -71,7 +93,22 @@ const STAT_MAP: Record<string, string> = {
   fieldGoals_longestMade: "FIELD_GOAL_LONGEST",
   kicking_totalPoints: "KICKING_POINTS",
   extraPoints_kicksMade: "EXTRA_POINTS_MADE",
-  touchdowns: "TOUCHDOWNS",
+  // touchdowns: "TOUCHDOWNS" — REMOVED, deliberately. The feed does carry a
+  // real player-touchdowns market (statID `touchdowns`, mostly `-yn-` anytime
+  // scorer at 0.5 plus the odd `-ou-` 2+), so this is a product decision, not a
+  // data one. Two reasons it went:
+  //
+  //   · The book posts no ladder for anytime TD, so the bet page fabricated one
+  //     — synthetic lines AND synthetic prices — which is the exact thing fake
+  //     data was ripped out of this codebase for.
+  //   · It was the only market that introduced players the feed says nothing
+  //     else about: no position, no jersey, no way to resolve a headshot. All
+  //     18 such rows in the database existed solely because of it.
+  //
+  // Nothing needs purging by hand. `applyEvent` retires markets the feed stops
+  // returning: rows with no bets on them are deleted, rows with bets are
+  // flagged `available: false` and still settle. The StatType stays in the enum
+  // so already-settled bets keep resolving.
 };
 
 /**

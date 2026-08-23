@@ -174,10 +174,29 @@ export async function applyEvent(
   // of them. Taken per-prop, whoever happened to be written first decided it —
   // and "touchdowns" implies no position at all, so anyone whose anytime-TD
   // market landed first was filed as FLEX.
+  // Ranked, not first-wins. Array order decided this before, so a quarterback
+  // whose rushing-yards prop happened to come before his passing props was
+  // created as an RB — and nothing downstream corrected it, because the lazy
+  // ESPN backfill only overwrote the literal "FLEX".
+  //
+  // The ranking is by how much the market actually tells you. Only a QB throws,
+  // and only a K kicks, so those two are near-certain; the defensive markets are
+  // close behind. Rushing and receiving are the ambiguous pair — a back catches
+  // and a receiver takes handoffs — so they rank last and lose to anything else
+  // the same player appears in.
+  //
+  // This narrows the window rather than closing it. GET /players/:id/image
+  // replaces whatever landed here with ESPN's own answer on first render; this
+  // just makes the placeholder right more often in the meantime.
+  const HINT_RANK: Record<string, number> = { QB: 0, K: 1, DE: 2, LB: 2, CB: 2, RB: 3, WR: 3 };
   const hintByPlayer = new Map<string, string>();
   for (const p of ev.props) {
     const hint = POSITION_HINT[p.statType];
-    if (hint && !hintByPlayer.has(p.sgoPlayerId)) hintByPlayer.set(p.sgoPlayerId, hint);
+    if (!hint) continue;
+    const held = hintByPlayer.get(p.sgoPlayerId);
+    if (!held || (HINT_RANK[hint] ?? 9) < (HINT_RANK[held] ?? 9)) {
+      hintByPlayer.set(p.sgoPlayerId, hint);
+    }
   }
 
   const livePropKeys = new Set<string>();
