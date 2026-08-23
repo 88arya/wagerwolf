@@ -6,7 +6,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import { signOut, useAuthed } from "@/lib/auth";
-import LogoWordmark, { WORDMARK_FONT_RATIO, WORDMARK_TEXT } from "@/components/LogoWordmark";
+import LogoWordmark, { WORDMARK_FONT_RATIO } from "@/components/LogoWordmark";
 import SeasonCountdown from "@/components/SeasonCountdown";
 
 /**
@@ -36,9 +36,10 @@ import SeasonCountdown from "@/components/SeasonCountdown";
  * LeagueNav instead, so the two are never confused for one another.
  */
 
-// --bar-bg in globals.css. Shared with SiteFooter, which is the whole point of
-// it being a token: the two bars bookend the app and must stay the same black.
-const BAR_BG = "var(--bar-bg)";
+// --header-bg, which is the bar's alone. It used to be --bar-bg, shared with
+// SiteFooter so the two bars bookending the app could not drift apart; they are
+// now deliberately different — true black up here, #272731 down there.
+const BAR_BG = "var(--header-bg)";
 
 // The bar's dark fill is full-bleed, but its *contents* inset by --rail — the
 // same token `.nav` uses — so the logo starts on the same left edge as
@@ -107,27 +108,27 @@ const linkStyle: CSSProperties = {
   color: "#FFFFFF",
 };
 
-// "Play now", set as the lockup at the other end of the bar: same face, weight,
-// tracking and case, and already the same size — linkStyle derives its fontSize
-// from LOCKUP_H x WORDMARK_FONT_RATIO, which is exactly what the lockup gives
-// its own text. So this differs from linkStyle only in the three things
-// WORDMARK_TEXT carries that the UI face does not: Arca Majora, weight 700, and
-// lowercase. It draws as "play now".
+// "Play now" and "My account", the bar's two interactive labels.
 //
-// Spread rather than restated, so it cannot drift from the mark it is matching.
+// THE UI FACE, not the lockup's. This used to spread WORDMARK_TEXT, which set
+// both in Arca Majora at weight 700 — the argument being that the bar should
+// read in one voice with the mark. It reads as a logo with two more logos
+// bolted either side of it instead: Arca Majora is a display cut with two
+// weights, and a label is not a logo. Gilroy also carries a lowercase "a" and
+// "y" drawn for running text, which is what these are.
 //
-// textTransform is overridden back to `none`. WORDMARK_TEXT lowercases, which is
-// right for a logo and wrong for a label — it would render "play now" and "my
-// account", losing the capital that marks the start of a phrase. The capitals
-// live in the strings themselves, one each, where they belong.
+// Size still comes from LOCKUP_H x WORDMARK_FONT_RATIO, so the labels stay
+// locked to the lockup's own text size even though they no longer share its
+// face — that ratio is what keeps the three things on this bar optically level.
 //
-// Both states of the right-hand control share this, so they match each other as
-// well as the lockup.
+// 600 rather than linkStyle's 500. Gilroy's Medium reads light (see the
+// --font-sans note in globals.css), and white type on the dark bar thins
+// further still; 500 left these looking like captions beside the mark. The
+// design system's 400-500 ceiling was set against Inter Tight and is already
+// broken in the same direction on the .mx-* labels.
 const ctaStyle: CSSProperties = {
-  ...WORDMARK_TEXT,
-  textTransform: "none",
-  fontSize: LOCKUP_H * WORDMARK_FONT_RATIO,
-  color: "#FFFFFF",
+  ...linkStyle,
+  fontWeight: 600,
 };
 
 // Outlined person-in-circle, used beside the name at the head of the account
@@ -161,7 +162,7 @@ export default function TopBar() {
   useEffect(() => {
     if (!authed) { setFullName(""); return; }
     api("/users/me").then((u: any) => {
-      // Falls back to the display name for accounts that predate onboarding and
+      // Falls back to the display name for accounts where Google supplied no
       // so have no first/last on record.
       const full = [u.firstName, u.lastName].filter(Boolean).join(" ");
       setFullName(full || u.displayName || u.name || "");
@@ -327,7 +328,12 @@ export default function TopBar() {
             style={ctaStyle}
             onClick={startSignup}
           >
-            Play now
+            Play now{" "}
+            {/* The same ↗ as /signup's "Log in". A real character, not an svg,
+                so it inherits size, weight and colour — and the space before it
+                is a real space rather than a margin, so the hover underline runs
+                through it unbroken. */}
+            <span aria-hidden="true">↗</span>
           </button>
         ) : (
         <button
@@ -336,7 +342,8 @@ export default function TopBar() {
           style={ctaStyle}
           onClick={() => setOpen(o => !o)}
         >
-          My account
+          My account{" "}
+          <span aria-hidden="true">↗</span>
         </button>
         )}
 
