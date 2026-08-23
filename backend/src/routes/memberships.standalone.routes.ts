@@ -4,6 +4,7 @@ import { eq, and, inArray, or, isNull, isNotNull, gt, gte, lte, sql } from "driz
 import { users, leagues, memberships, weeks, matchups, picks, gamePicks, parlays, parlayLegs, props, games, gameLines } from "../db/schema";
 import { requireAuth } from "../middleware/auth";
 import { scheduleMatchups } from "../services/scheduleMatchups";
+import { resolveLeagueIdentity } from "../services/leagueIdentity";
 import { pickHelmetColor } from "../services/helmetColor";
 import { generateAbbreviation } from "../services/abbreviation";
 import { generateLeagueName } from "../services/leagueName";
@@ -256,8 +257,7 @@ router.post("/join-by-code", requireAuth, async (req: any, res: any) => {
     const joiningUser = await db.query.users.findFirst({
       where: eq(users.id, req.userId),
     });
-    const helmetColor = await pickHelmetColor(league.id, joiningUser?.defaultHelmetColor);
-    const abbreviation = joiningUser?.defaultAbbreviation || generateAbbreviation(joiningUser?.displayName ?? "");
+    const identity = await resolveLeagueIdentity(league.id, joiningUser);
 
     try {
       const [membership] = await db.insert(memberships).values({
@@ -265,9 +265,7 @@ router.post("/join-by-code", requireAuth, async (req: any, res: any) => {
         leagueId: league.id,
         balance: 0,
         status: "PENDING",
-        helmetColor,
-        abbreviation,
-        displayName: joiningUser?.displayName ?? "",
+        ...identity,
       }).returning();
 
       res.status(201).json({ ...membership, league });

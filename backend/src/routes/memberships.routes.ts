@@ -9,6 +9,8 @@ import {
 } from "../db/schema";
 import { requireAuth } from "../middleware/auth";
 import { approvePendingMembership, joinLeague } from "../services/joinLeague";
+import { validateDisplayName } from "../services/displayName";
+import { validateAbbreviation } from "../services/abbreviationRules";
 import { releaseSeat } from "../services/leagueSeats";
 import { scheduleMatchups } from "../services/scheduleMatchups";
 import { pickHelmetColor } from "../services/helmetColor";
@@ -108,12 +110,12 @@ router.patch("/my-abbreviation", requireAuth, async (req: any, res: any) => {
   try {
     const { id: leagueId } = req.params;
     const { abbreviation } = req.body;
-    const trimmed = (abbreviation ?? "").trim();
-    if (!trimmed) { res.status(400).json({ error: "Abbreviation is required" }); return; }
+    const checked = validateAbbreviation(abbreviation ?? "");
+    if (!checked.ok) { res.status(400).json({ error: checked.error }); return; }
     await db.update(memberships)
-      .set({ abbreviation: trimmed })
+      .set({ abbreviation: checked.value })
       .where(and(eq(memberships.leagueId, leagueId), eq(memberships.userId, req.userId)));
-    res.json({ abbreviation: trimmed });
+    res.json({ abbreviation: checked.value });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
@@ -124,11 +126,12 @@ router.patch("/my-display-name", requireAuth, async (req: any, res: any) => {
   try {
     const { id: leagueId } = req.params;
     const { displayName } = req.body;
-    if (!displayName?.trim()) { res.status(400).json({ error: "Display name is required" }); return; }
+    const checked = validateDisplayName(displayName);
+    if (!checked.ok) { res.status(400).json({ error: checked.error }); return; }
     await db.update(memberships)
-      .set({ displayName: displayName.trim() })
+      .set({ displayName: checked.value })
       .where(and(eq(memberships.leagueId, leagueId), eq(memberships.userId, req.userId)));
-    res.json({ displayName: displayName.trim() });
+    res.json({ displayName: checked.value });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }

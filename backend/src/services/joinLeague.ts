@@ -1,8 +1,7 @@
 import { and, asc, eq, gte, lte } from "drizzle-orm";
 import { db } from "../db/db";
 import { leagues, memberships, users, weeks } from "../db/schema";
-import { generateAbbreviation } from "./abbreviation";
-import { pickHelmetColor } from "./helmetColor";
+import { resolveLeagueIdentity } from "./leagueIdentity";
 import { scheduleMatchups } from "./scheduleMatchups";
 import { claimSeat, releaseSeat } from "./leagueSeats";
 import { isUniqueViolation } from "../db/pgErrors";
@@ -56,12 +55,11 @@ export async function joinLeague(
       }),
       db.query.users.findFirst({ where: eq(users.id, userId) }),
     ]);
-    // Per-league identity seeded from the account defaults set in My Account.
-    // Null on either falls through to the old behaviour — generated initials and
-    // a random unused colour — so an account that never touched them is
-    // unaffected.
-    const helmetColor = await pickHelmetColor(league.id, user?.defaultHelmetColor);
-    const abbreviation = user?.defaultAbbreviation || generateAbbreviation(user?.displayName ?? "");
+    // Per-league identity, seeded from the account defaults where they exist
+    // and derived where they do not. resolveLeagueIdentity always returns all
+    // three — onboarding's second step is skippable, so arriving here with no
+    // defaults at all is an ordinary case, not an edge one.
+    const identity = await resolveLeagueIdentity(league.id, user);
 
     const [membership] = await db.insert(memberships).values({
       userId,
@@ -69,9 +67,7 @@ export async function joinLeague(
       balance: activeWeek ? league.weeklyAllowance : 0,
       status: "ACTIVE",
       isPublicFill,
-      helmetColor,
-      abbreviation,
-      displayName: user?.displayName ?? "",
+      ...identity,
     }).returning();
 
     await scheduleMatchups(league.id);
@@ -114,14 +110,17 @@ export async function approvePendingMembership(
       }),
       db.query.users.findFirst({ where: eq(users.id, userId) }),
     ]);
-    const helmetColor = await pickHelmetColor(league.id, user?.defaultHelmetColor);
+    // Re-resolved at approval rather than reused from the PENDING row: the
+    // colour has to be re-checked because another member may have taken it
+    // while the request sat in the queue, and re-running the whole thing keeps
+    // this in step with the two paths that create a membership outright.
+    const identity = await resolveLeagueIdentity(league.id, user);
 
     const updated = await db.update(memberships)
       .set({
         status: "ACTIVE",
         balance: activeWeek ? league.weeklyAllowance : 0,
-        helmetColor,
-        abbreviation: user?.defaultAbbreviation || generateAbbreviation(user?.displayName ?? ""),
+        ...identity,
       })
       .where(and(
         eq(memberships.userId, userId),
