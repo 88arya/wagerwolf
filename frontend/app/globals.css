@@ -13,7 +13,12 @@
   --rail: max(20px, calc((100% - 1220px) / 2));
 
   /* ── Backgrounds ── */
-  --bg:           #F5F7FA;
+  /* White. It was #F5F7FA, a light cool grey, and CLAUDE.md called that out as
+     the long-standing truth against an older claim that it was white — so this
+     is a deliberate reversal, not a drift back. --surface is also white now, so
+     cards no longer separate from the ground by fill; they separate by the 1px
+     hairline the design system says structure comes from anyway. */
+  --bg:           #FFFFFF;
   --surface:      #FFFFFF;
   --surface-2:    #F0F2F5;
   --surface-3:    #E8ECF0;
@@ -40,12 +45,19 @@
      the site footer at the bottom. One token so the two cannot drift apart; it
      used to be a BAR_BG literal in TopBar.tsx.
 
-     Now true black. It was #272731, a near-black with a warm cast that was
-     deliberately neither --text nor a step on the --surface ramp — which left
-     it reading as a very dark grey rather than as black. #000000 is off the
-     palette by design: --text (#0A0A0B) is the near-black the type uses, and
-     the point here is that the bars are NOT that. */
-  --bar-bg:       #000000;
+     #272731 — a near-black with a slight cool cast, deliberately neither --text
+     nor a step on the --surface ramp. It went to true #000000 for a while on the
+     argument that a very dark grey reads as neither black nor grey; it is back
+     because pure black against a now-white page ground (--bg is #FFFFFF) was the
+     harshest edge in the app. Off the palette either way, by design. */
+  --bar-bg:       #272731;
+
+  /* The utility bar, and ONLY the utility bar. --bar-bg above is the footer's.
+     These were one token precisely so the two bars that bookend the app could
+     not drift apart, and splitting them is a deliberate departure from that —
+     if they are meant to match again, point this at var(--bar-bg) rather than
+     re-typing the hex in two places. */
+  --header-bg:    #000000;
 
   /* Rendered height of the sticky chrome, written by AppChrome. 0 until it
      measures, and on the routes that render no chrome at all. */
@@ -91,8 +103,21 @@
   --dot:          rgba(10,10,11,0.13);
 
   /* ── Type ── */
-  --font-sans: var(--font-inter-tight), "Inter Tight", "Inter", -apple-system,
-               BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  /* Gilroy is the UI face. It replaced Inter Tight here rather than being added
+     alongside it: everything in the app routes type through this one token, so
+     the swap is the rollout. Inter Tight stays in the stack behind it as the
+     fallback — it is still loaded, and it is the face this was designed against.
+
+     NOT the wordmark, which pins var(--font-arca-majora) itself, and NOT the
+     games strip's team abbreviations, which pin var(--font-lemon-milk). Both
+     override this deliberately.
+
+     WEIGHTS: the design system's 400-500 ceiling was set against Inter Tight.
+     Gilroy's 500 reads lighter at the same nominal number, so anything that
+     looked right before may now look thin. Judge it before re-tuning. */
+  --font-sans: var(--font-gilroy), "Gilroy", var(--font-inter-tight),
+               "Inter Tight", -apple-system, BlinkMacSystemFont, "Segoe UI",
+               system-ui, sans-serif;
 
   color-scheme: light;
 }
@@ -280,6 +305,69 @@ button.dark:hover { opacity: 0.86; background: var(--text); border-color: var(--
    that staying true. The reserved ~15px gutter is why page content's right edge
    sits that far inboard of the nav's while the left edges align exactly. */
 .app-scroll { flex: 1; min-height: 0; overflow-y: scroll; display: flex; flex-direction: column; }
+/* Bare routes suppress both the chrome and the footer, so their content is
+   exactly one viewport and nothing overflows — but `overflow-y: scroll` above
+   reserves a track anyway, showing an inert scrollbar. `auto` only here, so the
+   original reason for `scroll` (a short page leaving the stable gutter unpainted
+   beside the dark footer) still holds everywhere the footer actually renders. */
+/* Descendant, NOT `> .bare-route`. /signup has a layout.tsx that wraps it in a
+   font-variable div; that div is `display: contents`, so it generates no box —
+   but :has() matches the DOM, where the element is still there, and a child
+   combinator therefore missed it. The legal pages have no such wrapper, which
+   is why the stray scrollbar showed on /signup alone. */
+.app-scroll:has(.bare-route) { overflow-y: auto; }
+
+/* ── Scrollbar ──
+   The TRACK — the part that stays put — is #2C2C2C. The thumb, the part that
+   moves, is left light so it reads against it; a dark thumb on a dark track is
+   a scrollbar you cannot find.
+
+   Stated twice on purpose. `scrollbar-color` is the standard property and the
+   only one Firefox honours, but it takes just two colours and no geometry.
+   The ::-webkit- pseudo-elements are what Chrome and Safari have supported for
+   years and are what actually paints here. Browsers that understand both take
+   the pseudo-elements. */
+.app-scroll {
+  scrollbar-color: #9F9F9F #2C2C2C;
+}
+.app-scroll::-webkit-scrollbar {
+  width: 14px;
+}
+.app-scroll::-webkit-scrollbar-track {
+  background: #2C2C2C;
+}
+.app-scroll::-webkit-scrollbar-thumb {
+  background: #9F9F9F;
+  /* Border in the track colour rather than padding: it insets the thumb without
+     the track showing through a gap at the ends. */
+  border: 3px solid #2C2C2C;
+  border-radius: 0;
+}
+.app-scroll::-webkit-scrollbar-thumb:hover {
+  background: #B8B8B8;
+}
+
+/* ── Bare routes ──
+   /signup, /settings and the three legal pages: no utility bar, no games strip,
+   no footer. The page owns its own header (BarePageHeader) and stands on
+   --surface rather than --bg, so it reads as a sheet rather than as app chrome
+   with the chrome missing. */
+.bare-route {
+  flex: 1 0 auto;
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+}
+/* The content block inside a bare route must NOT keep .page's own
+   `min-height: 100%`. Stacked under the header that would make the page taller
+   than the viewport by exactly the header's height, which is the scrollbar this
+   was meant to remove. It fills what is left instead. */
+.bare-route > .page,
+.bare-route > .page-wide {
+  min-height: 0;
+  flex: 1 1 auto;
+}
 
 /* The utility bar and games strip, pinned to the top of the scroller.
    `sticky`, not `fixed`: fixed would take them out of flow and let the content
@@ -328,17 +416,27 @@ button.dark:hover { opacity: 0.86; background: var(--text); border-color: var(--
 /* Three equal columns, one per link group. There is no fourth track any more:
    the brand column that used to lead this row is gone, and leaving its track in
    place would bunch the links to the left against an empty quarter. */
+/* max-content tracks with space-between, NOT repeat(3, 1fr).
+   Equal fractions gave each column a third of the width and then left-aligned
+   its text inside that third — so the last column began two-thirds across and
+   trailed a wide empty gutter to the right edge, which is the whole complaint.
+   Sizing each track to its content and distributing the slack between them puts
+   the first column on the left edge and the last on the right, with the middle
+   one centred in what is left. */
 .site-footer-cols {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(3, max-content);
+  justify-content: space-between;
   gap: 44px;
   align-items: start;
 }
 @media (max-width: 900px) {
-  .site-footer-cols { grid-template-columns: 1fr 1fr; gap: 34px; }
+  /* justify-content back to start: with only two tracks, space-between
+     would push them to opposite edges with a chasm between. */
+  .site-footer-cols { grid-template-columns: 1fr 1fr; justify-content: start; gap: 34px; }
 }
 @media (max-width: 560px) {
-  .site-footer-cols { grid-template-columns: 1fr; gap: 28px; }
+  .site-footer-cols { grid-template-columns: 1fr; justify-content: start; gap: 28px; }
 }
 
 /* The design system's micro-label, restated for a dark ground: white at 45%
@@ -348,7 +446,7 @@ button.dark:hover { opacity: 0.86; background: var(--text); border-color: var(--
   font-weight: 500;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: rgba(255, 255, 255, 0.45);
+  color: #FFFFFF;
   margin-bottom: 15px;
 }
 
@@ -360,25 +458,63 @@ button.dark:hover { opacity: 0.86; background: var(--text); border-color: var(--
 .site-footer-link {
   font-size: 0.8rem;
   font-weight: 450;
-  color: rgba(255, 255, 255, 0.72);
+  /* Grey against the white headings above them. The two carry the hierarchy
+     between them — a heading names the group, the links are the group. */
+  color: rgba(255, 255, 255, 0.62);
   width: fit-content;
   transition: color 0.12s;
 }
+/* Back to a colour change now that the links sit below white: hovering lifts
+   one to the headings' brightness rather than dimming it. */
 .site-footer-link:hover { color: #FFFFFF; }
 
+/* The bottom bar under the columns: rule across, mark and socials on the left,
+   fine print held right. `align-items: flex-start` and not center — the fine
+   print is several lines and the mark is one, so centring would float the mark
+   against the middle of a paragraph instead of aligning their tops. */
 .site-footer-rule {
   margin-top: 40px;
-  padding-top: 18px;
-  border-top: 1px solid rgba(255, 255, 255, 0.12);
+  padding-top: 22px;
+  border-top: 1px solid #FFFFFF;
   display: flex;
-  align-items: center;
-  gap: 16px;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 40px;
   flex-wrap: wrap;
 }
 
+/* The social row. These two classes were referenced by SiteFooter but never
+   defined anywhere, which is why the icons sat flush against each other with no
+   gap and no colour of their own — they were unstyled inline elements. */
+.site-footer-social {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+}
+.site-footer-social-link {
+  display: inline-flex;
+  color: #FFFFFF;
+  transition: opacity 0.12s;
+}
+/* Anchor only. The span variant is a placeholder for an account that does not
+   exist yet, and lighting up on hover would promise a link that is not there. */
+a.site-footer-social-link:hover { opacity: 0.68; }
+
+/* Mark with the socials stacked beneath it, as in the reference. */
+.site-footer-brand {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  flex-shrink: 0;
+}
+
+
 .site-footer-fine {
+  max-width: 560px;
+  text-align: left;
+  line-height: 1.55;
   font-size: 0.72rem;
-  color: rgba(255, 255, 255, 0.42);
+  color: #FFFFFF;
 }
 
 /* ── Legal / static copy pages ──
@@ -1234,11 +1370,59 @@ button.utility-cta::after {
    names the page, this names the section inside it. */
 .mx-pane-title {
   font-size: 1.15rem;
-  font-weight: 400;
+  font-weight: 500;
+  text-transform: none;
   letter-spacing: -0.022em;
   line-height: 1.1;
   color: var(--text);
   margin: 0 0 6px;
+}
+
+/* ── Rail tab: navigation, not an action.
+
+      The active one is a filled grey rectangle. It replaced a 2px accent rule
+      down the left edge, which had two problems: it spent the page's one
+      accent on a thing you are not meant to click next, and the rule was drawn
+      on EVERY tab (grey when off) so the rail read as a bordered list rather
+      than a set of targets.
+
+      Full-width and square. Width comes from the rail, not the label, so the
+      highlight is the same rectangle on "Login & security" as on "Personal
+      information" — a box that resizes with the text reads as a tag, not a
+      selection. No radius: --radius is for controls sitting ON a surface, and
+      this is a band across the rail.
+
+      Repeated for :hover and :active for the same reason .mx-btn is — the
+      global `button` rule is a filled accent pill and would repaint these the
+      moment a pointer lands on one. ── */
+.mx-tab,
+.mx-tab:hover,
+.mx-tab:active {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  text-align: left;
+  padding: 9px 12px;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  transform: none;
+  background: transparent;
+  color: var(--text-2);
+  font-family: inherit;
+  font-size: 0.82rem;
+  font-weight: 500;
+  letter-spacing: normal;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.mx-tab.is-on,
+.mx-tab.is-on:hover,
+.mx-tab.is-on:active {
+  background: var(--surface-3);
+  color: var(--text);
+  font-weight: 600;
 }
 .mx-section-title {
   font-size: 0.625rem;
@@ -1271,16 +1455,16 @@ button.utility-cta::after {
 .mx-row-main { min-width: 0; flex: 1; }
 /* Never shrinks: the action is the smaller element and the label beside it
    wraps far more gracefully than "Not provided" would. */
-.mx-row-side { flex-shrink: 0; display: flex; align-items: center; gap: 8px; }
+.mx-row-side { flex-shrink: 0; display: flex; align-items: center; gap: 16px; }
 
 .mx-row-label {
   font-size: 0.85rem;
-  font-weight: 500;
+  font-weight: 600;
   color: var(--text);
 }
 .mx-row-value {
   font-size: 0.85rem;
-  font-weight: 400;
+  font-weight: 500;
   color: var(--text-2);
   margin-top: 4px;
   min-width: 0;
@@ -1290,10 +1474,17 @@ button.utility-cta::after {
    reads as "you have not filled this in", which is the true and actionable
    one. */
 .mx-row-value.is-empty { color: var(--text-3); }
+.mx-field-error {
+  display: block;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--loss);
+  margin-top: 6px;
+}
 .mx-row-hint {
   display: block;
   font-size: 0.75rem;
-  font-weight: 400;
+  font-weight: 500;
   color: var(--text-3);
   margin-top: 5px;
   line-height: 1.45;
@@ -1309,7 +1500,7 @@ button.utility-cta::after {
 .mx-row-action:active {
   font-family: inherit;
   font-size: 0.8rem;
-  font-weight: 500;
+  font-weight: 600;
   color: var(--text);
   background: none;
   border: none;
@@ -1322,6 +1513,21 @@ button.utility-cta::after {
   text-underline-offset: 3px;
   text-decoration-thickness: 1px;
 }
+/* A fact in the slot the verb usually occupies — "Connected" opposite Google,
+   where "Sign out" sits on the row below. Same type as .mx-row-action so the
+   right-hand column reads as one column, but no underline and no hover: it is
+   the row's STATE, and underlining it would promise a control that is not
+   there. Not a .mx-tag either — that pill drew a border around a word whose
+   only job was to sit quietly beside a label. */
+.mx-row-state {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+}
+.mx-row-action.is-plain,
+.mx-row-action.is-plain:hover,
+.mx-row-action.is-plain:active { text-decoration: none; }
 .mx-row-action:hover { color: var(--accent); }
 .mx-row-action:disabled { color: var(--text-3); cursor: default; text-decoration-color: var(--border-2); }
 
@@ -1340,7 +1546,7 @@ textarea.mx-field {
   width: 100%;
   background: var(--surface);
   border: 1px solid var(--border-2);
-  border-radius: var(--radius-sm);
+  border-radius: 0;
   color: var(--text);
   font-family: inherit;
   font-size: 0.85rem;
@@ -1387,7 +1593,7 @@ select.mx-field {
   font-weight: 500;
   letter-spacing: 0;
   padding: 8px 15px;
-  border-radius: var(--radius-sm);
+  border-radius: 0;
   border: 1px solid transparent;
   cursor: pointer;
   transform: none;
@@ -1438,6 +1644,37 @@ select.mx-field {
    focus-within, not focus — the rectangle owns the border but the input inside
    it is what actually takes focus. */
 .auth-field:focus-within { border-color: var(--text); }
+
+/* Read by assistive tech, painted for nobody. `clip-path` plus a 1px box rather
+   than display:none or visibility:hidden, both of which take the text out of
+   the accessibility tree along with the layout. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* A field that is shown but cannot be changed — onboarding's email, which
+   Google owns. Greyed and not focusable, so it reads as a statement of fact
+   rather than an input someone is failing to edit. The label stays raised
+   because `is-filled` is set alongside this. */
+.auth-field.is-locked {
+  background: var(--surface-2);
+  border-color: var(--border);
+}
+.auth-field.is-locked .auth-field-input {
+  color: var(--text-2);
+  cursor: default;
+  /* The global `button:disabled`/input opacity would grey the text twice. */
+  opacity: 1;
+  -webkit-text-fill-color: var(--text-2);
+}
 
 /* Rests vertically centred, reading as the placeholder, and rises to the top
    of the box on focus or once there is something to label. Absolute so it can
@@ -1523,6 +1760,29 @@ select.mx-field {
   font-size: 1rem;
 }
 
+/* ── Bare-page Done ──
+   The only control on /settings and the legal pages, which carry no chrome.
+   Near-black fill, white label, square. Restated for :hover and :active for the
+   same reason every .mx-btn variant is: the global `button` rule is a filled
+   accent pill and would repaint this on interaction. */
+.bare-done,
+.bare-done:hover,
+.bare-done:active {
+  background: var(--text);
+  color: #FFFFFF;
+  border: none;
+  border-radius: 0;
+  padding: 11px 22px;
+  font-family: inherit;
+  font-size: 0.95rem;
+  font-weight: 500;
+  letter-spacing: 0;
+  cursor: pointer;
+  transform: none;
+  white-space: nowrap;
+}
+.bare-done:hover { opacity: 0.86; }
+
 /* The secondary half of a two-button pair: white fill, near-black hairline.
    is-quiet is the usual partner to is-primary, but its grey-on-transparent
    border reads as disabled next to a filled accent button. This states the
@@ -1567,7 +1827,7 @@ select.mx-field {
   align-items: center;
   gap: 4px;
   font-size: 0.66rem;
-  font-weight: 500;
+  font-weight: 600;
   letter-spacing: 0.04em;
   padding: 2px 8px;
   border-radius: 100px;
@@ -1739,4 +1999,62 @@ input[type="radio"] {
   border: none;
   background: none;
   accent-color: var(--accent);
+}
+
+/* The one checkbox we draw ourselves: sign-up's 18+ box.
+   The platform's own checkbox is rounded on every OS and cannot be squared —
+   `border-radius` on a native control is ignored — and everything else on that
+   screen is square. So this opts back OUT of the rule above.
+
+   Selector is `input[type="checkbox"].auth-check`, not `.auth-check`: the
+   restore rule is (0,1,1) and a bare class is (0,1,0), so a class alone would
+   lose to it and render nothing.
+
+   The tick is a background SVG rather than an ::after. Pseudo-elements on a
+   replaced element work in every current browser but are not actually
+   specified, and a background image cannot be argued with. */
+input[type="checkbox"].auth-check {
+  appearance: none;
+  -webkit-appearance: none;
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  border: 1.5px solid var(--border-2);
+  border-radius: 0;
+  background: var(--surface);
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s;
+}
+input[type="checkbox"].auth-check:checked {
+  background-color: var(--accent);
+  border-color: var(--accent);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23fff' stroke-width='3.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='20 6 9 17 4 12'/%3E%3C/svg%3E");
+  background-size: 12px 12px;
+  background-position: center;
+  background-repeat: no-repeat;
+}
+/* No glow. The global `input:focus` rule paints a 3px accent-dim box-shadow —
+   right for a text field, where it reads as the field waking up, and far too
+   loud around an 18px box. That is a box-shadow, not an outline, which is why
+   dropping the outline rule alone left it on screen.
+
+   Specificity: `input:focus` is (0,1,1), so this has to carry :focus itself to
+   beat it — the plain `input[type="checkbox"].auth-check` rule above never
+   applies at the moment the glow does.
+
+   The accent BORDER is kept. It is the only focus affordance left after the
+   ring came off, it costs no geometry so nothing shifts, and it is already the
+   border a checked box wears. */
+input[type="checkbox"].auth-check:focus,
+input[type="checkbox"].auth-check:focus-visible {
+  box-shadow: none;
+  outline: none;
+}
+
+/* Flagged by pressing Continue unticked — the label beside it goes red too.
+   Carries :focus too, or clicking it would repaint the border accent and drop
+   the warning at exactly the moment it is being shown. */
+input[type="checkbox"].auth-check[aria-invalid="true"],
+input[type="checkbox"].auth-check[aria-invalid="true"]:focus {
+  border-color: var(--loss);
 }

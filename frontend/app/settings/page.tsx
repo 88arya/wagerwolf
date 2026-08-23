@@ -4,9 +4,9 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import { signOut } from "@/lib/auth";
-import { seasonLabel } from "@/lib/geo";
 import { useTimeZoneSync } from "@/lib/useTimeZoneSync";
 import HelmetAvatar from "@/components/HelmetAvatar";
+import BarePageHeader from "@/components/BarePageHeader";
 
 /**
  * My Account — the identity that follows you across every league.
@@ -18,11 +18,14 @@ import HelmetAvatar from "@/components/HelmetAvatar";
  * THREE TABS, in a left rail, and the split is not arbitrary — it is by who the
  * data is for:
  *
- * - Personal information — you, and only you. Real name, email, birthday, time
- *   zone. None of it is ever shown to another player.
+ * - Personal information — you, and only you. Real name, birthday, time zone.
+ *   None of it is ever shown to another player. Email is deliberately absent:
+ *   it is not editable here (Google owns it) and it already sits opposite
+ *   "Google" under Login & security, which is the row that explains what it is
+ *   FOR. Printing it twice made the personal tab look like a form.
  * - Login & security — how you get in, and how you stop.
- * - League profile — what other players see. Display name, and the defaults a
- *   new membership is seeded from.
+ * - Default league profile — what other players see. Display name, and the
+ *   defaults a new membership is seeded from.
  *
  * Tabs are local state, not routes. The URL carrying UI state is what broke the
  * league profile editor (see components/LeagueProfileModal) — App Router does
@@ -43,11 +46,68 @@ type FieldKey = "displayName" | "name" | "abbreviation" | "helmet";
 
 type Tab = "personal" | "security" | "league";
 
+// One icon each, drawn on the same 24-unit grid at the same stroke so they read
+// as a set: a person for who you are, a shield for how you get in, a globe for
+// how you appear to other people.
+const ICONS: Record<Tab, string> = {
+  personal: "M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2 M12 3a4 4 0 1 1 0 8 4 4 0 0 1 0-8",
+  security: "M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z",
+  league:   "M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20 M2 12h20 M12 2a15 15 0 0 1 0 20 M12 2a15 15 0 0 0 0 20",
+};
+
 const TABS: Array<{ key: Tab; label: string }> = [
   { key: "personal", label: "Personal information" },
   { key: "security", label: "Login & security" },
-  { key: "league",   label: "League profile" },
+  { key: "league",   label: "Default league profile" },
 ];
+
+// A display name is the one thing other players see, so it has to read as a
+// name: three characters minimum, letters/digits/spaces only. Illegal keystrokes
+// are DROPPED as you type rather than rejected on save — a field that refuses
+// the character teaches the rule immediately, where an error under a filled-in
+// form makes you go back and find which character it meant.
+const NAME_ALLOWED = /[^A-Za-z0-9 ]/g;
+const NAME_MIN = 3;
+
+function cleanDisplayName(v: string) {
+  // Accents fold onto their ASCII base BEFORE the filter runs, so José becomes
+  // Jose rather than Jos. Stripping first would eat the letter along with the
+  // mark. Mirrors backend/src/services/displayName.ts, which is the authority.
+  return v
+    .normalize("NFD")
+    .replace(/\p{Mn}/gu, "")
+    .replace(NAME_ALLOWED, "")
+    .replace(/\s{2,}/g, " ");
+}
+function displayNameOk(v: string) {
+  return v.trim().length >= NAME_MIN;
+}
+
+// The abbreviation a new membership is seeded from when you have not set one:
+// the first three letters of the display name. Shown on the row rather than
+// left as "generated for each league", so the field states the value that will
+// actually be used, and prefilled into the editor so picking the default is a
+// Save rather than a retype.
+//
+// Always exactly ABBREV_LEN, padding a short one by repeating its first letter
+// — "a b" is a legal display name and yields only AB. Mirrors
+// backend/src/services/abbreviation.ts, which is the authority; the two must
+// agree or the value this page promises is not the one the league gets.
+const ABBREV_LEN = 3;
+
+function abbrevFromName(name: string) {
+  let tag = name.replace(/[^A-Za-z]/g, "").slice(0, ABBREV_LEN).toUpperCase();
+  if (!tag) return "";
+  while (tag.length < ABBREV_LEN) tag += tag[0];
+  return tag;
+}
+
+// Shared by every swatch so None cannot drift out of size with the colours.
+const SWATCH: React.CSSProperties = {
+  width: 22, height: 22, padding: 0, borderRadius: 0,
+  boxShadow: "none", transform: "none", cursor: "pointer", flexShrink: 0,
+  outlineOffset: 2,
+};
 
 function CheckIcon() {
   return (
@@ -67,6 +127,9 @@ export default function SettingsPage() {
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [abbrev, setAbbrev] = useState("");
+  // null is a real value here, not "unset": it means "pick one for me in each
+  // league", which is what the None swatch selects.
+  const [helmet, setHelmet] = useState<string | null>(null);
 
   // Which field's editor is open, if any. Read-first: a row shows what the
   // value IS and one link to change it, and the input appears only once you ask
@@ -76,8 +139,6 @@ export default function SettingsPage() {
   const [savingField, setSavingField] = useState<FieldKey | null>(null);
   const [savedField, setSavedField] = useState<FieldKey | null>(null);
   const [error, setError] = useState("");
-  const [confirmOff, setConfirmOff] = useState(false);
-  const [deactivating, setDeactivating] = useState(false);
   // One timer, cleared on every new save, so a second save does not inherit the
   // first's countdown and blink the tick away early.
   const savedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -125,37 +186,23 @@ export default function SettingsPage() {
     }
   }
 
-  async function deactivate() {
-    setError("");
-    setDeactivating(true);
-    try {
-      await api("/users/me/deactivate", { method: "POST", body: JSON.stringify({}) });
-      signOut();
-      router.push("/");
-    } catch (err: any) {
-      try { setError(JSON.parse(err.message).error); } catch { setError(err.message); }
-      setDeactivating(false);
-    }
-  }
-
   if (loading) {
-    return <div className="page-wide" style={{ paddingTop: 56 }}><div className="mx-empty">Loading your account…</div></div>;
+    return (
+      <div className="bare-route">
+        <BarePageHeader done />
+        <div className="page-wide"><div className="mx-empty">Loading your account…</div></div>
+      </div>
+    );
   }
 
   const nameChanged = firstName !== (user?.firstName ?? "") || lastName !== (user?.lastName ?? "");
   const abbrevChanged = abbrev.toUpperCase() !== (user?.defaultAbbreviation ?? "");
   const seasons: number = user?.yearsExperience ?? 0;
-  // Named, not dated. The September 1 boundary in services/experience.ts is an
-  // approximation of a kickoff that moves by up to a week each year, so quoting
-  // a month promises a precision this does not have — and it was rendering a
-  // day early anyway for anyone west of Greenwich.
-  const nextSeason = user?.nextSeasonYear != null ? seasonLabel(user.nextSeasonYear) : null;
   const palette: string[] = user?.helmetPalette ?? [];
-
-  const fmtDay = (v: string | null | undefined) =>
-    v ? new Date(`${String(v).slice(0, 10)}T00:00:00Z`).toLocaleDateString(undefined, {
-      month: "long", day: "numeric", year: "numeric", timeZone: "UTC",
-    }) : "—";
+  // The draft while the palette is open, the stored value otherwise — so the
+  // helmet previews the pick you have not committed yet.
+  const shownHelmet = editing === "helmet" ? helmet : (user?.defaultHelmetColor ?? null);
+  const seededAbbrev = abbrevFromName(user?.displayName ?? "");
 
   const fullName = [user?.firstName, user?.lastName].filter(Boolean).join(" ");
 
@@ -166,7 +213,8 @@ export default function SettingsPage() {
     setFirstName(user?.firstName ?? "");
     setLastName(user?.lastName ?? "");
     setDisplayName(user?.displayName ?? "");
-    setAbbrev(user?.defaultAbbreviation ?? "");
+    setAbbrev(user?.defaultAbbreviation || abbrevFromName(user?.displayName ?? ""));
+    setHelmet(user?.defaultHelmetColor ?? null);
     setEditing(field);
   }
 
@@ -196,19 +244,24 @@ export default function SettingsPage() {
     // for a page that opens on a dense grid, but here the first thing under the
     // chrome is a heading, and 20px left it crammed against the games strip.
     // Local rather than a change to .page-wide, which ~18 other routes share.
-    <div className="page-wide" style={{ paddingTop: 56 }}>
+    <div className="bare-route">
+      <BarePageHeader done />
+      <div className="page-wide">
       {/* Rail then content. `align-items: start` so the rail does not stretch to
           the height of the tallest tab and hang a rule into empty space. */}
       <div
         style={{
           maxWidth: 940, margin: "0 auto", width: "100%",
-          display: "grid", gridTemplateColumns: "200px minmax(0, 1fr)",
+          display: "grid", gridTemplateColumns: "224px minmax(0, 1fr)",
           gap: 40, alignItems: "start",
         }}
       >
         {/* ── Rail ─────────────────────────────────────────────────── */}
         <nav style={{ position: "sticky", top: 0 }} aria-label="Account sections">
-          <h1 className="mx-title" style={{ margin: "0 0 16px" }}>My Account</h1>
+          {/* Sized and spaced to sit on the same line as the pane title opposite —
+              .mx-title is 1.5rem against .mx-pane-title's 1.15rem, so matching
+              the font-size is what actually aligns them, not equal margins. */}
+          <h1 className="mx-pane-title" style={{ margin: "0 0 14px" }}>Account settings</h1>
           <div style={{ display: "flex", flexDirection: "column" }}>
             {TABS.map(({ key, label }) => {
               const on = tab === key;
@@ -216,21 +269,22 @@ export default function SettingsPage() {
                 <button
                   key={key}
                   type="button"
-                  onClick={() => { setTab(key); setConfirmOff(false); }}
+                  onClick={() => setTab(key)}
                   aria-current={on ? "page" : undefined}
-                  style={{
-                    // Not .mx-btn: these are navigation, not actions. A left
-                    // accent rule marks the active one, the same device the
-                    // league nav uses for its underline.
-                    textAlign: "left", padding: "9px 0 9px 12px",
-                    borderLeft: `2px solid ${on ? "var(--accent)" : "var(--border)"}`,
-                    borderTop: "none", borderRight: "none", borderBottom: "none",
-                    borderRadius: 0, background: "transparent", boxShadow: "none", transform: "none",
-                    color: on ? "var(--text)" : "var(--text-2)",
-                    fontSize: "0.82rem", fontWeight: on ? 500 : 400,
-                    whiteSpace: "nowrap", cursor: "pointer",
-                  }}
+                  // .mx-tab, not .mx-btn: these are navigation, not actions.
+                  // The active one is a full-width grey rectangle — see the
+                  // .mx-tab block in globals.css for why it is not the accent
+                  // rule this used to draw.
+                  className={on ? "mx-tab is-on" : "mx-tab"}
                 >
+                  <svg
+                    width="15" height="15" viewBox="0 0 24 24" fill="none"
+                    stroke="currentColor" strokeWidth={1.6}
+                    strokeLinecap="round" strokeLinejoin="round"
+                    aria-hidden="true" style={{ flexShrink: 0 }}
+                  >
+                    <path d={ICONS[key]} />
+                  </svg>
                   {label}
                 </button>
               );
@@ -243,7 +297,7 @@ export default function SettingsPage() {
           {error && <div className="mx-notice is-bad" style={{ marginBottom: 16 }}>{error}</div>}
 
           {tab === "personal" && (
-            <section className="mx-section">
+            <section className="mx-section" style={{ marginTop: 0 }}>
               <h2 className="mx-pane-title">Personal information</h2>
 
               <div className="mx-row">
@@ -257,12 +311,11 @@ export default function SettingsPage() {
                   ) : (
                     <div className={fullName ? "mx-row-value" : "mx-row-value is-empty"}>{fullName || "Not set"}</div>
                   )}
-                  <span className="mx-row-hint">Private. Never shown to other players.</span>
                 </div>
                 <div className="mx-row-side">
                   {editing === "name" ? (
                     <>
-                      <button type="button" className="mx-row-action" onClick={() => setEditing(null)}>Cancel</button>
+                      <button type="button" className="mx-row-action is-plain" onClick={() => setEditing(null)}>Cancel</button>
                       <SaveButton
                         field="name"
                         disabled={!firstName.trim() || !lastName.trim() || !nameChanged}
@@ -279,66 +332,37 @@ export default function SettingsPage() {
 
               <div className="mx-row">
                 <div className="mx-row-main">
-                  <div className="mx-row-label">Email</div>
-                  <div className="mx-row-value">{user?.email ?? "Not set"}</div>
-                  <span className="mx-row-hint">From your Google account.</span>
-                </div>
-              </div>
-
-              {/* Write-once at onboarding: it is the field the age gate rests
-                  on, and leaving it editable would let someone walk it back the
-                  day after clearing the gate. The backend refuses a second
-                  write, so this row carries no action at all rather than one
-                  that would fail. */}
-              <div className="mx-row">
-                <div className="mx-row-main">
-                  <div className="mx-row-label">Date of birth</div>
-                  <div className="mx-row-value">{fmtDay(user?.dateOfBirth)}</div>
-                  <span className="mx-row-hint">Set once when you signed up. Contact support if it&rsquo;s wrong.</span>
-                </div>
-              </div>
-
-              <div className="mx-row">
-                <div className="mx-row-main">
                   <div className="mx-row-label">Time zone</div>
                   <div className="mx-row-value">{user?.timeZone ?? "Not set"}</div>
-                  <span className="mx-row-hint">
-                    Taken from your device, so kickoff times show in your local time. Updates on its own if you move.
-                  </span>
                 </div>
               </div>
 
               <div className="mx-row">
                 <div className="mx-row-main">
-                  <div className="mx-row-label">Member since</div>
+                  <div className="mx-row-label">Account created</div>
                   <div className="mx-row-value">{memberSince}</div>
-                  <span className="mx-row-hint">The day this account was created.</span>
                 </div>
               </div>
             </section>
           )}
 
           {tab === "security" && (
-            <section className="mx-section">
+            <section className="mx-section" style={{ marginTop: 0 }}>
               <h2 className="mx-pane-title">Login &amp; security</h2>
 
               <div className="mx-row">
                 <div className="mx-row-main">
                   <div className="mx-row-label">Google</div>
                   <div className="mx-row-value">{user?.email ?? "Not set"}</div>
-                  <span className="mx-row-hint">
-                    The only way into this account. There is no password to set or lose.
-                  </span>
                 </div>
                 <div className="mx-row-side">
-                  <span className="mx-tag">{user?.hasGoogle ? "Connected" : "Not connected"}</span>
+                  <span className="mx-row-state">{user?.hasGoogle ? "Connected" : "Not connected"}</span>
                 </div>
               </div>
 
               <div className="mx-row">
                 <div className="mx-row-main">
                   <div className="mx-row-label">Sign out</div>
-                  <span className="mx-row-hint">Ends this session on this device.</span>
                 </div>
                 <div className="mx-row-side">
                   <button type="button" className="mx-row-action" onClick={() => { signOut(); router.push("/"); }}>
@@ -347,51 +371,12 @@ export default function SettingsPage() {
                 </div>
               </div>
 
-              {/* Two-step, and the second step spells out the irreversible part
-                  rather than asking "are you sure?" — the seats go back, and a
-                  league that refilled is not waiting when you return. The
-                  confirmation stays a filled danger button rather than a row
-                  link: it is the one thing on this page that cannot be undone,
-                  and it should not look like Edit. */}
-              <div className="mx-row">
-                <div className="mx-row-main">
-                  <div className="mx-row-label">Deactivate account</div>
-                  <span className="mx-row-hint">
-                    Leaves every league and hides your account. Signing in with Google brings it
-                    back — but your leagues will have moved on without you.
-                  </span>
-                  {confirmOff && (
-                    <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 10, alignItems: "flex-start" }}>
-                      <div className="mx-notice is-warn" style={{ margin: 0 }}>
-                        You&rsquo;ll leave every league you&rsquo;re in and your seats will be given up. Your
-                        bets and results stay on record for the leagues you played in. Signing back in
-                        reactivates the account, but you&rsquo;ll have to join leagues again.
-                      </div>
-                      <div style={{ display: "flex", gap: 8 }}>
-                        <button type="button" className="mx-btn is-quiet" onClick={() => setConfirmOff(false)} disabled={deactivating}>
-                          Cancel
-                        </button>
-                        <button type="button" className="mx-btn is-danger" onClick={deactivate} disabled={deactivating}>
-                          {deactivating ? "Deactivating…" : "Yes, deactivate"}
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                </div>
-                {!confirmOff && (
-                  <div className="mx-row-side">
-                    <button type="button" className="mx-row-action" onClick={() => setConfirmOff(true)}>
-                      Deactivate
-                    </button>
-                  </div>
-                )}
-              </div>
             </section>
           )}
 
           {tab === "league" && (
-            <section className="mx-section">
-              <h2 className="mx-pane-title">League profile</h2>
+            <section className="mx-section" style={{ marginTop: 0 }}>
+              <h2 className="mx-pane-title">Default league profile</h2>
 
               {/* What a new membership is seeded from. A league keeps its own
                   copy of all three — that is the point of the per-league
@@ -406,27 +391,33 @@ export default function SettingsPage() {
                         className="mx-field"
                         value={displayName}
                         maxLength={32}
-                        onChange={(e) => setDisplayName(e.target.value)}
+                        onChange={(e) => setDisplayName(cleanDisplayName(e.target.value))}
                         style={{ maxWidth: 260 }}
                       />
+                      {/* Shown only while the value is actually illegal. The
+                          input silently refuses the characters it will not
+                          take, so length is the only rule you can still break
+                          — and an error that is always on screen is a caption,
+                          not an error. */}
+                      {!displayNameOk(displayName) && (
+                        <span className="mx-field-error">
+                          Display name must be at least {NAME_MIN} characters.
+                        </span>
+                      )}
                     </div>
                   ) : (
                     <div className={user?.displayName ? "mx-row-value" : "mx-row-value is-empty"}>
                       {user?.displayName || "Not set"}
                     </div>
                   )}
-                  <span className="mx-row-hint">
-                    The name new leagues start you with. Rename yourself inside any league without
-                    touching this.
-                  </span>
                 </div>
                 <div className="mx-row-side">
                   {editing === "displayName" ? (
                     <>
-                      <button type="button" className="mx-row-action" onClick={() => setEditing(null)}>Cancel</button>
+                      <button type="button" className="mx-row-action is-plain" onClick={() => setEditing(null)}>Cancel</button>
                       <SaveButton
                         field="displayName"
-                        disabled={!displayName.trim() || displayName === user?.displayName}
+                        disabled={!displayNameOk(displayName) || displayName.trim() === user?.displayName}
                         onClick={() => save("displayName", { displayName: displayName.trim() })}
                       />
                     </>
@@ -444,28 +435,33 @@ export default function SettingsPage() {
                       <input
                         className="mx-field"
                         value={abbrev}
-                        maxLength={3}
-                        placeholder="Auto"
-                        onChange={(e) => setAbbrev(e.target.value.toUpperCase().replace(/[^A-Z]/g, "").slice(0, 3))}
+                        maxLength={ABBREV_LEN}
+                        placeholder={seededAbbrev || "Auto"}
+                        onChange={(e) => setAbbrev(e.target.value.toUpperCase().replace(/[^A-Z]/g, "").slice(0, ABBREV_LEN))}
                         style={{ maxWidth: 96, letterSpacing: "0.22em", textTransform: "uppercase" }}
                       />
+                      {/* Empty is not an error — it clears the tag back to
+                          "follow my display name". Only a half-typed one is. */}
+                      {abbrev.length > 0 && abbrev.length !== ABBREV_LEN && (
+                        <span className="mx-field-error">
+                          Abbreviation must be exactly {ABBREV_LEN} letters.
+                        </span>
+                      )}
                     </div>
                   ) : (
                     <div className={user?.defaultAbbreviation ? "mx-row-value" : "mx-row-value is-empty"}>
-                      {user?.defaultAbbreviation || "Generated for each league"}
+                      {user?.defaultAbbreviation || seededAbbrev || "Generated for each league"}
+                      {!user?.defaultAbbreviation && seededAbbrev ? " — from your display name" : ""}
                     </div>
                   )}
-                  <span className="mx-row-hint">
-                    Two or three letters. Left empty, each league generates one from your display name.
-                  </span>
                 </div>
                 <div className="mx-row-side">
                   {editing === "abbreviation" ? (
                     <>
-                      <button type="button" className="mx-row-action" onClick={() => setEditing(null)}>Cancel</button>
+                      <button type="button" className="mx-row-action is-plain" onClick={() => setEditing(null)}>Cancel</button>
                       <SaveButton
                         field="abbreviation"
-                        disabled={!abbrevChanged || (abbrev.length > 0 && abbrev.length < 2)}
+                        disabled={!abbrevChanged || (abbrev.length > 0 && abbrev.length !== ABBREV_LEN)}
                         onClick={() => save("abbreviation", { defaultAbbreviation: abbrev || null })}
                       />
                     </>
@@ -477,64 +473,88 @@ export default function SettingsPage() {
                 </div>
               </div>
 
-              {/* The swatches save on click — a grid where the selection does
-                  nothing until you press something else reads as broken — so
-                  this row's verb opens the palette rather than an editor, and
-                  there is nothing to confirm once you have picked. */}
+              {/* Edit -> pick -> Cancel or Save, the same shape as every other
+                  row here. The swatches used to commit on click, with Clear and
+                  Done in the side slot instead of Cancel and Save — one row
+                  behaving differently from the three above it, and two verbs
+                  that appear nowhere else on the page.
+
+                  Clicking a swatch now only sets the draft; the helmet beside
+                  the label previews it, so the selection is still visible
+                  before you commit it. Clearing survives as the first swatch
+                  rather than as its own button. */}
               <div className="mx-row">
                 <div className="mx-row-main">
-                  <div className="mx-row-label">Helmet colour</div>
+                  <div className="mx-row-label">Display color</div>
                   <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 6 }}>
-                    <HelmetAvatar
-                      color={user?.defaultHelmetColor ?? "var(--border-2)"}
-                      initials={(user?.defaultAbbreviation || user?.displayName || "?").slice(0, 2)}
-                      size={30}
-                    />
-                    <span
-                      className={user?.defaultHelmetColor ? "mx-row-value" : "mx-row-value is-empty"}
-                      style={{ marginTop: 0 }}
-                    >
-                      {user?.defaultHelmetColor ?? "Picked for you in each league"}
-                    </span>
+                    {shownHelmet ? (
+                      <HelmetAvatar
+                        color={shownHelmet}
+                        initials={(user?.defaultAbbreviation || user?.displayName || "?").slice(0, 2)}
+                        size={30}
+                      />
+                    ) : (
+                      /* Not .is-empty: Random is something you can choose from
+                         the palette, so it is a value the row is stating, not a
+                         field you have left blank. */
+                      <span className="mx-row-value" style={{ marginTop: 0 }}>Random</span>
+                    )}
                   </div>
                   {editing === "helmet" && (
                     <div style={{ display: "flex", flexWrap: "wrap", gap: 6, maxWidth: 420, marginTop: 12 }}>
+                      {/* "None" is a swatch rather than a Clear button, so the
+                          palette holds every choice including the absence of
+                          one, and the side slot stays Cancel/Save. */}
+                      <button
+                        type="button"
+                        aria-label="Random color"
+                        aria-pressed={helmet === null}
+                        disabled={savingField === "helmet"}
+                        onClick={() => setHelmet(null)}
+                        style={{
+                          ...SWATCH,
+                          background: "var(--surface)",
+                          border: "1px solid var(--border-2)",
+                          outline: helmet === null ? "2px solid var(--accent)" : "2px solid transparent",
+                          // A corner-to-corner hairline: the "no colour" mark
+                          // every colour picker uses, drawn rather than spelled
+                          // out so it sits in the grid as one more 22px square.
+                          backgroundImage:
+                            "linear-gradient(to top right, transparent calc(50% - 0.5px), var(--border-3) calc(50% - 0.5px), var(--border-3) calc(50% + 0.5px), transparent calc(50% + 0.5px))",
+                        }}
+                      />
                       {palette.map((c) => (
                         <button
                           key={c}
                           type="button"
                           aria-label={c}
-                          aria-pressed={user?.defaultHelmetColor === c}
+                          aria-pressed={helmet === c}
                           disabled={savingField === "helmet"}
-                          onClick={() => save("helmet", { defaultHelmetColor: c })}
+                          onClick={() => setHelmet(c)}
                           style={{
-                            width: 22, height: 22, padding: 0, borderRadius: "var(--radius-sm)", background: c,
-                            border: "none", boxShadow: "none", transform: "none", cursor: "pointer", flexShrink: 0,
-                            outline: user?.defaultHelmetColor === c ? "2px solid var(--accent)" : "2px solid transparent",
-                            outlineOffset: 2,
+                            ...SWATCH,
+                            background: c,
+                            border: "none",
+                            outline: helmet === c ? "2px solid var(--accent)" : "2px solid transparent",
                           }}
                         />
                       ))}
                     </div>
                   )}
-                  <span className="mx-row-hint">
-                    Colours stay unique inside a league, so if someone got there first you&rsquo;ll be
-                    given another one.
-                  </span>
                 </div>
                 <div className="mx-row-side">
                   {editing === "helmet" ? (
                     <>
-                      {user?.defaultHelmetColor && (
-                        <button type="button" className="mx-row-action" onClick={() => save("helmet", { defaultHelmetColor: null })}>
-                          Clear
-                        </button>
-                      )}
-                      <button type="button" className="mx-row-action" onClick={() => setEditing(null)}>Done</button>
+                      <button type="button" className="mx-row-action is-plain" onClick={() => setEditing(null)}>Cancel</button>
+                      <SaveButton
+                        field="helmet"
+                        disabled={helmet === (user?.defaultHelmetColor ?? null)}
+                        onClick={() => save("helmet", { defaultHelmetColor: helmet })}
+                      />
                     </>
                   ) : (
-                    <button type="button" className="mx-row-action" onClick={() => setEditing("helmet")}>
-                      {user?.defaultHelmetColor ? "Change" : "Choose"}
+                    <button type="button" className="mx-row-action" onClick={() => openEdit("helmet")}>
+                      {user?.defaultHelmetColor ? "Edit" : "Add"}
                     </button>
                   )}
                 </div>
@@ -545,28 +565,14 @@ export default function SettingsPage() {
                   field anyone could put "20" into. */}
               <div className="mx-row">
                 <div className="mx-row-main">
-                  <div className="mx-row-label">Seasons played</div>
-                  <div style={{ display: "flex", gap: 10, alignItems: "baseline", flexWrap: "wrap", marginTop: 4 }}>
-                    <span style={{ fontSize: "1.4rem", fontWeight: 400, letterSpacing: "-0.028em", color: "var(--text)", lineHeight: 1 }}>
-                      {seasons}
-                    </span>
-                    {nextSeason && (
-                      <span style={{ fontSize: "0.78rem", color: "var(--text-3)" }}>
-                        {seasons === 0
-                          ? `You start with the ${nextSeason} season`
-                          : `Your next season is ${nextSeason}`}
-                      </span>
-                    )}
-                  </div>
-                  <span className="mx-row-hint">
-                    Counted from the day you joined, not self-reported. It goes up on its own with
-                    each new NFL season.
-                  </span>
+                  <div className="mx-row-label">Experience</div>
+                  <div className="mx-row-value">{seasons} {seasons === 1 ? "year" : "years"}</div>
                 </div>
               </div>
             </section>
           )}
         </div>
+      </div>
       </div>
     </div>
   );
