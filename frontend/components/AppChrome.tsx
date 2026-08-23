@@ -31,7 +31,7 @@ const STRIP_LEAGUE_KEY = "strip_league_id";
 // which gave up its own sticky header rather than stack two. What used to be a
 // blocklist is down to two pages that genuinely cannot carry it:
 //
-//  - /onboarding is a gate. The whole point is that you finish it before you
+//  - (/onboarding was here. It is gone: sign-up is one screen now, and the
 //    reach the app, and a nav bar out of it defeats that.
 //  - /logo is the wordmark preview, where a second wordmark in the bar above
 //    the specimens is just confusing.
@@ -43,7 +43,10 @@ const STRIP_LEAGUE_KEY = "strip_league_id";
 // Everything else works signed out: TopBar shows "Play now" instead of the
 // account menu, and the strip falls back to /weeks/public/current, which needs
 // no token.
-const NO_CHROME = ["/onboarding", "/logo", "/signup"];
+//  - /settings and the three legal pages are bare too: each carries its own
+//    BarePageHeader with the lockup and a Done button, so the utility bar
+//    would be a second header above a page that already has one.
+const NO_CHROME = ["/logo", "/signup", "/settings", "/privacy", "/terms", "/responsible-gaming"];
 
 function isPublicRoute(pathname: string) {
   return NO_CHROME.some(p => pathname === p || pathname.startsWith(`${p}/`));

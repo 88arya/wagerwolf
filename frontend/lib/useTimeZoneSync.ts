@@ -12,7 +12,7 @@ import { api } from "@/lib/api";
  * for it anywhere: this reads it and writes it, and My Account shows the result
  * read-only beside the other derived values.
  *
- * SYNCED, NOT CAPTURED ONCE. A birthdate is written at onboarding and never
+ * SYNCED, NOT CAPTURED ONCE. The age confirmation is stamped at sign-up and never
  * again; a zone is not like that. People travel, move, and occasionally fix a
  * wrong OS setting, and a value captured at signup would quietly rot. Comparing
  * on every mount costs one PATCH on the rare load where it actually differs.

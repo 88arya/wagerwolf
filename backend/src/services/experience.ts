@@ -1,10 +1,19 @@
 /**
- * How many NFL seasons an account has been around for.
+ * How long an account has been around, in two different units.
  *
- * Shown on the account page, and **derived from `User.createdAt` — never
- * stored, never accepted from a client**. It was briefly a self-reported
- * `yearsExperience` column, and a number a user can type is a number a user
- * can lie about.
+ * `yearsSinceJoin` is TENURE — whole calendar years since the account was
+ * created, which is what the account page shows as "Experience". `seasonsPlayed`
+ * is NFL SEASONS, a different count for a different question, kept because the
+ * season a user is on is a real thing the app knows and may want to say.
+ *
+ * They disagree, and deliberately so. An account created in October 2024 has
+ * played two seasons by August 2026 but has only been here for one year and ten
+ * months. The page says "1 year" because that is what "experience" was asked to
+ * mean: a year on the anniversary, not a season at kickoff.
+ *
+ * Both are **derived from `User.createdAt` — never stored, never accepted from
+ * a client**. It was briefly a self-reported `yearsExperience` column, and a
+ * number a user can type is a number a user can lie about.
  *
  * It no longer gates anything. League access is a two-way choice between a
  * beginner and a pro league (services/leagueLevel.ts), not a tenure check —
@@ -74,6 +83,32 @@ export function nextSeasonYear(createdAt: Date | string, now: Date = new Date())
   const inSeasonAtSignup = created.getUTCMonth() >= 8 || created.getUTCMonth() <= 1;
   const firstSeason = inSeasonAtSignup ? seasonYear(created) : seasonYear(created) + 1;
   return firstSeason + played;
+}
+
+/**
+ * Whole years since the account was created. 0 until the first anniversary,
+ * 1 on the day it lands, and one more every year after.
+ *
+ * This is what the account page means by "Experience". It counts anniversaries
+ * rather than seasons, so it never gets ahead of the calendar the way
+ * `seasonsPlayed` does — an account two weeks old reads 0 years even if a
+ * season kicked off in between.
+ *
+ * UTC throughout, matching seasonYear above: the anniversary should not land on
+ * a different date for the server than for the user.
+ *
+ * A 29 February account rolls over on 1 March in common years, which is the
+ * conventional answer and the one that never skips a year.
+ */
+export function yearsSinceJoin(createdAt: Date | string, now: Date = new Date()): number {
+  const created = createdAt instanceof Date ? createdAt : new Date(createdAt);
+  if (Number.isNaN(created.getTime())) return 0;
+
+  let years = now.getUTCFullYear() - created.getUTCFullYear();
+  const month = now.getUTCMonth() - created.getUTCMonth();
+  // The anniversary has not come round yet this calendar year.
+  if (month < 0 || (month === 0 && now.getUTCDate() < created.getUTCDate())) years -= 1;
+  return Math.max(0, years);
 }
 
 /** 2026 → "2026–27". An NFL season spans two calendar years, so it is named by both. */

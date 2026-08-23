@@ -1,5 +1,5 @@
 import {
-  pgTable, pgEnum, text, integer, boolean, timestamp, date, real, jsonb, index, uniqueIndex,
+  pgTable, pgEnum, text, integer, boolean, timestamp, real, jsonb, index, uniqueIndex,
 } from "drizzle-orm/pg-core";
 import { relations, sql } from "drizzle-orm";
 import { randomUUID } from "crypto";
@@ -80,13 +80,20 @@ export const users = pgTable("User", {
   // giving it a time would make it drift across time zones — someone born on
   // the 1st could read as the 31st to a server an hour behind them.
   //
-  // Nullable for the same reason firstName is: accounts predating the gate have
-  // none, and that absence is what sends them through onboarding. Stored as a
-  // string ("YYYY-MM-DD") rather than a Date for the same time-zone reason.
+  // WHEN the 18+ box was ticked, not whether. A timestamp rather than a boolean
+  // because the whole value of a self-attested gate is the record that the
+  // question was put and answered — and "when" is the half of that a boolean
+  // throws away.
   //
-  // Self-attested and unverified — see services/age.ts for what that is and is
-  // not worth.
-  dateOfBirth: date("dateOfBirth"),
+  // This replaced a `dateOfBirth` date column. A stored birthdate is worth more
+  // in exactly one way: it can be re-evaluated if the threshold ever moves, and
+  // a tick cannot — raising the bar means re-asking everybody. That was traded
+  // for one less field on the only screen between a visitor and the app, on a
+  // product where the money is fake and no statutory age applies. See
+  // services/age.ts.
+  //
+  // Nullable: accounts that predate the box never saw it.
+  ageConfirmedAt: timestamp("ageConfirmedAt"),
   createdAt:   timestamp("createdAt").defaultNow().notNull(),
 });
 

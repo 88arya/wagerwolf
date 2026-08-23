@@ -10,7 +10,7 @@ import GoogleProvider from "@/components/GoogleProvider";
 // arcaMajora is the wordmark's face; lemonMilk sets the games strip's team
 // abbreviations. Both declared in wordmarkFonts.ts and mounted here because
 // both appear on every route.
-import { arcaMajora, lemonMilk } from "./wordmarkFonts";
+import { arcaMajora, gilroy, lemonMilk } from "./wordmarkFonts";
 import SiteFooter from "@/components/SiteFooter";
 import FooterSlot from "@/components/FooterSlot";
 
@@ -39,13 +39,13 @@ const fugazOne = Fugaz_One({
 });
 
 export const metadata: Metadata = {
-  title: "Wagerwolf",
+  title: "Fantasy Football Sportsbook | Wagerwolf",
   description: "Fantasy football format, NFL sportsbook scoring",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={`${interTight.variable} ${fugazOne.variable} ${arcaMajora.variable} ${lemonMilk.variable}`} suppressHydrationWarning>
+    <html lang="en" className={`${interTight.variable} ${fugazOne.variable} ${arcaMajora.variable} ${lemonMilk.variable} ${gilroy.variable}`} suppressHydrationWarning>
       <body suppressHydrationWarning>
         {/* Utility bar + games strip, global to every signed-in page. Mounted
             here rather than per-layout so navigating between /home and a league

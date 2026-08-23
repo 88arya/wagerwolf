@@ -2,11 +2,11 @@
 
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
 import { useGoogleOAuth, type CodeClientConfig, type CodeResponse } from "@react-oauth/google";
 import { api } from "@/lib/api";
 import { setToken } from "@/lib/auth";
-import LogoWordmark from "@/components/LogoWordmark";
+import BarePageHeader from "@/components/BarePageHeader";
+import SignedOutOnly from "@/components/SignedOutOnly";
 
 /**
  * The package drives window.google.accounts.oauth2 internally but ships no
@@ -73,33 +73,8 @@ declare global {
 // a narrow viewport rather than forcing a horizontal scroll.
 const COL_W = 570;
 
-/**
- * Distance from the screen edge to the wordmark's INK, top and left — equal on
- * both, which is not the same as equal padding.
- *
- * The lockup's ink does not start at its box's top-left corner:
- *
- *   top   the box reserves the face's full ascent (0.900em) while the tallest
- *         ink reaches only cap height (0.770em), and LOCKUP_INK_SHIFT_EM then
- *         drops the whole lockup 0.065em. At the 22.05px type this height
- *         produces, that is 2.866 + 1.433 = 4.300px of gap already inside the
- *         box.
- *   left  the arrangement is mark-right, so the leftmost thing is the "w" of
- *         "wagerwolf", whose left side bearing is -5/1000 em = -0.110px. The
- *         glyph very slightly OVERHANGS its box, hence the negative.
- *
- * It was 26px top / 30px left, which by luck landed at 30.300 and 29.890 — 0.41px
- * apart. They were then matched at 37.5, and the left has since been taken to
- * 1.25x that again. So the two are deliberately unequal now: the ink sits
- * EDGE_GAP_TOP below the top edge and EDGE_GAP_LEFT in from the left.
- *
- * FROM NOMINAL FONT METRICS, unverified in a browser. Same caveat as
- * LOCKUP_INK_SHIFT_EM in LogoWordmark: measure before trusting to the pixel.
- */
-const EDGE_GAP_TOP = 37.5;
-const EDGE_GAP_LEFT = 37.5 * 1.25; // 46.875
-const INK_INSET_TOP = 4.3;
-const INK_INSET_LEFT = -0.11;
+// The header, its edge gaps and the lockup that sits in it all moved to
+// components/BarePageHeader, shared with /settings and the legal pages.
 
 export default function SignupPage() {
   const router = useRouter();
@@ -110,6 +85,10 @@ export default function SignupPage() {
   // Continue was pressed with the field empty. Shown by swapping the label's
   // asterisk for "(required)", never as a separate line of text.
   const [missing, setMissing] = useState(false);
+  // The age gate, and the whole of it on this side. Unticked is not an error
+  // until Continue is pressed — see `ageMissing`.
+  const [ageOk, setAgeOk] = useState(false);
+  const [ageMissing, setAgeMissing] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   async function finish(code: string) {
@@ -118,14 +97,15 @@ export default function SignupPage() {
     try {
       const res = await api("/users/auth/google", {
         method: "POST",
-        body: JSON.stringify({ code }),
+        body: JSON.stringify({ code, ageConfirmed: ageOk }),
       });
       setToken(res.token);
       localStorage.setItem("userId", res.userId);
       localStorage.setItem("displayName", res.displayName ?? "");
-      // The server decides whether onboarding is owed, so the rule lives in one
-      // place rather than being re-derived from the fields on the client.
-      router.push(res.needsOnboarding ? "/onboarding" : "/home");
+      // Straight in. There is nothing left to ask: the name comes from Google,
+      // and the display name, tag and colour are all derived — per league by
+      // backend/src/services/leagueIdentity.ts, and editable in My Account.
+      router.push("/home");
     } catch (err) {
       const raw = err instanceof Error ? err.message : String(err);
       try {
@@ -188,10 +168,16 @@ export default function SignupPage() {
       // the asterisk becomes "(required)". Nothing new is added to the page,
       // so nothing below it moves.
       setMissing(true);
+      setAgeMissing(!ageOk);
       inputRef.current?.focus();
       return;
     }
     setMissing(false);
+    // Not enforced here in any meaningful sense — the server refuses to create
+    // an account without it (POST /users/auth/google). This is so the refusal
+    // happens before a trip to Google rather than after one.
+    if (!ageOk) { setAgeMissing(true); return; }
+    setAgeMissing(false);
     setError("");
     setBusy(true);
     // `hint` is Google's login_hint: it pre-selects this address in the
@@ -200,40 +186,13 @@ export default function SignupPage() {
   }
 
   return (
-    <div
-      style={{
-        flex: "1 0 auto",
-        minHeight: "100%",
-        background: "var(--surface)",
-        display: "flex",
-        flexDirection: "column",
-      }}
-    >
-      {/* Top-left, and the only thing up here. Links home rather than to /home:
-          someone who has not signed in yet has no app to go back to. */}
-      {/* display: flex so the lockup is a flex item rather than an inline one.
-          As inline-flex it sat on the header's own line box baseline, which
-          added leading above it that no padding here could account for — and
-          made the gap depend on the header's font rather than the lockup's. */}
-      <header
-        style={{
-          display: "flex",
-          padding: `${EDGE_GAP_TOP - INK_INSET_TOP}px ${EDGE_GAP_LEFT - INK_INSET_LEFT}px`,
-        }}
-      >
-        <Link
-          href="/"
-          aria-label="Wagerwolf home"
-          style={{ display: "inline-flex", alignItems: "center", color: "var(--text)" }}
-        >
-          {/* 31.5 — 150% of the original 21. `height` is the only size knob:
-              the type, the mark, the gap and the optical shift are all
-              fractions of it, so one number scales the lockup proportionally.
-              Fractional on purpose; the browser resolves the sub-pixel and
-              rounding it would break the exact 1.5x. */}
-          <LogoWordmark height={31.5} bare />
-        </Link>
-      </header>
+    <div className="bare-route">
+      {/* Already signed in? There is nothing here to do. */}
+      <SignedOutOnly />
+      {/* Shared with /settings and the legal pages, so the lockup lands on the
+          same pixel on all five. No Done here: this is an entry point, not
+          somewhere you came from. */}
+      <BarePageHeader />
 
       <main
         style={{
@@ -306,6 +265,46 @@ export default function SignupPage() {
                 }}
                 disabled={busy}
               />
+            </label>
+
+            {/* The age gate, in full. It replaced a whole second screen that
+                collected a date of birth: both are self-attested, so neither is
+                evidence, and only one of them costs a page. What is kept is the
+                record that the question was put — User.ageConfirmedAt, stamped
+                server-side. See backend/src/services/age.ts.
+
+                A real <input type="checkbox">, which globals.css hands back to
+                the platform at the bottom of the file precisely so boxes like
+                this one render as boxes. */}
+            <label
+              style={{
+                display: "flex",
+                // The label is one line, so centring the two against each other
+                // is the alignment — it was flex-start with a 3px nudge on the
+                // box, which is a guess that only holds at one font size.
+                alignItems: "center",
+                gap: 10,
+                margin: "14px 0 0",
+                fontSize: "0.95rem",
+                fontWeight: 450,
+                color: ageMissing ? "var(--loss)" : "var(--text-2)",
+                cursor: "pointer",
+              }}
+            >
+              <input
+                type="checkbox"
+                className="auth-check"
+                checked={ageOk}
+                disabled={busy}
+                aria-invalid={ageMissing || undefined}
+                onChange={e => {
+                  setAgeOk(e.target.checked);
+                  // Clear the moment they comply, rather than leaving the line
+                  // red while they are doing what it asked.
+                  if (e.target.checked) setAgeMissing(false);
+                }}
+              />
+              <span>I am 18 years of age or older</span>
             </label>
 
             {error && (

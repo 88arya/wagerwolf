@@ -6,8 +6,10 @@ import { eq, or } from "drizzle-orm";
 import { users } from "../db/schema";
 import { requireAuth } from "../middleware/auth";
 import { authLimiter } from "../middleware/rateLimit";
-import { nextSeasonYear, seasonsPlayed } from "../services/experience";
-import { checkDateOfBirth } from "../services/age";
+import { nextSeasonYear, yearsSinceJoin } from "../services/experience";
+import { MIN_AGE } from "../services/age";
+import { sanitizeDisplayName, validateDisplayName, validatePersonName } from "../services/displayName";
+import { validateAbbreviation } from "../services/abbreviationRules";
 import { HELMET_COLOR_LIST } from "../services/helmetColor";
 import { memberships } from "../db/schema";
 import { releaseSeat } from "../services/leagueSeats";
@@ -33,7 +35,7 @@ const ME_COLUMNS = {
   firstName: users.firstName,
   lastName: users.lastName,
   timeZone: users.timeZone,
-  dateOfBirth: users.dateOfBirth,
+  ageConfirmedAt: users.ageConfirmedAt,
   defaultAbbreviation: users.defaultAbbreviation,
   defaultHelmetColor: users.defaultHelmetColor,
   deactivatedAt: users.deactivatedAt,
@@ -51,7 +53,9 @@ function mePayload(user: MeRow) {
     ...rest,
     hasGoogle: !!googleId,
     helmetPalette: HELMET_COLOR_LIST,
-    yearsExperience: seasonsPlayed(user.createdAt),
+    // Tenure, not seasons — the account page reads this as "Experience" and
+    // states it in years. See services/experience.ts for why the two differ.
+    yearsExperience: yearsSinceJoin(user.createdAt),
     nextSeasonYear: nextSeasonYear(user.createdAt),
   };
 }
@@ -69,7 +73,7 @@ router.post("/auth/google", authLimiter, async (req: any, res: any) => {
     //
     // The credential path is kept because it costs nothing and is the fallback
     // if the code flow ever needs backing out.
-    const { credential, code } = req.body;
+    const { credential, code, ageConfirmed } = req.body;
     if (!credential && !code) {
       res.status(400).json({ error: "Google credential or code required" });
       return;
@@ -121,7 +125,10 @@ router.post("/auth/google", authLimiter, async (req: any, res: any) => {
     if (!payload?.email) { res.status(400).json({ error: "Invalid Google token" }); return; }
 
     const { sub: googleId, email, name, given_name, family_name } = payload;
-    const displayName = (given_name || name || "Player").slice(0, 20);
+    // Sanitised, not validated: this name came from Google, not from a person
+    // typing, and a profile reading "Jo" or "Renée" must not fail sign-in over
+    // a display-name rule. sanitizeDisplayName falls back to "Player".
+    const displayName = sanitizeDisplayName(given_name || name);
 
     let user = await db.query.users.findFirst({
       where: or(eq(users.googleId, googleId!), eq(users.email, email!)),
@@ -140,15 +147,32 @@ router.post("/auth/google", authLimiter, async (req: any, res: any) => {
         user = updated;
       }
     } else {
+      // THE AGE GATE, enforced here rather than trusted to the checkbox.
+      //
+      // A tick in a browser is a claim the client makes about itself, and the
+      // last version of this shipped a gate that only the client enforced — so
+      // it did not enforce anything. Refusing account creation is what makes
+      // the box mean something: there is no way to exist in this system without
+      // having answered.
+      //
+      // Only on the create branch. A returning user answered when they signed
+      // up, and re-asking at every login would be asking a question we already
+      // have on record.
+      if (ageConfirmed !== true) {
+        res.status(400).json({ error: `You must confirm you are ${MIN_AGE} years of age or older` });
+        return;
+      }
       const [created] = await db.insert(users).values({
         email: email!,
         name: name || email!,
         displayName,
         googleId,
-        // Seeded from Google where it supplies them, so onboarding arrives
-        // pre-filled rather than blank. Google does not always return
-        // family_name, hence the null — which keeps the onboarding gate closed
-        // until the user confirms both.
+        // The record the gate is actually worth — see services/age.ts.
+        ageConfirmedAt: new Date(),
+        // Whatever Google supplies, and null when it does not — family_name in
+        // particular is often absent. Nothing is asked to fill the gap: the
+        // real name is only rendered in the account menu, which falls back to
+        // the display name, and no screen collects it any more.
         firstName: given_name || null,
         lastName: family_name || null,
       }).returning();
@@ -162,10 +186,6 @@ router.post("/auth/google", authLimiter, async (req: any, res: any) => {
       displayName: user!.displayName,
       firstName: user!.firstName,
       lastName: user!.lastName,
-      // The client routes to onboarding on this rather than deciding for itself.
-      // dateOfBirth counts: the age gate went in after these accounts existed,
-      // so anyone without one has not answered it and is sent to ask.
-      needsOnboarding: !user!.firstName || !user!.lastName || !user!.dateOfBirth,
     });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -189,7 +209,7 @@ router.patch("/me", requireAuth, async (req: any, res: any) => {
   try {
     const {
       displayName, firstName, lastName, yearsExperience, country, region,
-      timeZone, dateOfBirth, defaultAbbreviation, defaultHelmetColor,
+      timeZone, dateOfBirth, ageConfirmedAt, defaultAbbreviation, defaultHelmetColor,
     } = req.body;
     // Experience is tenure, so there is nothing to write. Rejected loudly
     // rather than ignored: a client that thinks it just saved a value it
@@ -202,16 +222,19 @@ router.patch("/me", requireAuth, async (req: any, res: any) => {
     // display name, and neither should have to send the other's fields.
     const patch: Record<string, string | number | null> = {};
     if (displayName !== undefined) {
-      if (!displayName?.trim()) { res.status(400).json({ error: "Display name is required" }); return; }
-      patch.displayName = displayName.trim();
+      const checked = validateDisplayName(displayName);
+      if (!checked.ok) { res.status(400).json({ error: checked.error }); return; }
+      patch.displayName = checked.value;
     }
     if (firstName !== undefined) {
-      if (!firstName?.trim()) { res.status(400).json({ error: "First name is required" }); return; }
-      patch.firstName = firstName.trim();
+      const checked = validatePersonName(firstName, "First name");
+      if (!checked.ok) { res.status(400).json({ error: checked.error }); return; }
+      patch.firstName = checked.value;
     }
     if (lastName !== undefined) {
-      if (!lastName?.trim()) { res.status(400).json({ error: "Last name is required" }); return; }
-      patch.lastName = lastName.trim();
+      const checked = validatePersonName(lastName, "Last name");
+      if (!checked.ok) { res.status(400).json({ error: checked.error }); return; }
+      patch.lastName = checked.value;
     }
     // Defaults for per-league identity. Both clearable — null means "generate
     // one", which is what happened for every join before these existed.
@@ -219,11 +242,9 @@ router.patch("/me", requireAuth, async (req: any, res: any) => {
       if (!defaultAbbreviation) {
         patch.defaultAbbreviation = null;
       } else {
-        const a = String(defaultAbbreviation).trim().toUpperCase();
-        if (!/^[A-Z]{2,3}$/.test(a)) {
-          res.status(400).json({ error: "Abbreviation must be 2 or 3 letters" }); return;
-        }
-        patch.defaultAbbreviation = a;
+        const checked = validateAbbreviation(defaultAbbreviation);
+        if (!checked.ok) { res.status(400).json({ error: checked.error }); return; }
+        patch.defaultAbbreviation = checked.value;
       }
     }
     if (defaultHelmetColor !== undefined) {
@@ -240,19 +261,11 @@ router.patch("/me", requireAuth, async (req: any, res: any) => {
         patch.defaultHelmetColor = c;
       }
     }
-    // Age gate. Write-once: unlike country and region this is not a preference
-    // that changes, and leaving it editable would turn the one field the gate
-    // rests on into something a user can walk back the day after clearing it.
-    // Not clearable either — there is no `null` branch here on purpose.
-    if (dateOfBirth !== undefined) {
-      const [existing] = await db.select({ dateOfBirth: users.dateOfBirth })
-        .from(users).where(eq(users.id, req.userId)).limit(1);
-      if (existing?.dateOfBirth) {
-        res.status(400).json({ error: "Date of birth can't be changed. Contact support if it's wrong." }); return;
-      }
-      const check = checkDateOfBirth(dateOfBirth);
-      if (!check.ok) { res.status(400).json({ error: check.error }); return; }
-      patch.dateOfBirth = check.value;
+    // The age confirmation is not writable. It is stamped once when the account
+    // is created and there is no screen that can revisit it — rejected loudly
+    // rather than ignored, on the same reasoning as yearsExperience below.
+    if (dateOfBirth !== undefined || ageConfirmedAt !== undefined) {
+      res.status(400).json({ error: "Age confirmation is recorded at sign-up and can't be changed" }); return;
     }
     // Country and region are gone. They were profile-only once the league
     // directory was deleted, and the only thing the app ever wanted location
