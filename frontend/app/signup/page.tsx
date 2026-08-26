@@ -85,10 +85,6 @@ export default function SignupPage() {
   // Continue was pressed with the field empty. Shown by swapping the label's
   // asterisk for "(required)", never as a separate line of text.
   const [missing, setMissing] = useState(false);
-  // The age gate, and the whole of it on this side. Unticked is not an error
-  // until Continue is pressed — see `ageMissing`.
-  const [ageOk, setAgeOk] = useState(false);
-  const [ageMissing, setAgeMissing] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   async function finish(code: string) {
@@ -97,7 +93,23 @@ export default function SignupPage() {
     try {
       const res = await api("/users/auth/google", {
         method: "POST",
-        body: JSON.stringify({ code, ageConfirmed: ageOk }),
+        // HARDCODED true, and load-bearing: POST /users/auth/google 400s
+        // unless the request carries ageConfirmed: true, so removing this would
+        // break sign-up outright.
+        //
+        // It is honest rather than a bypass. The 18+ requirement moved from a
+        // tickbox on this screen into the Terms — /terms opens with "By
+        // creating an account you agree to these terms. You must be 18 or older
+        // to use it." — and the footnote at the bottom of this page binds the
+        // user to those Terms on Continue. So the flag still attests to
+        // something the user agreed to; it is agreement by reference instead of
+        // by tick. User.ageConfirmedAt is stamped exactly as before.
+        //
+        // THE DEPENDENCY THIS CREATES: that sentence in /terms is now the only
+        // place the age requirement exists. Deleting or softening it silently
+        // removes the age gate from the whole product, and this line will go on
+        // sending `true` regardless. Keep them together.
+        body: JSON.stringify({ code, ageConfirmed: true }),
       });
       setToken(res.token);
       localStorage.setItem("userId", res.userId);
@@ -168,16 +180,13 @@ export default function SignupPage() {
       // the asterisk becomes "(required)". Nothing new is added to the page,
       // so nothing below it moves.
       setMissing(true);
-      setAgeMissing(!ageOk);
       inputRef.current?.focus();
       return;
     }
     setMissing(false);
-    // Not enforced here in any meaningful sense — the server refuses to create
-    // an account without it (POST /users/auth/google). This is so the refusal
-    // happens before a trip to Google rather than after one.
-    if (!ageOk) { setAgeMissing(true); return; }
-    setAgeMissing(false);
+    // The email field is the only thing left to validate. The 18+ and terms
+    // tickboxes that used to be checked here are gone — consent is now implied
+    // by pressing Continue, stated in the footnote at the bottom of the page.
     setError("");
     setBusy(true);
     // `hint` is Google's login_hint: it pre-selects this address in the
@@ -267,45 +276,22 @@ export default function SignupPage() {
               />
             </label>
 
-            {/* The age gate, in full. It replaced a whole second screen that
-                collected a date of birth: both are self-attested, so neither is
-                evidence, and only one of them costs a page. What is kept is the
-                record that the question was put — User.ageConfirmedAt, stamped
-                server-side. See backend/src/services/age.ts.
+            {/* NO TICKBOXES. There were two here — an 18+ gate and a terms
+                acceptance — and both were deliberately removed in favour of the
+                single footnote at the bottom of this page.
 
-                A real <input type="checkbox">, which globals.css hands back to
-                the platform at the bottom of the file precisely so boxes like
-                this one render as boxes. */}
-            <label
-              style={{
-                display: "flex",
-                // The label is one line, so centring the two against each other
-                // is the alignment — it was flex-start with a 3px nudge on the
-                // box, which is a guess that only holds at one font size.
-                alignItems: "center",
-                gap: 10,
-                margin: "14px 0 0",
-                fontSize: "0.95rem",
-                fontWeight: 450,
-                color: ageMissing ? "var(--loss)" : "var(--text-2)",
-                cursor: "pointer",
-              }}
-            >
-              <input
-                type="checkbox"
-                className="auth-check"
-                checked={ageOk}
-                disabled={busy}
-                aria-invalid={ageMissing || undefined}
-                onChange={e => {
-                  setAgeOk(e.target.checked);
-                  // Clear the moment they comply, rather than leaving the line
-                  // red while they are doing what it asked.
-                  if (e.target.checked) setAgeMissing(false);
-                }}
-              />
-              <span>I am 18 years of age or older</span>
-            </label>
+                The consent model changed with them: it is implied by pressing
+                Continue rather than given by ticking a box, and the 18+
+                requirement lives in the Terms ("You must be 18 or older to use
+                it", first paragraph of /terms) rather than on this screen. The
+                footnote binds the user to those Terms, so the requirement is
+                incorporated by reference — which is how nearly every sign-up
+                does it, and it keeps this screen down to a field and a button.
+
+                Do not add a tickbox back without deciding what it is FOR. The
+                one that was here duplicated a line the Terms already carried,
+                and a second place to state the same rule is a second place for
+                it to drift. */}
 
             {error && (
               <p className="error" style={{ margin: "10px 0 0" }}>
@@ -372,6 +358,53 @@ export default function SignupPage() {
           </p>
         </div>
       </main>
+
+      {/* The consent line, and the ONLY place consent is expressed now that the
+          two tickboxes are gone.
+
+          At the foot of the page rather than under the button: .bare-route is a
+          column flex and <main> takes flex: 1, so this sits on the bottom edge
+          of the viewport as page small print, which is the convention for it
+          and keeps the form itself down to a field and a button.
+
+          The links open in a new tab. Same reason as before: the form holds a
+          typed email, and sending someone off to read the Terms should not cost
+          them what they have already entered.
+
+          Not inside a <label> any more, so the stopPropagation the old links
+          needed is gone with it — there is no checkbox left for a click to
+          toggle. */}
+      <p
+        style={{
+          margin: 0,
+          padding: "0 20px 28px",
+          textAlign: "center",
+          fontSize: "0.8rem",
+          fontWeight: 450,
+          lineHeight: 1.5,
+          color: "var(--text-3)",
+        }}
+      >
+        By continuing, you agree to our{" "}
+        <a
+          href="/privacy"
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{ color: "var(--text-2)", textDecoration: "underline" }}
+        >
+          Privacy Policy
+        </a>{" "}
+        and{" "}
+        <a
+          href="/terms"
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{ color: "var(--text-2)", textDecoration: "underline" }}
+        >
+          Terms of Service
+        </a>
+        .
+      </p>
     </div>
   );
 }
