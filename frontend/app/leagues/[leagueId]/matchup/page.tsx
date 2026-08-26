@@ -148,7 +148,17 @@ function BalanceBreakdown({ side, weeklyAllowance, balanceEdge, align }: { side:
     <Stat key="vsopp" label="vs Opponent" value={fmtMoney(vsOpponent, { sign: true })} color={vsOpponent >= 0 ? "var(--win)" : "var(--loss)"} align={align} />,
   ];
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px 18px" }}>
+    // The right side swaps its pairs so the two breakdowns MIRROR about the
+    // centre of the card: read outward-in, both sides run available, weekly /
+    // net, vs-opponent, so each row holds the same two stats on both sides.
+    //
+    // That symmetry depends on there being two columns. Once .rg-2 collapses to
+    // one on a phone the swap stops mirroring anything and simply puts the
+    // rows out of order — "Available Balance" on the left sitting opposite
+    // "Weekly Allowance" on the right, which in a side-by-side comparison is
+    // actively misleading. .h2h-mirror undoes the swap at exactly the width
+    // where the second column goes away.
+    <div className={align === "right" ? "rg-2 h2h-mirror" : "rg-2"} style={{ display: "grid", gap: "10px 18px" }}>
       {align === "right" ? [stats[1], stats[0], stats[3], stats[2]] : stats}
     </div>
   );
@@ -234,23 +244,31 @@ export default function MatchupPage({ params }: PageProps<"/leagues/[leagueId]/m
         <>
           {/* Matchup header */}
           <div className="card" style={{ padding: 0, overflow: "hidden", marginBottom: 20 }}>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", padding: "18px 24px" }}>
+            <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)", padding: "18px 24px" }}>
               <TeamHeader side={me} align="left" />
               <TeamHeader side={opponent} align="right" />
             </div>
             <div style={{ borderTop: "1px solid var(--border)" }} />
-            <div style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr", alignItems: "center", padding: "16px 24px", gap: 12 }}>
+            {/* me | projected | opponent.
+                The middle track is `auto`, so it takes its CONTENT width — two
+                1.9rem money figures plus a VS, about 250px. On a phone that
+                leaves ~65px for each breakdown either side, and their labels
+                ("AVAILABLE BALANCE", "WEEKLY ALLOWANCE") both overflow their
+                track and print underneath the big numbers. .h2h-grid moves the
+                projected pair onto its own full-width row below 760px and puts
+                the two breakdowns side by side under it. */}
+            <div className="h2h-grid" style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto minmax(0, 1fr)", alignItems: "center", padding: "16px 24px", gap: 12 }}>
               <BalanceBreakdown side={me} weeklyAllowance={data.weeklyAllowance} balanceEdge={me.balance - opponent.balance} align="left" />
 
               <div style={{ display: "flex", alignItems: "center", gap: 20 }}>
                 <div style={{ textAlign: "center" }}>
                   <div style={{ fontSize: "0.58rem", fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--text-3)", marginBottom: 2 }}>Projected</div>
-                  <div style={{ fontSize: "1.9rem", fontWeight: 900, letterSpacing: "-0.02em", fontVariantNumeric: "tabular-nums" }}>{fmtMoney(me.projected)}</div>
+                  <div className="h2h-num" style={{ fontSize: "1.9rem", fontWeight: 900, letterSpacing: "-0.02em", fontVariantNumeric: "tabular-nums" }}>{fmtMoney(me.projected)}</div>
                 </div>
                 <div style={{ color: "var(--text-3)", fontSize: "0.75rem", fontWeight: 700 }}>VS</div>
                 <div style={{ textAlign: "center" }}>
                   <div style={{ fontSize: "0.58rem", fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--text-3)", marginBottom: 2 }}>Projected</div>
-                  <div style={{ fontSize: "1.9rem", fontWeight: 900, letterSpacing: "-0.02em", fontVariantNumeric: "tabular-nums" }}>{fmtMoney(opponent.projected)}</div>
+                  <div className="h2h-num" style={{ fontSize: "1.9rem", fontWeight: 900, letterSpacing: "-0.02em", fontVariantNumeric: "tabular-nums" }}>{fmtMoney(opponent.projected)}</div>
                 </div>
               </div>
 
@@ -271,7 +289,7 @@ export default function MatchupPage({ params }: PageProps<"/leagues/[leagueId]/m
           </div>
 
           {/* Two-column bet lists */}
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20, alignItems: "start" }}>
+          <div className="rg-2" style={{ display: "grid", gap: 20, alignItems: "start" }}>
             {([["me", me, "Your Bets"], ["opp", opponent, "Opponent's Bets"]] as const).map(([key, side, title]) => (
               <div key={key}>
                 <div style={{ fontSize: "0.7rem", fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--text-3)", marginBottom: 10 }}>

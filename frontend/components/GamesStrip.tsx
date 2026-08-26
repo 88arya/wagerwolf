@@ -700,6 +700,7 @@ export default function GamesStrip({ leagueId, interactive = true }: { leagueId:
         aria-checked={autoScroll}
         aria-label="Auto-scroll games"
         title={autoScroll ? "Auto-scroll on — click to stop and drag manually" : "Auto-scroll off — drag the strip to scroll"}
+        className="tap-target"
         onClick={() => setAutoScroll(!autoScroll)}
         style={{
           flexShrink: 0, position: "relative", padding: 0,
@@ -1101,9 +1102,22 @@ export default function GamesStrip({ leagueId, interactive = true }: { leagueId:
           No border-top: it is attached to the strip, so a line between them
           would read as two objects rather than a tab on one. The other three
           sides carry the same hairline the cards use. */}
-      <div style={{ display: "flex", justifyContent: "flex-end" }}>
+      {/* height: 0, so this row occupies NO vertical space and the strip's
+          bottom edge meets the nav directly. The tab overflows downward and
+          paints over the nav instead of pushing it away — it used to reserve
+          its own 16px, which left a band of page ground between the chrome and
+          the nav and stopped the nav reaching the utility bar.
+
+          No z-index needed: .app-chrome is z-index 300 and .nav is 200, and
+          they are siblings in .app-scroll, so everything in the chrome already
+          paints above the nav.
+
+          alignItems: flex-start because a zero-height flex container would
+          otherwise stretch the tab to nothing. */}
+      <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "flex-start", height: 0 }}>
         <button
           type="button"
+          className="tap-target"
           onClick={toggleCollapsed}
           aria-expanded={!collapsed}
           aria-label={collapsed ? "Show games" : "Hide games"}
@@ -1116,27 +1130,45 @@ export default function GamesStrip({ leagueId, interactive = true }: { leagueId:
             height: 16,
             padding: 0,
             marginRight: 100,
-            background: CARD_GLASS_BG,
+            // COLLAPSED, the strip has no height, so this tab hangs directly
+            // off the utility bar. It takes the bar's own fill there and reads
+            // as a tab of the bar rather than a pale chip stranded on the nav
+            // below. Expanded, it is attached to the strip and keeps the same
+            // glass as the cards.
+            //
+            // --header-bg, NOT --bar-bg. Those two used to be one token and are
+            // now deliberately different: the utility bar is true black
+            // (#000000) and only SiteFooter is #272731. Matching the wrong one
+            // leaves this tab a visibly lighter grey block on a black bar,
+            // which is the opposite of blending into it. TopBar reads the same
+            // token — see BAR_BG there.
+            background: collapsed ? "var(--header-bg)" : CARD_GLASS_BG,
             // Its own backdrop-filter, because it is no longer inside the
             // strip's blurred pane. Scoped to the 34x16 tab, so it cannot leak
-            // a band across the window the way the shared pane did.
-            backdropFilter: CARD_GLASS_FILTER,
-            WebkitBackdropFilter: CARD_GLASS_FILTER,
-            border: CARD_BORDER,
+            // a band across the window the way the shared pane did. Pointless
+            // behind an opaque fill, so it is dropped while collapsed.
+            backdropFilter: collapsed ? "none" : CARD_GLASS_FILTER,
+            WebkitBackdropFilter: collapsed ? "none" : CARD_GLASS_FILTER,
+            // Matching the fill rather than going borderless keeps the tab the
+            // same 34x16 in both states — a removed border would resize it.
+            border: collapsed ? "1px solid var(--header-bg)" : CARD_BORDER,
             borderTop: "none",
             borderRadius: 0,
             boxShadow: "none",
-            color: "var(--text-2)",
+            color: collapsed ? "rgba(255, 255, 255, 0.72)" : "var(--text-2)",
             cursor: "pointer",
             transition: "background 0.12s, color 0.12s",
           }}
+          // Collapsed, only the chevron brightens. Lightening the fill would
+          // mean inventing a second dark value beside --bar-bg, and the tab
+          // would stop matching the bar it is pretending to be part of.
           onMouseEnter={e => {
-            e.currentTarget.style.background = CARD_GLASS_BG_HOVER;
-            e.currentTarget.style.color = "var(--text)";
+            if (!collapsed) e.currentTarget.style.background = CARD_GLASS_BG_HOVER;
+            e.currentTarget.style.color = collapsed ? "#FFFFFF" : "var(--text)";
           }}
           onMouseLeave={e => {
-            e.currentTarget.style.background = CARD_GLASS_BG;
-            e.currentTarget.style.color = "var(--text-2)";
+            if (!collapsed) e.currentTarget.style.background = CARD_GLASS_BG;
+            e.currentTarget.style.color = collapsed ? "rgba(255, 255, 255, 0.72)" : "var(--text-2)";
           }}
         >
           {/* One path, flipped. Drawing two chevrons would be two things to keep

@@ -85,7 +85,7 @@ export default function MemberProfilePage({ params }: PageProps<"/leagues/[leagu
       <div style={{ width: "100%", maxWidth: 860 }}>
 
         {/* Stat strip */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 8, marginBottom: 16 }}>
+        <div className="rg-6" style={{ display: "grid", gap: 8, marginBottom: 16 }}>
           {[
             { label: "Balance", value: fmtMoney(stats.balance), color: "var(--text)" },
             { label: "Record", value: `${stats.wins}-${stats.losses}-${stats.ties}`, color: "var(--text)" },
@@ -101,7 +101,7 @@ export default function MemberProfilePage({ params }: PageProps<"/leagues/[leagu
           ))}
         </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, alignItems: "start" }}>
+        <div className="rg-2" style={{ display: "grid", gap: 12, alignItems: "start" }}>
 
           {/* Left: hit rates */}
           <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>

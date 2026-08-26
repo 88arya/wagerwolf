@@ -579,7 +579,7 @@ export default function LeaguesRail() {
                   players are assigned now, so this is the only axis left. */}
               <div style={{ paddingTop: 4, borderTop: "1px solid var(--border)" }}>
                 <div className="mx-section-title" style={{ marginTop: 14, marginBottom: 10 }}>Level</div>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                <div className="rg-2" style={{ display: "grid", gap: 8 }}>
                   {LEAGUE_LEVELS.map(l => {
                     const on = form.skillLevel === l.value;
                     return (
@@ -635,7 +635,7 @@ export default function LeaguesRail() {
                     </div>
                   </div>
 
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                  <div className="rg-2" style={{ display: "grid", gap: 10 }}>
                     <div>
                       <label className="mx-label" htmlFor="lg-maxbets">Max bets / week</label>
                       <input id="lg-maxbets" className="mx-field" type="number" min="1" placeholder="No limit" value={form.maxBetsPerWeek} onChange={e => setForm({ ...form, maxBetsPerWeek: e.target.value })} />

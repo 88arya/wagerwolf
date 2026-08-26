@@ -250,6 +250,7 @@ export default function SettingsPage() {
       {/* Rail then content. `align-items: start` so the rail does not stretch to
           the height of the tallest tab and hang a rule into empty space. */}
       <div
+        className="account-grid"
         style={{
           maxWidth: 940, margin: "0 auto", width: "100%",
           display: "grid", gridTemplateColumns: "224px minmax(0, 1fr)",
@@ -257,7 +258,7 @@ export default function SettingsPage() {
         }}
       >
         {/* ── Rail ─────────────────────────────────────────────────── */}
-        <nav style={{ position: "sticky", top: 0 }} aria-label="Account sections">
+        <nav className="account-rail" style={{ position: "sticky", top: 0 }} aria-label="Account sections">
           {/* Sized and spaced to sit on the same line as the pane title opposite —
               .mx-title is 1.5rem against .mx-pane-title's 1.15rem, so matching
               the font-size is what actually aligns them, not equal margins. */}

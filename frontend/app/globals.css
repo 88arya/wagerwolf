@@ -37,7 +37,31 @@
   --accent-glow:  rgba(43, 93, 227, 0.18);
 
   /* ── Header ── */
-  --navy:         #FFFFFF;
+  /* The league nav band — both rows of components/LeagueNav, and its two
+     hairlines.
+
+     WHITE, like the games strip above it and the page below. A coloured band
+     was tried and reverted: #F4F2F0 (warm, wrong against a cool ramp and a blue
+     accent) and then #EEF2FC (a faint accent-tinted wash). Kept here because
+     the reasoning still holds if it is ever revisited — #EEF2FC was the better
+     of the two, and --surface-2 is the neutral equivalent.
+
+     White means the nav is bounded by its RULES rather than by its fill, which
+     is what --nav-rule is for and why both hairlines matter again.
+
+     The tokens are kept even though both now resolve to what was hardcoded
+     before: the two rows and the two rules have to stay in step, and this is
+     the one place to change them.
+
+     RENAMED FROM --navy, which was left over from a dark navy nav and had been
+     pointing at pure white for some time. Do not reintroduce the old name. */
+  --nav-bg:       #FFFFFF;
+  /* The two 1px rules bracketing the sub-nav (drawn in LeagueNav, inset to
+     --rail). --border, the app's standard hairline, which is the right weight
+     against a white nav — it was only darkened to --border-2 while the band was
+     tinted and a light rule vanished into it. --border-2 (#CBD5E1) is a
+     one-word change here if the crisper edge is wanted back. */
+  --nav-rule:     var(--border);
   --navy-2:       #F5F7FA;
 
   /* ── Chrome ── */
@@ -208,7 +232,7 @@ button.dark:hover { opacity: 0.86; background: var(--text); border-color: var(--
 
 /* ── Top Nav ── */
 .nav {
-  background: var(--navy);
+  background: var(--nav-bg);
   padding: 0 var(--rail);
   display: flex;
   align-items: center;
@@ -708,7 +732,9 @@ h2 {
 
 /* ── Balance display ── */
 .balance-big {
-  font-size: 2.6rem;
+  /* clamp, with the old fixed value as the MAX, so every viewport wide enough
+     to have been fine before is pixel-identical and only narrow ones change. */
+  font-size: clamp(1.9rem, 5vw, 2.6rem);
   font-weight: 900;
   letter-spacing: -0.04em;
   line-height: 1;
@@ -718,7 +744,7 @@ h2 {
 
 /* ── Prop line ── */
 .prop-line {
-  font-size: 2.4rem;
+  font-size: clamp(1.75rem, 4.6vw, 2.4rem);
   font-weight: 900;
   letter-spacing: -0.04em;
   color: var(--text);
@@ -775,7 +801,10 @@ hr { border: none; border-top: 1px solid var(--border); margin: 14px 0; }
 
 /* ── Invite code display ── */
 .invite-code {
-  font-size: 1.8rem;
+  /* The 0.3em tracking below makes this the widest short string in the app —
+     an 8-character code sets ~2.4x its own font-size in width, so it overflows
+     a phone long before the number itself looks large. */
+  font-size: clamp(1.05rem, 4.4vw, 1.8rem);
   font-weight: 900;
   letter-spacing: 0.3em;
   color: var(--accent);
@@ -2057,4 +2086,404 @@ input[type="checkbox"].auth-check:focus-visible {
 input[type="checkbox"].auth-check[aria-invalid="true"],
 input[type="checkbox"].auth-check[aria-invalid="true"]:focus {
   border-color: var(--loss);
+}
+
+
+/* ══════════════════════════════════════════════════════════════════════════
+   RESPONSIVE SHELLS
+
+   The app was built against a wide monitor, so the page shells below were
+   fixed multi-column grids that had no narrow state at all. This block gives
+   each one a collapse, and it is the ONLY place those collapses live.
+
+   WHY THESE ARE CLASSES AND NOT INLINE STYLES. Layout in this codebase is
+   overwhelmingly inline `style={{}}`, which is fine until it has to change at
+   a breakpoint: a style attribute cannot hold a media query. Three ways out,
+   and the choice differs per case:
+
+     1. INTRINSIC CSS, which works inline and needs no breakpoint at all —
+        `repeat(auto-fit, minmax(min(100%, 220px), 1fr))`, `flex-wrap`,
+        `clamp()`. Preferred wherever it reaches, because it degrades on
+        content width rather than guessing at device width, and it needs no
+        entry here. Most of the app's `1fr 1fr` grids were converted this way
+        and are NOT in this block.
+     2. A CLASS WITH MEDIA QUERIES — this block. Needed only where the shell
+        must genuinely restructure rather than reflow.
+     3. A useMediaQuery hook driving inline styles — NOT USED, deliberately.
+        It puts layout in JS, and reading window width during render is the
+        SSR/hydration mismatch this codebase already warns about twice (see
+        the strip's autoScrollPref and AppChrome's strip_league_id).
+
+   ON `!important`. Several rules below carry it, and it is load-bearing rather
+   than lazy: the children of these grids set `gridColumn`/`gridRow`/`top`
+   inline, and an inline style beats any selector a stylesheet can write. There
+   is no specificity that wins — only `!important` does. Removing it silently
+   restores the desktop placement at phone width, which looks like the collapse
+   "not working" rather than like a specificity bug, so it is worth the note.
+
+   BREAKPOINTS. Reused from what the file already used rather than invented:
+   900px and 560px come from .site-footer-cols, 620px from .mx-row. Only
+   1100px is new, and only because the 3-column league shell needs 810px of
+   fixed track plus gaps before its middle column starts being crushed.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* ── League home: 270 | 1fr | 270 ────────────────────────────────────────────
+   Collapses straight to one column rather than passing through a 2-column
+   step. The children carry explicit `gridColumn`/`gridRow` inline, so an
+   intermediate layout would mean re-placing all nine of them by hand at a
+   second breakpoint; letting them auto-flow in DOM order gives the reading
+   order the page was already written in — your card, then the matchup, then
+   the banner, then rankings, then standings. */
+/* TABLET (901-1100): drop to TWO columns rather than one. The outer columns are
+   270px each, so three of them plus gaps need ~1100px before the middle is
+   being crushed — but one full-width column on a landscape tablet is the
+   opposite mistake, a 1024px screen showing a single stack of stretched cards.
+   Two keeps the standings rail, which is the column most worth keeping: it is
+   the one people glance at rather than read, so it earns its width.
+
+   .lg-main / .lg-rail exist for exactly this step. The children set
+   gridColumn 1, 2 and 3 inline, and collapsing 3 tracks into 2 means MERGING
+   two of them — which no amount of `auto` can express, because auto-placement
+   cannot know that column 2 belongs with column 1 and column 3 does not.
+
+   grid-template-rows is cleared: the inline value is `auto auto 1fr`, and that
+   1fr row would absorb all leftover height once the main column holds five
+   stacked items instead of three. */
+@media (min-width: 901px) and (max-width: 1100px) {
+  .league-grid {
+    grid-template-columns: minmax(0, 1fr) 270px !important;
+    grid-template-rows: none !important;
+  }
+  .league-grid > .lg-main { grid-column: 1 !important; grid-row: auto !important; }
+  .league-grid > .lg-rail { grid-column: 2 !important; grid-row: 1 / span 5 !important; }
+}
+
+/* PHONE / SMALL TABLET: one column, everything in DOM order — your card, the
+   matchup, the banner, activity, rankings, standings. */
+@media (max-width: 900px) {
+  .league-grid { grid-template-columns: minmax(0, 1fr) !important; grid-template-rows: none !important; }
+  .league-grid > * { grid-column: auto !important; grid-row: auto !important; }
+}
+
+/* ── /home: content | 270px leagues rail ──────────────────────────────────── */
+@media (max-width: 900px) {
+  .home-grid { grid-template-columns: minmax(0, 1fr) !important; }
+  .home-grid > * { grid-column: auto !important; grid-row: auto !important; }
+}
+
+/* ── My Account: 224px tab rail | content ─────────────────────────────────────
+   760px, not 900: this shell is two tracks rather than three and its rail is
+   224px, so it stays comfortable well below where the league grid gives up.
+   The rail becomes a horizontal row of tabs above the content — .mx-tab is a
+   full-width filled rectangle by design (see the .mx-* notes), so left as a
+   column it would eat a third of a phone screen. */
+@media (max-width: 760px) {
+  .account-grid { grid-template-columns: minmax(0, 1fr) !important; }
+  /* NOT display:flex on the rail itself. It holds the "Account settings"
+     heading AND the tab list, so making the rail a row lays the heading
+     alongside the tabs — the h1 to the left with the tabs stacked beside it.
+     The rail stays a block; it is the tab list INSIDE it that turns into a
+     row. */
+  .account-rail {
+    /* sticky is right for a tall left column and wrong for a horizontal strip:
+       stuck, it rides up against the sticky .app-chrome and lands on the games
+       strip. */
+    position: static !important;
+    border-right: none !important;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 10px;
+    margin-bottom: 6px;
+  }
+  .account-rail > div {
+    flex-direction: row !important;
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+  /* .mx-tab is a full-width filled rectangle by design (see the .mx-* notes);
+     in a row it has to size to its own label instead. */
+  .account-rail .mx-tab { width: auto; flex: 1 1 auto; justify-content: center; }
+}
+
+/* ── Bet slip: fixed 368px right rail → bottom sheet ──────────────────────────
+   The worst offender before this block existed. At 368px fixed against the
+   right rail it covered essentially the whole screen on a phone, permanently,
+   with no way to dismiss it — and CLAUDE.md already recorded it overlapping
+   the .page column at mid widths on desktop.
+
+   Below 900 it becomes a bottom sheet: full width, anchored to the bottom
+   edge, capped at 60% of the viewport so the board stays visible above it and
+   you can see what you are betting on while the slip is open. `top: auto` is
+   what releases it from the measured `contentTop` the desktop version pins
+   itself to — that value is inline, hence the !important. */
+@media (max-width: 900px) {
+  .betslip-shell {
+    top: auto !important;
+    bottom: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    width: 100% !important;
+    max-width: none !important;
+    max-height: 60vh;
+  }
+}
+
+/* ── Games strip ─────────────────────────────────────────────────────────────
+   Full-bleed by design (see CLAUDE.md) — this does not change that, it only
+   stops the cards being wider than a phone. */
+@media (max-width: 560px) {
+  .strip-card { min-width: 0; }
+}
+
+/* ── Fixed-count grids that collapse ─────────────────────────────────────────
+   For grids whose desktop column count is DESIGNED rather than incidental: a
+   head-to-head pair, a six-across stat strip, a row of three numeric fields.
+
+   NOT `repeat(auto-fit, minmax(...))`, which is the right tool one shelf over
+   and the wrong one here. auto-fit lays as many tracks as will fit, so it is
+   governed by the container: a designed 2-up with a 260px floor silently
+   becomes 3-up in an 860px pane and 4-up in a full-width one. That is a
+   desktop redesign arriving as a side effect of a mobile fix. auto-fit stays
+   for lists that were already variable-column (the bet-card grids), where
+   "as many as fit" IS the intent.
+
+   These instead pin the count and step it down at widths measured against the
+   panes they actually sit in. minmax(0, 1fr) rather than 1fr throughout: a
+   grid track's default floor is min-content, so one long unbroken string
+   (a display name, a long odds label) otherwise pushes the track wider than
+   its share and the row overflows.
+
+   !important because every call site sets grid-template-columns inline. */
+.rg-2 { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+.rg-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.rg-6 { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+
+@media (max-width: 1100px) {
+  .rg-6 { grid-template-columns: repeat(3, minmax(0, 1fr)) !important; }
+}
+@media (max-width: 760px) {
+  .rg-2 { grid-template-columns: minmax(0, 1fr) !important; }
+  .rg-3 { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) !important; }
+}
+@media (max-width: 560px) {
+  .rg-3 { grid-template-columns: minmax(0, 1fr) !important; }
+  .rg-6 { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) !important; }
+}
+
+/* A child that spans MORE tracks than the collapsed grid still has defeats the
+   collapse: grid cannot honour `grid-column: span 2` against a one-track
+   template, so it invents an implicit second column and the row silently goes
+   back to two — unevenly, since the implicit track is auto-sized rather than
+   1fr. League Settings hit exactly this: "Max Parlay Legs" spans 2 beneath two
+   half-width fields, and at phone width the pair sat in a lopsided 100px /
+   197px grid instead of stacking.
+
+   Resetting every child to `auto` is right for all three: once a grid is one
+   column wide, spanning is meaningless, and normal flow is what is wanted. It
+   is scoped to the collapsed states only, so the designed spans still apply at
+   full width. */
+@media (max-width: 760px) {
+  .rg-2 > *, .rg-3 > * { grid-column: auto !important; }
+}
+@media (max-width: 560px) {
+  .rg-6 > * { grid-column: auto !important; }
+}
+
+/* ── Bet page: alt-line odds boxes ───────────────────────────────────────────
+   Consumed by PR_BOX_W in the bet page. Three of these plus two scroll arrows
+   sit in a flexShrink: 0 row beside the player's name, so their width is what
+   decides whether that row fits a phone: at the desktop 110 it is ~354px of
+   unshrinkable content, which overflows a 390px screen before the name gets a
+   pixel. Stepping the box down keeps all three rungs of the ladder visible —
+   preferable to showing fewer, which would hide betting options rather than
+   shrink them. */
+:root { --pr-box-w: 110px; }
+@media (max-width: 900px) { :root { --pr-box-w: 92px; } }
+@media (max-width: 620px) { :root { --pr-box-w: 76px; } }
+@media (max-width: 480px) { :root { --pr-box-w: 64px; } }
+
+/* ── League nav, narrow ──────────────────────────────────────────────────────
+   Both rows of this nav are `flex` with `flex-shrink: 0` children and no
+   wrapping, which is correct on a wide monitor and overflows the viewport on a
+   phone — and a horizontal overflow on a fixed-position bar does not just clip,
+   it makes the whole PAGE scroll sideways.
+
+   Scrolled rather than wrapped: wrapping doubles the nav's height and pushes
+   the board down, and these are ordered tab rows where "there is more to the
+   right" is the honest thing to show.
+
+   THE SCROLLBAR IS HIDDEN, and that is load-bearing rather than cosmetic. The
+   sub-nav's active tab marks itself with a 3.5px accent underline sitting flush
+   on the row's bottom edge (see the notes in LeagueNav) — a painted horizontal
+   scrollbar lands exactly on top of it and reads as the underline being grey
+   and broken. Touch platforms overlay their scrollbars anyway, so nothing is
+   lost where this actually matters.
+
+   -webkit-overflow-scrolling for momentum on older iOS; overscroll-behavior-x
+   so swiping the tabs past their end does not trigger the browser's
+   back-navigation gesture, which on a nav row is very easy to do by accident. */
+@media (max-width: 900px) {
+  .subnav-row,
+  .nav-groups {
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  .subnav-row::-webkit-scrollbar,
+  .nav-groups::-webkit-scrollbar { display: none; }
+
+  /* The right-hand cluster (league switcher + profile) must keep its size while
+     the left scrolls, or it is the thing that collapses instead. */
+  .nav { gap: 0; }
+}
+
+/* Dropdown panels are anchored to their trigger and sized in fixed px, so near
+   a viewport edge they hang off it. Cap them to the screen. */
+@media (max-width: 560px) {
+  .navmenu-panel { max-width: calc(100vw - 24px); }
+}
+
+/* The group menu is a fixed 2 x 140px grid (MENU_ITEM_W). At 280px plus
+   padding it is wider than the usable width of a small phone once the panel is
+   capped, so the second column has nowhere to go — drop to one. !important
+   because the template is written inline from the JS constant. */
+@media (max-width: 560px) {
+  .navmenu-grid { grid-template-columns: minmax(0, 1fr) !important; }
+}
+
+/* ── League chat drawer ──────────────────────────────────────────────────────
+   Read by BOTH the drawer's width and its hidden-state translateX, which have
+   to stay equal — a mismatch parks the drawer partly on screen or leaves a gap
+   at the edge. 86vw rather than 100%: the drawer has no scrim behind it, so
+   the sliver of page beside it is the only affordance for "tap here to get
+   back", and a full-width panel would look like a navigation rather than an
+   overlay. */
+:root { --chat-w: 320px; }
+@media (max-width: 420px) { :root { --chat-w: 86vw; } }
+
+/* ── League banner meta ──────────────────────────────────────────────────────
+   Absolutely positioned top-right on desktop so it sits beside the league
+   name. At narrow widths the name wraps to two full-width lines and runs
+   straight through it, so it comes back into flow and sits under the name as a
+   wrapped row instead of a column — three short facts read better across than
+   stacked when they are no longer pinned to a corner. */
+@media (max-width: 620px) {
+  .league-banner-stats {
+    position: static !important;
+    flex-direction: row !important;
+    flex-wrap: wrap;
+    gap: 4px 16px !important;
+    padding: 0 20px 18px;
+  }
+}
+
+/* League switcher label. Uncapped it wins every fight for horizontal space in
+   the nav, because it is the only nowrap run in a flex row whose other child
+   is a scroller that can be squeezed to zero. */
+@media (max-width: 900px) {
+  .nav-league-name { display: block; max-width: 32vw; overflow: hidden; text-overflow: ellipsis; }
+  .nav-groups { min-width: 0; }
+}
+@media (max-width: 560px) { .nav-league-name { max-width: 24vw; } }
+
+/* ── Bet page: game-line market boxes (SPREAD / MONEYLINE / TOTAL) ───────────
+   Consumed by SL_BOX_W and BOX_W on the bet page. Three of these sit in a
+   flexShrink: 0 grid beside the team column, which is flex: 1 with
+   minWidth: 0 — so the boxes always win and the teams absorb every pixel of
+   shortfall. At the desktop 110 that is 330px of box on a 390px screen: the
+   card rendered with the odds intact and NO TEAM NAMES AT ALL, just a clipped
+   sliver of each logo. Which two teams you are betting on is not the part to
+   drop. */
+:root { --sl-box-w: 110px; }
+@media (max-width: 1000px) { :root { --sl-box-w: 96px; } }
+@media (max-width: 760px)  { :root { --sl-box-w: 78px; } }
+@media (max-width: 560px)  { :root { --sl-box-w: 62px; } }
+@media (max-width: 400px)  { :root { --sl-box-w: 56px; } }
+
+/* ── Matchup head-to-head header ─────────────────────────────────────────────
+   Desktop is `1fr auto 1fr`: your breakdown, the projected totals, theirs.
+   The middle track is content-sized and its content is two large money
+   figures, so it does not yield — below ~760px it eats the row and both
+   breakdowns overflow their tracks, printing their labels under the numbers.
+
+   Narrow, the projected pair goes full width on its own row and the two
+   breakdowns sit side by side beneath it. They stay SIDE BY SIDE rather than
+   stacking, because this screen exists to compare them — one above the other
+   is a list, not a matchup. */
+@media (max-width: 760px) {
+  .h2h-grid {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) !important;
+    row-gap: 18px;
+  }
+  .h2h-grid > :nth-child(2) { grid-column: 1 / -1; grid-row: 1; justify-content: center; }
+  .h2h-grid > :nth-child(1) { grid-column: 1; grid-row: 2; }
+  .h2h-grid > :nth-child(3) { grid-column: 2; grid-row: 2; }
+}
+/* Two of these plus a VS have to fit one line at 320px once they are on their
+   own row; 1.9rem each does not. Max is the desktop value, so nothing changes
+   above the breakpoint. */
+.h2h-num { font-size: clamp(1.25rem, 6.4vw, 1.9rem) !important; }
+
+/* Undo the matchup breakdown's right-side pair swap once its grid is a single
+   column. The swap exists to mirror the two breakdowns about the centre of the
+   card, which only reads as symmetry while there are two columns to mirror;
+   stacked, it just misorders the rows against the left side. `order` puts them
+   back without the component needing to know the viewport width. */
+@media (max-width: 760px) {
+  .h2h-mirror > :nth-child(1) { order: 2; }
+  .h2h-mirror > :nth-child(2) { order: 1; }
+  .h2h-mirror > :nth-child(3) { order: 4; }
+  .h2h-mirror > :nth-child(4) { order: 3; }
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   TOUCH TARGETS
+
+   WCAG 2.5.8 (AA) asks for 24x24 CSS px of hittable area. Several controls in
+   the chrome are text set at 13-15px in a 40px bar, so they measure 15-17px
+   tall and miss it — fine for a cursor, which is a single pixel, and awkward
+   for a fingertip, which is roughly 9mm.
+
+   `pointer: coarse`, NOT a width breakpoint. The thing that decides whether a
+   target is too small is the INPUT DEVICE, not the window: a 500px-wide
+   desktop browser window still has a mouse and needs no help, while a tablet
+   at 1024px does. This is also why none of it touches the desktop rendering —
+   the query simply never matches there.
+
+   TWO MECHANISMS, chosen per case:
+
+   • .tap-target expands the hit area with an absolutely-positioned ::after and
+     changes NO layout at all. That matters in the utility bar, where BAR_H is
+     40 and pinned to an even number for baseline snapping (see the note in
+     LogoWordmark), and where the lockup carries a hand-measured optical shift.
+     Padding there would move type that has been aligned to a device pixel.
+   • Real padding on the footer links, where the extra spacing between rows is
+     harmless and is what a touch list should look like anyway.
+
+   The ::after is inset horizontally to `left: 0; right: 0` rather than being
+   blown out sideways, so neighbouring targets in the same row cannot swallow
+   each other's taps. */
+@media (pointer: coarse) {
+  .tap-target,
+  .utility-link { position: relative; }
+
+  .tap-target::after,
+  .utility-link::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    height: 44px;
+    /* Never smaller than the control itself, for anything already taller. */
+    min-height: 100%;
+  }
+
+  /* Vertical list, so growing the rows is the right fix and costs nothing. */
+  .site-footer-link {
+    display: inline-block;
+    padding: 6px 0;
+  }
 }

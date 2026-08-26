@@ -264,6 +264,7 @@ export default function TopBar() {
           <Link
             href="/home"
             aria-label="Wagerwolf home"
+            className="tap-target"
             style={{ display: "flex", alignItems: "center", flexShrink: 0, color: "#FFFFFF" }}
           >
             <LogoWordmark height={LOCKUP_H} bare />

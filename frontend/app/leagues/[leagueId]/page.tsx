@@ -227,7 +227,7 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
 
 
         {/* 3-column grid: Matchups | Banner + Power Rankings | Standings */}
-        <div style={{
+        <div className="league-grid" style={{
           display: "grid",
           gridTemplateColumns: "270px 1fr 270px",
           gridTemplateRows: "auto auto 1fr",
@@ -237,7 +237,7 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
 
           {/* COL 1 ROW 1: User card */}
           {myRecord && (
-            <div className="card" style={{ gridColumn: "1", gridRow: "1", padding: "14px 16px", background: "var(--surface)", minHeight: 160, display: "flex", flexDirection: "column", justifyContent: "space-between", minWidth: 0 }}>
+            <div className="card lg-main" style={{ gridColumn: "1", gridRow: "1", padding: "14px 16px", background: "var(--surface)", minHeight: 160, display: "flex", flexDirection: "column", justifyContent: "space-between", minWidth: 0 }}>
               {/* Identity row */}
               <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12, marginTop: 10, paddingLeft: 10, paddingRight: 10 }}>
                 <HelmetAvatar color={myHelmetColor} initials={myRecord.displayName.slice(0, 2)} size={48} />
@@ -272,7 +272,7 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
           )}
 
           {/* COL 1 ROW 2-4: Matchups */}
-          <div className="card" style={{ gridColumn: "1", gridRow: "2 / 4", padding: 0, overflow: "hidden", background: "var(--surface)", minWidth: 0 }}>
+          <div className="card lg-main" style={{ gridColumn: "1", gridRow: "2 / 4", padding: 0, overflow: "hidden", background: "var(--surface)", minWidth: 0 }}>
               <div style={{ padding: "8px 10px", borderBottom: "1px solid var(--border)", background: "var(--surface)" }}>
                 <span style={{ fontSize: "0.58rem", fontWeight: 800, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--text)" }}>Matchups</span>
               </div>
@@ -322,7 +322,7 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
             </div>
 
           {/* CENTER TOP: League Banner */}
-          <div style={{ gridColumn: "2", gridRow: "1" }}>
+          <div className="lg-main" style={{ gridColumn: "2", gridRow: "1" }}>
             <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 8, overflow: "hidden", position: "relative", minHeight: 160 }}>
               <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 8, background: myHelmetColor }} />
               {/* Banner body */}
@@ -333,8 +333,17 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
                     : league.name}
                 </div>
               </div>
-              {/* Right panel: stats */}
-              <div style={{ position: "absolute", top: 20, right: 14, display: "flex", flexDirection: "column", gap: 5 }}>
+              {/* Right panel: stats.
+
+                  `position: absolute` lifts this out of flow so it can sit in
+                  the banner's top-right corner beside the name. That works
+                  while the banner is a 1fr column of a 3-column grid; once the
+                  shell collapses the banner is the full width of a phone, the
+                  name wraps to two long lines, and the two overlap — "Dallas
+                  Patriots 2026" printed straight through "Format: Standard".
+                  .league-banner-stats returns it to normal flow below the name
+                  at narrow widths. */}
+              <div className="league-banner-stats" style={{ position: "absolute", top: 20, right: 14, display: "flex", flexDirection: "column", gap: 5 }}>
                 <span style={{ fontSize: "0.72rem", color: "var(--text-2)" }}>
                   <span style={{ fontWeight: 700, color: "var(--text-3)" }}>Format:</span> Standard
                 </span>
@@ -349,7 +358,7 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
           </div>
 
           {/* CENTER ROW 2: Recent Activity */}
-          <div style={{ gridColumn: "2", gridRow: "2" }}>
+          <div className="lg-main" style={{ gridColumn: "2", gridRow: "2" }}>
             <div className="card" style={{ padding: 0, overflow: "hidden", background: "var(--surface)" }}>
               <div style={{ padding: "8px 12px", borderBottom: "1px solid var(--border)" }}>
                 <span style={{ fontSize: "0.58rem", fontWeight: 800, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--text)" }}>Recent Activity</span>
@@ -361,7 +370,7 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
           </div>
 
           {/* CENTER ROW 3: Power Rankings chart */}
-          <div style={{ gridColumn: "2", gridRow: "3" }}>
+          <div className="lg-main" style={{ gridColumn: "2", gridRow: "3" }}>
             <div className="card" style={{ padding: 0, overflow: "hidden", background: "var(--surface)" }}>
               <div style={{ padding: "8px 12px", borderBottom: "1px solid var(--border)" }}>
                 <span style={{ fontSize: "0.58rem", fontWeight: 800, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--text)" }}>Power Rankings</span>
@@ -475,7 +484,7 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
           </div>
 
           {/* RIGHT: Standings (spans both rows) */}
-          <div style={{ gridColumn: "3", gridRow: "1 / 4", minWidth: 0 }}>
+          <div className="lg-rail" style={{ gridColumn: "3", gridRow: "1 / 4", minWidth: 0 }}>
             <div className="card" style={{ padding: 0, overflow: "hidden", background: "var(--surface)" }}>
               <div style={{ padding: "8px 12px", background: "var(--surface)", borderBottom: "1px solid var(--border)" }}>
                 <span style={{ fontSize: "0.58rem", fontWeight: 800, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--text)" }}>Standings</span>
@@ -534,13 +543,17 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
       </div>
 
       {/* Chat panel */}
-      <div style={{
+      <div className="chat-drawer" style={{
         position: "fixed",
         right: 0,
         top: 0,
         bottom: 60,
-        width: 320,
-        transform: showChat ? "translateX(0)" : "translateX(320px)",
+        // Width and the hide-transform MUST stay equal or the drawer parks
+        // partly on screen, so both read the one token. --chat-w narrows on a
+        // small phone so a strip of the page stays visible beside it — an
+        // edge to tap back to, since this drawer has no scrim.
+        width: "var(--chat-w, 320px)",
+        transform: showChat ? "translateX(0)" : "translateX(var(--chat-w, 320px))",
         transition: "transform 0.25s cubic-bezier(0.4,0,0.2,1)",
         background: "var(--surface)",
         borderLeft: "1px solid var(--border)",
@@ -552,7 +565,7 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
         {/* Header */}
         <div style={{ padding: "13px 16px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0 }}>
           <span style={{ fontWeight: 800, fontSize: "0.85rem", color: "var(--text)" }}>League Chat</span>
-          <button onClick={() => setShowChat(false)} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-3)", padding: "2px 4px", fontSize: "1rem", lineHeight: 1, borderRadius: 4 }}>✕</button>
+          <button className="tap-target" aria-label="Close chat" onClick={() => setShowChat(false)} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-3)", padding: "2px 4px", fontSize: "1rem", lineHeight: 1, borderRadius: 4 }}>✕</button>
         </div>
 
         {/* Messages */}

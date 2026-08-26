@@ -410,7 +410,7 @@ export default function BetSlip({ leagueId }: { leagueId: string }) {
   }
 
   return (
-    <div style={{
+    <div className="betslip-shell" style={{
       position: "fixed",
       top: contentTop,
       bottom: 12,

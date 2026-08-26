@@ -19,6 +19,7 @@ export default function HomePage() {
   return (
     <div className="page-wide" style={{ paddingTop: "5vh" }}>
       <div
+        className="home-grid"
         style={{
           display: "grid",
           // Rail matches the league home's outer columns (270px) so the two

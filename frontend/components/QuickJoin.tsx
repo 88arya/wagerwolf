@@ -169,7 +169,7 @@ export default function QuickJoin({
             <span className="mx-label">Experience level</span>
             {/* Two cards rather than chips: this is the one choice that is never
                 compromised on, so it gets the weight and the explanation. */}
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+            <div className="rg-2" style={{ display: "grid", gap: 8 }}>
               {LEAGUE_LEVELS.map(l => {
                 const on = level === l.value;
                 return (

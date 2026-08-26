@@ -210,7 +210,7 @@ export default function LeagueSettingsPage({ params }: PageProps<"/leagues/[leag
         <div style={{ fontSize: "0.72rem", color: "var(--text-3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 320 }}>{league.name}</div>
       </div>
 
-      <div style={{ width: "100%", maxWidth: 860, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, alignItems: "start" }}>
+      <div className="rg-2" style={{ width: "100%", maxWidth: 860, display: "grid", gap: 12, alignItems: "start" }}>
 
         {/* ── Left column ── */}
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
@@ -255,7 +255,7 @@ export default function LeagueSettingsPage({ params }: PageProps<"/leagues/[leag
                       onChange={e => setSettingsForm({ ...settingsForm, maxPublicPlayers: e.target.value })} />
                   </div>
                 )}
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
+                <div className="rg-3" style={{ display: "grid", gap: 8 }}>
                   <div>
                     <div className="label">Start Wk</div>
                     <input type="number" min="1" max={MAX_NFL_WEEK} value={settingsForm.startWeek}
@@ -310,7 +310,7 @@ export default function LeagueSettingsPage({ params }: PageProps<"/leagues/[leag
             <CardHeader>Betting Rules</CardHeader>
             {isCreator ? (
               <form onSubmit={saveLimits} style={{ display: "flex", flexDirection: "column", gap: 12, padding: 14 }}>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                <div className="rg-2" style={{ display: "grid", gap: 8 }}>
                   <div>
                     <div className="label">Max Stake / Bet</div>
                     <input type="number" min="0.01" step="0.01" placeholder="No limit" value={limitsForm.maxStakePerBet}

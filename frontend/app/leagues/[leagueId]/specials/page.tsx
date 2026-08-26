@@ -35,7 +35,7 @@ export default function SpecialsPage({ params }: PageProps<"/leagues/[leagueId]/
 
   // 260px min fits all three kinds on one row at the 860px content width,
   // then falls back to 2-up / 1-up on narrower screens.
-  const grid = { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: 8, alignItems: "start" } as const;
+  const grid = { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 260px), 1fr))", gap: 8, alignItems: "start" } as const;
 
   return (
     <div className="page-wide" style={{ display: "flex", flexDirection: "column", alignItems: "center", paddingTop: "5vh" }}>

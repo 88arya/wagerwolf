@@ -47,6 +47,11 @@ export default function LeagueNav({ leagueId }: { leagueId: string }) {
   const [editorOpen, setEditorOpen] = useState(false);
   const [hoveredGroup, setHoveredGroup] = useState<string | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  // The group menus (LEAGUE / BET / ...) were hover-only, so on a touch device
+  // they could be opened by tap (see onPointerDown below) but never dismissed —
+  // there is no pointerleave to close them. This is what the outside-tap
+  // handler measures against.
+  const groupsRef = useRef<HTMLDivElement>(null);
   const profileRef = useRef<HTMLDivElement>(null);
   const navStartedRef = useRef(false);
 
@@ -77,6 +82,7 @@ export default function LeagueNav({ leagueId }: { leagueId: string }) {
     function handleClick(e: MouseEvent) {
       if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) setOpen(false);
       if (profileRef.current && !profileRef.current.contains(e.target as Node)) setProfileOpen(false);
+      if (groupsRef.current && !groupsRef.current.contains(e.target as Node)) setHoveredGroup(null);
     }
     document.addEventListener("mousedown", handleClick);
     return () => document.removeEventListener("mousedown", handleClick);
@@ -152,7 +158,7 @@ export default function LeagueNav({ leagueId }: { leagueId: string }) {
       {/* Left: grouped nav links. The logo used to lead this row; it now lives
           at the far left of the utility bar (TopBar), which is present on every
           page rather than only inside a league. */}
-      <div style={{ display: "flex", alignItems: "stretch", gap: 0, height: "100%" }}>
+      <div ref={groupsRef} className="nav-groups" style={{ display: "flex", alignItems: "stretch", gap: 0, height: "100%" }}>
 
         {seasonStarted ? (
           <>
@@ -168,6 +174,22 @@ export default function LeagueNav({ leagueId }: { leagueId: string }) {
                   style={{ position: "relative", display: "flex", alignItems: "stretch", marginRight: 22 }}
                   onMouseEnter={() => setHoveredGroup(group.label)}
                   onMouseLeave={() => setHoveredGroup(null)}
+                  // TOUCH. These menus were reachable by hover and nothing
+                  // else, which on a phone or tablet means not reachable at
+                  // all: there is no pointerenter without a pointing device,
+                  // so every link inside LEAGUE and BET was dead on mobile.
+                  //
+                  // Guarded on pointerType rather than a `(hover: none)` media
+                  // query or a touch sniff, so a mouse keeps hover as its only
+                  // trigger and does not also toggle on click — and so a
+                  // hybrid laptop behaves correctly per input, which a
+                  // device-level check cannot do. No hydration risk either,
+                  // since nothing is read during render.
+                  onPointerDown={e => {
+                    if (e.pointerType === "mouse") return;
+                    e.preventDefault();
+                    setHoveredGroup(g => (g === group.label ? null : group.label));
+                  }}
                 >
                   <div style={{
                     display: "flex",
@@ -214,7 +236,7 @@ export default function LeagueNav({ leagueId }: { leagueId: string }) {
                   </div>
 
                   {isHovered && (
-                    <div style={{ position: "absolute", top: "100%", left: 0, background: "var(--surface)", border: "none", borderRadius: 0, boxShadow: "var(--shadow-md)", zIndex: 500, padding: "6px 0", display: "grid", gridTemplateColumns: `repeat(2, ${MENU_ITEM_W}px)` }}>
+                    <div className="navmenu-panel navmenu-grid" style={{ position: "absolute", top: "100%", left: 0, background: "var(--surface)", border: "none", borderRadius: 0, boxShadow: "var(--shadow-md)", zIndex: 500, padding: "6px 0", display: "grid", gridTemplateColumns: `repeat(2, ${MENU_ITEM_W}px)` }}>
                       {group.links.map(({ label, href }) => (
                         <Link key={href} href={href} className="navmenu-item">
                           <span>{label}</span>
@@ -250,12 +272,18 @@ export default function LeagueNav({ leagueId }: { leagueId: string }) {
       <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8, alignSelf: "stretch" }}>
 
         {/* League name + dropdown */}
-        <div ref={dropdownRef} style={{ position: "relative", alignSelf: "stretch", display: "flex", alignItems: "center" }} onMouseEnter={() => setOpen(true)} onMouseLeave={() => setOpen(false)}>
+        <div ref={dropdownRef} style={{ position: "relative", alignSelf: "stretch", display: "flex", alignItems: "center" }} onMouseEnter={() => setOpen(true)} onMouseLeave={() => setOpen(false)}
+          onPointerDown={e => { if (e.pointerType === "mouse") return; e.preventDefault(); setOpen(o => !o); }}>
           <button
             type="button"
-            style={{ display: "flex", alignItems: "center", gap: 5, background: "none", border: "none", padding: "5px 8px", cursor: "pointer", color: "var(--text)", fontWeight: 900, fontSize: "0.82rem", borderRadius: 0, boxShadow: "none" }}
+            style={{ display: "flex", alignItems: "center", gap: 5, background: "none", border: "none", padding: "5px 8px", cursor: "pointer", color: "var(--text)", fontWeight: 900, fontSize: "0.82rem", borderRadius: 0, boxShadow: "none", minWidth: 0 }}
           >
-            <span style={{ whiteSpace: "nowrap" }}>
+            {/* nowrap with no ceiling meant this never yielded a pixel: a name
+                like "Dallas Patriots 2026 League" claimed the whole nav and
+                starved the group row beside it, which clipped "BET" down to a
+                stray "B". .nav-league-name caps and ellipsises it at narrow
+                widths so the groups keep their labels. */}
+            <span className="nav-league-name" style={{ whiteSpace: "nowrap" }}>
               {currentLeague?.league?.name ?? "Leagues"}
             </span>
             <span style={{ color: "var(--text-2)", flexShrink: 0, transform: open ? "rotate(180deg)" : "none", transition: "transform 0.15s" }}>
@@ -264,7 +292,7 @@ export default function LeagueNav({ leagueId }: { leagueId: string }) {
           </button>
 
           {open && (
-            <div style={{ position: "absolute", top: "100%", right: 0, background: "var(--surface)", border: "none", borderRadius: 0, boxShadow: "var(--shadow-md)", width: 230, zIndex: 500, padding: "6px 0" }}>
+            <div className="navmenu-panel" style={{ position: "absolute", top: "100%", right: 0, background: "var(--surface)", border: "none", borderRadius: 0, boxShadow: "var(--shadow-md)", width: 230, zIndex: 500, padding: "6px 0" }}>
               {leagues.length === 0 && (
                 <div style={{ padding: "10px 14px", fontSize: "0.8rem", color: "var(--text-2)" }}>No leagues</div>
               )}
@@ -323,7 +351,7 @@ export default function LeagueNav({ leagueId }: { leagueId: string }) {
             // that team's standing in this league. The global account (real
             // name, email, password, sign out) lives under My Account in the
             // utility bar above, not here.
-            <div style={{ position: "absolute", top: "100%", right: 0, background: "var(--surface)", border: "none", borderRadius: 0, boxShadow: "var(--shadow-md)", zIndex: 500, padding: "6px 0" }}>
+            <div className="navmenu-panel" style={{ position: "absolute", top: "100%", right: 0, background: "var(--surface)", border: "none", borderRadius: 0, boxShadow: "var(--shadow-md)", zIndex: 500, padding: "6px 0" }}>
               <div className="navmenu-profile is-label">
                 <span>{teamName || "—"}</span>
               </div>
@@ -365,9 +393,14 @@ export default function LeagueNav({ leagueId }: { leagueId: string }) {
 
     {/* Sub-nav extension: tabs of the active group */}
     {activeGroup && (
-      <div style={{
+      <div className="subnav-row" style={{
         flexShrink: 0,
-        background: "var(--surface)",
+        // Same token as .nav above, so the two rows read as ONE band. Left as
+        // --surface they would split: a grey bar of groups sitting on a white
+        // bar of tabs, which looks like two unrelated strips rather than one
+        // nav. The dropdown panels stay --surface deliberately — white on grey
+        // is what makes them read as floating above it.
+        background: "var(--nav-bg)",
         padding: "0 var(--rail)",
         display: "flex",
         alignItems: "stretch",
@@ -385,11 +418,16 @@ export default function LeagueNav({ leagueId }: { leagueId: string }) {
             zIndex 0 keeps it in the same stacking layer as the tabs below it:
             as a positioned element it would otherwise paint above the in-flow
             links and lay its hairline across the top of the active tab. */}
-        <div style={{ position: "absolute", top: 0, left: "var(--rail)", right: "var(--rail)", height: 1, background: "var(--border)", zIndex: 0 }} />
+        <div style={{ position: "absolute", top: 0, left: "var(--rail)", right: "var(--rail)", height: 1, background: "var(--nav-rule)", zIndex: 0 }} />
         {/* And the same hairline under the sub-nav, closing the row the way the
             one above opens it. Identical treatment on purpose — same colour,
             same 1px, same --rail inset — so the two read as a pair bracketing
             the tabs rather than as two unrelated lines.
+
+            This is what ends the nav. The band is white again, the same as the
+            strip above and the page below, so nothing else marks where it
+            stops — it was only removable while the nav had a fill of its own to
+            end it.
 
             zIndex 0 for the same reason as the divider above: the active tab's
             accent underline sits flush with this edge and is in normal flow, so
@@ -397,7 +435,7 @@ export default function LeagueNav({ leagueId }: { leagueId: string }) {
             to a grey hairline. At zIndex 0 the accent wins and the grey rule
             runs under the inactive tabs either side of it, which is what a tab
             bar is supposed to look like. */}
-        <div style={{ position: "absolute", bottom: 0, left: "var(--rail)", right: "var(--rail)", height: 1, background: "var(--border)", zIndex: 0 }} />
+        <div style={{ position: "absolute", bottom: 0, left: "var(--rail)", right: "var(--rail)", height: 1, background: "var(--nav-rule)", zIndex: 0 }} />
         {activeGroup.links.map(({ label, href }) => {
           const active = isActive(href);
           return (

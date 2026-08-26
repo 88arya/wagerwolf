@@ -100,7 +100,18 @@ function closestToEvenLine(prop: any): number {
   return lines[closestToEvenOffsetIdx(prop)] ?? prop.line;
 }
 
-const PR_BOX_W = 110;
+// Width of one alt-line odds box.
+//
+// A CSS VARIABLE RATHER THAN A NUMBER, because this is the measurement that
+// decides whether the bet page fits on a phone. Three boxes at 110 plus the two
+// scroll arrows is ~354px of fixed, unshrinkable width in a row that also has
+// to hold a player name — on a 390px screen that leaves the name about 20px
+// and the row overflows sideways. The value steps down in globals.css
+// (--pr-box-w) so the boxes narrow instead of the row breaking.
+//
+// It stays a JS constant too: it is the ONLY consumer, but reading it here
+// keeps the default visible next to the markup that uses it.
+const PR_BOX_W = "var(--pr-box-w, 110px)";
 const PR_BOX_H = 42;
 
 // The one gutter used by every odds-box grid on this page: the game cards on
@@ -624,7 +635,11 @@ export default function BetPage({ params }: PageProps<"/leagues/[leagueId]/bet">
     const slTotOver  = gameLinesList.find((l: any) => l.market === "TOTAL_OVER");
     const slTotUnder = gameLinesList.find((l: any) => l.market === "TOTAL_UNDER");
 
-    const SL_BOX_W = 110;
+    // See --sl-box-w in globals.css. Three of these are flexShrink: 0 beside a
+    // team column that is flex: 1 / minWidth: 0, so at 110 they take 330px of a
+    // 390px screen and the team names are squeezed to nothing — the game card
+    // rendered with no indication of who was playing.
+    const SL_BOX_W = "var(--sl-box-w, 110px)";
     const SL_BOX_H = 42;
 
     function renderLineBox(line: any, topLabel?: string) {
@@ -977,7 +992,7 @@ export default function BetPage({ params }: PageProps<"/leagues/[leagueId]/bet">
                         <span style={{ fontWeight: 700, fontSize: "0.85rem", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{getTeamDisplayName(selectedGame.homeTeam)}</span>
                       </div>
                     </div>
-                    <div style={{ flexShrink: 0, display: "grid", gridTemplateColumns: `repeat(3, ${SL_BOX_W}px)`, gridTemplateRows: `${SL_BOX_H}px ${SL_BOX_H}px`, columnGap: BOX_GAP, rowGap: BOX_GAP }}>
+                    <div style={{ flexShrink: 0, display: "grid", gridTemplateColumns: `repeat(3, ${SL_BOX_W})`, gridTemplateRows: `${SL_BOX_H}px ${SL_BOX_H}px`, columnGap: BOX_GAP, rowGap: BOX_GAP }}>
                       {renderLineBox(slSpAway, slSpAway?.line != null ? String(slSpAway.line > 0 ? `+${slSpAway.line}` : slSpAway.line) : undefined)}
                       {renderLineBox(slMlAway)}
                       {renderLineBox(slTotOver, slTotOver?.line != null ? `O ${slTotOver.line}` : undefined)}
@@ -1192,7 +1207,7 @@ export default function BetPage({ params }: PageProps<"/leagues/[leagueId]/bet">
               const totUnder = lines.find((l) => l.market === "TOTAL_UNDER");
 
               // market-boxes: nested grid with only fixed-width columns so columnGap is exact
-              const BOX_W = 110;
+              const BOX_W = "var(--sl-box-w, 110px)";
               const BOX_H = 42;
 
               function OddsBlock({ line, topLabel }: { line: any; topLabel?: string }) {
@@ -1293,7 +1308,7 @@ export default function BetPage({ params }: PageProps<"/leagues/[leagueId]/bet">
                       </div>
 
                       {/* Right: market boxes — 2-row grid, both gaps from same property so they're identical */}
-                      <div style={{ flexShrink: 0, display: "grid", gridTemplateColumns: `repeat(3, ${BOX_W}px)`, gridTemplateRows: `${BOX_H}px ${BOX_H}px`, columnGap: BOX_GAP, rowGap: BOX_GAP }}>
+                      <div style={{ flexShrink: 0, display: "grid", gridTemplateColumns: `repeat(3, ${BOX_W})`, gridTemplateRows: `${BOX_H}px ${BOX_H}px`, columnGap: BOX_GAP, rowGap: BOX_GAP }}>
                         <OddsBlock line={spAway} topLabel={spAway?.line != null ? String(spAway.line > 0 ? `+${spAway.line}` : spAway.line) : undefined} />
                         <OddsBlock line={mlAway} />
                         <OddsBlock line={totOver} topLabel={totOver?.line != null ? `O ${totOver.line}` : undefined} />

@@ -129,7 +129,7 @@ export default function HistoryPage({ params }: PageProps<"/leagues/[leagueId]/h
             {byWeek.map(([wk, wkBets]) => (
               <div key={wk} style={{ marginBottom: 20 }}>
                 <WeekHeader wk={wk} net={weekNet(wkBets)} />
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 8, alignItems: "start" }}>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 320px), 1fr))", gap: 8, alignItems: "start" }}>
                   {wkBets.map((b) => (
                     <PlacedBetCard key={b.data.id} kind={b.kind} data={b.data} cashingOut={cashingOut} onCashOut={cashOut} />
                   ))}
@@ -139,7 +139,7 @@ export default function HistoryPage({ params }: PageProps<"/leagues/[leagueId]/h
 
             {noWeek.length > 0 && (
               <div style={{ marginBottom: 20 }}>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 8, alignItems: "start" }}>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 320px), 1fr))", gap: 8, alignItems: "start" }}>
                   {noWeek.map((b) => (
                     <PlacedBetCard key={b.data.id} kind={b.kind} data={b.data} cashingOut={cashingOut} onCashOut={cashOut} />
                   ))}

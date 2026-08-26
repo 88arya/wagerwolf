@@ -80,7 +80,7 @@ export default function MyBetsPage({ params }: PageProps<"/leagues/[leagueId]/my
     ...parlays.map((p) => ({ kind: "parlay" as const, createdAt: p.createdAt, data: p })),
   ].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
-  const grid = { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 8, alignItems: "start" } as const;
+  const grid = { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 320px), 1fr))", gap: 8, alignItems: "start" } as const;
 
   return (
     <div className="page-wide" style={{ display: "flex", flexDirection: "column", alignItems: "center", paddingTop: "5vh" }}>

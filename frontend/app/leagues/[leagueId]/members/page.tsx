@@ -138,7 +138,7 @@ export default function MembersPage({ params }: PageProps<"/leagues/[leagueId]/m
       <div style={{ width: "100%", maxWidth: 860 }}>
 
         {!league.seasonStarted && (
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 20, alignItems: "start" }}>
+          <div className="rg-2" style={{ display: "grid", gap: 12, marginBottom: 20, alignItems: "start" }}>
 
             {/* Left column: invite + start */}
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
