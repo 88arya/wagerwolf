@@ -9,10 +9,15 @@ import Logo from "@/components/Logo";
  * letters, so there was nothing to salvage.
  *
  * Set in real text rather than SVG paths or <text>. The name is a word, so it
- * should be selectable, searchable and read aloud as one — and it means the
- * lockup needs no re-cutting if the product name ever changes again. The mark
- * beside it is hidden from assistive tech (aria-hidden on its wrapper) so the
- * pair announces once, not twice.
+ * should be searchable and read aloud as one — and it means the lockup needs no
+ * re-cutting if the product name ever changes again. The mark beside it is
+ * hidden from assistive tech (aria-hidden on its wrapper) so the pair announces
+ * once, not twice.
+ *
+ * It is NOT selectable, though — see the user-select note on the container.
+ * That used to be listed here as a reason for real text, which conflated two
+ * different things: being *text* is what buys search, screen readers and a
+ * cheap rename, and none of those need a drag-select to work.
  *
  * Inter Tight, the UI face — --font-sans, loaded in app/layout.tsx. The lockup
  * went Poppins → Lexend Deca → Viga → Anton → Passion One → Fugaz One and now
@@ -436,6 +441,30 @@ export default function LogoWordmark({
         // untouched — only what you see moves. See LOCKUP_INK_SHIFT_EM.
         position: "relative",
         top: fontSize * LOCKUP_INK_SHIFT_EM,
+        // The lockup is a mark, not a passage of text, and dragging across the
+        // nav used to highlight it letter by letter — a blue-flooded "Wagerwolf"
+        // mid-drag, which reads as the page coming apart. Browsers exclude
+        // user-select: none content from the selection AND from what a copy
+        // yields, including Ctrl+A, so a drag over the bar now selects the page
+        // without picking up the logo on its way past.
+        //
+        // NOT the same as outlining the name to SVG paths, which was the other
+        // way to stop this. The letters stay real text, so the name is still
+        // found by in-page search, still announced by a screen reader, and
+        // still one string to change if the product is ever renamed. Outlining
+        // would have traded all three away to fix a highlight.
+        //
+        // ON THE CONTAINER, so it covers the mark's wrapper too — the <svg>
+        // does not take a text selection itself, but a drag that starts on it
+        // would otherwise still anchor a selection that runs into the name.
+        //
+        // The -webkit- copy is for Safari before 16.4, which shipped the
+        // unprefixed property in March 2023. Inline styles never reach PostCSS,
+        // so autoprefixer cannot add it the way it does for globals.css — the
+        // other inline userSelect call sites in this app (GamesStrip,
+        // LeagueNav) are missing it for exactly that reason.
+        WebkitUserSelect: "none",
+        userSelect: "none",
         // Bare: everything inherits, and the parent decides.
         //
         // Tiled: ONE background behind mark and name together, and one colour
