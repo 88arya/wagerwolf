@@ -62,9 +62,15 @@ const VARS = {
 const REM = { abbr: 0.75, odds: 0.625, score: 0.75, name: 0.75, value: 0.7 };
 
 // Must stay identical to GamesStrip's TEAM_ABBR — this measures the face that
-// actually paints, so a mismatch here silently measures the wrong thing.
-const ABBR_FAMILY = "var(--font-lemon-milk), system-ui, sans-serif";
-const ABBR_WEIGHT = "700";
+// actually paints, so a mismatch here silently measures the wrong thing. It was
+// Lemon Milk at 700 for four days in August 2026 and is back to the face this
+// file's worked example was written against.
+//
+// TEAM_ABBR's `oblique 12deg` is deliberately NOT mirrored below: the shear
+// pivots on the baseline and is horizontal, so it moves no vertical metric and
+// no measurement here would come out any different for it.
+const ABBR_FAMILY = "var(--font-fugaz-one), system-ui, sans-serif";
+const ABBR_WEIGHT = "400";
 
 /** A zero-sized inline-block sitting on the baseline: its top IS the baseline. */
 function baselineOf(host: HTMLElement): number {

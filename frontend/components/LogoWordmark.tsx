@@ -41,9 +41,9 @@ import Logo from "@/components/Logo";
  * square inside a filled panel. See MARK_RATIO for how the panel reproduces the
  * padding that tile used to supply.
  *
- * Fugaz One is no longer used ANYWHERE. It stopped being the wordmark's face,
- * and on 22 Aug 2026 GamesStrip's team abbreviations moved to Lemon Milk too,
- * so --font-fugaz-one is still loaded in layout.tsx with nothing consuming it.
+ * Fugaz One is no longer the WORDMARK's face, but it is still in the app:
+ * GamesStrip's team abbreviations left it for Lemon Milk on 22 Aug 2026 and
+ * came back on 26 Aug. It is carried for that one use.
  *
  * Three things left with it, all of them face-specific and none of them worth
  * carrying over:

@@ -29,8 +29,10 @@ import { useOpticalAlign } from "@/lib/useOpticalAlign";
  * saturate() alongside blur() because a plain blur greys out what it samples;
  * lifting saturation back keeps team colours reading through as colour.
  */
-const CARD_GLASS_BG = "rgba(255, 255, 255, 0.8)";
-const CARD_GLASS_FILTER = "blur(20px) saturate(500%)";
+// The values live in globals.css as --glass-bg / --glass-filter, shared with
+// LandingNav so the two surfaces cannot drift apart. Same numbers as before.
+const CARD_GLASS_BG = "var(--glass-bg)";
+const CARD_GLASS_FILTER = "var(--glass-filter)";
 
 // Hover: the same glass, a little more opaque, so the card firms up under the
 // cursor instead of changing hue.
@@ -232,9 +234,21 @@ const MODE_LABEL: Record<StripMode, string> = {
 // abbreviation, 10px/500 with the same tracking in grey for everything else.
 //
 // The abbreviation is the one place in the app that departs from the UI face.
-// It was Fugaz One at 400, slanted 12deg; it is Lemon Milk at 700, upright, as
-// of 22 Aug 2026 — see TEAM_ABBR below for why each of those three changed.
-// FUGAZ ONE IS NOW UNUSED: still loaded in app/layout.tsx, consumed by nothing.
+// It is Fugaz One at 400, slanted 12deg — the original treatment, restored on
+// 26 Aug 2026 after four days in Lemon Milk at 700 upright. The Lemon Milk
+// reasoning was sound in the abstract (a real 700 cut rather than a single-
+// weight display face, no synthesised slant) and lost on looking at it: the
+// slant is what makes a row of three-letter codes read as a moving ticker
+// rather than a table, and Fugaz One's tighter, rounder caps hold together at
+// 12px in a way Lemon Milk's wider ones do not.
+//
+// Anything measured off the face is measured at RUNTIME — see
+// ABBR_OPTICAL_SHIFT below — so a swap like this needs no numbers re-tuned.
+// The one thing it does need is lib/useOpticalAlign's ABBR_FAMILY/ABBR_WEIGHT
+// kept in step, since that file measures the face it is TOLD is painting.
+//
+// LEMON MILK IS NOW UNUSED BY THE STRIP. It stays loaded in app/layout.tsx
+// because app/wordmarkFonts.ts still lists it as a wordmark specimen.
 
 /**
  * Drops the abbreviation onto the logo's optical centre.
@@ -257,20 +271,24 @@ const MODE_LABEL: Record<StripMode, string> = {
  */
 const ABBR_OPTICAL_SHIFT = "var(--strip-abbr-shift, 0.5663px)";
 
+// How far the abbreviations lean, in degrees. Fugaz One ships no italic cut, so
+// `oblique <angle>` has the browser synthesise the slant at exactly this angle
+// rather than leaving it to the default faux-italic. 0 renders upright; a drawn
+// italic is typically 8–14deg.
+//
+// The shear pivots on the baseline and is purely horizontal, so it changes no
+// vertical metric — which is why useOpticalAlign can measure an upright span
+// and still be right about this one.
+const ABBR_SLANT_DEG = 12;
+
 const TEAM_ABBR = {
-  // Lemon Milk, not Fugaz One. An all-caps display face is a liability for a
-  // ten-letter name and an asset for a three-letter team code, which is caps by
-  // nature — so the property that disqualified it as a wordmark costs nothing
-  // here. Mounted globally in app/layout.tsx.
-  fontFamily: "var(--font-lemon-milk), system-ui, sans-serif",
-  // 700, a real cut. Fugaz One sat at 400 because it ships exactly one weight
-  // and asking for more would have had the browser fake a bold on an already
-  // heavy face. Lemon Milk carries 400/500/700, so 700 is drawn, not synthesised.
-  fontWeight: 700,
-  // Upright. The 12deg oblique existed because Fugaz One has no italic cut, so
-  // the slant was synthesised — a shear applied to upright letterforms rather
-  // than a drawn italic. Dropped with the face that needed it.
-  fontStyle: "normal",
+  // Fugaz One, loaded in app/layout.tsx as --font-fugaz-one.
+  fontFamily: "var(--font-fugaz-one), system-ui, sans-serif",
+  // 400 because that is the only cut the family ships. Asking for 700 would
+  // have the browser fake a bold on top of an already-heavy display face, which
+  // is what the nfl.com metrics this card borrows would otherwise suggest.
+  fontWeight: 400,
+  fontStyle: `oblique ${ABBR_SLANT_DEG}deg`,
   fontSize: "0.75rem",
   letterSpacing: "0.04em",
   color: "var(--text)",
