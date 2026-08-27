@@ -1,39 +1,40 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
 import type { CSSProperties } from "react";
-import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
-import { api } from "@/lib/api";
-import { signOut, useAuthed } from "@/lib/auth";
-import LogoWordmark, { WORDMARK_FONT_RATIO } from "@/components/LogoWordmark";
-import SeasonCountdown from "@/components/SeasonCountdown";
 
 /**
- * Thin utility strip above everything else.
+ * The landing page's tagline bar — a thin dark strip above the nav carrying one
+ * sentence and an X to dismiss it. That is the whole component now.
  *
- * Exists because /home is unreachable once you are inside a league —
- * LeagueNav's links all stay within the league — so without this there is no
- * way out except the browser back button or the logo.
+ * IT USED TO BE THE APP'S HEADER, on every route and in both auth states: the
+ * lockup on the left, this sentence in the middle on `/`, and one control on
+ * the right with two states — "My account" with its menu, or "Play now" for a
+ * visitor.
  *
- * It is now on EVERY route, signed in or not, including the landing page, which
- * gave up its own sticky header to avoid stacking two.
+ * All of that moved into SiteNav, which is likewise on every route, is 62px
+ * rather than 40, and can hold a mark and a control without squeezing either.
+ * Two bars each carrying a wordmark and a call to action, stacked 40px apart,
+ * was the same furniture twice. What is left here is the one thing SiteNav
+ * has no place for: a sentence selling the product.
  *
- * The bar is three slots: the lockup on the left, the season countdown in the
- * middle on `/` only, and one control on the right with two states — "My
- * Account" with its menu, or "Play now" for a visitor. Both outer slots carry
- * `flex: 1 1 0` so they stay equal, which is what keeps the countdown on the
- * bar's true centre instead of the centre of the space left over.
+ * WHICH IS WHY APPCHROME RENDERS IT ON `/` ALONE, AND ONLY WHEN SIGNED OUT.
+ * Off the landing route the sentence has no business appearing, and to someone
+ * who has already signed up it is selling them what they bought. See the
+ * `showTopBar` note in AppChrome for the exact condition.
  *
- * Play now routes to /signup, which is a bare page carrying its own wordmark.
- * It has been a landing-page section, then a modal, and is now a route: a
- * dialog had no URL, so there was nothing to link to and no way to send anyone
- * straight to it.
+ * Things that lived here and where they went:
  *
- * It also owns the *global* account: the identity that follows the user across
- * every league (real name, email, password). The per-league identity — team
- * name, abbreviation, helmet colour — belongs to the profile control in
- * LeagueNav instead, so the two are never confused for one another.
+ *  - the lockup, and its link to /home — SiteNav, which is now the only route
+ *    back out of a league, the gap this bar's lockup used to cover
+ *  - "My account" and its dropdown — components/AccountMenu, rendered by
+ *    SiteNav's right-hand slot
+ *  - "Play now" -> /signup — SiteNav's "Get started", beside "Sign in"
+ *  - SeasonCountdown, which this sentence replaced. That file is still in the
+ *    tree and nothing imports it: it read "The countdown begins — 20d 01h 55m
+ *    56s until the first game of the 2026-27 NFL season" and pulled
+ *    GET /weeks/public/current on every landing view to compute it. This says
+ *    what the product IS rather than when it starts, needs no request, and
+ *    cannot go stale once the season is under way.
  */
 
 // --header-bg, which is the bar's alone. It used to be --bar-bg, shared with
@@ -42,60 +43,30 @@ import SeasonCountdown from "@/components/SeasonCountdown";
 const BAR_BG = "var(--header-bg)";
 
 // The bar's dark fill is full-bleed, but its *contents* inset by --rail — the
-// same token `.nav` uses — so the logo starts on the same left edge as
-// LeagueNav's first control and the page content below it, and "My Account"
-// ends on the same right edge as the nav's profile control. One rail down the
-// whole page.
+// same token `.nav` and SiteNav use, so the sentence starts no further in than
+// the page content below it. See --rail in globals.css.
 //
-// GamesStrip is the deliberate exception: it runs full-bleed contents and all,
-// so it is not meant to line up with either of these. See --rail in globals.css.
+// GamesStrip is the deliberate exception in the chrome: it runs full-bleed
+// contents and all, and is not meant to line up with either.
 
 // KEEP THIS EVEN. Chrome snaps text baselines to whole *device* pixels, and an
 // odd bar height puts the centre on a half pixel, which the baseline can never
 // sit on. At 37 that cost ~0.5px: the type sat visibly high against the wolf
 // mark next to it, which is vector and renders at its true subpixel position.
 //
-// Even is the half of that reasoning which still holds. The other half does
-// not: 36 was picked because Fugaz One's ideal baseline landed at 23.06, a
-// whisker off a whole CSS pixel and so clean at 1x, 1.3x and 2x alike. The
-// lockup is Inter Tight now, with different metrics and a different ideal
-// baseline, so that argument does not transfer and 40 is not a regression from
-// it — neither height has been measured against this face.
-//
-// Measuring it is the open item, together with OPTICAL_SHIFT_EM in
-// LogoWordmark, which is currently 0 as a placeholder for the same reason.
+// The mark is gone from this bar, so that particular symptom cannot recur — but
+// the reason holds for any centred text, which is all this bar has left.
 const BAR_H = 40;
 
-// SIGNUP_EVENT is gone. It existed to open a sign-in dialog without a
-// navigation, first on the landing page and then from the root layout. Sign-up
-// is the /signup route now, so the thing the event was avoiding — a navigation
-// — is the whole point, and a plain router.push says it more directly.
+// 14px, which is what LOCKUP_H (20) x WORDMARK_FONT_RATIO (0.7) came to back
+// when this bar carried the lockup and everything on it was sized off the
+// mark's own text. There is no mark here any more, so the derivation is
+// recorded rather than computed: the number is the design decision now, and
+// importing LogoWordmark for a ratio would be a dependency on nothing.
+const TEXT_PX = 14;
 
-// The lockup sits inside the bar with air above and below rather than filling
-// its height — at 36px it read as a block capping the bar instead of a mark
-// within it.
-//
-// There is no LINKS array and no gap token any more. Both existed to space a
-// left cluster of three (mark, Home, Leagues); the cluster is one element now.
-const LOCKUP_H = 20;
-
-// The hover rule itself lives in globals.css under .utility-link — it is a
-// pseudo-element that scales in from the left, which inline styles cannot
-// express. Everything here is just the type.
-// There is no LEAN_PX any more. It padded the left edge by ~2px to cover the
-// skew: the label leaned back, so its ink reached further left at the cap line
-// than its layout box did, and the hover underline — a ::after spanning that
-// box — trailed to the right of the word. Inter Tight is upright and the skew
-// went with Fugaz One, so the ink and the box agree again and the rule lands
-// under the word on its own.
-// The UI face at the design system's 500 ceiling. Only the season countdown
-// uses this now — a whole sentence, which wants the body face rather than the
-// display one the lockup and the right-hand control share.
-//
-// It used to dress "My Account" as well, and before that it spread
-// WORDMARK_TEXT so both ends of the bar were set identically. Size is still
-// derived from LOCKUP_H, so it scales with the lockup even though it no longer
-// matches its face.
+// The UI face at the design system's 500 ceiling. The sentence is running text,
+// which wants the body face rather than a display one.
 const linkStyle: CSSProperties = {
   fontFamily: "var(--font-sans), system-ui, sans-serif",
   fontWeight: 500,
@@ -104,91 +75,18 @@ const linkStyle: CSSProperties = {
   lineHeight: "normal",
   display: "inline-block",
   whiteSpace: "nowrap",
-  fontSize: LOCKUP_H * WORDMARK_FONT_RATIO,
+  fontSize: TEXT_PX,
   color: "#FFFFFF",
 };
 
-// "Play now" and "My account", the bar's two interactive labels.
-//
-// THE UI FACE, not the lockup's. This used to spread WORDMARK_TEXT, which set
-// both in Arca Majora at weight 700 — the argument being that the bar should
-// read in one voice with the mark. It reads as a logo with two more logos
-// bolted either side of it instead: Arca Majora is a display cut with two
-// weights, and a label is not a logo. Gilroy also carries a lowercase "a" and
-// "y" drawn for running text, which is what these are.
-//
-// Size still comes from LOCKUP_H x WORDMARK_FONT_RATIO, so the labels stay
-// locked to the lockup's own text size even though they no longer share its
-// face — that ratio is what keeps the three things on this bar optically level.
-//
-// 600 rather than linkStyle's 500. Gilroy's Medium reads light (see the
-// --font-sans note in globals.css), and white type on the dark bar thins
-// further still; 500 left these looking like captions beside the mark. The
-// design system's 400-500 ceiling was set against Inter Tight and is already
-// broken in the same direction on the .mx-* labels.
+// The dismiss X. 600 rather than 500 for the same reason the bar's controls
+// used to be: white on a dark fill thins, and this is a 11px glyph.
 const ctaStyle: CSSProperties = {
   ...linkStyle,
   fontWeight: 600,
 };
 
-// Outlined person-in-circle, used beside the name at the head of the account
-// menu. Filled paths cut with evenodd, so it takes its colour from currentColor
-// and ignores strokeWidth.
-function AccountIcon() {
-  return (
-    <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" style={{ flexShrink: 0 }}>
-      <g fillRule="evenodd" clipRule="evenodd">
-        <path d="M16 9a4 4 0 1 1-8 0a4 4 0 0 1 8 0m-2 0a2 2 0 1 1-4 0a2 2 0 0 1 4 0" />
-        <path d="M12 1C5.925 1 1 5.925 1 12s4.925 11 11 11s11-4.925 11-11S18.075 1 12 1M3 12c0 2.09.713 4.014 1.908 5.542A8.99 8.99 0 0 1 12.065 14a8.98 8.98 0 0 1 7.092 3.458A9 9 0 1 0 3 12m9 9a8.96 8.96 0 0 1-5.672-2.012A6.99 6.99 0 0 1 12.065 16a6.99 6.99 0 0 1 5.689 2.92A8.96 8.96 0 0 1 12 21" />
-      </g>
-    </svg>
-  );
-}
-
-export default function TopBar() {
-  const router = useRouter();
-  const pathname = usePathname() ?? "";
-  const [open, setOpen] = useState(false);
-  const [fullName, setFullName] = useState("");
-  // Reactive, so signing in or out flips this control without a reload — the
-  // bar is mounted once in the root layout and never remounts on navigation.
-  const authed = useAuthed();
-  const menuRef = useRef<HTMLDivElement>(null);
-  // `/` is the only route that carries the season countdown, between the
-  // lockup and the control. Neither of those is conditional any more — the
-  // countdown is now the only thing this flag decides.
-  const isLanding = pathname === "/";
-
-  useEffect(() => {
-    if (!authed) { setFullName(""); return; }
-    api("/users/me").then((u: any) => {
-      // Falls back to the display name for accounts where Google supplied no
-      // so have no first/last on record.
-      const full = [u.firstName, u.lastName].filter(Boolean).join(" ");
-      setFullName(full || u.displayName || u.name || "");
-    }).catch(() => {});
-  }, [authed]);
-
-  useEffect(() => {
-    function handleClick(e: MouseEvent) {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setOpen(false);
-    }
-    document.addEventListener("mousedown", handleClick);
-    return () => document.removeEventListener("mousedown", handleClick);
-  }, []);
-
-  function logout() {
-    signOut();
-    router.push("/");
-  }
-
-  // Sign-up is a page now, not a dialog. It went landing-page section -> modal
-  // -> route: a dialog had no URL, so there was nothing to link to, nothing to
-  // come back to, and no way to send someone straight to it.
-  function startSignup() {
-    router.push("/signup");
-  }
-
+export default function TopBar({ onDismiss }: { onDismiss?: () => void }) {
   return (
     <div style={{
       flexShrink: 0,
@@ -196,182 +94,108 @@ export default function TopBar() {
       height: BAR_H,
       display: "flex",
       alignItems: "center",
+      justifyContent: "center",
       // Fill stays full-bleed; only the contents inset. Same token as `.nav`.
       padding: "0 var(--rail)",
       boxSizing: "border-box",
-      // The account menu hangs below the bar and must clear the games strip and
-      // nav underneath it.
+      // What the dismiss X is positioned against — see the note on it below.
       position: "relative",
+      // Above SiteNav's 200 and the games strip under it. Nothing hangs off
+      // this bar any more, but it is the topmost band and should stay so.
       zIndex: 300,
     }}>
-      {/* Leftmost element in the bar, and now the only thing on this side of
-          it. No inset of its own — the bar's --rail padding puts it on the
-          page's left edge, level with LeagueNav's first control (which likewise
-          has no padding of its own). It lives in this bar rather than LeagueNav
-          so the mark is present on every page, league or not.
+      {/* THE TAGLINE. A plain sentence, not a link and not a countdown.
 
-          The full lockup, and no "Home" link beside it: the wordmark *is* the
-          home link. A word next to it pointed at the same route, which is two
-          controls doing one thing — invisible while "Leagues" sat alongside,
-          glaring once that moved to the rail on /home.
+          "Play now" here is TEXT, not a control. The bar's clickable CTA was
+          removed deliberately: the two real entry points are "Sign in" and
+          "Get started" in SiteNav directly below. If this should become a link
+          again, say so — but note it would be a third call to action within
+          about 60px of the other two.
 
-          `bare` draws head and name in currentColor. It is the same call
-          SiteFooter makes, on the same --bar-bg fill, so the two bars that
-          bookend the app share a lockup as well as a colour. Without it the
-          mark carries its accent tile, and a filled block on an already-dark
-          bar reads as a sticker stuck on top of it. */}
-      {/* The lockup is now unconditional — every route, signed in or out, `/`
-          included. It used to be hidden in two cases, and both are gone:
+          Centred by `justify-content` rather than by a pair of empty flex
+          spacers. The spacers were load bearing when the bar had a lockup on
+          one side and a control on the other and the sentence had to sit on the
+          bar's TRUE centre rather than the centre of the space left over. With
+          both of those gone the sentence is the only child, and centring it is
+          just centring it. */}
+      <span style={{ ...linkStyle, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" }}>
+        Play now for completely free &mdash; The World&rsquo;s First Fantasy Football Sportsbook.
+      </span>
 
-          - On `/` it gave way to the season countdown, on the grounds that the
-            landing hero already carried a mark and a second one was the same
-            asset twice on one screen. The countdown still runs there, centred
-            between this slot and the control opposite; it just no longer has
-            the left edge to itself.
-          - When signed in it was hidden everywhere, which left a signed-in user
-            inside a league with no route back to /home at all — LeagueNav's
-            Home goes to the *league* home. That was a documented gap, and
-            showing the lockup always is what closes it: the wordmark IS the
-            home link.
+      {/* DISMISS.
 
-          The slot takes `flex: 1 1 0` so it balances the control opposite,
-          which is what keeps the countdown between them on the true centre of
-          the bar rather than the centre of whatever space is left over. Off `/`
-          there is nothing in the middle and the two slots simply split the bar,
-          putting the lockup on the left edge and the control on the right.
+          A DIRECT CHILD OF THE BAR, and that placement is the whole point. It
+          used to sit inside the right-hand control slot, which carried
+          `position: relative` of its own so the account menu could hang off it
+          — so `right: 8px` resolved against THAT box, a ~363px column ending at
+          the content rail, and the button parked ~386px short of the window
+          edge. An absolutely positioned element answers to its nearest
+          positioned ancestor, not to the one you meant.
 
-          `bare` draws head and name in currentColor. It is the same call
-          SiteFooter makes, on the same --bar-bg fill, so the two bars that
-          bookend the app share a lockup as well as a colour. Without it the
-          mark carries its accent tile, and a filled block on an already-dark
-          bar reads as a sticker stuck on top of it. */}
-      {/* A link ONLY when signed in. /home sits behind the guard in
-          app/(user)/layout.tsx, which bounces anyone without a token back to
-          `/` — so signed out this link went /` -> /home -> `/`, a round trip
-          that lands you where you started and can flash the guarded page on the
-          way. There is nowhere else useful to send a visitor either: `/` is
-          where they already are on the one route this matters most.
+          Out here the nearest positioned ancestor is the bar itself, which is
+          full-bleed, so `right` is a real distance from the window edge.
 
-          `=== true`, not truthy, so the mark is inert while the token check is
-          still outstanding. A link that works for one frame and then stops is
-          worse than one that was never offered.
-
-          The static branch needs no aria-label: the lockup draws "Wagerwolf" as
-          real text, so the name is already in the accessibility tree. On the
-          link it stays, because there it has to say where the link GOES. */}
-      <div style={{ flex: "1 1 0", display: "flex", alignItems: "center", minWidth: 0 }}>
-        {authed === true ? (
-          <Link
-            href="/home"
-            aria-label="Wagerwolf home"
-            className="tap-target"
-            style={{ display: "flex", alignItems: "center", flexShrink: 0, color: "#FFFFFF" }}
-          >
-            <LogoWordmark height={LOCKUP_H} bare />
-          </Link>
-        ) : (
-          <span style={{ display: "flex", alignItems: "center", flexShrink: 0, color: "#FFFFFF" }}>
-            <LogoWordmark height={LOCKUP_H} bare />
-          </span>
-        )}
-      </div>
-
-      {/* Signed-out visitors only. The sentence is a pitch — it counts down to
-          kickoff and exists to get someone to start playing — so showing it to
-          someone who already has an account is selling them what they bought.
-          They see the wordmark and their account link, nothing between.
-
-          `authed === false`, not `!authed`, so it does not flash on during the
-          token check and vanish a frame later. Same rule the lockup and the
-          right-hand control follow.
-
-          No onGetStarted any more, so the countdown renders its sentence and
-          nothing else. Its trailing "Play now" link — and the invisible mirror
-          that balanced it — existed when the bar had no right-hand CTA on this
-          route. There is one on every route now, so the link was the second of
-          two identical calls to action in a 40px bar. */}
-      {isLanding && authed === false && <SeasonCountdown style={{ ...linkStyle, minWidth: 0 }} />}
-
-      {/* Pushed to the far right: an account link is not wayfinding, so it
-          reads better set apart from the others than appended to them. Its
-          right edge is the bar's --rail padding, so it lands on the same edge
-          as the nav's profile control below. */}
-      <div
-        ref={menuRef}
-        style={{
-          // Always the same width as the lockup slot opposite. On `/` that is
-          // what puts the countdown between them on the bar's true centre
-          // rather than the centre of the space left over; off it the two
-          // slots just split the bar and this one ends on the right edge. No
-          // minWidth: 0, so the control is never squashed narrower than its
-          // own label.
-          flex: "1 1 0",
-          justifyContent: "flex-end",
-          position: "relative",
-          display: "flex",
-          alignItems: "center",
-        }}
-      >
-        {/* Nothing until the token check lands. Rendering either label as the
-            default flashes the wrong one at half the audience — "My Account" at
-            a visitor on the landing page, or "Play now" at a signed-in user
-            on every page. An empty slot for one frame says nothing false. */}
-        {/* One control, two states, on EVERY route including `/`. The landing
-            page used to be an exception that rendered nothing here when signed
-            out, because the countdown carried the call to action instead. The
-            countdown's link is gone, so this is now the only way in — and an
-            exception that leaves a visitor with no visible way to start is not
-            one worth keeping. */}
-        {authed === null ? null : authed === false ? (
-          <button
-            type="button"
-            className="utility-link"
-            style={ctaStyle}
-            onClick={startSignup}
-          >
-            Play now{" "}
-            {/* The same ↗ as /signup's "Log in". A real character, not an svg,
-                so it inherits size, weight and colour — and the space before it
-                is a real space rather than a margin, so the hover underline runs
-                through it unbroken. */}
-            <span aria-hidden="true">↗</span>
-          </button>
-        ) : (
+          Session-scoped — AppChrome holds the state, so it survives navigation
+          but a reload restores the bar. There is no UI to un-dismiss it, so
+          persisting the choice would be a one-way door. */}
+      {onDismiss && (
         <button
           type="button"
-          className="utility-link"
-          style={ctaStyle}
-          onClick={() => setOpen(o => !o)}
+          // NOT .utility-link. That class exists only to draw the sweeping
+          // hover underline under a word, and an underline beneath an icon
+          // is a rule floating under a glyph rather than an underline of
+          // anything. .tap-target is kept — it is the 44px hit area.
+          className="tap-target"
+          aria-label="Hide the tagline bar"
+          title="Hide"
+          onClick={onDismiss}
+          style={{
+            ...ctaStyle,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            background: "none",
+            border: "none",
+            borderRadius: 0,
+            boxShadow: "none",
+            padding: 0,
+            // ABSOLUTE, against the bar, and NOT a negative margin cancelling
+            // --rail.
+            //
+            // That is the bug this replaced, and it is worth stating because
+            // the idiom looks correct: --rail is
+            // `max(20px, calc((100% - 1220px) / 2))`, and a custom property
+            // is substituted as raw tokens, so the `100%` inside it resolves
+            // against WHOEVER USES IT rather than against wherever it was
+            // defined. On TopBar's own padding, 100% is the bar's containing
+            // block — the window — and the rail comes out around 146px at a
+            // 1512px viewport. On a nested element, 100% is that element's
+            // containing block instead, where the same expression clamps to
+            // its 20px floor. `calc(4px - var(--rail))` therefore pulled the
+            // button 16px rather than the ~142px needed to reach the edge, and
+            // looked like a value that was simply too small.
+            //
+            // A DELIBERATE break from the rule that the bar's contents align
+            // to --rail: a dismiss control is not content. It belongs to the
+            // window edge, the way a banner's close button does.
+            position: "absolute",
+            right: 20,
+            top: 0,
+            bottom: 0,
+            cursor: "pointer",
+            lineHeight: 1,
+          }}
         >
-          My account{" "}
-          <span aria-hidden="true">↗</span>
+          {/* Two crossed strokes rather than a "✕" glyph: the character's
+              size and vertical centring vary by font, and this bar is 40px
+              with a baseline already tuned to the device pixel. */}
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none"
+               stroke="currentColor" strokeWidth={2.5} strokeLinecap="round"
+               aria-hidden="true">
+            <path d="M5 5 L19 19 M19 5 L5 19" />
+          </svg>
         </button>
-        )}
-
-        {open && authed !== false && (
-          // Same panel treatment as LeagueNav's menus: square, no border, shadow
-          // only, 6px of vertical padding. Name and email are label rows, then a
-          // rule, then the actions.
-          <div className="utility-menu" style={{ position: "absolute", top: "100%", right: 0, marginTop: 6, background: "var(--surface)", border: "none", borderRadius: 0, boxShadow: "var(--shadow-md)", zIndex: 500, padding: "6px 0" }}>
-            <div className="navmenu-profile is-label">
-              <span style={{ gap: 8 }}>
-                <AccountIcon />
-                {fullName || "—"}
-              </span>
-            </div>
-            {/* Inset to line up with the rows' inner rectangle rather than
-                running the full width of the panel: 8px of row padding plus
-                9px inside the rectangle. */}
-            <div style={{ borderTop: "1px solid var(--border)", margin: "3px 17px" }} />
-            <button type="button" className="navmenu-profile" onClick={() => { router.push("/settings"); setOpen(false); }}>
-              <span>Account Settings</span>
-            </button>
-            <button type="button" className="navmenu-profile" onClick={logout}>
-              <span>Sign Out</span>
-            </button>
-          </div>
-        )}
-      </div>
+      )}
     </div>
   );
 }

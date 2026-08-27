@@ -5,11 +5,18 @@ import { usePathname } from "next/navigation";
 import { useAuthed } from "@/lib/auth";
 import { api } from "@/lib/api";
 import GamesStrip from "@/components/GamesStrip";
+import SiteNav from "@/components/SiteNav";
 import TopBar from "@/components/TopBar";
 
 /**
- * The two pieces of chrome that belong to every signed-in page — the utility
- * bar and the games strip — mounted once in the root layout.
+ * The chrome above every page, mounted once in the root layout. Three pieces,
+ * only one of them unconditional:
+ *
+ *  - TopBar, the dark utility bar. `/` only, and only for someone who is not
+ *    signed in. All it carries now is the tagline.
+ *  - SiteNav, the white nav bar. EVERY route, both auth states. The lockup and
+ *    the account menu used to live in TopBar and live here now.
+ *  - GamesStrip. Every route but `/`.
  *
  * They used to be duplicated: the league layout rendered TopBar + GamesStrip,
  * and the (user) layout rendered GamesStrip + its own UserNav. That meant
@@ -35,7 +42,7 @@ const STRIP_LEAGUE_KEY = "strip_league_id";
 //    reach the app, and a nav bar out of it defeats that.
 //  - /logo is the wordmark preview, where a second wordmark in the bar above
 //    the specimens is just confusing.
-//  - /signup carries its own wordmark top-left. With the bar on, that is two
+//  - /signup and /sign-in carry their own wordmark top-left. With the bar on, that is two
 //    wordmarks stacked with the games strip in between, on the one screen in
 //    the app meant to be nothing but itself. The bar would also offer "Play
 //    now" — a link to the page you are already on.
@@ -46,7 +53,7 @@ const STRIP_LEAGUE_KEY = "strip_league_id";
 //  - /settings and the three legal pages are bare too: each carries its own
 //    BarePageHeader with the lockup and a Done button, so the utility bar
 //    would be a second header above a page that already has one.
-const NO_CHROME = ["/logo", "/signup", "/settings", "/privacy", "/terms", "/responsible-gaming"];
+const NO_CHROME = ["/logo", "/signup", "/sign-in", "/settings", "/privacy", "/terms", "/responsible-gaming"];
 
 function isPublicRoute(pathname: string) {
   return NO_CHROME.some(p => pathname === p || pathname.startsWith(`${p}/`));
@@ -60,6 +67,7 @@ const LEAGUE_ROUTE = /^\/leagues\/([^/]+)/;
 export default function AppChrome() {
   const pathname = usePathname() ?? "";
   const publicRoute = isPublicRoute(pathname);
+  const isLanding = pathname === "/";
   const routeLeagueId = LEAGUE_ROUTE.exec(pathname)?.[1] ?? "";
 
   // Reactive, from lib/auth. This component is mounted once in the root layout
@@ -72,6 +80,14 @@ export default function AppChrome() {
   // dropped entirely rather than leaving an empty bar.
   const [resolved, setResolved] = useState(false);
   const chromeRef = useRef<HTMLDivElement>(null);
+  // The tagline bar's dismiss X (landing only — see the note on it in TopBar).
+  //
+  // State lives HERE rather than in TopBar because AppChrome mounts once in the
+  // root layout and never remounts, so the choice survives navigation without
+  // being written anywhere. Deliberately not localStorage: nothing in the UI
+  // brings the bar back, so persisting it would be a one-way door. A reload
+  // restores it.
+  const [barDismissed, setBarDismissed] = useState(false);
 
   useEffect(() => {
     if (publicRoute) return;
@@ -152,6 +168,25 @@ export default function AppChrome() {
 
   // Inside a league a card is a shortcut to that game's bet page; outside one
   // there is no league to bet in, so the cards are display only.
+  //
+  // THE UTILITY BAR IS THE LANDING PITCH, AND NOTHING ELSE NOW.
+  //
+  // It used to be the app's header on every route: lockup left, account menu
+  // right. Both of those moved down into SiteNav, which is on every route too
+  // and can carry them at a size that is not squeezed into 40px — so the bar
+  // was left holding one thing, the tagline it shows on `/`. That is a pitch,
+  // and a pitch has an audience of exactly one kind of person.
+  //
+  // Hence both halves of the condition:
+  //
+  //  - `isLanding`, because off `/` the bar renders nothing at all but two
+  //    empty flex slots. It was already blank there in everything but height.
+  //  - `authed !== true`, because someone who has signed up is being sold what
+  //    they already bought. `!== true` rather than `=== false` so the bar is
+  //    up on the first frame: a visitor is the common case on `/`, and the
+  //    signed-in one is redirected to /home by SignedOutOnly anyway.
+  const showTopBar = !barDismissed && isLanding && authed !== true;
+
   const interactive = Boolean(routeLeagueId) && authed !== false;
   const leagueId = authed === false ? "" : (routeLeagueId || fallbackLeagueId);
   const showStrip = authed === false || interactive || !resolved || Boolean(fallbackLeagueId);
@@ -166,8 +201,25 @@ export default function AppChrome() {
     // page, which put the page's right edge a scrollbar's width inboard of the
     // nav's. Both sit inside the same scroller now, so both edges agree.
     <div ref={chromeRef} className="app-chrome">
-      <TopBar />
-      {showStrip && <GamesStrip leagueId={leagueId} interactive={interactive} />}
+      {/* --chrome-h is measured off this wrapper by the ResizeObserver above,
+          so dropping the bar reflows .page's min-height on its own. */}
+      {showTopBar && <TopBar onDismiss={() => setBarDismissed(true)} />}
+
+      {/* UNCONDITIONAL. SiteNav is the app's header on every route in both auth
+          states — it carries the lockup, and it carries either the two front
+          doors or the account menu. Nothing about it is route-dependent, which
+          is what lets the chrome keep a stable height while `authed` resolves:
+          only the control inside the slot appears, the bar itself never
+          arrives or leaves.
+
+          It was LandingNav, mounted here on `/` alone. */}
+      <SiteNav />
+
+      {/* The strip is a ticker of live odds for a league you are in. On `/`
+          there is no league, nothing to bet on and no slip, so it was showing
+          the product instead of selling it — and it pushed the entry points a
+          screen down. Everywhere else it sits under the nav as before. */}
+      {!isLanding && showStrip && <GamesStrip leagueId={leagueId} interactive={interactive} />}
     </div>
   );
 }
