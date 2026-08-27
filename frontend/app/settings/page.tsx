@@ -69,6 +69,71 @@ const TABS: Array<{ key: Tab; label: string }> = [
 const NAME_ALLOWED = /[^A-Za-z0-9 ]/g;
 const NAME_MIN = 3;
 
+/**
+ * Puts the account grid in the MIDDLE of the space under the bare header
+ * instead of at the top of it.
+ *
+ * `.bare-route` already hands this element every pixel between the header and
+ * the bottom of the viewport — it is `flex: 1 1 auto` in a column there, see
+ * the `.bare-route > .page-wide` rule in globals.css. It was simply laying its
+ * one child out from the top, so a page that only needs ~500px sat in the top
+ * half with a screen of white under it.
+ *
+ * `center` is SAFE against tall content here, which it is not everywhere:
+ * centring inside a scroll container normally risks pushing the top of the
+ * content out of reach, because overflow spills equally from both ends and you
+ * cannot scroll up past the start. It cannot happen on this route —
+ * `.bare-route` is `flex: 1 0 auto` with an auto height, so it grows to its
+ * content and can never shrink below it. There is therefore never negative
+ * free space for `center` to distribute.
+ *
+ * The extra bottom padding (over `.page-wide`'s own 24px) is an optical bias,
+ * not a spacer: a short block on a tall empty page reads low when it sits on
+ * the true middle. AuthScreen does the same thing with `padding: 0 20px 10vh`
+ * on /signup and /sign-in.
+ *
+ * 20vh, up from 8. Padding on the bottom buys HALF its value in movement —
+ * `center` splits whatever is left — so the 12vh added here lifts the grid
+ * about 60px at a 980px viewport, taking the split above and below it from
+ * 229/288 to roughly 170/347. In vh rather than px so the lift scales with the
+ * emptiness it is correcting; on a viewport short enough for the grid to fill,
+ * there is no free space left to distribute and the bias quietly does nothing.
+ *
+ * WHAT CENTRING COUPLES, and why GRID_MIN_H exists: vertical position now
+ * depends on the height of whatever tab is open. See below.
+ */
+const PANE_CENTRED = {
+  display: "flex",
+  flexDirection: "column" as const,
+  justifyContent: "center",
+  paddingBottom: "20vh",
+};
+
+/**
+ * A floor under the grid, so the three tabs are one box rather than three.
+ *
+ * Centred content moves when it changes height, and the three panes measured
+ * 245px, 152px and 334px — a 182px spread, which re-centres as a ~90px slide of
+ * the whole page. The rail slides with it, so the tab you just clicked walks
+ * out from under the pointer. That is the cost of centring, and this is the
+ * payment: with a floor above the tallest pane, all three render the same box
+ * and switching tabs changes only what is inside it.
+ *
+ * 360 rather than 335 — the measured maximum plus slack for a wrapped name or a
+ * longer time-zone string. Overshooting only leaves quiet space below the short
+ * panes, which is what the whitespace either side already looks like.
+ * Undershooting brings the slide back for whichever pane outgrows it.
+ *
+ * It is a MINIMUM, so nothing is clipped: opening an editor, or the helmet
+ * palette in Default league profile, grows past this freely. Movement on a
+ * deliberate click into an edit is expected; movement from merely changing tab
+ * is not.
+ *
+ * `align-items: start` on the grid is what keeps both columns at the top of the
+ * taller box instead of stretching a rule down into the slack.
+ */
+const GRID_MIN_H = 360;
+
 function cleanDisplayName(v: string) {
   // Accents fold onto their ASCII base BEFORE the filter runs, so José becomes
   // Jose rather than Jos. Stripping first would eat the letter along with the
@@ -190,7 +255,9 @@ export default function SettingsPage() {
     return (
       <div className="bare-route">
         <BarePageHeader done />
-        <div className="page-wide"><div className="mx-empty">Loading your account…</div></div>
+        {/* Centred the same way the loaded page is, so the content does not
+            jump up the screen the moment /users/me lands. */}
+        <div className="page-wide" style={PANE_CENTRED}><div className="mx-empty">Loading your account…</div></div>
       </div>
     );
   }
@@ -240,13 +307,13 @@ export default function SettingsPage() {
   }
 
   return (
-    // paddingTop overrides the 20px .page-wide gives every page. That is fine
-    // for a page that opens on a dense grid, but here the first thing under the
-    // chrome is a heading, and 20px left it crammed against the games strip.
-    // Local rather than a change to .page-wide, which ~18 other routes share.
+    // The vertical centring is local rather than a change to `.page-wide` or to
+    // `.bare-route > .page-wide`, both of which other routes share — the legal
+    // pages are also bare routes and are long enough that centring them would
+    // be either a no-op or an oddity. See PANE_CENTRED.
     <div className="bare-route">
       <BarePageHeader done />
-      <div className="page-wide">
+      <div className="page-wide" style={PANE_CENTRED}>
       {/* Rail then content. `align-items: start` so the rail does not stretch to
           the height of the tallest tab and hang a rule into empty space. */}
       <div
@@ -255,6 +322,7 @@ export default function SettingsPage() {
           maxWidth: 940, margin: "0 auto", width: "100%",
           display: "grid", gridTemplateColumns: "224px minmax(0, 1fr)",
           gap: 40, alignItems: "start",
+          minHeight: GRID_MIN_H,
         }}
       >
         {/* ── Rail ─────────────────────────────────────────────────── */}
