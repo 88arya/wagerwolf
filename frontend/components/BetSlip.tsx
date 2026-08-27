@@ -230,25 +230,45 @@ export default function BetSlip({ leagueId }: { leagueId: string }) {
   // and is the number this wants. .page still supplies the padding, since that
   // is what separates the scrollport from the first card.
   const [contentTop, setContentTop] = useState(CONTENT_TOP_FALLBACK);
+  // How far the slip's right edge sits from the WINDOW's right edge.
+  //
+  // It used to be a flat `right: var(--rail)`, which was correct while the
+  // scroller was the window: --rail's `100%` resolved against the viewport and
+  // the slip landed on the page's content rail. In the signed-in shell the
+  // scroller is `.app-card`, which is inset by the sidebar on the left and its
+  // own margin on the right — so a viewport-relative rail puts the slip a
+  // sidebar's width off the rail it is supposed to be on. `position: fixed`
+  // cannot inherit that, hence measuring it.
+  const [contentRight, setContentRight] = useState<number | null>(null);
   useEffect(() => {
     const chrome = document.querySelector(".app-chrome");
-    const scroller = document.querySelector(".app-scroll");
+    // .app-card is the shell's scroller, .app-scroll the classic layout's.
+    const scroller = document.querySelector(".app-card, .app-scroll");
     const page = document.querySelector(".page, .page-wide");
     if (!scroller || !page) return;
     const measure = () => {
-      const padTop = parseFloat(getComputedStyle(page).paddingTop) || 0;
-      // No chrome on the routes that render none — then content starts at the
-      // scroller's own top, which is what the fallback below resolves to.
-      const top = chrome ? chrome.getBoundingClientRect().bottom : scroller.getBoundingClientRect().top;
+      const cs = getComputedStyle(page);
+      const padTop = parseFloat(cs.paddingTop) || 0;
+      const box = scroller.getBoundingClientRect();
+      // No chrome on the routes that render none — the shell included, where
+      // content starts at the card's own top.
+      const top = chrome ? chrome.getBoundingClientRect().bottom : box.top;
       setContentTop(top + padTop);
+      // The page's own horizontal padding IS --rail resolved against the
+      // scroller, so reading it back beats re-deriving the token. Added to the
+      // gap between the scroller and the window edge, which is 0 in the classic
+      // layout and the card's margin in the shell.
+      const padRight = parseFloat(cs.paddingRight) || 0;
+      setContentRight(window.innerWidth - box.right + padRight);
     };
     measure();
-    // The chrome for its height changing (the strip is absent on some routes
-    // and collapses when a week has no games), the page for its padding
-    // changing with the viewport.
+    // The chrome for its height changing (the strip collapses when a week has
+    // no games), the page for its padding changing with the viewport, and the
+    // scroller because the card's box moves with the sidebar.
     const ro = new ResizeObserver(measure);
     if (chrome) ro.observe(chrome);
     ro.observe(page);
+    ro.observe(scroller);
     window.addEventListener("resize", measure);
     return () => { ro.disconnect(); window.removeEventListener("resize", measure); };
   }, []);
@@ -414,7 +434,10 @@ export default function BetSlip({ leagueId }: { leagueId: string }) {
       position: "fixed",
       top: contentTop,
       bottom: 12,
-      right: NAV_GUTTER,
+      // NAV_GUTTER only until the measurement lands — see contentRight. It is
+      // right in the classic layout and a sidebar's width out in the shell, so
+      // it is a first-frame fallback rather than the value.
+      right: contentRight ?? NAV_GUTTER,
       width: 368,
       maxWidth: `calc(100vw - ${NAV_GUTTER} - 12px)`,
       zIndex: 500,

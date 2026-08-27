@@ -1,0 +1,86 @@
+"use client";
+
+import { usePathname } from "next/navigation";
+import AppChrome from "@/components/AppChrome";
+import SideNav from "@/components/SideNav";
+
+/**
+ * Chooses between the app's two layouts, and is the only place that choice is
+ * made.
+ *
+ * THE SHELL — a sidebar and one card, `.app-shell` in globals.css. This is the
+ * signed-in app: /home, /friends and every league route. The card is the scroll
+ * region and holds the whole page; there is no utility bar, no SiteNav, no
+ * games strip and no site footer above or below it.
+ *
+ * THE CLASSIC LAYOUT — `.app-scroll` with AppChrome pinned at its top and the
+ * footer at its foot. This is the landing page and the marketing routes, and it
+ * is UNCHANGED. That is the point of splitting here rather than teaching the
+ * existing chrome to hide itself: `/` keeps exactly the layout it had.
+ *
+ * WHY THE SPLIT IS BY ROUTE AND NOT BY `authed`
+ *
+ * The two layouts are structurally different — different scroller, different
+ * ground, different everything — so a component that swapped between them when
+ * the token check landed would rebuild the page one frame in, on every load.
+ * `useAuthed()` is null until an effect runs on the client (see lib/auth), and
+ * there is no way to know during SSR.
+ *
+ * Route is a better proxy anyway, because these routes are already guarded:
+ * app/(user)/layout.tsx bounces anyone without a token, and the league routes
+ * sit behind LobbyGate. Someone signed out who reaches one gets the shell for
+ * the moment before the guard redirects them, which is the same moment they
+ * used to get a signed-in-looking chrome for.
+ *
+ * SHELL_ROUTES is therefore a list of routes and NOT "everything that is not
+ * public". /settings, /signup, /sign-in and the legal pages are signed-in or
+ * auth routes that stay OUT of it: each is a `.bare-route`, a self-contained
+ * sheet with its own header and a Done button, and wrapping a sheet in a shell
+ * would give it two ways back.
+ */
+const SHELL_ROUTES = ["/home", "/friends", "/leaderboard", "/leagues"];
+
+function inShell(pathname: string) {
+  return SHELL_ROUTES.some(p => pathname === p || pathname.startsWith(`${p}/`));
+}
+
+export default function AppFrame({
+  children,
+  footer,
+}: {
+  children: React.ReactNode;
+  // Passed in rather than imported: SiteFooter is a server component, and the
+  // root layout is where it can stay one. Same reason FooterSlot takes it as
+  // children.
+  footer: React.ReactNode;
+}) {
+  const pathname = usePathname() ?? "";
+
+  if (inShell(pathname)) {
+    return (
+      <div className="app-shell">
+        <SideNav />
+        {/* THE CARD IS THE SCROLLER. Pages inside it need no changes: `.page` /
+            `.page-wide` resolve their `min-height: calc(100% - var(--chrome-h))`
+            against this box, and --chrome-h is the :root default of 0 because
+            AppChrome is not mounted on this branch at all.
+
+            No footer. The shell is the nav and the card, so the legal links
+            live on the marketing routes, which still carry it. */}
+        <div className="app-card">{children}</div>
+      </div>
+    );
+  }
+
+  return (
+    // The app's other scroll region, and the older one. See the .app-scroll
+    // note in globals.css: the chrome is INSIDE it and sticky, so the whole
+    // viewport is one scrollport and a wheel event over the bar still scrolls
+    // the page.
+    <div className="app-scroll">
+      <AppChrome />
+      {children}
+      {footer}
+    </div>
+  );
+}

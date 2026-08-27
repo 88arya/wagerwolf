@@ -1,15 +1,16 @@
 import type { Metadata } from "next";
 import { Fugaz_One, Inter_Tight } from "next/font/google";
 import "./globals.css";
-import AppChrome from "@/components/AppChrome";
+import AppFrame from "@/components/AppFrame";
 import GoogleProvider from "@/components/GoogleProvider";
 // The wordmark's face. Declared in wordmarkFonts.ts alongside the other
 // candidates and mounted here rather than there, because the lockup appears in
 // the utility bar, the footer and /signup — i.e. on every route — so it cannot
 // be scoped to one page the way a specimen can.
-// arcaMajora is the wordmark's face; lemonMilk sets the games strip's team
-// abbreviations. Both declared in wordmarkFonts.ts and mounted here because
-// both appear on every route.
+// arcaMajora is the wordmark's face. lemonMilk had the games strip's team
+// abbreviations for four days in August 2026 and no longer has anything —
+// the strip is back on Fugaz One below — but it stays mounted because
+// wordmarkFonts.ts still lists it as a specimen on /logo.
 import { arcaMajora, gilroy, lemonMilk } from "./wordmarkFonts";
 import SiteFooter from "@/components/SiteFooter";
 import FooterSlot from "@/components/FooterSlot";
@@ -47,33 +48,26 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" className={`${interTight.variable} ${fugazOne.variable} ${arcaMajora.variable} ${lemonMilk.variable} ${gilroy.variable}`} suppressHydrationWarning>
       <body suppressHydrationWarning>
-        {/* Utility bar + games strip, global to every signed-in page. Mounted
-            here rather than per-layout so navigating between /home and a league
-            doesn't tear them down and rebuild them. AppChrome renders a
-            fragment, so both stay direct flex children of <body>. */}
+        {/* AppFrame owns the layout, and there are two of them.
+            /home, /friends and the league routes get the signed-in shell — a
+            sidebar and one card. The landing page and the marketing routes keep
+            the older arrangement: AppChrome sticky at the top of .app-scroll,
+            with the footer following the content. AppFrame is the single place
+            that decides which; see its header for why the split is by route
+            rather than by auth state. */}
         <GoogleProvider>
-          {/* The app's single scroll region — and it now genuinely is single.
-              The chrome used to sit outside it as a <body> sibling, which meant
-              a wheel event over the utility bar or the games strip had no
-              scrollable ancestor to move: the page simply did not respond, and
-              the scrollbar began below the strip rather than spanning the
-              window, which is what made the header read as detached from the
-              page under it.
-
-              Inside, and pinned with `position: sticky` (see .app-chrome), it
-              stays exactly as visible while the whole viewport becomes one
-              scrollport. The footer still follows the content rather than
-              pinning, since it is still the last child here. */}
-          <div className="app-scroll">
-            <AppChrome />
+          <AppFrame
+            // Passed rather than imported inside AppFrame, which is a client
+            // component: SiteFooter is a server component and stays one this
+            // way. FooterSlot is the wrapper that lets bare routes opt out.
+            footer={
+              <FooterSlot>
+                <SiteFooter />
+              </FooterSlot>
+            }
+          >
             {children}
-            {/* Wrapped so /signup can opt out — see FooterSlot. SiteFooter is
-                a server component and cannot read the pathname itself, so it is
-                passed through as children rather than made a client one. */}
-            <FooterSlot>
-              <SiteFooter />
-            </FooterSlot>
-          </div>
+          </AppFrame>
         </GoogleProvider>
       </body>
     </html>

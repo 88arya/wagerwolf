@@ -84,8 +84,35 @@
   --header-bg:    #000000;
 
   /* Rendered height of the sticky chrome, written by AppChrome. 0 until it
-     measures, and on the routes that render no chrome at all. */
+     measures, and on the routes that render no chrome at all — which now
+     includes every route in the signed-in shell, where AppChrome is not
+     mounted and this default is what .page's min-height subtracts. */
   --chrome-h:     0px;
+
+  /* ── App shell ──
+     The signed-in sidebar's width, and the radius of the card beside it.
+
+     12px is a THIRD step past --radius (6) and --radius-lg (8), and it is
+     deliberate rather than drift: those two govern controls and small panels,
+     where 6px is a corner you read at arm's length. This is one box at viewport
+     scale, and 8px on a 1200px rectangle reads as square. */
+  --sidebar-w:    240px;
+  --radius-card:  12px;
+
+  /* How far the card is inset from the window, AND the sidebar's top padding.
+     One token because those two are the same line: the wordmark sits in a box
+     the same shape as a nav row, and that box's top edge is meant to land on
+     the card's top edge. Two hardcoded 10s drift the moment either is nudged.
+     See .sidenav-brand. */
+  --shell-gap:    10px;
+
+  /* The ground the shell's card floats on, and the sidebar's fill.
+     DELIBERATELY NOT --bg. That token is the page ground on every route, the
+     landing page included, so pointing the shell at it would tint the marketing
+     pages too — and the landing UI is meant to stay exactly as it is. This is
+     the signed-in app's own ground; to take the colour everywhere instead, move
+     the value onto --bg and point this at it. */
+  --shell-bg:     #F5F8FF;
 
   /* ── Status ── */
   --win:          #16A34A;
@@ -391,6 +418,370 @@ button.dark:hover { opacity: 0.86; background: var(--text); border-color: var(--
 .bare-route > .page-wide {
   min-height: 0;
   flex: 1 1 auto;
+}
+
+/* ══ THE SIGNED-IN APP SHELL ════════════════════════════════════════════════
+   Two elements and nothing else: a sidebar standing on the page ground, and
+   one card holding whatever page the sidebar selected.
+
+   IT REPLACES THE TOP-BAR WORLD, but only on the app's own routes — /home,
+   /friends, /leagues/*. The landing page and the marketing routes keep
+   AppChrome (SiteNav, and TopBar's tagline on `/`) untouched; components/
+   AppFrame is the single place that decides which of the two a route gets.
+
+   THE CARD IS THE SCROLLER HERE, where `.app-scroll` is the scroller
+   everywhere else. That is the whole reason the shell is a separate branch
+   rather than a variation: `.app-scroll` puts the chrome, the page and the
+   footer in one scrollport, and this puts the page in a box with the nav
+   parked outside it. `.page` / `.page-wide` need no changes — their
+   `min-height: calc(100% - var(--chrome-h))` resolves against the card, and
+   --chrome-h is 0 here because AppChrome is not mounted at all.
+
+   --rail needs no change either, and that is worth stating because it looks
+   like it should. It is `max(20px, calc((100% - 1220px) / 2))`, and the `100%`
+   resolves against whoever uses it — the card, here — so page content centres
+   inside the card exactly the way it centred inside the window before. */
+.app-shell {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  background: var(--shell-bg);
+}
+
+.app-sidebar {
+  width: var(--sidebar-w);
+  flex-shrink: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  /* Top padding is --shell-gap, matching the card's margin, so the wordmark's
+     row starts on the card's top edge. Bottom is larger by hand: the account
+     control at the foot wants more air under it than the card needs. */
+  padding: var(--shell-gap) 10px 14px;
+  /* Its own scroller: the league list has no ceiling, and a long one must not
+     push the account control off the bottom of the window. */
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.app-card {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  /* No left margin: the sidebar's own right padding is the gap on that side,
+     and a margin here would double it. */
+  margin: var(--shell-gap) var(--shell-gap) var(--shell-gap) 0;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  /* Both axes non-visible, which is what makes the radius actually clip: a
+     full-bleed child like LeagueNav's grey band would otherwise square off the
+     card's top corners. */
+  overflow-y: auto;
+  overflow-x: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* NOT .app-scroll's scrollbar. That one is a light thumb on a #2C2C2C track,
+   drawn to sit beside the dark site footer; on a white card it reads as a black
+   stripe down the edge. */
+.app-card {
+  scrollbar-color: var(--surface-4) transparent;
+}
+.app-card::-webkit-scrollbar { width: 12px; }
+.app-card::-webkit-scrollbar-track { background: transparent; }
+.app-card::-webkit-scrollbar-thumb {
+  background: var(--surface-4);
+  border: 3px solid var(--surface);
+  border-radius: 999px;
+}
+.app-card::-webkit-scrollbar-thumb:hover { background: var(--text-3); }
+
+/* ── Sidebar contents ── */
+/* THE SAME BOX AS A NAV ROW, and that is what positions it.
+   Identical height and horizontal padding to .sidenav-item, so the lockup sits
+   in the rectangle the active row fills — and because the sidebar's top padding
+   is --shell-gap, that rectangle's TOP EDGE lands on the card's top edge. The
+   wordmark reads as level with the card rather than floating above it.
+
+   It used to be `padding: 2px 8px 16px` on an auto-height box, which put the
+   mark 4px high of the card and made the gap below it a number with no
+   relationship to anything. The gap is a margin now: the box is the box. */
+.sidenav-brand {
+  display: flex;
+  align-items: center;
+  height: 30px;
+  /* 10px on the left, not the rows' 8, and the extra 2 is an OPTICAL
+     correction rather than a different grid.
+
+     The boxes already agreed: .sidenav-item is `padding: 0 8px` and its icon is
+     the first child, so both this lockup and the Home icon start their layout
+     box on the same vertical. What does not agree is the INK inside those
+     boxes. A lucide icon is a 24-unit viewBox whose drawing sits roughly 3
+     units in on each side — about 12.5%, or ~1.9px at size 15 — whereas the
+     "w" that opens the wordmark carries a left side bearing of a few hundredths
+     of an em, well under half a pixel at this size. Matching the boxes
+     therefore leaves the lockup sitting ~1.5px proud of the icon column, which
+     is exactly the kind of gap the eye picks up in a vertical stack.
+
+     THIS IS THE NUMBER TO TUNE if it still reads off. Nothing else depends on
+     it: it moves the lockup alone, and the rows below are the grid it is being
+     matched to. */
+  padding: 0 8px 0 10px;
+  margin-bottom: 10px;
+  color: var(--text);
+  text-decoration: none;
+  flex-shrink: 0;
+}
+
+/* A row in the nav. `a` by default; the global `button` rule is a filled accent
+   pill, so anything rendered as a button here has to repeat these under
+   :hover/:active the way every .mx-* control does. */
+.sidenav-item,
+.sidenav-item:hover,
+.sidenav-item:active {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 0 8px;
+  height: 30px;
+  flex-shrink: 0;
+  border: none;
+  border-radius: var(--radius);
+  background: none;
+  box-shadow: none;
+  text-align: left;
+  text-decoration: none;
+  font-family: inherit;
+  font-size: 0.82rem;
+  font-weight: 500;
+  letter-spacing: normal;
+  text-transform: none;
+  color: var(--text-2);
+  cursor: pointer;
+  transform: none;
+  /* Long league names truncate rather than wrapping to a second line — the row
+     is a fixed height and a wrapped name would overflow it. */
+  white-space: nowrap;
+  overflow: hidden;
+}
+.sidenav-item > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* A DARKENING, not --surface-2. The greys in the surface ramp are mixed for a
+   white page; on the shell's tinted ground they read as dirt rather than as a
+   lighter step. A translucent black is neutral, so it stays right whatever
+   --shell-bg is set to next. */
+.sidenav-item:hover { background: rgba(15, 23, 42, 0.06); color: var(--text); }
+/* The one you are on, filled in the CARD's white rather than in a grey. It is
+   the same "filled rectangle" signal .mx-tab uses, and picking the card's own
+   colour for it ties the row to the thing it opened. Unlike .mx-tab this
+   surface DOES take a hover: a sidebar is a list you point down, and the rows
+   have to answer.
+
+   NO WEIGHT CHANGE. Every label is drawn identically — same box, same
+   alignment, same size, same weight — and being the current one is a state, not
+   a different kind of row. Bolding it also reflows the name a fraction wider,
+   which walks the truncation point of a long league title as you navigate. */
+.sidenav-item.is-active,
+.sidenav-item.is-active:hover,
+.sidenav-item.is-active:active {
+  background: var(--surface);
+  color: var(--text);
+}
+.sidenav-item svg { flex-shrink: 0; }
+
+/* A SECTION TITLE, and it is a button: clicking it collapses the labels under
+   it. So the whole `button` reset has to be repeated for :hover and :active —
+   the global rule is a filled accent pill, and leaving either unclaimed
+   repaints this as one the moment a pointer touches it.
+
+   NOT the app's micro-label, which is 0.625rem uppercase at 0.12em. Sentence
+   case and no tracking, by request: that micro-label names a field, and this
+   names a group you can open and close. Still --text-3 and still smaller than a
+   label, so the hierarchy under it is unchanged. */
+.sidenav-section,
+.sidenav-section:hover,
+.sidenav-section:active {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  height: 26px;
+  padding: 0 8px;
+  /* Air above, almost none below: the title belongs to the labels under it. */
+  margin: 16px 0 2px;
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  border-radius: var(--radius);
+  box-shadow: none;
+  font-family: inherit;
+  font-size: 0.72rem;
+  font-weight: 500;
+  letter-spacing: normal;
+  text-transform: none;
+  color: var(--text-3);
+  text-align: left;
+  cursor: pointer;
+  transform: none;
+  white-space: nowrap;
+}
+.sidenav-section:hover { background: rgba(15, 23, 42, 0.06); color: var(--text-2); }
+
+/* Down while the section is open, flipped when it is closed. Driven off
+   aria-expanded rather than a second class, so the state a screen reader is
+   told and the state that is drawn come from one source and cannot disagree. */
+.sidenav-caret {
+  flex-shrink: 0;
+  transition: transform 0.15s ease;
+}
+.sidenav-section[aria-expanded="false"] .sidenav-caret { transform: rotate(180deg); }
+@media (prefers-reduced-motion: reduce) {
+  .sidenav-caret { transition: none; }
+}
+
+.sidenav-note {
+  padding: 2px 8px;
+  font-size: 0.78rem;
+  color: var(--text-3);
+  flex-shrink: 0;
+}
+
+/* ── The Games section's fixture list ──
+   One row per game, no kickoff headings and no times. Not the games strip: no
+   odds, no cards, no motion — a 220px column of fixtures.
+
+   THE AWAY LOGO SITS IN THE LABELS' ICON COLUMN, and the arithmetic is the
+   whole reason this rule mirrors .sidenav-item's padding rather than picking
+   its own. A label is `padding: 0 8px` with its icon as the first child, so
+   that icon starts at the sidebar's 10px plus 8 = 18px. This row uses the same
+   8px, and its first child is the away side, whose own first child is the
+   logo — so the logo box starts at 18px too. Both are 15px square. Change
+   either padding and the nav loses its single left edge.
+
+   No optical nudge here, unlike .sidenav-brand. That one compensates for a
+   single known glyph's side bearing; these are 32 different team marks with
+   32 different amounts of whitespace baked into them, so any fixed correction
+   would be wrong for most of the league. The BOX is what is aligned.
+
+   Deliberately NOT .sidenav-item itself: shorter and lighter, because a game is
+   something you are being shown rather than a destination you are choosing
+   between. */
+.sidenav-game,
+.sidenav-game:hover,
+.sidenav-game:active {
+  display: flex;
+  align-items: center;
+  /* Around the "@". Inside each side the gap is tighter — see
+     .sidenav-game-side — so a logo reads as belonging to the abbreviation
+     beside it rather than floating between the two teams. */
+  gap: 6px;
+  height: 26px;
+  padding: 0 8px;
+  flex-shrink: 0;
+  border-radius: var(--radius);
+  background: none;
+  text-decoration: none;
+  font-size: 0.76rem;
+  font-weight: 500;
+  color: var(--text-2);
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+/* A logo and its abbreviation, bound together. */
+.sidenav-game-side {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+/* Only when it goes somewhere. Outside a league the row is a `div` with
+   `is-static`, and a hover on something inert is a lie about what a click does. */
+.sidenav-game:hover { background: rgba(15, 23, 42, 0.06); color: var(--text); }
+.sidenav-game.is-static,
+.sidenav-game.is-static:hover { background: none; color: var(--text-2); cursor: default; }
+
+/* The separator recedes so the two teams carry the row. */
+.sidenav-game-at { color: var(--text-3); font-size: 0.7rem; }
+
+/* There is no score column and no live/final state here, and that follows from
+   the list being upcoming-only: a game with a score is a game you can no longer
+   bet on, so it has already dropped out. If in-progress games are ever shown
+   again, the score belongs on the right of this row. */
+
+/* Pins the account control to the bottom. `margin-top: auto` inside the column,
+   so it sits under the last section however short the nav is, and gets pushed
+   down normally once the league list is long enough to scroll. */
+.sidenav-foot {
+  margin-top: auto;
+  /* NO horizontal padding. It held 8px back when this was plain type and had
+     to be inset by hand to reach the rows' text column; the account control is
+     a .sidenav-item now and brings that 8px with it, so a repeat here would
+     indent the one row that has to line up with the rest. */
+  padding: 14px 0 4px;
+  flex-shrink: 0;
+}
+
+/* ── Shell on small screens ──
+   The sidebar becomes a horizontal strip above the card rather than
+   disappearing behind a hamburger: every destination stays reachable, which a
+   drawer only manages if you also build the drawer. Section labels stay in the
+   flow as inline separators, so "LEAGUES" still says what the names after it
+   are. */
+@media (max-width: 900px) {
+  .app-shell { flex-direction: column; }
+  .app-sidebar {
+    width: auto;
+    flex-direction: row;
+    align-items: center;
+    gap: 4px;
+    padding: 8px 10px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    border-bottom: 1px solid var(--border);
+  }
+  /* No bottom margin in a row — the gap here is horizontal. Height stays, so
+     the lockup keeps the same box it has in the column. */
+  .sidenav-brand { padding: 0 10px 0 0; margin-bottom: 0; }
+  .sidenav-item { width: auto; }
+  /* Inline separator rather than a heading with a stack under it. Collapsing
+     still works and still hides that section's labels — it just takes a bite
+     out of the row instead of a block out of the column. */
+  .sidenav-section,
+  .sidenav-section:hover,
+  .sidenav-section:active { width: auto; margin: 0 2px 0 10px; }
+  /* STICKY, not merely pushed right. `margin-left: auto` puts the account at
+     the END of the row's scroll content, and with a few leagues in the list
+     that content is wider than the window — so the one control you cannot
+     navigate around would sit past the right edge until you scrolled to it.
+     Sticky pins it to the visible right edge instead and the leagues scroll
+     underneath, which is what the fill and the z-index are for. */
+  .sidenav-foot {
+    margin-top: 0;
+    margin-left: auto;
+    padding: 0 0 0 12px;
+    position: sticky;
+    right: 0;
+    z-index: 1;
+    /* The strip's own fill, so the league rows scroll under it invisibly. */
+    background: var(--shell-bg);
+  }
+  /* The strip is across the TOP here, so the panel has to open downward — and
+     back to the right edge, since the trigger is now the rightmost thing on a
+     full-width bar rather than a row in a narrow column. */
+  .app-sidebar .utility-menu.is-up {
+    top: 100%;
+    bottom: auto;
+    right: 0;
+    left: auto;
+    margin: 6px 0 0;
+  }
+  .app-card { margin: var(--shell-gap); }
 }
 
 /* The utility bar and games strip, pinned to the top of the scroller.
@@ -1205,6 +1596,24 @@ hr { border: none; border-top: 1px solid var(--border); margin: 14px 0; }
 .utility-menu .navmenu-profile.is-label:hover { cursor: default; }
 .navmenu-profile.is-label > span { color: var(--text-2); }
 .navmenu-profile.is-label:hover > span { background: none; font-weight: 500; }
+
+/* WHICH EDGE THE ACCOUNT PANEL HANGS OFF.
+
+   One anchored edge each way rather than a measured flip. `is-down` pins the
+   panel's head under the trigger's foot, `is-up` pins its foot to the trigger's
+   head — so it grows upward and its own height never enters into it.
+
+   Horizontal follows from the same choice, because the two callers face
+   opposite ways: in a bar the trigger is the last thing on the right, and a
+   left-anchored panel would run off the window; in the sidebar it is a row in a
+   240px column, and a right-anchored one would push out over the card.
+
+   In CSS rather than inline on the element so the shell's narrow-screen block
+   below can flip `is-up` back down when the sidebar becomes a top strip. An
+   inline style cannot be overridden by a media query. */
+.utility-menu { position: absolute; }
+.utility-menu.is-down { top: 100%; right: 0; margin-top: 6px; }
+.utility-menu.is-up { bottom: 100%; left: 0; margin-bottom: 6px; }
 
 /* The utility bar's My Account control is a menu trigger, not a link, so it
    needs the button chrome stripped back to what .utility-link expects. */
@@ -2453,7 +2862,7 @@ input[type="checkbox"].auth-check[aria-invalid="true"]:focus {
 
    TWO MECHANISMS, chosen per case:
 
-   • .tap-target expands the hit area with an absolutely-positioned ::after and
+   • .tap-target expands the hit area with an absolutely-positioned ::before and
      changes NO layout at all. That matters in the utility bar, where BAR_H is
      40 and pinned to an even number for baseline snapping (see the note in
      LogoWordmark), and where the lockup carries a hand-measured optical shift.
@@ -2461,15 +2870,23 @@ input[type="checkbox"].auth-check[aria-invalid="true"]:focus {
    • Real padding on the footer links, where the extra spacing between rows is
      harmless and is what a touch list should look like anyway.
 
-   The ::after is inset horizontally to `left: 0; right: 0` rather than being
+   ::BEFORE, NOT ::AFTER, and that matters: .utility-link::after is already the
+   sweeping hover underline. Sharing the pseudo-element meant this rule
+   overrode its height to 44px while leaving its background and clip-path
+   alone — an invisible 44px bar that would have painted as a solid block the
+   moment anything un-clipped it. Two effects, two pseudo-elements.
+
+   The ::before is inset horizontally to `left: 0; right: 0` rather than being
    blown out sideways, so neighbouring targets in the same row cannot swallow
    each other's taps. */
 @media (pointer: coarse) {
   .tap-target,
   .utility-link { position: relative; }
 
-  .tap-target::after,
-  .utility-link::after {
+  .tap-target::before,
+  .utility-link::before {
+    /* content is what brings the box into existence — .utility-link has no
+       ::before of its own, so this creates one rather than repurposing it. */
     content: "";
     position: absolute;
     left: 0;
@@ -2486,4 +2903,97 @@ input[type="checkbox"].auth-check[aria-invalid="true"]:focus {
     display: inline-block;
     padding: 6px 0;
   }
+}
+
+/* ── Landing nav CTAs ────────────────────────────────────────────────────────
+   "Sign in" and "Get started" are ONE control drawn two ways. Both are .mx-btn,
+   so they share geometry exactly — that is what makes Sign in's hover state a
+   rectangle identical to Get started rather than a slightly different box that
+   happens to be blue.
+
+   Specificity notes, both load bearing:
+
+   • The radius rule repeats itself for :hover and :active. The base .mx-btn
+     rule is written as a group — `.mx-btn, .mx-btn:hover, .mx-btn:active` — and
+     pins border-radius: 0, so a plain `.landing-cta` would lose to `.mx-btn:hover`
+     (0,2,0) the moment the pointer arrived and the corners would square up
+     mid-hover.
+   • .landing-cta-outline's hover carries :not(:disabled) to reach (0,3,0) and
+     beat the same grouped rule.
+
+   4px, deliberately less than the house --radius of 6: these sit next to a hard
+   1px hairline and a wordmark with no curves in it, so the corners are meant to
+   read as softened rather than as pills. */
+.landing-cta,
+.landing-cta:hover,
+.landing-cta:active {
+  border-radius: 4px;
+  /* Border weight matched to the LABEL's weight. The text is 600 at 0.85rem,
+     whose stems land around 1.5px, so a 1px rule around it read thinner than
+     the word inside it. 1.5px is also an established weight in this codebase —
+     the global `input` and .auth-check both use it — rather than a value
+     invented here.
+
+     ON BOTH BUTTONS, not just the outlined one. .mx-btn gives every button a
+     1px border and both CTAs have to stay the same size; thickening only "Sign
+     in" would make it taller and wider than "Get started" beside it. On the
+     filled button the border is accent-on-accent, so it costs nothing visually
+     and buys identical geometry.
+
+     2px, up from 1.5. It is also the crisper of the two: 2px is a whole number
+     of device pixels at 1x and 2x, where 1.5px is fractional at every common
+     scaling and renders soft — the same artefact that made the nav's bottom
+     rule look like it had a shadow. */
+  border-width: 2px;
+}
+
+/* "Sign in" — a white card with a black border, AT ALL TIMES. It does not
+   change shape or fill on hover; it is an outlined button, not a ghost that
+   appears when pointed at.
+
+   The border is --text, the app's ink and the colour the wordmark beside it is
+   set in — not #000000, which belongs to the utility bar. .mx-btn already
+   supplies `border: 1px solid transparent`, so this only has to colour it and
+   the geometry stays identical to "Get started".
+
+   Hover FILLS IT BLACK — the outline floods to the colour it was already drawn
+   in, and the label flips to white. Nothing moves: the border stays --text and
+   stays 2px, so the button's footprint is identical at rest and under the
+   pointer, and only the fill and the label change.
+
+   That is also why it does not fill with --accent. The blue belongs to "Get
+   started" beside it; borrowing it on hover would make the secondary
+   momentarily impersonate the primary, and for the instant both are blue there
+   is no telling which one is the main action. Black is this button's own
+   colour, so flooding to it reads as the same control pressed rather than as a
+   different one. */
+.landing-cta-outline,
+.landing-cta-outline:active {
+  background: var(--surface);
+  color: var(--text);
+  border-color: var(--text);
+}
+.landing-cta-outline:hover:not(:disabled) {
+  background: var(--text);
+  color: #FFFFFF;
+  border-color: var(--text);
+}
+
+
+/* ── Glass ───────────────────────────────────────────────────────────────────
+   A mostly-opaque white over a blurred copy of whatever is behind it. Values
+   lifted verbatim from the games strip's cards, which is where the treatment
+   originated; both read these now, so the two cannot drift.
+
+   saturate() alongside blur() because a plain blur greys out what it samples —
+   lifting saturation back keeps colour passing behind reading as colour.
+
+   FOR THIS TO WORK, NOTHING OPAQUE MAY SIT BETWEEN THE ELEMENT AND THE PAGE.
+   backdrop-filter samples the element's real backdrop, so an opaque ancestor is
+   all it will ever find. It also needs a scrolling backdrop to be visible at
+   all: over a blank stretch it looks like plain white, which is by design — the
+   effect only appears when there is something behind it to see. */
+:root {
+  --glass-bg: rgba(255, 255, 255, 0.8);
+  --glass-filter: blur(20px) saturate(500%);
 }
