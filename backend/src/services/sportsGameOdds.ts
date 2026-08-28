@@ -129,6 +129,51 @@ const BOOK_PRIORITY = [
   "williamhill", "unibet", "bovada", "pointsbet",
 ];
 
+/**
+ * The last resort when `byBookmaker` is empty: SGO's own consensus price,
+ * carried on the odd itself as `bookOdds` / `bookOverUnder` / `bookSpread`.
+ *
+ * Widening BOOK_PRIORITY was the previous answer to "the market is there but we
+ * skipped it", and it does not reach this case. Outside the first few games of
+ * a week SGO populates `byBookmaker` for the three core game lines and leaves
+ * it **completely empty on every player prop** — no book at all, not a book we
+ * were not asking for. Week 1 measured at 35 of DEN@KC's 54 player markets in
+ * exactly that state, and 11 of 16 games with zero props for that reason alone,
+ * while the event carried a live `bookOdds` and `bookOverUnder` for each one.
+ *
+ * `bookOdds` is the aggregated *book* price — the vigged number the market is
+ * actually offering — so it belongs on the board. `fairOdds` sitting beside it
+ * is SGO's de-vigged estimate, a price no book quotes, and is deliberately
+ * never read: a made-up number is what fake data was ripped out of this
+ * codebase for, and de-vigged odds would silently pay better than any real one.
+ *
+ * Ranked below every named book because those carry a real deeplink, per-book
+ * `altLines`, and a price a user could genuinely take. Consensus carries no
+ * ladder, so a market sourced this way shows its main line and no alternates —
+ * which is honest: there are none to offer.
+ */
+const CONSENSUS_BOOK = "__consensus";
+
+/**
+ * One book's quote on one market, or the consensus stand-in.
+ *
+ * Every read of `byBookmaker[book]` goes through here so the fallback cannot
+ * apply in one place and not another — picking consensus for the over and a
+ * real book for the under would mix two different markets' prices inside one
+ * bet.
+ */
+function quoteOf(odd: any, book: string): any | undefined {
+  if (book !== CONSENSUS_BOOK) return odd?.byBookmaker?.[book];
+  if (!odd || odd.bookOddsAvailable === false || num(odd.bookOdds) == null) return undefined;
+  return {
+    odds: odd.bookOdds,
+    overUnder: odd.bookOverUnder,
+    spread: odd.bookSpread,
+    available: true,
+    altLines: [],
+  };
+}
+
 export interface AltRung { line: number; over: number; under: number }
 
 export interface SGOProp {
@@ -170,13 +215,17 @@ function num(v: unknown): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-/** First book in priority order that actually quoted this market. */
+/**
+ * First book in priority order that actually quoted this market, falling back
+ * to SGO's consensus price when none of them did. See CONSENSUS_BOOK.
+ */
 function pickBook(odd: any): { book: string; q: any } | null {
   const bb = odd?.byBookmaker ?? {};
   for (const b of BOOK_PRIORITY) {
     if (bb[b] && bb[b].available !== false && num(bb[b].odds) != null) return { book: b, q: bb[b] };
   }
-  return null;
+  const consensus = quoteOf(odd, CONSENSUS_BOOK);
+  return consensus ? { book: CONSENSUS_BOOK, q: consensus } : null;
 }
 
 /**
@@ -185,7 +234,7 @@ function pickBook(odd: any): { book: string; q: any } | null {
  */
 function rungsOf(odd: any, book: string, field: "overUnder" | "spread"): Map<number, number> {
   const out = new Map<number, number>();
-  const q = odd?.byBookmaker?.[book];
+  const q = quoteOf(odd, book);
   if (!q) return out;
   const mainLine = num(q[field]);
   const mainOdds = num(q.odds);
@@ -231,7 +280,7 @@ function buildLadder(overOdd: any, underOdd: any, book: string, field: "overUnde
   const overs = rungsOf(overOdd, book, field);
   const unders = rungsOf(underOdd, book, field);
 
-  const mainLine = num(overOdd?.byBookmaker?.[book]?.[field]);
+  const mainLine = num(quoteOf(overOdd, book)?.[field]);
   let overround: number | null = null;
   if (mainLine != null) {
     const o = overs.get(mainLine);
@@ -279,8 +328,8 @@ function buildGameLines(odds: Record<string, any>, home: string, away: string): 
   const spHomeId = "points-home-game-sp-home", spAwayId = "points-away-game-sp-away";
   const spBook = pickBook(get(spHomeId));
   if (spBook) {
-    const hq = get(spHomeId)?.byBookmaker?.[spBook.book];
-    const aq = get(spAwayId)?.byBookmaker?.[spBook.book];
+    const hq = quoteOf(get(spHomeId), spBook.book);
+    const aq = quoteOf(get(spAwayId), spBook.book);
     const hLine = num(hq?.spread), aLine = num(aq?.spread);
     if (hLine != null && aLine != null && num(hq?.odds) != null && num(aq?.odds) != null) {
       out.push({ market: "SPREAD_HOME", label: `${home} ${fmtSigned(hLine)}`, odds: num(hq.odds)!, line: hLine, oddID: spHomeId });
@@ -298,8 +347,8 @@ function buildGameLines(odds: Record<string, any>, home: string, away: string): 
   const ouOverId = "points-all-game-ou-over", ouUnderId = "points-all-game-ou-under";
   const ouBook = pickBook(get(ouOverId));
   if (ouBook) {
-    const oq = get(ouOverId)?.byBookmaker?.[ouBook.book];
-    const uq = get(ouUnderId)?.byBookmaker?.[ouBook.book];
+    const oq = quoteOf(get(ouOverId), ouBook.book);
+    const uq = quoteOf(get(ouUnderId), ouBook.book);
     const line = num(oq?.overUnder);
     if (line != null && num(oq?.odds) != null && num(uq?.odds) != null && num(uq?.overUnder) === line) {
       out.push({ market: "TOTAL_OVER", label: `Over ${line}`, odds: num(oq.odds)!, line, oddID: ouOverId });
@@ -345,7 +394,7 @@ function buildProps(odds: Record<string, any>, players: Record<string, any>, hom
     const oppOdd = odds[oppId];
     const b = pickBook(odd);
     if (!b) continue;
-    const oppQ = oppOdd?.byBookmaker?.[b.book];
+    const oppQ = quoteOf(oppOdd, b.book);
 
     let line: number | null;
     let ladder: AltRung[];
