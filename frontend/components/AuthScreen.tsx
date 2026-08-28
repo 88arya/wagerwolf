@@ -1,31 +1,10 @@
 "use client";
 
 import { useRef, useState, type CSSProperties } from "react";
-import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { useGoogleOAuth, type CodeClientConfig, type CodeResponse } from "@react-oauth/google";
-import { api } from "@/lib/api";
-import { setToken } from "@/lib/auth";
+import { startGoogleRedirect } from "@/lib/googleAuth";
 import BarePageHeader from "@/components/BarePageHeader";
 import SignedOutOnly from "@/components/SignedOutOnly";
-
-/**
- * The package drives window.google.accounts.oauth2 internally but ships no
- * global declaration for it, so state the slice we use.
- */
-declare global {
-  interface Window {
-    google?: {
-      accounts: {
-        oauth2: {
-          initCodeClient(
-            config: CodeClientConfig & { error_callback?: (err: unknown) => void },
-          ): { requestCode: () => void };
-        };
-      };
-    };
-  }
-}
 
 /**
  * The shared body of BOTH auth screens — /signup and /sign-in.
@@ -131,8 +110,6 @@ export default function AuthScreen({
   altHref,
   consentLead = "By continuing, you agree to our",
 }: AuthScreenProps) {
-  const router = useRouter();
-  const { clientId, scriptLoadedSuccessfully } = useGoogleOAuth();
   const [email, setEmail] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -141,89 +118,27 @@ export default function AuthScreen({
   const [missing, setMissing] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  async function finish(code: string) {
-    setBusy(true);
-    setError("");
-    try {
-      const res = await api("/users/auth/google", {
-        method: "POST",
-        // HARDCODED true, and load-bearing: POST /users/auth/google 400s
-        // unless the request carries ageConfirmed: true, so removing this would
-        // break sign-up outright.
-        //
-        // It is honest rather than a bypass. The 18+ requirement moved from a
-        // tickbox on this screen into the Terms — /terms opens with "By
-        // creating an account you agree to these terms. You must be 18 or older
-        // to use it." — and the footnote at the bottom of this page binds the
-        // user to those Terms on Continue. So the flag still attests to
-        // something the user agreed to; it is agreement by reference instead of
-        // by tick. User.ageConfirmedAt is stamped exactly as before.
-        //
-        // THE DEPENDENCY THIS CREATES: that sentence in /terms is now the only
-        // place the age requirement exists. Deleting or softening it silently
-        // removes the age gate from the whole product, and this line will go on
-        // sending `true` regardless. Keep them together.
-        body: JSON.stringify({ code, ageConfirmed: true }),
-      });
-      setToken(res.token);
-      localStorage.setItem("userId", res.userId);
-      localStorage.setItem("displayName", res.displayName ?? "");
-      // Straight in. There is nothing left to ask: the name comes from Google,
-      // and the display name, tag and colour are all derived — per league by
-      // backend/src/services/leagueIdentity.ts, and editable in My Account.
-      router.push("/home");
-    } catch (err) {
-      const raw = err instanceof Error ? err.message : String(err);
-      try {
-        setError(JSON.parse(raw).error ?? raw);
-      } catch {
-        setError(raw);
-      }
-      setBusy(false);
-    }
-  }
-
   /**
-   * Opens Google's popup and hands the resulting code to the backend, which
-   * exchanges it for an ID token — see POST /users/auth/google.
+   * Leaves for Google. The tab navigates; nothing after this runs.
    *
-   * The auth-code flow, not Google's own <GoogleLogin> button: that renders
-   * into a cross-origin iframe we cannot style, which is no use on a screen
-   * whose whole point is the button underneath.
+   * IT WAS A POPUP — `initCodeClient` with `ux_mode: "popup"`, which opened a
+   * window that posted a code back to its opener while this page stayed put.
+   * The whole exchange now happens across a full-tab redirect: this page goes
+   * to Google, and Google returns to /auth/callback with the code. See
+   * lib/googleAuth for why the URL is built by hand rather than by GIS.
    *
-   * AND NOT useGoogleLogin EITHER, which is the same flow but cannot carry the
-   * hint. That hook builds its client inside an effect whose dependency array
-   * is [clientId, scriptLoadedSuccessfully, flow, scope, state] — `hint` rides
-   * in on a `...props` spread and is NOT among them, so the client is built
-   * once with whatever hint existed on first render (empty) and is never
-   * rebuilt when the user types. The hint would silently never apply. Building
-   * the client per click sidesteps that and is what the hook does anyway, once.
+   * `busy` is deliberately left ON. There is no "finished" state to return to
+   * on this screen any more — either the tab leaves, or the throw below puts a
+   * message up. Clearing it would flash the buttons back to life a frame before
+   * the page disappears.
    */
   function startGoogle(hint?: string) {
-    const oauth2 = window.google?.accounts?.oauth2;
-    if (!scriptLoadedSuccessfully || !oauth2) {
+    try {
+      startGoogleRedirect(hint);
+    } catch (err) {
       setBusy(false);
-      setError("Google sign-in is still loading — try again in a moment");
-      return;
+      setError(err instanceof Error ? err.message : "Google sign-in could not start");
     }
-    oauth2
-      .initCodeClient({
-        client_id: clientId,
-        scope: "openid profile email",
-        ux_mode: "popup",
-        ...(hint ? { hint } : {}),
-        callback: (response: CodeResponse) => {
-          if (response.code) finish(response.code);
-          else {
-            setBusy(false);
-            setError("Google sign-in failed");
-          }
-        },
-        // Closing Google's popup is an ordinary thing to do, not an error worth
-        // shouting about — but leaving `busy` stuck on would be.
-        error_callback: () => setBusy(false),
-      })
-      .requestCode();
   }
 
   function onSubmit(e: React.FormEvent) {

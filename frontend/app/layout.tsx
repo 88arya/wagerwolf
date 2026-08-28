@@ -2,7 +2,6 @@ import type { Metadata } from "next";
 import { Fugaz_One, Inter_Tight } from "next/font/google";
 import "./globals.css";
 import AppFrame from "@/components/AppFrame";
-import GoogleProvider from "@/components/GoogleProvider";
 // The wordmark's face. Declared in wordmarkFonts.ts alongside the other
 // candidates and mounted here rather than there, because the lockup appears in
 // the utility bar, the footer and /signup — i.e. on every route — so it cannot
@@ -55,20 +54,24 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             with the footer following the content. AppFrame is the single place
             that decides which; see its header for why the split is by route
             rather than by auth state. */}
-        <GoogleProvider>
-          <AppFrame
-            // Passed rather than imported inside AppFrame, which is a client
-            // component: SiteFooter is a server component and stays one this
-            // way. FooterSlot is the wrapper that lets bare routes opt out.
-            footer={
-              <FooterSlot>
-                <SiteFooter />
-              </FooterSlot>
-            }
-          >
-            {children}
-          </AppFrame>
-        </GoogleProvider>
+        {/* GoogleProvider used to wrap this. It mounted @react-oauth/google's
+            context and, with it, Google Identity Services' script on every
+            route in the app — for one screen's sign-in button. The full-tab
+            redirect flow needs neither: lib/googleAuth builds the authorization
+            URL itself and the browser navigates. Nothing loads from Google
+            until someone actually presses the button. */}
+        <AppFrame
+          // Passed rather than imported inside AppFrame, which is a client
+          // component: SiteFooter is a server component and stays one this
+          // way. FooterSlot is the wrapper that lets bare routes opt out.
+          footer={
+            <FooterSlot>
+              <SiteFooter />
+            </FooterSlot>
+          }
+        >
+          {children}
+        </AppFrame>
       </body>
     </html>
   );

@@ -28,6 +28,47 @@ const router = Router();
  *
  * If a field is added here it appears in both, which is the point.
  */
+/**
+ * Where the full-tab Google flow sends the browser back to.
+ *
+ * Kept here rather than taken from the request alone, because the client is
+ * telling the server which URL to hand Google — and an unchecked value is a
+ * server that will exchange a code against any redirect_uri someone names.
+ * Google's own matching makes that hard to exploit (the code is only valid for
+ * the URI it was issued to), but "hard to exploit" is not a reason to accept
+ * arbitrary input.
+ *
+ * Trust comes from FRONTEND_URL, which already lists the deployed origins for
+ * CORS — so there is one list of trusted frontends rather than two that can
+ * disagree. Unset in dev, where localhost is accepted instead, matching how
+ * cors() is configured in index.ts.
+ */
+const GOOGLE_CALLBACK_PATH = "/auth/callback";
+
+/** `null` means "not allowed"; "postmessage" is the popup flow's literal. */
+function resolveRedirectUri(requested: unknown): string | null {
+  // No redirectUri at all is the popup code client, which posts back to its
+  // opener rather than redirecting. "postmessage" is a literal Google defines
+  // for exactly that, not a placeholder.
+  if (requested == null || requested === "") return "postmessage";
+  if (typeof requested !== "string") return null;
+
+  let url: URL;
+  try { url = new URL(requested); } catch { return null; }
+  if (url.pathname !== GOOGLE_CALLBACK_PATH || url.search || url.hash) return null;
+
+  const origins = process.env.FRONTEND_URL?.split(",").map((o) => o.trim()).filter(Boolean);
+  if (origins && origins.length > 0) {
+    return origins.some((o) => o.replace(/\/$/, "") === url.origin) ? requested : null;
+  }
+
+  // Dev: no FRONTEND_URL configured, same fallback CORS takes. http is allowed
+  // here and only here — a localhost callback cannot be served over https
+  // without a certificate, and this branch never runs in production.
+  const local = url.hostname === "localhost" || url.hostname === "127.0.0.1";
+  return local && process.env.NODE_ENV !== "production" ? requested : null;
+}
+
 const ME_COLUMNS = {
   id: users.id,
   displayName: users.displayName,
@@ -79,13 +120,20 @@ router.post("/auth/google", authLimiter, async (req: any, res: any) => {
       return;
     }
 
-    // "postmessage" is the redirect_uri Google requires for the popup-based JS
-    // code client — there is no redirect, the popup posts back to the opener.
-    // It is a literal, not a placeholder.
+    // Google checks that the redirect_uri in the exchange matches the one the
+    // code was issued against, so this cannot be a constant any more: the
+    // full-tab flow issues codes against a real callback URL. A request that
+    // sends no redirectUri is the old popup flow and still gets "postmessage".
+    const redirectUri = resolveRedirectUri(req.body.redirectUri);
+    if (!redirectUri) {
+      res.status(400).json({ error: "Unrecognised redirect URI" });
+      return;
+    }
+
     const client = new OAuth2Client(
       process.env.GOOGLE_CLIENT_ID,
       process.env.GOOGLE_CLIENT_SECRET,
-      "postmessage",
+      redirectUri,
     );
 
     let idToken: string | undefined = credential;
