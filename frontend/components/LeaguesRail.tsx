@@ -5,6 +5,7 @@ import { Compass, Lock, Plus } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
+import { LEAGUE_ACTION_EVENT, takePendingLeagueAction, type LeagueAction } from "@/lib/leagueActions";
 import { fmtMoney, toCents } from "@/lib/money";
 import HelmetAvatar, { HELMET_COLORS } from "@/components/HelmetAvatar";
 import QuickJoin from "@/components/QuickJoin";
@@ -100,6 +101,40 @@ export default function LeaguesRail() {
     leagueId: string; displayName: string; abbreviation: string; helmetColor: string; isPending: boolean;
   } | null>(null);
   const [profileSaving, setProfileSaving] = useState(false);
+
+  /**
+   * Open whichever surface the sidebar's "More" popup asked for.
+   *
+   * The rail owns all three of these — QuickJoin behind `finderOpen`, the
+   * invite-code form and the create sheet behind `view` — and the sidebar has
+   * no way to reach them, so it records an intent and sends you here. See
+   * lib/leagueActions for why it is a module variable plus an event rather
+   * than a query string.
+   *
+   * Both halves are needed: the claim on mount catches an intent recorded on
+   * another route (the event fired before this component existed), and the
+   * listener catches one recorded while already on /home (nothing remounts, so
+   * nothing would re-check the variable).
+   */
+  useEffect(() => {
+    const open = (a: LeagueAction) => {
+      setJoinError(""); setJoinSuccess(""); setError("");
+      if (a === "public") { setView("menu"); setFinderOpen(true); }
+      else setView(a);
+    };
+
+    const pending = takePendingLeagueAction();
+    if (pending) open(pending);
+
+    const onAction = (e: Event) => {
+      // Claimed here too, so the intent is consumed exactly once whichever of
+      // the two paths reaches it first.
+      takePendingLeagueAction();
+      open((e as CustomEvent).detail as LeagueAction);
+    };
+    window.addEventListener(LEAGUE_ACTION_EVENT, onAction);
+    return () => window.removeEventListener(LEAGUE_ACTION_EVENT, onAction);
+  }, []);
 
   useEffect(() => {
     setForm(f => ({ ...f, name: randomLeagueName() }));

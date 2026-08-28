@@ -4,21 +4,46 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { api } from "@/lib/api";
+import { fmtOdds } from "@/components/BetRows";
 import TeamLogo from "@/components/TeamLogo";
 
 /**
  * The week's upcoming games, as the contents of the sidebar's "Games" section.
  *
- * ONE ROW PER GAME, and nothing above them. An earlier version grouped the
- * games under kickoff headings — "Sun 1:00 PM" and eight fixtures beneath it —
- * which is how a scoreboard reads but is not what this is. A nav lists things
- * you can go to. The time is on the game's own page, and printing it here cost
- * a line per slot in the one column with none to spare.
+ * TWO COLUMNS OF FIXTURES, each fixture two lines: away on top, home beneath,
+ * the way a book prints a game. Games fill left to right and then top to
+ * bottom in kickoff order, so a 2x2 block of lines is two games.
+ *
+ * It was one full-width row per game, reading `NE +164 -AT- SEA -196`. Turning
+ * the fixture on its side buys back half the vertical space — sixteen games is
+ * eight grid rows instead of sixteen — in the one column of the app with none
+ * to spare, and it drops the separator entirely: stacking the two sides says
+ * "these play each other" without a word between them, and which side is home
+ * is carried by position, as it is on every scoreboard.
+ *
+ * NO KICKOFF HEADINGS. An earlier version grouped the games under "Sun 1:00 PM"
+ * and similar, which is how a scoreboard reads but is not what this is. A nav
+ * lists things you can go to. The time is on the game's own page, and printing
+ * it here cost a line per slot. Order still carries it: soonest first.
  *
  * WHAT IT IS NOT: the games strip. That was a horizontal auto-scrolling ticker
- * of odds cards, and it was removed from the signed-in app. This is a list of
- * fixtures in a 220px column — no odds, no prices, no motion. If you want to
- * bet into one, the row takes you to it.
+ * of odds *cards*, and it was removed from the signed-in app. This is a grid of
+ * fixtures in a 240px column — no cards, no motion. If you want to bet into one,
+ * the cell takes you to it.
+ *
+ * IT DOES CARRY A PRICE, one per side: the moneyline, beside the abbreviation it
+ * belongs to. `GET /weeks/public/current` already returns exactly the two
+ * moneylines per game and nothing else — that is the endpoint's whole shape, and
+ * it is why this costs no extra request and cannot grow into a board by
+ * accident. A side the feed has not priced simply shows no number rather than a
+ * dash, so the column stays quiet on games the books have not opened.
+ *
+ * The price is the accent, which is the design system's rule for odds
+ * everywhere: it is the one number in the cell you read rather than scan. It
+ * sits at the cell's right edge rather than tight against the abbreviation, so
+ * the two prices in a fixture line up under each other and can be compared at a
+ * glance. Which price belongs to which side is unambiguous either way — they
+ * are on the same line as their team.
  *
  * UPCOMING ONLY, which is the same rule the server enforces: a bet is locked
  * server-side once `game.gameDate <= now`, so a kicked-off game is one you can
@@ -49,12 +74,17 @@ import TeamLogo from "@/components/TeamLogo";
 // forward through an already-fetched list.
 const TICK_MS = 60_000;
 
-// The same box a label's icon gets, because the away logo has to land in that
-// same column — see the note on .sidenav-game in globals.css. Changing one
-// without the other breaks the nav's single left edge.
-const LOGO = 15;
+// The same box a label's icon gets, because the LEFT column's logos have to land
+// in that same column — see the note on .sidenav-game in globals.css. Changing
+// one without the other breaks the nav's single left edge. (The right column
+// starts halfway across and lines up with nothing above it, which is what a
+// second column costs and is fine: it aligns with itself down the grid.)
+const LOGO = 13;
+
 
 const LEAGUE_ROUTE = /^\/leagues\/([^/]+)/;
+
+type GameLine = { market: string; odds: number };
 
 type Game = {
   id: string;
@@ -62,16 +92,25 @@ type Game = {
   awayTeam: string;
   gameDate: string;
   status: "SCHEDULED" | "LIVE" | "FINAL" | "CANCELLED";
+  /** Only ever the two moneylines — see the header. Absent on an unpriced game. */
+  gameLines?: GameLine[];
 };
 
-/** A logo and its abbreviation, kept together so the pair cannot be split by the gap. */
-function Side({ team }: { team: string }) {
+/**
+ * ONE SIDE OF A FIXTURE, and one line of the cell: logo, abbreviation, price.
+ * Two of these stacked are a game — away first, home under it.
+ */
+function Side({ team, odds }: { team: string; odds: number | null }) {
   return (
     <span className="sidenav-game-side">
-      {/* `plain` drops TeamLogo's 2px padding, so the image fills the same 15px
-          box a lucide icon occupies rather than sitting inset within it. */}
+      {/* `plain` drops TeamLogo's 2px padding, so the image fills the same box a
+          lucide icon occupies rather than sitting inset within it. */}
       <TeamLogo team={team} size={LOGO} plain />
-      <span>{team}</span>
+      <span className="sidenav-game-team">{team}</span>
+      {/* Rendered even when there is no price, as an empty span: it is what
+          holds the second line's team name in the same place as the first's
+          when only one side has been posted. */}
+      <span className="sidenav-game-odds">{odds != null ? fmtOdds(odds) : ""}</span>
     </span>
   );
 }
@@ -114,18 +153,24 @@ export default function SideNavGames() {
   }
 
   // Still in kickoff order — the API sorts by date, and dropping the headings
-  // did not make the ordering arbitrary. The soonest game is simply at the top
-  // without a heading saying so.
+  // did not make the ordering arbitrary. The grid's default `row` auto-flow is
+  // what turns that order into left-to-right, top-to-bottom: the soonest game
+  // is top-left, the next one beside it, with no heading saying so.
   return (
-    <>
+    <div className="sidenav-games">
       {upcoming.map((g) => {
+        // `?? null` rather than leaving it undefined: Side's prop is the
+        // explicit "no price" case, and an unpriced game arrives as a missing
+        // market, a missing gameLines array, or both.
+        const ml = (market: string) =>
+          g.gameLines?.find((l) => l.market === market)?.odds ?? null;
+
         const body = (
           <>
-            {/* Away first, the way a fixture is written — and it is the away
-                side that has to sit in the icon column. */}
-            <Side team={g.awayTeam} />
-            <span className="sidenav-game-at">@</span>
-            <Side team={g.homeTeam} />
+            {/* Away on top, home beneath — the order a fixture is written, and
+                the whole of what replaced the separator. */}
+            <Side team={g.awayTeam} odds={ml("MONEYLINE_AWAY")} />
+            <Side team={g.homeTeam} odds={ml("MONEYLINE_HOME")} />
           </>
         );
 
@@ -144,6 +189,6 @@ export default function SideNavGames() {
           <div key={g.id} className="sidenav-game is-static">{body}</div>
         );
       })}
-    </>
+    </div>
   );
 }

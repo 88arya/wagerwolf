@@ -454,10 +454,40 @@ button.dark:hover { opacity: 0.86; background: var(--text); border-color: var(--
   min-height: 0;
   display: flex;
   flex-direction: column;
-  /* Top padding is --shell-gap, matching the card's margin, so the wordmark's
-     row starts on the card's top edge. Bottom is larger by hand: the account
-     control at the foot wants more air under it than the card needs. */
-  padding: var(--shell-gap) 10px 14px;
+  /* AIR AT BOTH ENDS, more than the card gets. The top was --shell-gap, which
+     put the lockup's row exactly on the card's top edge; that alignment is
+     given up on purpose — the wordmark sat hard against the ceiling of the
+     window and the whole column read as having been pushed up into the corner.
+     24px drops it, and everything under it, clear of the edge.
+
+     THE TOP IS MEASURED, NOT CHOSEN. 18px is what centres the head's row on
+     LeagueNav's — the line carrying "League" and "Bet" inside the card — so the
+     lockup and the account icon read as being on that row rather than floating
+     above it. The arithmetic, since nothing enforces it:
+
+       card    .app-card margin-top 10 + its 1px border      = 11
+       nav     .nav is 44 tall and centres its own contents  = 11 + 22 -> 33
+       head    padding-top + .sidenav-head margin-top 4 + 11 (half of the head's
+               22px) must equal 33, so padding-top is 18
+
+     The head is as tall as its tallest child, so this moves whenever either the
+     lockup or the account circle does. It went to 15 while the circle ran at
+     28px and came back when the circle was matched to the lockup instead — the
+     two are the same 22px now, which is what makes the head's height stable.
+
+     Change .app-card's margin, .nav's height, or the head's margin and this has
+     to be recomputed. It only pays off on the league routes — /home and
+     /friends have no LeagueNav in the card for it to line up with.
+
+     Bottom stays the larger of the two. It was holding the account control off
+     the bottom edge; that control is in the head now, and 28px stays as the
+     room a scrolled column wants under its last row.
+
+     Only the vertical moved. The 10px sides are what put a row's 8px padding
+     plus its icon in the same column as the card beside it, and are not part of
+     this. The narrow-screen block below restates all four when the sidebar
+     becomes a top strip, where a column's worth of air would be wrong. */
+  padding: 18px 10px 28px;
   /* Its own scroller: the league list has no ceiling, and a long one must not
      push the account control off the bottom of the window. */
   overflow-y: auto;
@@ -508,10 +538,44 @@ button.dark:hover { opacity: 0.86; background: var(--text); border-color: var(--
    It used to be `padding: 2px 8px 16px` on an auto-height box, which put the
    mark 4px high of the card and made the gap below it a number with no
    relationship to anything. The gap is a margin now: the box is the box. */
-.sidenav-brand {
+/* THE HEAD OF THE COLUMN: the lockup, and the account control opposite it.
+
+   Full width with the two pushed apart, so the account icon's right edge lands
+   on the same vertical as the three-dot menus on the section headers below —
+   those sit at the end of a 100%-wide .sidenav-section-row, which is the same
+   line this ends on.
+
+   It carries the vertical spacing the lockup used to carry itself: 4px above and
+   14px below reproduce exactly what a 22px lockup centred in a 30px row plus a
+   10px margin occupied, so nothing under this moved when the head appeared. */
+.sidenav-head {
   display: flex;
   align-items: center;
-  height: 30px;
+  justify-content: space-between;
+  /* INSET 2px, matching .sidenav-item's fill. The account control sits at this
+     row's right edge, and the rows below have their highlight pulled in 2px
+     from the column — so at a flat 100% the circle overhung every hover box
+     under it by exactly that. The lockup's own left margin drops by the same
+     2px, so it does not move. */
+  width: calc(100% - 4px);
+  margin: 4px 2px 14px;
+  flex-shrink: 0;
+}
+
+.sidenav-brand {
+  /* THE TARGET IS THE LOCKUP AND NOTHING ELSE. This is a link to /home, and it
+     was a 30px-tall, full-width row: `.app-sidebar` is a flex column, so a
+     stretch-aligned child spans all 220px, and a click anywhere on that line —
+     the empty space to the right of the mark included — navigated. inline-flex
+     plus align-self stops the stretch, and dropping the fixed height lets the
+     box close down onto the artwork.
+
+     Its position is unchanged. What was padding is now margin: padding is
+     inside the target and margin is outside it, so the same numbers put the
+     lockup on the same pixel while only the second keeps it unclickable. */
+  display: inline-flex;
+  align-self: flex-start;
+  align-items: center;
   /* 10px on the left, not the rows' 8, and the extra 2 is an OPTICAL
      correction rather than a different grid.
 
@@ -528,8 +592,12 @@ button.dark:hover { opacity: 0.86; background: var(--text); border-color: var(--
      THIS IS THE NUMBER TO TUNE if it still reads off. Nothing else depends on
      it: it moves the lockup alone, and the rows below are the grid it is being
      matched to. */
-  padding: 0 8px 0 10px;
-  margin-bottom: 10px;
+  padding: 0;
+  /* 4px above and 14px below reproduce exactly what the old box occupied: a
+     22px lockup centred in a 30px row leaves 4px either side, and the 10px
+     margin-bottom that followed it is folded into the lower figure. Nothing
+     under this moved. */
+  margin-left: 11px;
   color: var(--text);
   text-decoration: none;
   flex-shrink: 0;
@@ -543,9 +611,29 @@ button.dark:hover { opacity: 0.86; background: var(--text); border-color: var(--
 .sidenav-item:active {
   display: flex;
   align-items: center;
-  gap: 9px;
-  width: 100%;
-  padding: 0 8px;
+  gap: 6px;
+  /* THE FILL IS INSET 2px EACH SIDE, and the content is not. The row's
+     background is what you see on hover and on the row you are on, and running
+     it to the column's very edge made it read as a band across the sidebar
+     rather than as a highlight on one row. 2px of margin pulls both edges in;
+     the same 2px comes off each padding below, so the icon and the label stay
+     exactly where they were.
+
+     `calc` and not 100%: with box-sizing: border-box a 100% width plus 4px of
+     margin overflows the column by exactly the inset. */
+  width: calc(100% - 4px);
+  margin: 0 2px;
+  /* 11px ON THE LEFT, 8 ON THE RIGHT, and the difference is the point.
+     The gap between icon and label has come down from 9 to 6, and the text had
+     to stay where it was each time: 11 + 15 + 6 puts a label's first letter on
+     the same 32px it sat on when the row was 8 + 15 + 9. The icon absorbs every
+     change to the gap, and the name never moves.
+
+     32px IS THE COLUMN EVERYTHING ELSE IN THIS NAV IS SQUARED TO — the section
+     titles, the note, the fixture logos and the lockup all inset to match, so
+     moving this without moving those puts the icon column 1px out of step with
+     itself. They are listed together in this file for that reason. */
+  padding: 0 6px 0 9px;
   height: 30px;
   flex-shrink: 0;
   border: none;
@@ -556,7 +644,7 @@ button.dark:hover { opacity: 0.86; background: var(--text); border-color: var(--
   text-decoration: none;
   font-family: inherit;
   font-size: 0.82rem;
-  font-weight: 500;
+  font-weight: 700;
   letter-spacing: normal;
   text-transform: none;
   color: var(--text-2);
@@ -575,24 +663,55 @@ button.dark:hover { opacity: 0.86; background: var(--text); border-color: var(--
    white page; on the shell's tinted ground they read as dirt rather than as a
    lighter step. A translucent black is neutral, so it stays right whatever
    --shell-bg is set to next. */
-.sidenav-item:hover { background: rgba(15, 23, 42, 0.06); color: var(--text); }
-/* The one you are on, filled in the CARD's white rather than in a grey. It is
-   the same "filled rectangle" signal .mx-tab uses, and picking the card's own
-   colour for it ties the row to the thing it opened. Unlike .mx-tab this
-   surface DOES take a hover: a sidebar is a list you point down, and the rows
-   have to answer.
+/* Text darkens with the fill on both interactive states. It was background
+   alone for a while — the fill said everything and the type held still — but
+   --text-2 under a 4%-black tint reads as a row going grey rather than lighting
+   up, and the full --text is what makes a hovered row look answered. */
+.sidenav-item:hover { background: rgba(15, 23, 42, 0.03); color: var(--text); }
+/* The one you are on, filled DARKER than the ground. It used to be the card's
+   white, on the theory that borrowing the card's colour tied the row to the
+   thing it opened — but --shell-bg is #F5F8FF, so white is *lighter* than the
+   column it sits in, and the current row read as a gap rather than as a
+   selection. Weight comes from darkness here, the way it does on .mx-tab.
 
-   NO WEIGHT CHANGE. Every label is drawn identically — same box, same
+   Twice the hover's alpha, so the two states are unmistakably ordered: pointing
+   at a row darkens it a little, being on it darkens it more. That RATIO is the
+   part to preserve — the pair has come down twice now, 0.12/0.06 to 0.08/0.04
+   to 0.06/0.03, and the ordering survived each time because both moved
+   together. The fills can afford to be this faint precisely because the label
+   goes to --text as well: two signals carry the state, so neither has to shout.
+
+   Same translucent black as the hover and for the same reason — the surface
+   ramp's greys are mixed for a white page and read as dirt on a tinted ground,
+   while an alpha stays right whatever --shell-bg becomes.
+
+   All three selectors share one value, so the current row does NOT respond to
+   hover. It is already the darkest thing in the column; there is no "more
+   selected" for it to move to, and a row that shifts under the pointer while
+   you are on it just flickers.
+
+   FILL AND TEXT MOVE TOGETHER, here and on hover: the row you are on is the
+   darkest tint in the column and its label is the darkest text, so the two
+   signals agree instead of one contradicting the other.
+
+   --text is stated rather than left to `.sidenav-item:hover`, even though both
+   resolve to the same colour. That rule only applies while a pointer is on the
+   row; without a colour here the current row would fall back to --text-2 the
+   moment the pointer left it, which is the flicker this used to have in
+   reverse.
+
+   NO WEIGHT CHANGE, though. Every label is drawn identically — same box, same
    alignment, same size, same weight — and being the current one is a state, not
    a different kind of row. Bolding it also reflows the name a fraction wider,
    which walks the truncation point of a long league title as you navigate. */
 .sidenav-item.is-active,
 .sidenav-item.is-active:hover,
 .sidenav-item.is-active:active {
-  background: var(--surface);
+  background: rgba(15, 23, 42, 0.06);
   color: var(--text);
 }
 .sidenav-item svg { flex-shrink: 0; }
+
 
 /* A SECTION TITLE, and it is a button: clicking it collapses the labels under
    it. So the whole `button` reset has to be repeated for :hover and :active —
@@ -601,36 +720,74 @@ button.dark:hover { opacity: 0.86; background: var(--text); border-color: var(--
 
    NOT the app's micro-label, which is 0.625rem uppercase at 0.12em. Sentence
    case and no tracking, by request: that micro-label names a field, and this
-   names a group you can open and close. Still --text-3 and still smaller than a
-   label, so the hierarchy under it is unchanged. */
+   names a group you can open and close. Smaller than a label and lighter in
+   nothing else — the colour matches, so size and weight carry the hierarchy on
+   their own. */
+/* THE SECTION HEADER'S LINE: the collapse toggle, and optionally a control on
+   the right — the Leagues header's three dots. Two sibling buttons rather than
+   one nested inside the other, because a button inside a button is invalid and
+   leaves the inner one unclickable.
+
+   The outer spacing lives here rather than on the title, so the title and the
+   action share one box and sit on one baseline. It is what .sidenav-section's
+   own `margin: 16px 0 2px` used to do: air above, almost none below, because
+   the header belongs to the labels under it. */
+.sidenav-section-row {
+  display: flex;
+  align-items: center;
+  /* Inset 2px like .sidenav-head and .sidenav-item, so the three-dot menus at
+     this row's right edge line up with the account circle above them and with
+     the hover boxes below. .sidenav-section's left padding drops by the same
+     2px so the title stays on the icon column. */
+  width: calc(100% - 4px);
+  margin: 16px 2px 2px;
+  flex-shrink: 0;
+}
+
 .sidenav-section,
 .sidenav-section:hover,
 .sidenav-section:active {
   display: flex;
   align-items: center;
   gap: 4px;
-  width: 100%;
+  /* Grows to fill the header row so the action beside it is pushed hard right,
+     and shrinks below its text rather than shoving the action out of view. */
+  flex: 1;
+  min-width: 0;
   height: 26px;
-  padding: 0 8px;
-  /* Air above, almost none below: the title belongs to the labels under it. */
-  margin: 16px 0 2px;
-  flex-shrink: 0;
+  padding: 0 6px 0 9px;
+  flex-shrink: 1;
   background: none;
   border: none;
   border-radius: var(--radius);
   box-shadow: none;
   font-family: inherit;
   font-size: 0.72rem;
-  font-weight: 500;
+  font-weight: 700;
   letter-spacing: normal;
   text-transform: none;
-  color: var(--text-3);
+  /* --text-2, THE LABELS' OWN COLOUR. It was --text-3, a step lighter, on the
+     usual reasoning that a heading naming a group should recede behind the
+     things in it. At 0.72rem and weight 700 that step read as the headings
+     being disabled rather than quieter — size already separates them from the
+     0.82rem labels, so the colour was saying the same thing twice and
+     overshooting. */
+  color: var(--text-2);
   text-align: left;
   cursor: pointer;
   transform: none;
   white-space: nowrap;
 }
-.sidenav-section:hover { background: rgba(15, 23, 42, 0.06); color: var(--text-2); }
+/* NO HOVER. A section title is not a destination — it toggles the labels under
+   it — and a highlight the same shape and colour as a row's made it read as one
+   more thing you could go to, in the one column where knowing what is a
+   destination matters most. The caret is the affordance, and `cursor: pointer`
+   in the rule above still says it is clickable.
+
+   `.sidenav-section:hover` stays in that grouped rule and is load bearing:
+   deleting it there hands these back to the global `button:hover`, which is a
+   filled accent pill. This is the same arrangement .mx-tab uses, for the same
+   reason. */
 
 /* Down while the section is open, flipped when it is closed. Driven off
    aria-expanded rather than a second class, so the state a screen reader is
@@ -639,93 +796,279 @@ button.dark:hover { opacity: 0.86; background: var(--text); border-color: var(--
   flex-shrink: 0;
   transition: transform 0.15s ease;
 }
-.sidenav-section[aria-expanded="false"] .sidenav-caret { transform: rotate(180deg); }
+/* COLLAPSED POINTS RIGHT, not up. -90deg and not 90: CSS rotates clockwise, so
+   a downward triangle taken 90deg clockwise points LEFT — the wrong way, and a
+   left-pointing caret on a disclosure reads as "go back" rather than "open".
+   Counter-clockwise lands it on the closed-disclosure convention: right when
+   shut, down when open, and the quarter turn between them is the animation. */
+.sidenav-section[aria-expanded="false"] .sidenav-caret { transform: rotate(-90deg); }
+
+/* THE THREE DOTS on the Leagues header. A square target, not a label: it carries
+   no text, so none of .sidenav-item's row geometry applies and it gets its own
+   small box instead.
+
+   Every property is restated for :hover and :active because the global `button`
+   rule is a filled accent pill — the same reason .sidenav-section and every
+   .mx-btn in this file repeat themselves.
+
+   NO HOVER, matching the section title it sits beside. It carried a fill for a
+   while on the argument that a control with no feedback reads as decoration —
+   but the header line is the one row in this column that is not a destination,
+   and a highlight anywhere on it was the thing that made it look like one. The
+   title lost its fill for exactly that reason and this follows it.
+
+   The `.sidenav-more:hover` selector stays in the grouped rule above and is
+   load bearing: without it the global `button:hover` repaints this as a filled
+   accent pill, which is emphatically a highlight. Same arrangement .mx-tab and
+   .sidenav-section use.
+
+   --text-2, which is now what the title beside it, the labels below it and the
+   account mark above it all use. The whole column is one ink; only size and
+   weight separate a heading from a row. */
+.sidenav-more,
+.sidenav-more:hover,
+.sidenav-more:active,
+.sidenav-avatar,
+.sidenav-avatar:hover,
+.sidenav-avatar:active {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius);
+  background: none;
+  box-shadow: none;
+  color: var(--text-2);
+  cursor: pointer;
+  transform: none;
+}
+
+/* THE ACCOUNT CONTROL AS AN ICON ALONE. AccountMenu always renders its label —
+   it is the person's name in the row at the foot of this column — and in the
+   head there is no room for it beside the lockup. Hidden rather than made
+   optional in the component: the panel it opens, the identity fetch and the
+   trigger's markup are all the same, and the only difference is that one of the
+   two mounts has space for a name.
+
+   --text-2 like everything else in the column now. It was a step darker than
+   the dots menus while those were --text-3; they have since come up to match,
+   so this declaration no longer distinguishes anything and is kept only so the
+   avatar's colour does not depend on a rule it shares with the dots. */
+.sidenav-avatar > span { display: none; }
+.sidenav-avatar,
+.sidenav-avatar:hover,
+.sidenav-avatar:active {
+  /* ROUND, not the house 6px it inherits from the .sidenav-more box above.
+     This is the only circle in the sidebar and the departure is the point: an
+     account control is a person, and every other control in this column is a
+     rectangle because it is a place or a setting. The box is square, so 50% is
+     a true circle rather than a squashed one.
+
+     22px BECAUSE THAT IS THE LOCKUP'S HEIGHT, so the circle's top and bottom
+     edges sit on the wordmark's. LogoWordmark's row sets `line-height: 1`,
+     which makes its rendered box exactly its `height` prop — LOCKUP_H in
+     SideNav.tsx, currently 22. Nothing enforces the pairing: change LOCKUP_H
+     and this has to follow, or the head goes lopsided.
+
+     It briefly ran at 28 to make the mark bigger, which put the circle 3px
+     proud of the wordmark at each end. The mark grew instead — AVATAR_ICON is
+     16 against the 15 it started at — so this keeps the larger icon inside the
+     lockup's own box, with 3px of ground on each side. The circle's size is
+     independent of the mark's: only AVATAR_ICON moves when the icon is resized,
+     and 22 stays pinned to LOCKUP_H.
+
+     Both dimensions have to be stated or the circle goes oval, and both
+     override the 22px in .sidenav-more's grouped rule above rather than relying
+     on it: these two boxes agree today by coincidence, not by intent.
+
+     THE RIGHT EDGE HOLDS ITSELF whatever the size — .sidenav-head is
+     `justify-content: space-between`, so the last item's right edge is the
+     container's and the button grows leftward.
+
+     Stated after the shared rule, and repeated for :hover and :active, because
+     .sidenav-more's grouped rule sets border-radius at equal specificity —
+     source order is what decides it. */
+  border-radius: 50%;
+  width: 22px;
+  height: 22px;
+  /* THE CIRCLE IS ALWAYS THERE. It used to appear on hover, like the three-dot
+     menus' fill still does, which left the head's only control invisible until
+     you found it — the dots at least sit next to a heading that explains them,
+     and this sat alone opposite the lockup. A standing ground makes it read as
+     a thing rather than as an icon someone forgot to style.
+
+     That costs the hover its signal, so the MARK answers instead: the fill
+     holds still and the colour goes to --text below. Which is the same division
+     the label rows make, in reverse — there the fill moves and the text follows
+     it; here the fill is the shape and the ink is the state.
+
+     0.08, DARKER THAN ANY ROW STATE — twice the rows' hover and above even the
+     current row's 0.06. That inversion is deliberate rather than an oversight:
+     the row tints are transient marks ON something, and have to stay quiet
+     enough that a column of them does not read as stripes. This one is not a
+     state at all, it is the shape of a standing object, and an object that is
+     always there can be more present than a highlight that comes and goes. */
+  background: rgba(15, 23, 42, 0.08);
+  color: var(--text-2);
+}
+/* Last, and at equal specificity to the grouped rule above, so source order is
+   what carries it — the same arrangement .sidenav-avatar's border-radius needs
+   against .sidenav-more's box. It also has to be stated rather than left off:
+   without it the global `button:hover` repaints this as a filled accent pill. */
+.sidenav-avatar:hover { color: var(--text); }
 @media (prefers-reduced-motion: reduce) {
   .sidenav-caret { transition: none; }
 }
 
 .sidenav-note {
-  padding: 2px 8px;
+  padding: 2px 11px;
   font-size: 0.78rem;
+  /* Stated rather than inherited: the body's 400 left this the one line drawn
+     lighter than everything around it. Kept one step below the labels — they
+     are 700, this is 600 — because it is a sentence, not a label. */
+  font-weight: 600;
   color: var(--text-3);
   flex-shrink: 0;
 }
 
 /* ── The Games section's fixture list ──
-   One row per game, no kickoff headings and no times. Not the games strip: no
-   odds, no cards, no motion — a 220px column of fixtures.
+   TWO COLUMNS OF FIXTURES, each fixture two lines: away over home. Games flow
+   left to right and then down, which is grid's default `row` auto-flow acting
+   on a list the API already returns in kickoff order — so the ordering needs no
+   code, only the right container.
 
-   THE AWAY LOGO SITS IN THE LABELS' ICON COLUMN, and the arithmetic is the
-   whole reason this rule mirrors .sidenav-item's padding rather than picking
-   its own. A label is `padding: 0 8px` with its icon as the first child, so
-   that icon starts at the sidebar's 10px plus 8 = 18px. This row uses the same
-   8px, and its first child is the away side, whose own first child is the
-   logo — so the logo box starts at 18px too. Both are 15px square. Change
-   either padding and the nav loses its single left edge.
+   Not the games strip: no odds cards, no motion — a 240px column of fixtures.
 
-   No optical nudge here, unlike .sidenav-brand. That one compensates for a
-   single known glyph's side bearing; these are 32 different team marks with
-   32 different amounts of whitespace baked into them, so any fixed correction
-   would be wrong for most of the league. The BOX is what is aligned.
+   Why a grid at all. One full-width row per game spent sixteen rows on sixteen
+   games in the one column of the app that cannot scroll for free. Turning the
+   fixture on its side halves that, and the width it needs comes from the
+   separator and the horizontal spread the old row was paying for. */
+.sidenav-games {
+  display: grid;
+  /* minmax(0, 1fr) rather than 1fr: a grid track's default min-width is
+     `auto`, so a long abbreviation and a five-digit price would push a column
+     wider than its half instead of ellipsing inside it. */
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  /* ROW GAP MATCHES THE LABEL RHYTHM ABOVE. .sidenav-item is a 30px box holding
+     ~15.7px of text and .app-sidebar sets no gap, so consecutive labels — Home
+     over Friends, one league over the next — leave ~14px of whitespace between
+     their text. A cell carries 4px of padding top and bottom, so 6px here puts
+     the same ~14px between one fixture and the one under it, and the games read
+     as part of the same column rather than as a denser block inside it.
 
-   Deliberately NOT .sidenav-item itself: shorter and lighter, because a game is
-   something you are being shown rather than a destination you are choosing
-   between. */
+     THE COLUMN GAP IS 1px, and the columns are held apart by the cells' own 8px
+     padding rather than by the grid. Widening it to 10 was tried and reverted:
+     it cost every cell 5px of the width the prices need, and the two columns
+     were already legibly separate without it. */
+  column-gap: 1px;
+  row-gap: 6px;
+  flex-shrink: 0;
+}
+
+/* ONE GAME. Two stacked lines, and the whole cell is the target.
+
+   THE LEFT COLUMN'S LOGOS SIT IN THE LABELS' ICON COLUMN, which is why the
+   horizontal padding here matches .sidenav-item's 8px exactly. The right column
+   begins halfway across and aligns with nothing above it — that is what a
+   second column costs, and it still aligns with itself down the grid.
+
+   Padding rather than a fixed height: the cell is two lines whatever the
+   viewport, and stating a height would just be the line-height arithmetic
+   written twice. */
 .sidenav-game,
 .sidenav-game:hover,
 .sidenav-game:active {
   display: flex;
-  align-items: center;
-  /* Around the "@". Inside each side the gap is tighter — see
-     .sidenav-game-side — so a logo reads as belonging to the abbreviation
-     beside it rather than floating between the two teams. */
-  gap: 6px;
-  height: 26px;
-  padding: 0 8px;
-  flex-shrink: 0;
+  flex-direction: column;
+  justify-content: center;
+  gap: 1px;
+  /* Same 2px inset as .sidenav-item, taken out of the padding so the logo and
+     the price do not move. Both sides equally, which is what keeps the price's
+     distance from the right edge equal to the logo's from the left. */
+  margin: 0 2px;
+  padding: 4px 9px;
+  min-width: 0;
   border-radius: var(--radius);
   background: none;
   text-decoration: none;
-  font-size: 0.76rem;
-  font-weight: 500;
+  font-size: 0.72rem;
+  font-weight: 700;
   color: var(--text-2);
   white-space: nowrap;
   overflow: hidden;
 }
 
-/* A logo and its abbreviation, bound together. */
+/* One side: logo, abbreviation, price. */
 .sidenav-game-side {
   display: flex;
   align-items: center;
   gap: 4px;
+  min-width: 0;
+}
+/* Ellipsis rather than overflow: nothing in the NFL needs it today, but the
+   cell is half a narrow column and the team is the part that may give way —
+   never the price. */
+.sidenav-game-team {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  /* Wide enough for the longest NFL abbreviation, so the price after it starts
+     at the same x on both of a fixture's lines. Without it "NE" and "SEA" push
+     their prices to different places and the cell's two numbers sit a few
+     pixels out of step — which is exactly what the old right-aligned price
+     avoided, and this keeps while sitting close to the team. */
+  min-width: 2.3em;
+}
+/* THE MONEYLINE, pushed to the cell's right edge so a fixture's two prices sit
+   under each other and read as a pair. In the accent, which is the design
+   system's rule for odds anywhere, and the only colour in the column.
+
+   Tabular numerals come from the global rule, so +164 and -196 are the same
+   width and the column does not jitter down the grid.
+
+   `margin-left: auto` is what does the pushing, and it is also why Side renders
+   this span even with no price: an absent element would let the team name of an
+   unpriced side sit where no other name does. */
+.sidenav-game-odds {
+  /* THE CELL IS INSET EQUALLY AT BOTH ENDS: the team LOGO starts as far from the
+     cell's left edge as the price ends from its right, and that distance is the
+     cell's own 8px padding on both sides. So `margin-left: auto` pushes the
+     price to the right edge and nothing holds it off — the padding is the whole
+     of the inset, which is why this needs no magic number tied to the logo's
+     size.
+
+     The trade, stated because it was asked for the other way first: the price is
+     as far from its team as the cell is wide, ~24px. Balancing the two ends and
+     sitting the price tight against the abbreviation are the same measurement
+     pulling in opposite directions, and only one of them can win.
+
+     Right-aligning is also what keeps a fixture's two prices under each other,
+     which .sidenav-game-team's min-width was covering while the price sat
+     against the team. Both hold it now, from opposite ends. */
+  margin-left: auto;
+  font-size: 0.68rem;
+  /* NO COLOUR OF ITS OWN — it inherits .sidenav-game's --text-2, the same as the
+     abbreviation beside it. This was var(--accent), which is the design system's
+     rule for odds anywhere; the sidebar opts out because the accent is also what
+     marks the row you are ON, and thirty-two prices in it made the one signal
+     that has to stand out compete with a column of numbers that do not. */
   flex-shrink: 0;
 }
-/* Only when it goes somewhere. Outside a league the row is a `div` with
+
+/* Only when it goes somewhere. Outside a league the cell is a `div` with
    `is-static`, and a hover on something inert is a lie about what a click does. */
-.sidenav-game:hover { background: rgba(15, 23, 42, 0.06); color: var(--text); }
+.sidenav-game:hover { background: rgba(15, 23, 42, 0.04); }
 .sidenav-game.is-static,
 .sidenav-game.is-static:hover { background: none; color: var(--text-2); cursor: default; }
-
-/* The separator recedes so the two teams carry the row. */
-.sidenav-game-at { color: var(--text-3); font-size: 0.7rem; }
 
 /* There is no score column and no live/final state here, and that follows from
    the list being upcoming-only: a game with a score is a game you can no longer
    bet on, so it has already dropped out. If in-progress games are ever shown
-   again, the score belongs on the right of this row. */
+   again, the score belongs under the price. */
 
-/* Pins the account control to the bottom. `margin-top: auto` inside the column,
-   so it sits under the last section however short the nav is, and gets pushed
-   down normally once the league list is long enough to scroll. */
-.sidenav-foot {
-  margin-top: auto;
-  /* NO horizontal padding. It held 8px back when this was plain type and had
-     to be inset by hand to reach the rows' text column; the account control is
-     a .sidenav-item now and brings that 8px with it, so a repeat here would
-     indent the one row that has to line up with the rest. */
-  padding: 14px 0 4px;
-  flex-shrink: 0;
-}
 
 /* ── Shell on small screens ──
    The sidebar becomes a horizontal strip above the card rather than
@@ -747,40 +1090,16 @@ button.dark:hover { opacity: 0.86; background: var(--text); border-color: var(--
   }
   /* No bottom margin in a row — the gap here is horizontal. Height stays, so
      the lockup keeps the same box it has in the column. */
-  .sidenav-brand { padding: 0 10px 0 0; margin-bottom: 0; }
+  .sidenav-head { width: auto; margin: 0; }
+  .sidenav-brand { padding: 0; margin: 0 10px 0 0; }
   .sidenav-item { width: auto; }
   /* Inline separator rather than a heading with a stack under it. Collapsing
      still works and still hides that section's labels — it just takes a bite
      out of the row instead of a block out of the column. */
+  .sidenav-section-row { width: auto; margin: 0 2px 0 10px; }
   .sidenav-section,
   .sidenav-section:hover,
-  .sidenav-section:active { width: auto; margin: 0 2px 0 10px; }
-  /* STICKY, not merely pushed right. `margin-left: auto` puts the account at
-     the END of the row's scroll content, and with a few leagues in the list
-     that content is wider than the window — so the one control you cannot
-     navigate around would sit past the right edge until you scrolled to it.
-     Sticky pins it to the visible right edge instead and the leagues scroll
-     underneath, which is what the fill and the z-index are for. */
-  .sidenav-foot {
-    margin-top: 0;
-    margin-left: auto;
-    padding: 0 0 0 12px;
-    position: sticky;
-    right: 0;
-    z-index: 1;
-    /* The strip's own fill, so the league rows scroll under it invisibly. */
-    background: var(--shell-bg);
-  }
-  /* The strip is across the TOP here, so the panel has to open downward — and
-     back to the right edge, since the trigger is now the rightmost thing on a
-     full-width bar rather than a row in a narrow column. */
-  .app-sidebar .utility-menu.is-up {
-    top: 100%;
-    bottom: auto;
-    right: 0;
-    left: auto;
-    margin: 6px 0 0;
-  }
+  .sidenav-section:active { flex: 0 0 auto; margin: 0; }
   .app-card { margin: var(--shell-gap); }
 }
 
@@ -1928,6 +2247,7 @@ button.utility-cta::after {
   line-height: 1.45;
   max-width: 54ch;
 }
+
 
 /* The row's verb. A text link, not a button: it opens an editor rather than
    committing anything, and a filled control would out-weigh the label it

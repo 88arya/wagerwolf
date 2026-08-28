@@ -5,7 +5,6 @@ import type { CSSProperties } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import { signOut } from "@/lib/auth";
-import UserIcon from "@/components/UserIcon";
 
 /**
  * "My account" plus its dropdown — the global account control, extracted from
@@ -33,9 +32,14 @@ import UserIcon from "@/components/UserIcon";
  * and would otherwise repaint this as a card either way.
  *
  * `icon` is the mark beside the label, and only the sidebar passes one — a bar
- * has no icon column to put it in. It is also what the menu's own name row
- * uses, so the trigger and the panel it opens cannot show two different marks
- * for the same person.
+ * has no icon column to put it in. It is the only mark this control draws; the
+ * panel below is type alone.
+ *
+ * In the sidebar the label is hidden entirely (`.sidenav-avatar > span`), so the
+ * trigger is that icon and nothing else and the panel is the only place the name
+ * appears. In a bar the trigger is the name and the panel repeats it, which is
+ * the cost of one component serving two shapes — and cheaper than a second
+ * component that drifts.
  *
  * `style` is the type only — face, size, weight, colour — and the bar is the
  * only caller that needs it. The underline is `currentColor`, so it follows
@@ -55,6 +59,64 @@ import UserIcon from "@/components/UserIcon";
  */
 type Placement = "down" | "up";
 
+// ── Cached identity ─────────────────────────────────────────────────────────
+// The name comes from /users/me — so on a fresh load this control had nothing to
+// show until a network round trip finished, and sat on its "My account" fallback
+// for the whole of it. That is the flash this removes.
+//
+// Two layers, the same shape SideNav's hide-odds preference and GamesStrip's
+// use:
+//
+//   cachedIdentity — module-level, so navigating between routes never re-flashes
+//     even before the effect runs.
+//   localStorage   — survives a reload, which the module variable does not.
+//
+// NEVER READ IN A useState INITIALIZER: that runs during SSR, where there is no
+// localStorage, and the server and client would render different text —
+// a hydration mismatch. The initializer takes the module variable, which is
+// identical on both sides, and the stored value arrives from the effect.
+//
+// So one frame of the fallback survives a hard reload; what is gone is the
+// hundreds of milliseconds of it that the fetch used to cost.
+//
+// NOT CLEARED HERE ON SIGN OUT, because it does not need to be: lib/auth's
+// signOut() calls localStorage.clear(), which takes this with everything else.
+// That is what stops the next person to sign in on this device seeing the last
+// one's name.
+const IDENTITY_KEY = "account_identity";
+
+// The email used to live here too, back when the panel showed it. Entries
+// written by that build still parse: the extra key is simply ignored.
+type Identity = { name: string };
+
+const NO_IDENTITY: Identity = { name: "" };
+
+let cachedIdentity: Identity = NO_IDENTITY;
+
+function readStoredIdentity(): Identity {
+  if (typeof window === "undefined") return cachedIdentity;
+  try {
+    const raw = localStorage.getItem(IDENTITY_KEY);
+    if (!raw) return NO_IDENTITY;
+    const v = JSON.parse(raw);
+    // Anything unexpected — an older build's format, a truncated write — falls
+    // back to knowing nothing, which is a flash rather than wrong text.
+    return typeof v?.name === "string" ? { name: v.name } : NO_IDENTITY;
+  } catch {
+    return NO_IDENTITY;
+  }
+}
+
+function writeIdentity(v: Identity) {
+  cachedIdentity = v;
+  try {
+    localStorage.setItem(IDENTITY_KEY, JSON.stringify(v));
+  } catch {
+    // Private mode or a full quota. The module variable already took it, so it
+    // still holds for this session — it just won't outlive it.
+  }
+}
+
 export default function AccountMenu({
   style,
   placement = "down",
@@ -68,18 +130,36 @@ export default function AccountMenu({
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
-  const [fullName, setFullName] = useState("");
+  // The one fact this control shows, in both of its forms: the bar renders it
+  // as the trigger's label, the sidebar renders it in the panel.
+  const [fullName, setFullName] = useState(cachedIdentity.name);
   const menuRef = useRef<HTMLDivElement>(null);
 
   // The caller only mounts this once it knows someone is signed in, so there is
   // no auth check here and no `authed` dependency — mounting IS the signal.
   useEffect(() => {
+    // The stored copy first, so the row is right from the frame after mount
+    // rather than after the round trip. Only applied when it holds something —
+    // an empty cache must not blank a name the module variable already had.
+    const stored = readStoredIdentity();
+    if (stored.name) {
+      cachedIdentity = stored;
+      setFullName(stored.name);
+    }
+
     api("/users/me").then((u: any) => {
       // Falls back to the display name for accounts where Google supplied no
       // given/family name, so they have no first/last on record.
       const full = [u.firstName, u.lastName].filter(Boolean).join(" ");
-      setFullName(full || u.displayName || u.name || "");
-    }).catch(() => {});
+      const next = { name: full || u.displayName || u.name || "" };
+      // The server is the authority; the cache is only ever a head start, so
+      // this overwrites whatever was shown and re-stores it for next time.
+      writeIdentity(next);
+      setFullName(next.name);
+    }).catch(() => {
+      // Offline or a dead backend. Whatever the cache gave us stays on screen,
+      // which is the last true answer rather than a fallback.
+    });
   }, []);
 
   useEffect(() => {
@@ -112,14 +192,24 @@ export default function AccountMenu({
         onClick={() => setOpen(o => !o)}
       >
         {icon}
-        {/* NO TRAILING ARROW. It carried over from the utility bar, where this
+        {/* THE PERSON'S NAME, not "My account". A row that names you is a row you
+            recognise as yours, and the label was the last generic string in a
+            column otherwise made of your leagues.
+
+            "My account" survives as the fallback, and is what shows for the
+            moment before /users/me lands and for an account Google supplied no
+            name for. A blank row would be worse than a generic one.
+
+            NO TRAILING ARROW. It carried over from the utility bar, where this
             control sat opposite "Play now ↗" and the pair read as one voice.
             The mark says "this goes somewhere", and this one does not — it
             opens a menu in place.
 
             In a span even without an icon: .sidenav-item's ellipsis rule is
-            `> span`, and a bare text node has no box to truncate. */}
-        <span>My account</span>
+            `> span`, and a bare text node has no box to truncate — which now
+            matters, because a real name is far likelier to need truncating than
+            two fixed words were. */}
+        <span>{fullName || "My account"}</span>
       </button>
 
       {open && (
@@ -143,14 +233,17 @@ export default function AccountMenu({
             padding: "6px 0",
           }}
         >
+          {/* THE NAME, AND NOTHING ELSE — no icon, no email.
+
+              This has followed the trigger twice. While the trigger was the
+              word "My account" the panel showed an icon and the name; when the
+              trigger became the name itself the panel switched to the email, so
+              as not to repeat the row you had just clicked. The trigger is an
+              icon in the sidebar's head now and says nothing at all, so the
+              name comes back here — it is the one thing a person opening this
+              wants confirmed, and nothing else on screen carries it. */}
           <div className="navmenu-profile is-label">
-            <span style={{ gap: 8 }}>
-              {/* The same mark as the trigger, at the row's own size. Showing a
-                  different person icon in the panel than on the control that
-                  opened it is how this drifted before. */}
-              <UserIcon size={15} />
-              {fullName || "—"}
-            </span>
+            <span>{fullName || "—"}</span>
           </div>
           {/* Inset to line up with the rows' inner rectangle rather than
               running the full width of the panel: 8px of row padding plus
