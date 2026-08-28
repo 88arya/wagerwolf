@@ -136,6 +136,12 @@ function MinusCircleIcon() {
   );
 }
 
+// The most the slip will inset from the scroller's right edge. It reads the
+// page's padding-right for this, which is the rail on `.page-wide` — but is a
+// centring gutter on `.page`, where it can be hundreds of pixels. See the note
+// at the measurement.
+const RAIL_MAX = 24;
+
 // The shared content rail (--rail in globals.css) — the slip's right edge lines
 // up with the nav's right-hand contents. The slip is position: fixed, so the
 // `100%` inside the token resolves against the viewport, same as for the nav.
@@ -241,7 +247,6 @@ export default function BetSlip({ leagueId }: { leagueId: string }) {
   // cannot inherit that, hence measuring it.
   const [contentRight, setContentRight] = useState<number | null>(null);
   useEffect(() => {
-    const chrome = document.querySelector(".app-chrome");
     // .app-card is the shell's scroller, .app-scroll the classic layout's.
     const scroller = document.querySelector(".app-card, .app-scroll");
     const page = document.querySelector(".page, .page-wide");
@@ -250,23 +255,47 @@ export default function BetSlip({ leagueId }: { leagueId: string }) {
       const cs = getComputedStyle(page);
       const padTop = parseFloat(cs.paddingTop) || 0;
       const box = scroller.getBoundingClientRect();
-      // No chrome on the routes that render none — the shell included, where
-      // content starts at the card's own top.
-      const top = chrome ? chrome.getBoundingClientRect().bottom : box.top;
-      setContentTop(top + padTop);
-      // The page's own horizontal padding IS --rail resolved against the
-      // scroller, so reading it back beats re-deriving the token. Added to the
-      // gap between the scroller and the window edge, which is 0 in the classic
-      // layout and the card's margin in the shell.
+      // WHERE THE PAGE COLUMN BEGINS INSIDE THE SCROLLER, as a constant: the
+      // rect difference is how far down the column currently sits, and adding
+      // the scroll back cancels the part of that which is just scroll position.
+      //
+      // It read the chrome's bottom before, or the scroller's top where there
+      // is no chrome. That second branch is the shell — and it is wrong there,
+      // because the card is not empty above the page: LeagueNav (44px) and the
+      // sub-nav (40px) are inside it. So the slip was pinned to the card's own
+      // top edge, 26px, and sat across the nav's league switcher and profile
+      // icon at 1412-1702 x 11-55. Measured, not assumed, because the sub-nav
+      // only renders on some routes.
+      //
+      // One formula for both layouts now, so `.app-chrome` is not consulted at
+      // all: in the classic layout the chrome IS the scroller's first child, so
+      // this resolves to exactly the chrome height it used to read.
+      const contentStart = page.getBoundingClientRect().top - box.top + scroller.scrollTop;
+      setContentTop(box.top + contentStart + padTop);
+      // THE SLIP SITS IN THE GUTTER TO THE RIGHT OF THE COLUMN, NOT INSIDE IT.
+      //
+      // This read the page's own padding-right and added it, on the reasoning
+      // that the padding IS --rail resolved against the scroller, so reading it
+      // back beats re-deriving the token. True for `.page-wide`, whose padding
+      // is exactly the rail — and badly wrong for `.page`, which is a 612px
+      // column CENTRED by padding. At a 1968px window that padding is 545px a
+      // side, so the slip's right edge was pinned to the column's right edge and
+      // the 368px slip landed on top of the board: measured at 1046–1414 against
+      // a column of 786–1397. The whole width of it, over the odds.
+      //
+      // Capped at RAIL_MAX so a centring padding cannot drag the slip inward.
+      // `.page-wide`'s rail is smaller than the cap and still comes through
+      // untouched, so the classic layout is unchanged.
       const padRight = parseFloat(cs.paddingRight) || 0;
-      setContentRight(window.innerWidth - box.right + padRight);
+      setContentRight(window.innerWidth - box.right + Math.min(padRight, RAIL_MAX));
     };
     measure();
-    // The chrome for its height changing (the strip collapses when a week has
-    // no games), the page for its padding changing with the viewport, and the
-    // scroller because the card's box moves with the sidebar.
+    // The page for its padding changing with the viewport and for its own
+    // position moving when the nav above it reflows, and the scroller because
+    // the card's box moves with the sidebar. The chrome used to be observed
+    // too; it is no longer read, and observing .page covers it — anything that
+    // changes the chrome's height moves the page with it.
     const ro = new ResizeObserver(measure);
-    if (chrome) ro.observe(chrome);
     ro.observe(page);
     ro.observe(scroller);
     window.addEventListener("resize", measure);
