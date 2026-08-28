@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { use, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
+import { getCached, setCached } from "@/lib/pageCache";
 import { fmtMoney } from "@/lib/money";
 import PlacedBetCard, { type BetKind } from "@/components/PlacedBetCard";
 
@@ -11,14 +12,26 @@ function calcProfit(stake: number, odds: number): number {
   return Math.round((stake * 100) / Math.abs(odds));
 }
 
+type Cached = { picks: any[]; gamePicks: any[]; parlays: any[]; league: any };
+
+/** League-scoped: the sidebar switches leagues without unmounting this page. */
+const cacheKey = (leagueId: string) => `history:${leagueId}`;
+
 export default function HistoryPage({ params }: PageProps<"/leagues/[leagueId]/history">) {
   const router = useRouter();
-  const [leagueId, setLeagueId] = useState("");
-  const [picks, setPicks] = useState<any[]>([]);
-  const [gamePicks, setGamePicks] = useState<any[]>([]);
-  const [parlays, setParlays] = useState<any[]>([]);
-  const [league, setLeague] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
+  // `use`, not an await inside the effect — see the note in the My Bets page.
+  // The cache key needs the league id, and an id that arrives after the first
+  // paint makes that paint the empty state, which is the LOADING… frame this is
+  // removing.
+  const { leagueId } = use(params);
+  const cached = getCached<Cached>(cacheKey(leagueId));
+
+  const [picks, setPicks] = useState<any[]>(cached?.picks ?? []);
+  const [gamePicks, setGamePicks] = useState<any[]>(cached?.gamePicks ?? []);
+  const [parlays, setParlays] = useState<any[]>(cached?.parlays ?? []);
+  const [league, setLeague] = useState<any>(cached?.league ?? null);
+  // Never true on a revisit: the refetch happens behind the last answer.
+  const [loading, setLoading] = useState(!cached);
   const [cashingOut, setCashingOut] = useState<string | null>(null);
 
   async function load(lId: string) {
@@ -33,6 +46,12 @@ export default function HistoryPage({ params }: PageProps<"/leagues/[leagueId]/h
       setGamePicks(gamePicksData);
       setParlays(parlaysData);
       setLeague(leagueData);
+      // Written inside `load` rather than at the call site, because this is
+      // also the post-cashout refresh — so the stored copy cannot go stale
+      // behind a cashout. See lib/pageCache.
+      setCached<Cached>(cacheKey(lId), {
+        picks: picksData, gamePicks: gamePicksData, parlays: parlaysData, league: leagueData,
+      });
     } catch {} finally {
       setLoading(false);
     }
@@ -41,12 +60,10 @@ export default function HistoryPage({ params }: PageProps<"/leagues/[leagueId]/h
   useEffect(() => {
     async function init() {
       if (!localStorage.getItem("token")) { router.push("/"); return; }
-      const { leagueId } = await params;
-      setLeagueId(leagueId);
       await load(leagueId);
     }
     init();
-  }, []);
+  }, [leagueId]);
 
   async function cashOut(type: BetKind, id: string) {
     setCashingOut(id);

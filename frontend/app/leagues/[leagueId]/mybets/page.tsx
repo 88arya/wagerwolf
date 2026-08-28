@@ -1,19 +1,35 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { use, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
+import { getCached, setCached } from "@/lib/pageCache";
 import { fmtMoney } from "@/lib/money";
 import PlacedBetCard, { type BetKind } from "@/components/PlacedBetCard";
 
+type Cached = { week: any; picks: any[]; gamePicks: any[]; parlays: any[] };
+
+/** League-scoped: the sidebar switches leagues without unmounting this page. */
+const cacheKey = (leagueId: string) => `mybets:${leagueId}`;
+
 export default function MyBetsPage({ params }: PageProps<"/leagues/[leagueId]/mybets">) {
   const router = useRouter();
-  const [leagueId, setLeagueId] = useState("");
-  const [week, setWeek] = useState<any>(null);
-  const [picks, setPicks] = useState<any[]>([]);
-  const [gamePicks, setGamePicks] = useState<any[]>([]);
-  const [parlays, setParlays] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  // `use`, not an await inside the effect. The cache key needs the league id,
+  // and an id that only arrives after the first paint means the first paint is
+  // always the empty state — the LOADING… frame this is trying to remove. `use`
+  // unwraps the promise during render, so the seeds below are the FIRST thing
+  // rendered rather than a correction to it. Documented pattern for reading
+  // params in a client component.
+  const { leagueId } = use(params);
+  const cached = getCached<Cached>(cacheKey(leagueId));
+
+  const [week, setWeek] = useState<any>(cached?.week ?? null);
+  const [picks, setPicks] = useState<any[]>(cached?.picks ?? []);
+  const [gamePicks, setGamePicks] = useState<any[]>(cached?.gamePicks ?? []);
+  const [parlays, setParlays] = useState<any[]>(cached?.parlays ?? []);
+  // Never true on a revisit: there is already something real to show, so the
+  // refetch happens behind the last answer instead of behind a spinner.
+  const [loading, setLoading] = useState(!cached);
   const [cashingOut, setCashingOut] = useState<string | null>(null);
 
   async function load(lid: string, currentWeek: any) {
@@ -26,23 +42,32 @@ export default function MyBetsPage({ params }: PageProps<"/leagues/[leagueId]/my
       api(`/parlays?leagueId=${lid}`),
     ]);
 
-    setPicks(picksData.filter((p: any) => weekPropIds.has(p.propId)));
-    setGamePicks(gamePicksData.filter((p: any) => weekLineIds.has(p.gameLineId)));
-
+    const nextPicks = picksData.filter((p: any) => weekPropIds.has(p.propId));
+    const nextGamePicks = gamePicksData.filter((p: any) => weekLineIds.has(p.gameLineId));
     // parlays: include if any leg is in this week
-    setParlays(parlaysData.filter((p: any) =>
+    const nextParlays = parlaysData.filter((p: any) =>
       p.legs?.some((l: any) =>
         (l.propId && weekPropIds.has(l.propId)) ||
         (l.gameLineId && weekLineIds.has(l.gameLineId))
       )
-    ));
+    );
+
+    setPicks(nextPicks);
+    setGamePicks(nextGamePicks);
+    setParlays(nextParlays);
+
+    // Written here rather than at the call site because `load` is also the
+    // post-cashout refresh — so the stored copy cannot go stale behind a
+    // cashout the way it would if only the initial fetch saved it.
+    setCached<Cached>(cacheKey(lid), {
+      week: currentWeek, picks: nextPicks, gamePicks: nextGamePicks, parlays: nextParlays,
+    });
   }
 
   useEffect(() => {
     async function init() {
       if (!localStorage.getItem("token")) { router.push("/"); return; }
-      const { leagueId: lid } = await params;
-      setLeagueId(lid);
+      const lid = leagueId;
 
       try {
         const weeks = await api(`/weeks?current=true&leagueId=${lid}`);
@@ -54,7 +79,7 @@ export default function MyBetsPage({ params }: PageProps<"/leagues/[leagueId]/my
       setLoading(false);
     }
     init();
-  }, []);
+  }, [leagueId]);
 
   async function cashOut(type: BetKind, id: string) {
     setCashingOut(id);
