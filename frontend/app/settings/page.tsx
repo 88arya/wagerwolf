@@ -6,7 +6,7 @@ import { api } from "@/lib/api";
 import { signOut } from "@/lib/auth";
 import { useTimeZoneSync } from "@/lib/useTimeZoneSync";
 import HelmetAvatar from "@/components/HelmetAvatar";
-import BarePageHeader from "@/components/BarePageHeader";
+import DocsShell from "@/components/DocsShell";
 
 /**
  * My Account — the identity that follows you across every league.
@@ -68,71 +68,6 @@ const TABS: Array<{ key: Tab; label: string }> = [
 // form makes you go back and find which character it meant.
 const NAME_ALLOWED = /[^A-Za-z0-9 ]/g;
 const NAME_MIN = 3;
-
-/**
- * Puts the account grid in the MIDDLE of the space under the bare header
- * instead of at the top of it.
- *
- * `.bare-route` already hands this element every pixel between the header and
- * the bottom of the viewport — it is `flex: 1 1 auto` in a column there, see
- * the `.bare-route > .page-wide` rule in globals.css. It was simply laying its
- * one child out from the top, so a page that only needs ~500px sat in the top
- * half with a screen of white under it.
- *
- * `center` is SAFE against tall content here, which it is not everywhere:
- * centring inside a scroll container normally risks pushing the top of the
- * content out of reach, because overflow spills equally from both ends and you
- * cannot scroll up past the start. It cannot happen on this route —
- * `.bare-route` is `flex: 1 0 auto` with an auto height, so it grows to its
- * content and can never shrink below it. There is therefore never negative
- * free space for `center` to distribute.
- *
- * The extra bottom padding (over `.page-wide`'s own 24px) is an optical bias,
- * not a spacer: a short block on a tall empty page reads low when it sits on
- * the true middle. AuthScreen does the same thing with `padding: 0 20px 10vh`
- * on /signup and /sign-in.
- *
- * 20vh, up from 8. Padding on the bottom buys HALF its value in movement —
- * `center` splits whatever is left — so the 12vh added here lifts the grid
- * about 60px at a 980px viewport, taking the split above and below it from
- * 229/288 to roughly 170/347. In vh rather than px so the lift scales with the
- * emptiness it is correcting; on a viewport short enough for the grid to fill,
- * there is no free space left to distribute and the bias quietly does nothing.
- *
- * WHAT CENTRING COUPLES, and why GRID_MIN_H exists: vertical position now
- * depends on the height of whatever tab is open. See below.
- */
-const PANE_CENTRED = {
-  display: "flex",
-  flexDirection: "column" as const,
-  justifyContent: "center",
-  paddingBottom: "20vh",
-};
-
-/**
- * A floor under the grid, so the three tabs are one box rather than three.
- *
- * Centred content moves when it changes height, and the three panes measured
- * 245px, 152px and 334px — a 182px spread, which re-centres as a ~90px slide of
- * the whole page. The rail slides with it, so the tab you just clicked walks
- * out from under the pointer. That is the cost of centring, and this is the
- * payment: with a floor above the tallest pane, all three render the same box
- * and switching tabs changes only what is inside it.
- *
- * 360 rather than 335 — the measured maximum plus slack for a wrapped name or a
- * longer time-zone string. Overshooting only leaves quiet space below the short
- * panes, which is what the whitespace either side already looks like.
- * Undershooting brings the slide back for whichever pane outgrows it.
- *
- * It is a MINIMUM, so nothing is clipped: opening an editor, or the helmet
- * palette in Default league profile, grows past this freely. Movement on a
- * deliberate click into an edit is expected; movement from merely changing tab
- * is not.
- *
- * `align-items: start` on the grid is what keeps both columns at the top of the
- * taller box instead of stretching a rule down into the slack.
- */
-const GRID_MIN_H = 360;
 
 function cleanDisplayName(v: string) {
   // Accents fold onto their ASCII base BEFORE the filter runs, so José becomes
@@ -231,6 +166,16 @@ export default function SettingsPage() {
   // it compares against the stored value and only PATCHes on a difference.
   useTimeZoneSync(user?.timeZone);
 
+  // The rail's rows. Buttons rather than links, because these tabs are local
+  // state and deliberately never touch the URL — DocsShell draws either kind
+  // identically, so the rail does not betray which it is.
+  const railItems = TABS.map(({ key, label }) => ({
+    key,
+    name: label,
+    active: tab === key,
+    onSelect: () => setTab(key),
+  }));
+
   async function save(field: FieldKey, body: Record<string, unknown>) {
     setError("");
     setSavingField(field);
@@ -251,14 +196,15 @@ export default function SettingsPage() {
     }
   }
 
+  // The shell is rendered in both states, so the rail and the top bar are
+  // there from the first frame and only the pane fills in. It used to be a bare
+  // header over a centred block, which moved the whole page when /users/me
+  // landed.
   if (loading) {
     return (
-      <div className="bare-route">
-        <BarePageHeader done />
-        {/* Centred the same way the loaded page is, so the content does not
-            jump up the screen the moment /users/me lands. */}
-        <div className="page-wide" style={PANE_CENTRED}><div className="mx-empty">Loading your account…</div></div>
-      </div>
+      <DocsShell title="Account" items={railItems}>
+        <div className="mx-empty">Loading your account…</div>
+      </DocsShell>
     );
   }
 
@@ -307,62 +253,7 @@ export default function SettingsPage() {
   }
 
   return (
-    // The vertical centring is local rather than a change to `.page-wide` or to
-    // `.bare-route > .page-wide`, both of which other routes share — the legal
-    // pages are also bare routes and are long enough that centring them would
-    // be either a no-op or an oddity. See PANE_CENTRED.
-    <div className="bare-route">
-      <BarePageHeader done />
-      <div className="page-wide" style={PANE_CENTRED}>
-      {/* Rail then content. `align-items: start` so the rail does not stretch to
-          the height of the tallest tab and hang a rule into empty space. */}
-      <div
-        className="account-grid"
-        style={{
-          maxWidth: 940, margin: "0 auto", width: "100%",
-          display: "grid", gridTemplateColumns: "224px minmax(0, 1fr)",
-          gap: 40, alignItems: "start",
-          minHeight: GRID_MIN_H,
-        }}
-      >
-        {/* ── Rail ─────────────────────────────────────────────────── */}
-        <nav className="account-rail" style={{ position: "sticky", top: 0 }} aria-label="Account sections">
-          {/* Sized and spaced to sit on the same line as the pane title opposite —
-              .mx-title is 1.5rem against .mx-pane-title's 1.15rem, so matching
-              the font-size is what actually aligns them, not equal margins. */}
-          <h1 className="mx-pane-title" style={{ margin: "0 0 14px" }}>Account settings</h1>
-          <div style={{ display: "flex", flexDirection: "column" }}>
-            {TABS.map(({ key, label }) => {
-              const on = tab === key;
-              return (
-                <button
-                  key={key}
-                  type="button"
-                  onClick={() => setTab(key)}
-                  aria-current={on ? "page" : undefined}
-                  // .mx-tab, not .mx-btn: these are navigation, not actions.
-                  // The active one is a full-width grey rectangle — see the
-                  // .mx-tab block in globals.css for why it is not the accent
-                  // rule this used to draw.
-                  className={on ? "mx-tab is-on" : "mx-tab"}
-                >
-                  <svg
-                    width="15" height="15" viewBox="0 0 24 24" fill="none"
-                    stroke="currentColor" strokeWidth={1.6}
-                    strokeLinecap="round" strokeLinejoin="round"
-                    aria-hidden="true" style={{ flexShrink: 0 }}
-                  >
-                    <path d={ICONS[key]} />
-                  </svg>
-                  {label}
-                </button>
-              );
-            })}
-          </div>
-        </nav>
-
-        {/* ── Content ──────────────────────────────────────────────── */}
-        <div style={{ minWidth: 0 }}>
+    <DocsShell title="Account" items={railItems}>
           {error && <div className="mx-notice is-bad" style={{ marginBottom: 16 }}>{error}</div>}
 
           {tab === "personal" && (
@@ -640,9 +531,6 @@ export default function SettingsPage() {
               </div>
             </section>
           )}
-        </div>
-      </div>
-      </div>
-    </div>
+    </DocsShell>
   );
 }
