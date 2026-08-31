@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Fugaz_One, Inter_Tight } from "next/font/google";
+import { Fugaz_One, Inter, Inter_Tight } from "next/font/google";
 import "./globals.css";
 import AppFrame from "@/components/AppFrame";
 // The wordmark's face. Declared in wordmarkFonts.ts alongside the other
@@ -17,6 +17,19 @@ import FooterSlot from "@/components/FooterSlot";
 const interTight = Inter_Tight({
   subsets: ["latin"],
   variable: "--font-inter-tight",
+  display: "swap",
+});
+
+// THE LEFT SIDEBAR'S FACE, and nothing else's. Everything under --font-sans is
+// Gilroy; .app-sidebar opts out of that and takes this instead, at weight 590.
+//
+// No `weight` array, so the variable font ships with its 100-900 axis live —
+// that is what makes 590 a real interpolated instance rather than a browser
+// rounding it to the nearest cut. Pinning weights here would collapse the axis
+// to the ones named and 590 would silently become one of them.
+const inter = Inter({
+  subsets: ["latin"],
+  variable: "--font-inter",
   display: "swap",
 });
 
@@ -45,7 +58,7 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={`${interTight.variable} ${fugazOne.variable} ${arcaMajora.variable} ${lemonMilk.variable} ${gilroy.variable}`} suppressHydrationWarning>
+    <html lang="en" className={`${interTight.variable} ${inter.variable} ${fugazOne.variable} ${arcaMajora.variable} ${lemonMilk.variable} ${gilroy.variable}`} suppressHydrationWarning>
       <body suppressHydrationWarning>
         {/* AppFrame owns the layout, and there are two of them.
             /home, /friends and the league routes get the signed-in shell — a

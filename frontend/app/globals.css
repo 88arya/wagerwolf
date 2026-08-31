@@ -35,6 +35,10 @@
   --accent-muted: #5A81E9;
   --accent-dim:   rgba(43, 93, 227, 0.10);
   --accent-glow:  rgba(43, 93, 227, 0.18);
+  /* Selected text. Its own rung rather than reusing --accent-dim or -glow: at
+     10% and 18% those are washes UNDER things, and this has to be a mark ON
+     text and hold up while you drag across a paragraph. */
+  --accent-select: rgba(43, 93, 227, 0.40);
 
   /* ── Header ── */
   /* The league nav band — both rows of components/LeagueNav, and its two
@@ -106,6 +110,27 @@
      See .sidenav-brand. */
   --shell-gap:    10px;
 
+  /* THE FILL BEHIND THE SIDEBAR'S TWO MARKS — the account circle and the help
+     circle — when hovered or open. A token rather than the literal it was in
+     both places, because the help icon's RING is now this same value: the ring
+     and the fill are required to be one colour, not two that happen to agree,
+     and a hardcoded pair would drift the first time either is nudged.
+
+     0.08 is darker than any row state (twice .sidenav-item's hover, above even
+     the current row's 0.06). The row tints are transient marks ON something and
+     have to stay quiet enough that a column of them does not read as stripes;
+     these are single discs and can be more present than that. */
+  --sidenav-mark-fill: rgba(15, 23, 42, 0.08);
+
+  /* THE TINT UNDER A HOVERED ROW — .sidenav-item's, and now the popup rows'
+     too. A token because the two are required to be one colour rather than two
+     that happen to agree; it was a literal in .sidenav-item:hover alone.
+
+     0.03, quiet on purpose: these are transient marks ON something and a column
+     of them must not read as stripes. That is the whole reason the mark discs
+     get 0.08 and this does not. */
+  --sidenav-row-fill: rgba(15, 23, 42, 0.03);
+
   /* The ground the shell's card floats on, and the sidebar's fill.
      DELIBERATELY NOT --bg. That token is the page ground on every route, the
      landing page included, so pointing the shell at it would tint the marketing
@@ -113,6 +138,37 @@
      the signed-in app's own ground; to take the colour everywhere instead, move
      the value onto --bg and point this at it. */
   --shell-bg:     #F5F8FF;
+
+  /* THE SIDEBAR'S POPUP PANELS, and only those. The bar's and LeagueNav's stay
+     on --surface; see .utility-menu below for how the two are told apart.
+
+     It sits BETWEEN --surface (#FFFFFF) and --shell-bg (#F5F8FF) — a panel
+     barely lighter than the column it opens over rather than plainly white on
+     it. That narrows the tonal separation these panels used to lean on, which
+     is why the 1px --border they already carry is now doing most of the work of
+     holding the edge. Don't remove it here on the grounds that the fill reads
+     as distinct; at this value it barely does. */
+  --shell-menu-bg: #FAFCFF;
+
+  /* THE TINT UNDER A HOVERED POPUP ROW, and only in the sidebar's panels.
+     --sidenav-row-fill is the nav rows' and it is deliberately NOT reused here.
+
+     THE POINT IS TO LAND ON THE SAME COLOUR, not the same tint. --sidenav-row-fill
+     says the two "are required to be one colour rather than two that happen to
+     agree", and an alpha cannot keep that promise across two grounds: 0.03 over
+     --shell-bg (#F5F8FF) composites to #EEF1F9, but over --shell-menu-bg
+     (#FAFCFF) it comes out #F3F5F9 — five points lighter in R and G, on a panel
+     that opens directly over the column, so both are in view at once.
+
+     0.05 over #FAFCFF gives #EEF1F4: R and G land exactly on the nav rows'
+     hover, B five low, which is imperceptible. An exact match would have to be
+     the opaque #EEF1F9 — the two grounds share B=255 but differ in R and G, so
+     no single alpha hits all three (B wants 0.030, R wants 0.051). Kept as an
+     alpha anyway, so it stays right if either ground moves.
+
+     RECOMPUTE IF EITHER GROUND CHANGES. This number is only correct relative to
+     the pair above it. */
+  --shell-menu-row-fill: rgba(15, 23, 42, 0.05);
 
   /* ── Status ── */
   --win:          #16A34A;
@@ -131,7 +187,18 @@
   --bronze:       #B45309;
 
   /* ── Text ── */
-  --text:         #0F172A;
+  /* PURE BLACK, to match the pure white of --bg and --surface. It was #0F172A,
+     Tailwind's slate-900 — a blue-tinted near-black that never had a reason
+     beyond being where the ramp below started. The ground is #FFFFFF and not an
+     off-white, so the ink is #000000 and not an off-black; the pair is the
+     decision, and holding one end pure while softening the other was the
+     inconsistency.
+
+     THE GREYS BELOW ARE STILL SLATE (#475569 / #94A3B8 / #CBD5E1) and are
+     therefore slightly blue against this. They are left alone deliberately —
+     they carry every secondary label in the app and neutralising them is a
+     separate, much wider change than this one. */
+  --text:         #000000;
   --text-2:       #475569;
   --text-3:       #94A3B8;
   --text-4:       #CBD5E1;
@@ -175,6 +242,37 @@
 
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
+
+/* ── Selected text ──
+   The accent, so dragging over a line marks it in the app's own colour rather
+   than the browser's — which is Chrome's blue on one machine and the OS accent
+   on another, and never ours.
+
+   BARE ::selection, which is *::selection. The pseudo-element does not cascade
+   the way an ordinary rule does: scoping it to a container (.docs-main
+   ::selection) covers descendants, while .docs-main::selection does not. One
+   global rule sidesteps the whole question.
+
+   NO COLOUR CHANGE — selected text keeps whatever ink it had, which is what
+   picks the tint over the solid. Full --accent (#2B5DE3) under an unchanged
+   --text (#0F172A) is near-black on strong blue, about 2:1 and genuinely hard
+   to read; --accent-dim is the same blue at 10%, so the ink stays put and
+   stays legible. Declaring color: #FFFFFF and keeping the solid was the other
+   way, and was not taken.
+
+   40%, walked down from 50 after 10% (--accent-dim) read as barely there. Over
+   white it lands near #A9BEF4, keeping --text at roughly 8:1 — so the ink is
+   still comfortably legible without being recoloured, which was the whole point
+   of choosing a tint over the solid accent.
+
+   THE ALPHA IS THE ONE THING TO WATCH. It composites against whatever is
+   behind the text, so it is a slightly different colour on a white card and on
+   the grey shell ground, and over the dark bars it goes muddy rather than
+   bright. Selection there is rare — the bars are chrome, not copy — so that is
+   accepted rather than solved with a second rule. */
+::selection {
+  background: var(--accent-select);
+}
 html { scroll-behavior: smooth; }
 
 body {
@@ -366,7 +464,14 @@ button.dark:hover { opacity: 0.86; background: var(--text); border-color: var(--
    but :has() matches the DOM, where the element is still there, and a child
    combinator therefore missed it. The legal pages have no such wrapper, which
    is why the stray scrollbar showed on /signup alone. */
-.app-scroll:has(.bare-route) { overflow-y: auto; }
+/* .docs-shell joins .bare-route here for a related but distinct reason. A bare
+   route is exactly one viewport and simply has nothing to scroll. The docs
+   shell is capped at the scroller's height and SCROLLS ITSELF, in .docs-main —
+   so leaving `overflow-y: scroll` above put an inert outer track beside the
+   real inner one, and /docs/privacy-policy showed two scrollbars on the right.
+   `auto` paints neither, since nothing overflows the outer box either way. */
+.app-scroll:has(.bare-route),
+.app-scroll:has(.docs-shell) { overflow-y: auto; }
 
 /* ── Scrollbar ──
    The TRACK — the part that stays put — is #2C2C2C. The thumb, the part that
@@ -454,6 +559,19 @@ button.dark:hover { opacity: 0.86; background: var(--text); border-color: var(--
   min-height: 0;
   display: flex;
   flex-direction: column;
+  /* INTER, NOT --font-sans. The sidebar is the one surface that opts out of
+     Gilroy, and it is set here rather than on each row: every .sidenav-* rule
+     already says `font-family: inherit`, so one declaration on the column
+     reaches all of them and there is no list to keep in sync.
+
+     The lockup is unaffected — LogoWordmark pins var(--font-arca-majora) as an
+     INLINE style, which no parent rule can reach. That is deliberate there and
+     it is what stops this line from restyling the mark.
+
+     Weight is 590 throughout, which needs the variable axis to be live; see
+     the Inter instance in app/layout.tsx for why it carries no `weight` array. */
+  font-family: var(--font-inter), "Inter", -apple-system, BlinkMacSystemFont,
+               "Segoe UI", system-ui, sans-serif;
   /* AIR AT BOTH ENDS, more than the card gets. The top was --shell-gap, which
      put the lockup's row exactly on the card's top edge; that alignment is
      given up on purpose — the wordmark sat hard against the ceiling of the
@@ -487,7 +605,13 @@ button.dark:hover { opacity: 0.86; background: var(--text); border-color: var(--
      plus its icon in the same column as the card beside it, and are not part of
      this. The narrow-screen block below restates all four when the sidebar
      becomes a top strip, where a column's worth of air would be wrong. */
-  padding: 18px 10px 28px;
+  /* BOTTOM IS 0, and that is not an omission. The floor's air belongs to
+     .sidenav-foot now: it is a sticky element, and sticky offsets are measured
+     from the scrollport's PADDING BOX — so padding here would not hold a stuck
+     control off the edge, it would only sit behind it. The foot carries the
+     same 22px as its own padding-bottom instead, where it also paints the
+     ground under the button. See .sidenav-foot. */
+  padding: 18px 10px 0;
   /* Its own scroller: the league list has no ceiling, and a long one must not
      push the account control off the bottom of the window. */
   overflow-y: auto;
@@ -644,7 +768,7 @@ button.dark:hover { opacity: 0.86; background: var(--text); border-color: var(--
   text-decoration: none;
   font-family: inherit;
   font-size: 0.82rem;
-  font-weight: 700;
+  font-weight: 590;
   letter-spacing: normal;
   text-transform: none;
   color: var(--text-2);
@@ -667,7 +791,7 @@ button.dark:hover { opacity: 0.86; background: var(--text); border-color: var(--
    alone for a while — the fill said everything and the type held still — but
    --text-2 under a 4%-black tint reads as a row going grey rather than lighting
    up, and the full --text is what makes a hovered row look answered. */
-.sidenav-item:hover { background: rgba(15, 23, 42, 0.03); color: var(--text); }
+.sidenav-item:hover { background: var(--sidenav-row-fill); color: var(--text); }
 /* The one you are on, filled DARKER than the ground. It used to be the card's
    white, on the theory that borrowing the card's colour tied the row to the
    thing it opened — but --shell-bg is #F5F8FF, so white is *lighter* than the
@@ -763,7 +887,7 @@ button.dark:hover { opacity: 0.86; background: var(--text); border-color: var(--
   box-shadow: none;
   font-family: inherit;
   font-size: 0.72rem;
-  font-weight: 700;
+  font-weight: 590;
   letter-spacing: normal;
   text-transform: none;
   /* --text-2, THE LABELS' OWN COLOUR. It was --text-3, a step lighter, on the
@@ -854,10 +978,13 @@ button.dark:hover { opacity: 0.86; background: var(--text); border-color: var(--
    trigger's markup are all the same, and the only difference is that one of the
    two mounts has space for a name.
 
-   --text-2 like everything else in the column now. It was a step darker than
-   the dots menus while those were --text-3; they have since come up to match,
-   so this declaration no longer distinguishes anything and is kept only so the
-   avatar's colour does not depend on a rule it shares with the dots. */
+   --text AT REST, a step darker than the rest of the column. It was --text-2,
+   matching the dots menus, while a standing grey disc gave this control its
+   presence; with the disc gone (see below) the mark IS the control and has to
+   hold its end of the head on its own, against the wordmark opposite.
+
+   Set in the avatar's own rule rather than the one it shares with .sidenav-more
+   above, so the dots menus stay --text-2. */
 .sidenav-avatar > span { display: none; }
 .sidenav-avatar,
 .sidenav-avatar:hover,
@@ -895,31 +1022,187 @@ button.dark:hover { opacity: 0.86; background: var(--text); border-color: var(--
   border-radius: 50%;
   width: 22px;
   height: 22px;
-  /* THE CIRCLE IS ALWAYS THERE. It used to appear on hover, like the three-dot
-     menus' fill still does, which left the head's only control invisible until
-     you found it — the dots at least sit next to a heading that explains them,
-     and this sat alone opposite the lockup. A standing ground makes it read as
-     a thing rather than as an icon someone forgot to style.
+  /* NO CIRCLE AT REST. The fill is painted only on hover and while the menu
+     is open; inactive, the mark stands alone on the head's ground.
 
-     That costs the hover its signal, so the MARK answers instead: the fill
-     holds still and the colour goes to --text below. Which is the same division
-     the label rows make, in reverse — there the fill moves and the text follows
-     it; here the fill is the shape and the ink is the state.
+     It ran the other way for a while — a standing ground on the theory that
+     the head's only control would otherwise be invisible until you found it.
+     That reasoning is kept because it is not wrong, only outweighed: a
+     permanent grey disc opposite the lockup reads as a second object in a
+     head that wants one, and the mark alone is legible enough to find.
 
-     0.08, DARKER THAN ANY ROW STATE — twice the rows' hover and above even the
-     current row's 0.06. That inversion is deliberate rather than an oversight:
-     the row tints are transient marks ON something, and have to stay quiet
-     enough that a column of them does not read as stripes. This one is not a
-     state at all, it is the shape of a standing object, and an object that is
-     always there can be more present than a highlight that comes and goes. */
-  background: rgba(15, 23, 42, 0.08);
-  color: var(--text-2);
+     This hands the hover its signal back, and the fill now carries it alone:
+     the mark is --text at rest as well as active, so the ink never changes.
+     The disc appearing is the whole of the state.
+
+     0.08 is kept for the active fill: darker than any row state (twice the
+     rows' hover, above even the current row's 0.06). The row tints have to stay
+     quiet enough that a column of them does not read as stripes; this is one
+     disc on its own and can be more present than that. */
+  background: none;
+  color: var(--text);
 }
-/* Last, and at equal specificity to the grouped rule above, so source order is
-   what carries it — the same arrangement .sidenav-avatar's border-radius needs
-   against .sidenav-more's box. It also has to be stated rather than left off:
-   without it the global `button:hover` repaints this as a filled accent pill. */
-.sidenav-avatar:hover { color: var(--text); }
+/* THE ACTIVE STATES, and the only place the disc is painted. `aria-expanded`
+   rather than a class because AccountMenu already sets it on the trigger, so
+   an open panel lights its own button with no new prop. Equal specificity to
+   the grouped rules above and stated last, so source order carries it — and
+   the background is repeated here rather than left to the base rule, which now
+   says none. Without these the global `button:hover` repaints this as a filled
+   accent pill. */
+.sidenav-avatar:hover,
+.sidenav-avatar:active,
+.sidenav-avatar[aria-expanded="true"] {
+  background: var(--sidenav-mark-fill);
+  color: var(--text);
+}
+
+/* ── The column's floor ──
+   ONE CONTROL, PINNED. `margin-top: auto` puts it at the bottom when the column
+   is short; `position: sticky; bottom: 0` keeps it there when the Games section
+   makes the column overflow, which at sixteen fixtures it does. Either alone is
+   wrong half the time — auto scrolls away in a full column, sticky sits under
+   the last section in an empty one.
+
+   Sticky needs the ground painted under it or the games list scrolls visibly
+   through the gap beside the circle. --shell-bg is .app-shell's fill, which is
+   what this column has been showing all along: .app-sidebar declares no
+   background of its own.
+
+   10px of top air is all it takes here. .app-sidebar's 28px of bottom padding
+   sits below this and is what holds the circle off the window's edge — the same
+   28px that used to hold the account control off it, before that moved up into
+   the head. */
+.sidenav-foot {
+  margin-top: auto;
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  /* IT LINES UP WITH TWO THINGS, AND NEITHER IS THE WORDMARK. It briefly
+     mirrored the lockup's 23px inset; that is gone, because the lockup carries
+     an optical correction of its own (see .sidenav-brand's margin-left) and
+     copying it dragged that correction somewhere it does not apply.
+
+       left    the ROW HIGHLIGHT's edge, not the column's: .app-sidebar
+               padding-left 10 + .sidenav-item margin 2 = 12. So the circle
+               starts where the grey fill behind Home/Friends/Leaderboard
+               starts, and the hover disc is the same rectangle's width in.
+
+       bottom  the CONTENT CARD's floor: .app-card carries margin-bottom
+               var(--shell-gap), so its underside sits one gap above the shell.
+               The token, not a literal 10 — change --shell-gap and the card
+               and this move together instead of drifting apart.
+
+     THE INK AGREES WITH THE BOX, which is not automatic here. HelpIcon renders
+     at ~33.2 inside this 27.5px button so the drawn ring lands back on the
+     button's own edge (see HELP_ICON in SideNav.tsx) — it overhangs the box
+     ~2.9px a side, and the inset inside the artwork is the same ~2.9px, so the
+     two cancel exactly. Ring, hover disc and row highlight all start on 12px.
+
+     Padding rather than the column's, so --shell-bg paints it and the games
+     list cannot be seen scrolling through the strip beside and below the
+     circle. */
+  margin-left: 2px;
+  padding: 10px 0 var(--shell-gap);
+  background: var(--shell-bg);
+}
+
+/* THE HELP MARK — the account circle's cousin rather than its twin now. Same
+   round, same fill on hover and while open, same --text at rest; it differs in
+   carrying a ring at rest, which the icon draws rather than the border, and in
+   being a quarter larger (27.5 to the avatar's 22). These are the
+   column's only two controls that are marks rather than rows, one on the
+   ceiling and one on the floor, and a second circle drawn to its own rules
+   would read as a different KIND of thing rather than the same thing elsewhere.
+
+   THE TYPE METRICS ARE GONE from this rule — font-size, weight and
+   line-height were here to centre a typed "?" in the circle, and there is no
+   text in the button any more.
+
+   Repeated for :hover and :active like every other control in this column, or
+   the global `button` rule repaints it as a filled accent pill. */
+.sidenav-help,
+.sidenav-help:hover,
+.sidenav-help:active {
+  /* TWO COLOURS AT REST, both borrowed rather than chosen — see HelpIcon in
+     SideNav.tsx for how the artwork splits.
+
+     THE MARK IS THE NAV LABELS' OWN COLOUR. .sidenav-item sits at --text-2 and
+     comes up to --text when pointed at; this control now does the same thing
+     one step further, so the question mark reads as another item in the column
+     rather than as a darker object parked under it. It also gives the hover
+     state somewhere to travel FROM — with the mark previously pinned at --text
+     in both states, the ring was the only thing that moved.
+
+     THE RING IS THE HOVER FILL. 8% black at ~1.1px, so at rest it is a very
+     quiet outline on --shell-bg — much fainter than the 1.5px --text border it
+     descends from. That is the intent; see the hover rule below for the one
+     thing it cost. */
+  --help-mark: var(--text-2);
+  --help-ring: var(--sidenav-mark-fill);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* 27.5 IS HELP_RING IN SideNav.tsx, and nothing enforces the pairing — the
+     same arrangement .sidenav-avatar has with LOCKUP_H. This is the hover
+     disc; HELP_RING is what the artwork draws on top of it. They have to be
+     the same number or the ring and the fill stop being one circle. */
+  width: 27.5px;
+  height: 27.5px;
+  flex-shrink: 0;
+  padding: 0;
+  /* NO CSS BORDER: the ring is part of the artwork now. HelpIcon's last path
+     IS the outline — a border here would draw a second circle just outside it.
+     The ring's weight is the artwork's own (1 unit of 24, ~1.1px at this size),
+     lighter than the 1.5px border it replaced. If it reads too faint the answer
+     is a heavier ICON; adding a border back would double the ring.
+
+     border-radius stays, and is not vestigial: it shapes the hover FILL, which
+     is still the button's background rather than anything the icon draws. */
+  border: none;
+  border-radius: 50%;
+  background: none;
+  box-shadow: none;
+  color: var(--text);
+  cursor: pointer;
+  transform: none;
+}
+/* The active states, matching .sidenav-avatar's exactly: the same fill, the
+   same `aria-expanded` hook so an open panel keeps its trigger lit, and stated
+   last for the same source-order reason.
+
+   THE RING STEPS ASIDE HERE, and this is the whole reason the rule sets
+   --help-ring at all. Both the ring and the fill are the same SEMI-TRANSPARENT
+   token, and the ring paints on top of the fill rather than instead of it — so
+   leaving it be composited 8% over 8% to roughly 15% and drew a rim visibly
+   darker than the disc, which is the opposite of "the ring is the fill colour".
+
+   `transparent` rather than an opaque colour matched to the composite: the
+   ring's pixels then show the disc itself, so the two cannot disagree by
+   construction. The alternative was color-mix()-ing the token against
+   --shell-bg to get an opaque equivalent, which is a second place for
+   --shell-bg to be wrong.
+
+   The silhouette does not change size — the disc is HELP_RING and the ring was
+   drawn at HELP_RING, so the circle's edge lands where it already was. */
+.sidenav-help:hover,
+.sidenav-help:active,
+.sidenav-help[aria-expanded="true"] {
+  --help-ring: transparent;
+  /* PURE BLACK ON HOVER, and the one literal in this block. The rest state is
+     --text-2 now, so this is a full grey-to-black step and reads plainly — it
+     is no longer the near-invisible #0F172A-to-#000 nudge it was when the mark
+     sat at --text in both states.
+
+     The nav rows this borrows from land on --text (#0F172A) rather than #000,
+     so the mark ends one hair darker than a hovered label beside it. Kept
+     because black was asked for explicitly; --text is the swap if the two
+     should match exactly. */
+  --help-mark: #000;
+  background: var(--sidenav-mark-fill);
+  color: var(--text);
+}
 @media (prefers-reduced-motion: reduce) {
   .sidenav-caret { transition: none; }
 }
@@ -929,8 +1212,10 @@ button.dark:hover { opacity: 0.86; background: var(--text); border-color: var(--
   font-size: 0.78rem;
   /* Stated rather than inherited: the body's 400 left this the one line drawn
      lighter than everything around it. Kept one step below the labels — they
-     are 700, this is 600 — because it is a sentence, not a label. */
-  font-weight: 600;
+     are 590, this is 500 — because it is a sentence, not a label. The pair
+     moved together when the sidebar went to Inter 590; what matters is the gap,
+     not either number. */
+  font-weight: 500;
   color: var(--text-3);
   flex-shrink: 0;
 }
@@ -996,7 +1281,7 @@ button.dark:hover { opacity: 0.86; background: var(--text); border-color: var(--
   background: none;
   text-decoration: none;
   font-size: 0.72rem;
-  font-weight: 700;
+  font-weight: 590;
   color: var(--text-2);
   white-space: nowrap;
   overflow: hidden;
@@ -1100,6 +1385,26 @@ button.dark:hover { opacity: 0.86; background: var(--text); border-color: var(--
   .sidenav-section,
   .sidenav-section:hover,
   .sidenav-section:active { flex: 0 0 auto; margin: 0; }
+  /* In a row the floor is the right-hand end, and both of .sidenav-foot's
+     column ideas have to go: an auto TOP margin pushes vertically here, and
+     sticky-to-bottom pins it to the strip's underside. */
+  .sidenav-foot {
+    position: static;
+    margin: 0 0 0 auto;
+    padding: 0;
+    background: none;
+  }
+  /* THE FIRST `is-up` CONSUMER MEETS THE TOP STRIP. HelpMenu is the only thing
+     that has ever used it, so this flip has never been needed until now — it is
+     the manoeuvre .utility-menu's own comment says this block has to be able to
+     make. Pinned to its trigger's head, the panel would open off the top of the
+     window once the sidebar is a strip across the top of the page. */
+  .utility-menu.is-up {
+    top: 100%;
+    bottom: auto;
+    margin-top: 6px;
+    margin-bottom: 0;
+  }
   .app-card { margin: var(--shell-gap); }
 }
 
@@ -1251,11 +1556,31 @@ a.site-footer-social-link:hover { opacity: 0.68; }
   color: #FFFFFF;
 }
 
+/* THE DOCUMENTS' OWN MEASURE, narrower than the column around them and centred
+   in it. 44rem is roughly 75 characters at the body size below — the index's
+   1000px is right for a grid of cards and much too wide for a paragraph, and a
+   single number cannot serve both. `margin-inline: auto` is what centres it;
+   without it the prose would sit against the left edge of a centred column,
+   which looks like a bug rather than a decision. */
+.legal {
+  max-width: 44rem;
+  margin-inline: auto;
+}
+
 /* ── Legal / static copy pages ──
    /privacy, /terms, /responsible-gaming, /contact. These need ordinary reading
    sub-headings, and the global h2 is a 0.63rem uppercase micro-label — right
    for a section eyebrow in the app, wrong for prose. Scoped so nothing else
    moves. */
+/* THE STANDFIRST UNDER A DOCUMENT TITLE: the "last updated" date on the legal
+   pages, and the one-line summary on the two Play documents. It was an inline
+   style repeated across the files, which is how two of them ended up with
+   different sizes. */
+.legal-updated {
+  margin: 10px 0 0;
+  font-size: 0.78rem;
+  color: var(--text-3);
+}
 .legal h2 {
   font-size: 0.95rem;
   font-weight: 500;
@@ -1273,6 +1598,41 @@ a.site-footer-social-link:hover { opacity: 0.68; }
 .legal ul { margin: 0 0 12px 18px; }
 .legal li { margin-bottom: 6px; }
 .legal a { color: var(--accent); }
+/* "Contact us" inside running prose. It is a <button> because it opens a
+   dialog rather than navigating (see components/SupportLink), so everything a
+   button brings has to be undone: the global rule is a filled accent pill, and
+   a button also refuses to inherit the paragraph's font.
+
+   `display: inline` — not inline-flex — so it wraps with the sentence and sits
+   on the same baseline rather than forming its own line box. */
+.support-link,
+.support-link:hover,
+.support-link:active {
+  display: inline;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+  transform: none;
+  font: inherit;
+  color: var(--accent);
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
+}
+/* In the footer it is one of a column of links, so it takes their box instead:
+   .site-footer-link supplies colour and spacing, and only the button reset
+   above is wanted. */
+.site-footer-link.support-link,
+.site-footer-link.support-link:hover,
+.site-footer-link.support-link:active {
+  color: inherit;
+  text-decoration: none;
+  text-align: left;
+}
+
 
 /* ── Typography ── */
 h1 {
@@ -1891,21 +2251,149 @@ hr { border: none; border-top: 1px solid var(--border); margin: 14px 0; }
 .navmenu-profile > span {
   display: flex;
   align-items: center;
+  /* THE ROWS SET THE PANEL'S WIDTH — the panel itself declares none — so this
+     number is the popup's width, plus 8px of row padding a side and the 1px
+     border: 214px in total.
+
+     It was briefly doubled to 392 and put back. Worth knowing that the ceiling
+     which made that a problem is GONE: the panels used to be clipped at
+     .app-sidebar's 220px inner width by its `overflow-x: hidden`, and they are
+     portaled out of the column now (see components/MenuPanel), so a wider panel
+     would simply overlap the content card. Widening this is a design decision
+     with nothing structural in the way of it. */
   width: 196px;
-  height: 22px;
-  padding: 0 9px;
+  /* 30px AND 0 6px 0 9px: .sidenav-item's box, so a popup row is the same
+     object as the nav row that opened it rather than a smaller relative of it.
+     It was 22px with symmetric padding, which made the type look smaller than
+     the labels even though the SIZE ALREADY MATCHED — 0.82rem in both places,
+     then and now. What read as small type was a tight box around it.
+
+     Width stays 196px. The nav row runs the column's full width; this one sets
+     the panel's, so stretching it would resize the popup rather than align
+     anything. */
+  height: 30px;
+  padding: 0 6px 0 9px;
   font-size: 0.82rem;
-  font-weight: 500;
-  border-radius: 0;
+  /* 700, .sidenav-item's weight, so a popup row and the nav row that opened it
+     are the same piece of type. FIXED here — see the hover rule, which used to
+     move it and made the label reflow under the pointer.
+
+     BLACK AT REST, which is where this parts company with the nav rows: they
+     sit at --text-2 and come up to --text when pointed at. A row in a panel is
+     not competing with fifteen others for attention the way a row in the column
+     is — the panel is already the thing you are looking at — so it is set at
+     full strength from the start. */
+  font-weight: 700;
+  color: #000;
+  /* var(--radius), matching .sidenav-item's highlight rather than the panel's
+     --radius-card: this is a row's fill, the same object the nav rows tint, and
+     it should be cut like one. The panel around it is the card-shaped surface.
+
+     It is the SPAN that rounds, not the row — this box is inset 8px from the
+     panel on every side, which is what keeps a tinted first or last row clear
+     of the panel's own 12px corners. */
+  border-radius: var(--radius);
   background: none;
   transition: background 0.1s;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* HOVER MOVES COLOUR AND THE HIGHLIGHT, AND NOTHING ELSE. It used to take the
+   weight from 500 to 700, which reflowed the row under the pointer: the label
+   got wider as it got heavier, so the text shifted while being pointed at while
+   the icon beside it stayed put. Weight is settled in the rest rule now, and
+   this is the same two-part move .sidenav-item makes — tint the box, bring the
+   ink up from --text-2 to --text.
+
+   The icon rides along, since it sits inside this span and draws in
+   currentColor: mark and label come up together rather than the text moving
+   against a fixed icon. */
+/* HOVER IS THE HIGHLIGHT ALONE NOW. It moved the ink from --text-2 to --text
+   while the rest state was grey; with the rest state black there is nowhere
+   darker to go, and --text (#0F172A) would make the row LIGHTER under the
+   pointer, which reads as the label receding as you reach for it.
+
+   So the row keeps the colour it has and the tint does the whole job. Weight is
+   still deliberately untouched — see the rest rule. */
 .navmenu-profile:hover > span {
-  background: var(--surface-2);
-  font-weight: 700;
+  background: var(--sidenav-row-fill);
+}
+
+/* THE SIDEBAR'S POPUPS, and only the sidebar's.
+
+   The rest rule above sets 700 so that "a popup row and the nav row that opened
+   it are the same piece of type". That principle is unchanged; what changed is
+   that the two openers no longer agree with each other. .app-sidebar is on Inter
+   590 and everything else is on Gilroy, so keeping the promise now takes two
+   declarations instead of one — and this is the sidebar's.
+
+   `is-shell` IS THE SCOPE, and it has to be a class on the panel rather than a
+   `.app-sidebar ...` descendant selector: MenuPanel portals these to <body>, so
+   at render time they are not inside the column and inherit nothing from it.
+   That is also why the family is restated here rather than left to cascade.
+
+   WHO PASSES IT: SideNav's DotsMenu, unconditionally (it exists only in the
+   sidebar), and the AccountMenu the sidebar mounts, via `panelClassName`. The
+   SAME AccountMenu component in TopBar/SiteNav passes nothing and so keeps
+   Gilroy 700 — the marketing routes' popups still match the bar that opens
+   them. Dropping the scope and editing the rest rule would restyle those too. */
+.utility-menu.is-shell .navmenu-profile > span {
+  font-family: var(--font-inter), "Inter", -apple-system, BlinkMacSystemFont,
+               "Segoe UI", system-ui, sans-serif;
+  font-weight: 590;
+}
+/* The hover tint, matched to the nav rows' by RESULT rather than by token —
+   see --shell-menu-row-fill for the arithmetic. Scoped like everything else
+   under is-shell: --sidenav-row-fill stays the base value for the bar's panel,
+   LeagueNav's dropdown and .docs-rail-item, each of which sits on a different
+   ground again.
+
+   HOVER ONLY. The fill was briefly a rest state — every row drawn as a filled
+   block, with a darker --shell-menu-row-hover step on top — on 30 Aug 2026, and
+   put back the same day. If it is tried again, note that the flush rows below
+   were the other half of that look and are NOT part of this rule.
+
+   `:not(.is-label)` IS NOT OPTIONAL. The account-name row is not a control —
+   cursor: default, and .navmenu-profile.is-label:hover > span turns the fill
+   off. That suppression is (0,3,1) against this selector's (0,4,1), so it loses
+   outright, and a label sits lit up as though it could be pressed.
+
+   Written as an exclusion rather than a second `background: none` override
+   because these rules should never MATCH a label — the fill belongs to rows you
+   can press. Another suppression would leave two rules arguing over the same
+   pixel, and the next scoped selector added here would out-specify that one
+   too. */
+/* NO VERTICAL PADDING ON THE ROW, so the fills above stack flush.
+
+   The fill is on the inner > span, and the row wrapping it is `padding: 2px 8px`
+   — 2px top and bottom, so two consecutive fills sit 4px apart. This was asked
+   for while the fill was a REST state, where the gap was the whole look: a
+   stack of separated bars rather than one block. The fill is hover-only again
+   and this stays, because it is also the row PITCH — 30px rather than 34px —
+   and the tighter panel is worth having on its own.
+
+   Horizontal padding is untouched at 8px — the fills are meant to be inset from
+   the panel's edge, just not from each other. The panel's own `padding: 6px 0`
+   is likewise kept: that is the gap between the first fill and the panel's
+   border, which is not inter-row spacing and would otherwise let a fill run
+   into the corner arc.
+
+   ALL ROWS, .is-label included, so the pitch stays uniform — the label carries
+   no fill, so this only tightens it against the block beneath it.
+
+   The three selectors are the grouped idiom this file uses everywhere: the base
+   rule sets `padding: 2px 8px` on `:hover` and `:active` too, and those tie this
+   on specificity. Source order alone would decide it; naming them removes the
+   question. */
+.utility-menu.is-shell .navmenu-profile,
+.utility-menu.is-shell .navmenu-profile:hover,
+.utility-menu.is-shell .navmenu-profile:active {
+  padding-top: 0;
+  padding-bottom: 0;
+}
+.utility-menu.is-shell .navmenu-profile:not(.is-label):hover > span {
+  background: var(--shell-menu-row-fill);
 }
 /* The email is a label, not a control: it keeps the row metrics so the panel
    stays aligned, but takes no hover and no pointer. */
@@ -1914,7 +2402,10 @@ hr { border: none; border-top: 1px solid var(--border); margin: 14px 0; }
 .utility-menu .navmenu-profile.is-label,
 .utility-menu .navmenu-profile.is-label:hover { cursor: default; }
 .navmenu-profile.is-label > span { color: var(--text-2); }
-.navmenu-profile.is-label:hover > span { background: none; font-weight: 500; }
+/* Holds BOTH halves of the hover off, not just the highlight: without the
+   colour here the name would still come up to --text under the pointer, which
+   is the row claiming to be a control again by a different route. */
+.navmenu-profile.is-label:hover > span { background: none; color: var(--text-2); }
 
 /* WHICH EDGE THE ACCOUNT PANEL HANGS OFF.
 
@@ -1930,6 +2421,88 @@ hr { border: none; border-top: 1px solid var(--border); margin: 14px 0; }
    In CSS rather than inline on the element so the shell's narrow-screen block
    below can flip `is-up` back down when the sidebar becomes a top strip. An
    inline style cannot be overridden by a media query. */
+/* THE PANEL FILL LIVES HERE, not in the two components' inline `style` props
+   where it used to. It had to move: an inline style out-specifies every rule,
+   so while the components set it there, `.is-shell` had no way to change it for
+   the sidebar alone — and both call sites hardcoding var(--surface) was the
+   thing standing between "the sidebar's popups" and one declaration.
+
+   Default is --surface, which is what SiteNav's copy on the marketing routes and
+   LeagueNav's profile dropdown keep. See .utility-menu.is-shell for the other. */
+.utility-menu {
+  background: var(--surface);
+  /* THE CONTENT CARD'S RADIUS, not the house --radius. .app-card is the only
+     other floating surface on a signed-in screen, and a panel that opens beside
+     it should be cut the same way. Moved here from the two components' inline
+     styles for the same reason the fill was — see above.
+
+     It clears the rows without needing overflow: hidden. The hover fill is
+     .navmenu-profile > span, inset 8px on every side (8px of row padding
+     across, 6px of panel padding plus 2px of row padding down) — and 8,8 sits
+     inside a 12px corner arc, so no fill reaches past the curve. */
+  border-radius: var(--radius-card);
+}
+/* The sidebar's panels. `is-shell` is passed by SideNav's DotsMenu and by the
+   AccountMenu the sidebar mounts — the same scope the type override above uses;
+   see .utility-menu.is-shell .navmenu-profile > span for who sets it and why it
+   cannot be a descendant selector. */
+.utility-menu.is-shell {
+  background: var(--shell-menu-bg);
+  /* NO border-radius override. These panels were squared on 30 Aug 2026 and put
+     back the same day: they keep the card's 12px from the base rule, like every
+     other .utility-menu. Only the fill is scoped here. */
+}
+/* HOW THE SIDEBAR'S PANELS ARRIVE.
+
+   They used to simply appear — MenuPanel returns null until it has measured a
+   position, then renders the finished panel in one frame. That is abrupt at the
+   0px gap these now sit at, where the panel materialises flush against the mark
+   with nothing to say it came from there.
+
+   THE MOTION IS A SHORT RISE OUT OF THE TRIGGER, not a fade: the panel starts
+   4px toward the control that opened it and 3% small, with the transform-origin
+   on the corner MenuPanel actually anchors — top right opening down, bottom
+   left opening up — so it grows from the mark rather than from its own middle.
+
+   `opens-down`/`opens-up` IS THE RESOLVED DIRECTION, written by MenuPanel, not
+   the caller's is-down/is-up. Those two disagree under 900px, where the sidebar
+   becomes a top strip and an "up" panel is flipped down; keying off the
+   caller's class would slide it the wrong way there. See MenuPanel's `placed`.
+
+   `both` holds the from-state before the first frame, so nothing paints at full
+   size for a frame and then jumps back to start.
+
+   ENTRY ONLY. Closing is still instant, because the panel unmounts the moment
+   its state flips — an exit needs the element kept alive through the animation,
+   which is real machinery for the half of the interaction nobody watches.
+
+   150ms because the panel is small and near its trigger; the curve is a plain
+   decelerate, so it is quickest at the start and settles rather than easing in
+   at both ends, which reads as sluggish at this duration. */
+@keyframes shell-menu-in-down {
+  from { opacity: 0; transform: translateY(-4px) scale(0.97); }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes shell-menu-in-up {
+  from { opacity: 0; transform: translateY(4px) scale(0.97); }
+  to   { opacity: 1; transform: none; }
+}
+.utility-menu.is-shell.opens-down {
+  transform-origin: top right;
+  animation: shell-menu-in-down 150ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+.utility-menu.is-shell.opens-up {
+  transform-origin: bottom left;
+  animation: shell-menu-in-up 150ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+/* Anyone who has asked the OS to stop animations gets the panel it had before:
+   present and correct on the first frame. Matches .utility-link::after, which
+   is the only other motion in this file. */
+@media (prefers-reduced-motion: reduce) {
+  .utility-menu.is-shell.opens-down,
+  .utility-menu.is-shell.opens-up { animation: none; }
+}
+
 .utility-menu { position: absolute; }
 .utility-menu.is-down { top: 100%; right: 0; margin-top: 6px; }
 .utility-menu.is-up { bottom: 100%; left: 0; margin-bottom: 6px; }
@@ -3317,3 +3890,607 @@ input[type="checkbox"].auth-check[aria-invalid="true"]:focus {
   --glass-bg: rgba(255, 255, 255, 0.8);
   --glass-filter: blur(20px) saturate(500%);
 }
+
+/* ── The docs shell: /legal and /settings ──
+   A three-region docs layout — top bar, nav rail, content pane — drawn the way
+   the rest of the app is: every division is a 1px rule, nothing is elevated,
+   and the only colour is the one accent, which does not appear here at all.
+
+   THE RAIL'S WIDTH IS A TOKEN because four rules depend on it agreeing: the
+   brand block in the top bar is the same width as the rail below it, so their
+   right edges form ONE continuous vertical line down the page. That line is the
+   whole structure of the layout; if the two numbers drift it reads as a
+   misaligned box rather than a division. */
+:root {
+  --docs-rail: 260px;
+  /* The rail's own side padding. It was a token because .docs-rail-foot had to
+     cancel it exactly with a negative margin, to run its rule full-bleed; that
+     block is gone and nothing cancels it now. Kept a token anyway — one number
+     for the column's inset is worth having, and the next full-bleed thing in
+     this rail will want it back. */
+  --docs-rail-pad: 12px;
+}
+
+.docs-shell {
+  /* EXACTLY THE SCROLLER'S HEIGHT, never taller. These pages carry no chrome
+     and no footer, so the shell claims that height itself.
+
+     IT USED TO BE `flex: 1 0 auto` with `min-height: 100%`, which let it GROW
+     with its content — and that is what pushed Contact Support off the bottom
+     of the page. The foot is pinned by `margin-top: auto`, so on a long
+     document it went to the bottom of a rail that was now several screens
+     tall, and the whole rail scrolled away with the prose beside it.
+
+     Capping the height here is what hands the scrolling to .docs-main below,
+     which has wanted it since it was written (`overflow-y: auto` on that rule
+     did nothing while nothing constrained its height). The topbar and the rail
+     are then static by construction rather than by `position: sticky` — there
+     is no scrolling ancestor left for them to stick to. */
+  flex: 1 1 auto;
+  height: 100%;
+  min-height: 0;
+  /* So a tall document cannot push the shell past the cap above. The panes
+     that need to scroll say so themselves. */
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+}
+
+.docs-topbar {
+  display: flex;
+  align-items: stretch;
+  height: 64px;
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.docs-brand {
+  width: var(--docs-rail);
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 0 20px;
+  /* The top half of the rail's line — see the token's note above. */
+  border-right: 1px solid var(--border);
+}
+.docs-brand-mark { display: inline-flex; align-items: center; color: var(--text); }
+/* A drawn rule, not a "|" glyph: a pipe takes its weight and height from the
+   font and would be the one line on the page not matching the others. */
+.docs-brand-rule {
+  width: 1px;
+  /* Tracks the pair either side of it: 18px was set against a 22px mark and a
+     0.95rem name, and left the divider looking short once both grew. */
+  height: 22px;
+  flex-shrink: 0;
+  background: var(--border);
+}
+.docs-brand-name {
+  /* Sized and weighted up with the mark beside it. 600 is the design system's
+     ceiling for a label — see CLAUDE.md, where the only thing above it is the
+     app sidebar — and this is the one piece of type in the bar that names the
+     product rather than an action. */
+  font-size: 1.08rem;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+}
+
+.docs-topbar-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 0 20px;
+  /* The height both controls in this bar take. One number, so the square
+     switch and Done cannot drift apart. */
+  --docs-topbar-btn: 40px;
+}
+/* DONE, PINNED. Scoped to this topbar on purpose: .bare-done is also the header
+   button on /signup and the other bare routes, and they should keep the height
+   their own padding gives them. Padding goes horizontal-only because the height
+   is explicit now — leaving `11px` on the block axis would fight it. */
+.docs-topbar-main .bare-done {
+  display: inline-flex;
+  align-items: center;
+  height: var(--docs-topbar-btn);
+  padding: 0 22px;
+}
+
+/* THE LIGHT/DARK SWITCH, /docs only. Square like everything in this shell, and
+   quiet: it sits beside Done, which is the filled primary action, so a second
+   solid button next to it would read as two equals. */
+.docs-theme,
+.docs-theme:hover,
+.docs-theme:active {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  /* SQUARE, AND THE SAME HEIGHT AS DONE. Both are pinned to one number below
+     rather than left to compute their own: .bare-done's height came from
+     `padding: 11px 22px` around a 0.95rem line box, so matching it here would
+     have meant hardcoding the result of a font measurement and would drift the
+     moment the face or the size changed. See .docs-topbar-main .bare-done. */
+  width: var(--docs-topbar-btn);
+  height: var(--docs-topbar-btn);
+  margin-right: 10px;
+  flex-shrink: 0;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 0;
+  box-shadow: none;
+  color: var(--text-2);
+  cursor: pointer;
+  transform: none;
+}
+/* The repeated :hover/:active above is not redundancy — the global `button`
+   rule is a filled accent pill and repaints this without them. This one line
+   is the actual hover. */
+.docs-theme:hover { background: var(--surface-2); color: var(--text); }
+.docs-theme svg { flex-shrink: 0; }
+
+/* ── /docs in dark ──
+   TOKENS ONLY, AND ONLY ON THIS ELEMENT.
+
+   The app has no dark mode: CLAUDE.md records light as the only theme, and the
+   ThemeToggle, the `data-theme` attribute and the "theme" localStorage key were
+   all deliberately removed. This does not bring any of that back. Every dark
+   value below is declared ON .docs-shell.is-dark, so it exists nowhere above
+   this element — no :root, no <html> attribute, no media query — and cannot
+   reach the app even if a docs page were ever embedded in one.
+
+   IT WORKS BY REDEFINING TOKENS RATHER THAN RESTYLING COMPONENTS because the
+   whole shell already draws from them: .docs-topbar borders on --border,
+   .docs-rail-item colours on --text-2, .legal-card fills on --surface, the
+   documents' prose on --text-2. Overriding the palette at the root of the
+   component repaints all of it, and anything added here later inherits the
+   behaviour for free. Restyling each rule would have been a second copy of the
+   design to keep in step.
+
+   --accent KEEPS ITS HUE but lightens: #2B5DE3 on near-black is too dark to
+   read as the one accent, and the design system's rule is one accent, not one
+   hex. */
+.docs-shell.is-dark {
+  /* PURE BLACK, the same rule as --text being #000000 against a pure white
+     ground in light. This shipped as #14161A, a blue-tinted off-black, which
+     was the exact inconsistency the light palette had just been corrected for.
+     The ground is pure at both ends or neither.
+
+     The surfaces above it are NEUTRAL greys rather than the blue-grey ramp they
+     were: a tinted lift off a pure black ground reads as a colour cast, where
+     on the old off-black it merely matched. */
+  --surface:   #000000;
+  --surface-2: #141414;
+  --surface-3: #1F1F1F;
+  --surface-4: #2A2A2A;
+  --bg:        #000000;
+  /* Pure white here for the same reason --text is pure black above: the ground
+     is a flat #14161A, so the ink is #FFFFFF rather than an off-white. */
+  --text:      #FFFFFF;
+  --text-2:    #A3A3A3;
+  --text-3:    #737373;
+  --border:    #262626;
+  --accent:    #6C8FF5;
+  /* THE REST OF THE ACCENT RAMP AND THE BORDER RAMP, which the first version of
+     this palette missed. They are not decoration: --accent-dim is the fill
+     behind How to Play's step numbers, --accent-hover repaints the support
+     modal's primary button, and --border-2/-3 draw its quiet button and field
+     edges. Left at their light values they were a near-white 10% blue and a
+     pale slate outline sitting on pure black.
+
+     Derived from the dark --accent above rather than the light one, so the
+     tints stay the same hue as the thing they belong to. */
+  --accent-hover:  #8AA6F8;
+  --accent-dim:    rgba(108, 143, 245, 0.18);
+  --accent-select: rgba(108, 143, 245, 0.45);
+  --border-2:      #333333;
+  --border-3:      #4D4D4D;
+  --text-4:        #4D4D4D;
+  --sidenav-row-fill: rgba(255, 255, 255, 0.05);
+  color-scheme: dark;
+}
+/* .bare-done fills with --text and writes in a hardcoded #FFFFFF, so inverting
+   --text alone would leave white on near-white. Restated here rather than
+   tokenised in the base rule, which would change the button on every bare route
+   for the sake of this one. */
+.docs-shell.is-dark .bare-done,
+.docs-shell.is-dark .bare-done:hover,
+.docs-shell.is-dark .bare-done:active {
+  background: var(--text);
+  color: #000000;
+}
+
+.docs-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+.docs-rail {
+  /* INTER, THE SIDEBAR'S FACE, not --font-sans (Gilroy) like the rest of this
+     shell. It comes with the 590 below and is not optional: 590 is an
+     interpolated instance on Inter's live variable axis, and asking Gilroy for
+     it just snaps to whichever cut it ships.
+
+     THAT THE RAIL AND THE PAGE BESIDE IT DIFFER IS THE POINT, and it mirrors
+     the app exactly — .app-sidebar is Inter, the content card next to it is
+     Gilroy. A docs rail in the page's own face would be the one nav in the
+     product that does not read as a nav.
+
+     Set here rather than per row so there is no list to keep in sync; see the
+     `font-family: inherit` on .docs-rail-item, which a <button> needs stated
+     because it does not inherit type from its parent by default. */
+  font-family: var(--font-inter), "Inter", -apple-system, BlinkMacSystemFont,
+               "Segoe UI", system-ui, sans-serif;
+  width: var(--docs-rail);
+  flex-shrink: 0;
+  /* The bottom half of the same line. */
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  padding: 16px var(--docs-rail-pad);
+}
+/* NO GAP. The rows' highlights are meant to meet: an active row and the one
+   under it should read as one column of blocks, not as separated bars. The 2px
+   that used to be here was invisible until the disclosures arrived, when a lit
+   child sitting a couple of pixels off its neighbours started to show. */
+/* THE LIST SCROLLS, THE FOOT DOES NOT. Five rows and two section headings fit
+   any ordinary window, but the rail must not be the thing that overflows if a
+   section is ever added — and if it does overflow, Contact Support staying put
+   is the whole point of this change. `min-height: 0` is what lets a flex child
+   shrink below its content and actually scroll. */
+.docs-rail-list {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+/* Label left, arrowhead right — the arrow is what says the row leaves this
+   page, which every row in this rail currently does. */
+.docs-rail-item,
+.docs-rail-item:hover,
+.docs-rail-item:active {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  height: 34px;
+  padding: 0 10px;
+  border-radius: var(--radius);
+  background: none;
+  /* GREY AT REST, --text only under the pointer. The rail is a list of places
+     you are not; the one you are on is the page in front of you. */
+  color: var(--text-2);
+  /* STATED, and load bearing: the rail holds <a> and <button> rows alike, and a
+     button does not inherit its font from the page. Without this the buttons
+     would fall back to the UA default while the links took Inter — the same
+     reason .sidenav-item states it. */
+  font-family: inherit;
+  font-size: 0.85rem;
+  /* 590, .sidenav-item's weight. The size is NOT matched — the sidebar is
+     0.82rem and this stays 0.85, because these rows sit in a wider rail beside
+     a document rather than in a 240px column beside a card. It is the weight
+     that makes the two read as the same kind of navigation. */
+  font-weight: 590;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.docs-rail-item svg { flex-shrink: 0; color: var(--text-3); }
+/* THE MARK LIFTS WITH ITS LABEL. Without this the caret and the document icons
+   held --text-3 while the text went to --text, so the row brightened around a
+   glyph that stayed put — which reads as the icon being disabled rather than as
+   the row being pointed at. */
+.docs-rail-item:hover svg { color: var(--text); }
+/* NO FILL ON EITHER STATE. Hover is a colour step and nothing else, and the
+   active row is not marked at all — it stays grey like the rest.
+
+   The `background: none` is stated rather than omitted and is load bearing:
+   without it these rows fall back to the global `button:hover`, which is a
+   filled accent pill.
+
+   WORTH KNOWING WHAT THIS GIVES UP: with no fill and no colour on is-active,
+   the rail no longer says which document you are reading. That is deliberate —
+   the open section and the page itself carry that — but it does mean `is-active`
+   now affects nothing visible on a parent row, and only the caret distinguishes
+   an open section from a closed one. */
+.docs-rail-item:hover { background: none; color: var(--text); }
+.docs-rail-item.is-active { background: none; color: var(--text-2); }
+.docs-rail-item.is-active:hover { color: var(--text); }
+
+/* ── The rail's two section disclosures ──
+   A section row is not a link. It opens the documents under it, and those are
+   the links — see app/docs/layout.tsx for why nothing here points at /docs. */
+.docs-rail-group { display: flex; flex-direction: column; }
+
+/* THE CARET TURNS DOWN WHEN OPEN. Same ChevronRight the flat rows carry, not a
+   second arrow: one glyph rotated is what keeps a section row and a plain row
+   reading as the same object in two states. */
+.docs-rail-item.is-section svg { transition: transform 0.14s ease; }
+.docs-rail-item.is-section.is-open svg { transform: rotate(90deg); }
+@media (prefers-reduced-motion: reduce) {
+  .docs-rail-item.is-section svg { transition: none; }
+}
+
+/* THE DOCUMENTS UNDER A SECTION.
+
+   Indented past where the section's own label starts, so the nesting is legible
+   without a rule or a bullet — the same "structure is whitespace" rule the rest
+   of this shell follows.
+
+   NO is-active BACKGROUND ON THE SECTION ITSELF. Only a document is ever the
+   page you are on; a section is a container, and filling both would put two
+   highlights in the rail for one location. */
+/* Flush for the same reason, and with no margin either — a section row and the
+   first document under it are adjacent blocks, so the indent is what shows the
+   nesting rather than a gap doing it twice. */
+.docs-rail-sub {
+  display: flex;
+  flex-direction: column;
+}
+.docs-rail-item.is-child {
+  padding-left: 22px;
+  gap: 9px;
+  /* justify-content is flex-start here and space-between on the section rows
+     above: a child has an icon then a label as one group, where a section has a
+     label at one end and its caret at the other. */
+  justify-content: flex-start;
+  font-size: 0.82rem;
+  /* NO `color` HERE, and that is the fix rather than an omission.
+     It said `color: var(--text-2)` — the same grey the base rule already gives
+     these rows, so it looked redundant and was worse than redundant: it is
+     (0,2,0), exactly the weight of `.docs-rail-item:hover`, and it sits LATER
+     in this file. So it beat the hover on a tie and a document row never lifted
+     to --text under the pointer, while the section rows above it did.
+     Restating the grey here buys nothing and silently costs the hover. */
+}
+/* The mark sits a step behind its label at rest and goes all the way to --text
+   with it on hover, so the row moves as one object. is-active is deliberately
+   absent here too.
+
+   THE :hover RULE IS NOT REDUNDANT with `.docs-rail-item:hover svg` above.
+   `.docs-rail-item.is-child svg` on the next line is (0,2,1) — the same weight
+   as that rule — and it sits later in the file, so it wins the tie and would
+   pin child icons at --text-3 under the pointer. This one is (0,3,1) and
+   settles it. */
+.docs-rail-item.is-child svg { color: var(--text-3); }
+.docs-rail-item.is-child:hover svg { color: var(--text); }
+
+/* The title is a link when there is an index behind it (/docs), plain text when
+   there is not (/settings). Underlined only on hover: it sits in the brand
+   block beside the mark, and a permanently underlined word there reads as body
+   copy that wandered into the header. */
+.docs-brand-name.is-link {
+  text-decoration: none;
+  cursor: pointer;
+}
+.docs-brand-name.is-link:hover { text-decoration: underline; text-underline-offset: 3px; }
+
+
+/* Sectioned off at the foot: support is not one of the documents, so it sits
+   below the rule rather than in the list. `margin-top: auto` is what puts it on
+   the floor of a rail that is otherwise only three rows tall. */
+/* WHERE YOU ARE, at the left of the bar's right-hand pane.
+
+   The auto margin is the layout: it takes all the slack, so the label sits at
+   the pane's left edge and the controls stay hard right. .docs-topbar-main
+   keeps `justify-content: flex-end`, which is what makes the label optional —
+   drop it and the buttons do not move. */
+.docs-crumb {
+  margin-right: auto;
+  /* THE SAME TYPE AS .docs-brand-name, deliberately: the two sit on one line
+     either side of the rail's border, and together they read as one statement —
+     "Docs / Legal". Different sizes across that seam made the right half look
+     like a caption on the left half. Keep them in step if either moves. */
+  font-size: 1.08rem;
+  font-weight: 600;
+  /* FULL STRENGTH — #000000 in light, #FFFFFF in dark. It was --text-2, on the
+     reasoning that a location label is secondary to the controls beside it;
+     it is not. It is the only thing in the bar that states a fact rather than
+     offering an action, and the greys in this app are for things you are not
+     meant to read first. */
+  color: var(--text);
+  white-space: nowrap;
+}
+
+/* CONTACT SUPPORT, in the top bar beside the light/dark switch.
+
+   Same height as its neighbours, from the one number they share. Quiet — a
+   hairline and no fill — because Done is the filled primary on the routes that
+   show it, and two solid buttons side by side read as two equals.
+
+   The repeated :hover/:active is not redundancy: the global `button` rule is a
+   filled accent pill and repaints this without them. */
+.docs-support,
+.docs-support:hover,
+.docs-support:active {
+  display: inline-flex;
+  align-items: center;
+  height: var(--docs-topbar-btn);
+  padding: 0 14px;
+  margin-right: 10px;
+  flex-shrink: 0;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 0;
+  box-shadow: none;
+  font-family: inherit;
+  font-size: 0.85rem;
+  font-weight: 500;
+  letter-spacing: 0;
+  color: var(--text-2);
+  cursor: pointer;
+  white-space: nowrap;
+  transform: none;
+}
+.docs-support:hover { background: var(--surface-2); color: var(--text); }
+/* Icon-left here, unlike the document rows: this one is a destination rather
+   than a step onward, so it takes a mark instead of an arrow. */
+
+.docs-main {
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+  padding: 56px 48px 80px;
+}
+/* THE CENTRED COLUMN. 1000px is .legal-cards' own cap, so the index's three
+   cards fill it exactly rather than sitting in a column wider than they are —
+   the two numbers have to agree, and this is the one to change if that grid
+   ever grows a fourth column.
+
+   Documents are narrower again; see .legal below. They are centred within this,
+   not left-aligned in it. */
+.docs-main-inner {
+  width: 100%;
+  max-width: 1000px;
+  margin: 0 auto;
+}
+
+/* Stated rather than inherited: the global h1 and h2 are tuned for the .legal
+   document pages, and h2 in particular is a 0.63rem uppercase micro-label. */
+.legal-title {
+  margin: 0;
+  font-size: 2.2rem;
+  /* 500, not heavier. The reference this follows sets its title bold; the house
+     rule is that display sizes go LIGHTER and hierarchy comes from size and
+     colour, so this is the top of the band rather than the bottom of a bolder
+     one. */
+  font-weight: 500;
+  letter-spacing: -0.028em;
+  line-height: 1.05;
+  text-transform: none;
+  color: var(--text);
+}
+.legal-lede {
+  margin: 10px 0 0;
+  font-size: 0.95rem;
+  color: var(--text-2);
+}
+
+/* A NAMED GROUP OF CARDS on /docs — Play, then Legal.
+
+   36px between one group and the next, against the 12px its heading sits above
+   its own cards. The asymmetry is the whole point: a heading belongs to what
+   follows it, and with equal gaps the reader has to work out which set each
+   title is naming. Whitespace is the only divider here, as in the documents
+   themselves — no rules between sections. */
+.legal-group + .legal-group { margin-top: 36px; }
+.legal-group-title {
+  /* STATED, because the global h2 is a 0.63rem uppercase micro-label and this
+     is a real section heading over a grid. Not .legal h2 either — that rule is
+     scoped to the documents' prose and is a step larger again. */
+  margin: 0;
+  font-size: 0.78rem;
+  font-weight: 500;
+  text-transform: none;
+  letter-spacing: -0.01em;
+  color: var(--text);
+}
+/* Inside a group the heading supplies the space above, so the grid only needs
+   its own. The first group still gets the lede's gap from .legal-group below. */
+.legal-group .legal-cards { margin-top: 12px; }
+/* Nothing above the first group any more — the page's h1 is gone — so it starts
+   flush and .docs-main's own top padding is the whole gap. The 36px here was
+   the space under that title. */
+.legal-group:first-of-type { margin-top: 0; }
+
+.legal-cards {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  margin-top: 36px;
+  /* Capped so three cards do not stretch to absurd widths on a wide monitor;
+     the pane is otherwise free to grow. */
+  max-width: 1000px;
+}
+
+.legal-card,
+.legal-card:hover,
+.legal-card:active {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  text-decoration: none;
+  overflow: hidden;
+}
+.legal-card:hover { background: var(--surface-2); }
+
+/* The icon sits TOP RIGHT, and the block it sits in is deliberately taller than
+   the mark needs — the empty space under it is what makes the hairline below
+   read as a division of the card rather than a line drawn round the icon. */
+.legal-card-top {
+  display: flex;
+  justify-content: flex-end;
+  align-items: flex-start;
+  height: 84px;
+  padding: 14px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text);
+}
+.legal-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 14px;
+}
+.legal-card-name { font-size: 0.9rem; font-weight: 500; }
+.legal-card-blurb { font-size: 0.82rem; line-height: 1.45; color: var(--text-2); }
+
+@media (max-width: 900px) {
+  /* The rail becomes a band above the content, the same move .app-sidebar makes
+     at this width: every destination stays visible rather than going behind a
+     control that would have to be built. */
+  .docs-body { flex-direction: column; }
+  .docs-rail {
+    width: auto;
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+  }
+  .docs-brand { width: auto; }
+  .docs-main { padding: 32px 20px 56px; }
+  .legal-cards { grid-template-columns: 1fr; }
+}
+
+/* ── Contact support ──
+   Reuses .mx-scrim and .mx-sheet, the modal vocabulary My Account and the
+   league editor already use — .mx-sheet is the one element in the system
+   allowed a shadow, because it genuinely floats.
+
+   The overrides here are the ones a textarea needs. .mx-field is written for
+   single-line inputs, so it fixes a height and forbids resizing; a message box
+   has to grow. */
+.support-sheet { width: min(520px, calc(100vw - 40px)); }
+.support-lede {
+  margin: 6px 0 16px;
+  font-size: 0.85rem;
+  color: var(--text-2);
+}
+textarea.support-box {
+  width: 100%;
+  height: auto;
+  min-height: 132px;
+  padding: 10px 12px;
+  line-height: 1.5;
+  /* Vertical only: a textarea that can be dragged wider escapes the sheet. */
+  resize: vertical;
+}
+
+/* Address left, buttons right — and it WRAPS, because the address is a real
+   email and cannot be truncated without becoming useless. At narrow widths the
+   two stack rather than the address being clipped. */
+.support-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 16px;
+}
+.support-direct { font-size: 0.8rem; color: var(--text-2); }
+.support-buttons { display: flex; gap: 8px; }

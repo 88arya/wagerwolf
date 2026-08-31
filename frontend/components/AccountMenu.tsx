@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
+import MenuPanel from "@/components/MenuPanel";
 import { signOut } from "@/lib/auth";
 
 /**
@@ -121,11 +122,39 @@ export default function AccountMenu({
   style,
   placement = "down",
   className = "utility-link",
+  panelClassName = "",
+  panelGap,
   icon,
 }: {
   style?: CSSProperties;
   placement?: Placement;
   className?: string;
+  /**
+   * Extra classes for the PANEL, not the trigger — `className` above is the
+   * trigger's.
+   *
+   * THIS COMPONENT HAS TWO HOMES and they are styled differently now: the
+   * sidebar (SideNav's foot) and the utility bar (TopBar/SiteNav, on the
+   * marketing routes). The sidebar is on Inter 590 and the bar is on Gilroy, so
+   * "a popup row is the same piece of type as the nav row that opened it" —
+   * the rule .navmenu-profile is written to — can no longer be one global
+   * declaration. SideNav passes `is-shell`; nobody else passes anything, and
+   * the bar keeps the default treatment.
+   *
+   * It has to be a class rather than a descendant selector because the panel is
+   * PORTALED to <body> (see MenuPanel), so it is not a descendant of the
+   * sidebar at render time and cannot inherit from it.
+   */
+  panelClassName?: string;
+  /**
+   * Distance from the trigger, in px. Undefined keeps MenuPanel's default 6.
+   *
+   * The sidebar's copy sits tighter than the bar's — same two-homes problem as
+   * panelClassName above, and it needs a prop for a harder reason: the panel is
+   * `position: fixed` and the gap is folded into its computed offset, so unlike
+   * the fill and the corner there is no CSS for it to be scoped in.
+   */
+  panelGap?: number;
   icon?: React.ReactNode;
 }) {
   const router = useRouter();
@@ -133,7 +162,8 @@ export default function AccountMenu({
   // The one fact this control shows, in both of its forms: the bar renders it
   // as the trigger's label, the sidebar renders it in the panel.
   const [fullName, setFullName] = useState(cachedIdentity.name);
-  const menuRef = useRef<HTMLDivElement>(null);
+  // Anchors the portaled panel; see components/MenuPanel.
+  const btnRef = useRef<HTMLButtonElement>(null);
 
   // The caller only mounts this once it knows someone is signed in, so there is
   // no auth check here and no `authed` dependency — mounting IS the signal.
@@ -162,14 +192,6 @@ export default function AccountMenu({
     });
   }, []);
 
-  useEffect(() => {
-    function handleClick(e: MouseEvent) {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setOpen(false);
-    }
-    document.addEventListener("mousedown", handleClick);
-    return () => document.removeEventListener("mousedown", handleClick);
-  }, []);
-
   function logout() {
     signOut();
     setOpen(false);
@@ -182,8 +204,9 @@ export default function AccountMenu({
     // it. TopBar's right-hand slot is `position: relative` too — nesting is
     // fine, and it means the panel's `right: 0` is the trigger's right edge in
     // both bars.
-    <div ref={menuRef} style={{ position: "relative", display: "flex", alignItems: "center" }}>
+    <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
       <button
+        ref={btnRef}
         type="button"
         className={className}
         style={style}
@@ -222,13 +245,46 @@ export default function AccountMenu({
         // off the top of the window. A media query has to be able to flip it
         // back, and it cannot out-specify an inline style. See .utility-menu
         // in globals.css.
-        <div
-          className={`utility-menu ${placement === "up" ? "is-up" : "is-down"}`}
+        <MenuPanel
+          anchorRef={btnRef}
+          placement={placement}
+          onClose={() => setOpen(false)}
+          className={`utility-menu ${panelClassName} ${placement === "up" ? "is-up" : "is-down"}`}
+          gap={panelGap}
           style={{
-            background: "var(--surface)",
-            border: "none",
-            borderRadius: 0,
-            boxShadow: "var(--shadow-md)",
+            // NO `background` HERE — see .utility-menu in globals.css. This
+            // component has two homes and they no longer share a fill: the
+            // sidebar's copy passes `is-shell` and gets --shell-menu-bg, the
+            // bar's passes nothing and keeps --surface. An inline style would
+            // out-specify both.
+            // THE CARD'S OUTLINE. .app-card is 1px solid var(--border) with
+            // var(--radius-card); this panel now carries both, so the two
+            // floating surfaces on a signed-in screen are cut and edged the
+            // same way.
+            //
+            // It is also what replaces the shadow removed below — the house
+            // rule is a 1px border INSTEAD OF an elevation, not as well as one,
+            // and it is what keeps the panel legible on the marketing routes
+            // where TopBar opens this same component onto --bg and tone alone
+            // was nearly white-on-white.
+            border: "1px solid var(--border)",
+            // NO `borderRadius` HERE — it is .utility-menu's, in globals.css.
+            // It moved out of this object alongside the fill above, when the
+            // sidebar's panels were briefly squared; that was reverted and the
+            // corner is var(--radius-card) again for every panel, but the
+            // declaration stays in CSS beside the fill it belongs with.
+            // NO SHADOW. --shadow-md was reserved for exactly this — CLAUDE.md
+            // calls dropdowns and drawers the one sanctioned use, since they
+            // genuinely float — but the panel is dropped here in favour of the
+            // rest of the system's rule: structure is a hairline or a gap,
+            // never a shadow.
+            //
+            // What separates it now is tone alone: --surface (white) on the
+            // sidebar's --shell-bg. That is enough in the shell. It is thinner
+            // on the marketing routes, where TopBar's copy of this panel opens
+            // onto --bg (#F5F7FA) — white on near-white, with no border and now
+            // no shadow. A 1px --border is the house answer if it needs one.
+            boxShadow: "none",
             zIndex: 500,
             padding: "6px 0",
           }}
@@ -250,12 +306,12 @@ export default function AccountMenu({
               9px inside the rectangle. */}
           <div style={{ borderTop: "1px solid var(--border)", margin: "3px 17px" }} />
           <button type="button" className="navmenu-profile" onClick={() => { router.push("/settings"); setOpen(false); }}>
-            <span>Account Settings</span>
+            <span>Account settings</span>
           </button>
           <button type="button" className="navmenu-profile" onClick={logout}>
-            <span>Sign Out</span>
+            <span>Sign out</span>
           </button>
-        </div>
+        </MenuPanel>
       )}
     </div>
   );
