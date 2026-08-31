@@ -23,8 +23,8 @@
  * to /signup, which is a page of its own. Nothing on this blank page is load
  * bearing for auth.
  *
- * Still true, and still worth knowing: /login, /register, /forgot-password and
- * /reset-password are all redirect stubs that bounce here, so this page is
+ * Still true, and still worth knowing: /login and /register are redirect stubs
+ * that bounce here, so this page is
  * where anyone guessing an auth URL lands — and it is blank. /signup is the
  * only real entry point.
  */

@@ -370,14 +370,14 @@ export const leagueMessages = pgTable("LeagueMessage", {
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
 
-export const passwordResetTokens = pgTable("PasswordResetToken", {
-  id:        text("id").primaryKey().$defaultFn(() => randomUUID()),
-  userId:    text("userId").notNull(),
-  token:     text("token").notNull().unique(),
-  expiresAt: timestamp("expiresAt").notNull(),
-  used:      boolean("used").default(false).notNull(),
-  createdAt: timestamp("createdAt").defaultNow().notNull(),
-});
+// PasswordResetToken IS GONE. Nothing ever wrote to it: auth is Google-only,
+// POST /users/auth/google is the entire login surface, and there was no route,
+// service or job that issued or consumed a reset token. It was scaffolding for
+// an email/password flow that was never built.
+//
+// users.password STAYS. It is not part of this — it is written only for the
+// ghost user that fills an odd-numbered league (see services/startSeason.ts),
+// and removing it would break season start.
 
 // ─── Relations ───────────────────────────────────────────────────────────────
 
@@ -390,7 +390,6 @@ export const usersRelations = relations(users, ({ many }) => ({
   homeMatchups:       many(matchups, { relationName: "homeMatchups" }),
   awayMatchups:       many(matchups, { relationName: "awayMatchups" }),
   messages:           many(leagueMessages),
-  passwordResetTokens: many(passwordResetTokens),
 }));
 
 export const leaguesRelations = relations(leagues, ({ one, many }) => ({
@@ -468,8 +467,4 @@ export const parlayLegsRelations = relations(parlayLegs, ({ one }) => ({
 export const leagueMessagesRelations = relations(leagueMessages, ({ one }) => ({
   league: one(leagues, { fields: [leagueMessages.leagueId], references: [leagues.id] }),
   user:   one(users,   { fields: [leagueMessages.userId],   references: [users.id] }),
-}));
-
-export const passwordResetTokensRelations = relations(passwordResetTokens, ({ one }) => ({
-  user: one(users, { fields: [passwordResetTokens.userId], references: [users.id] }),
 }));

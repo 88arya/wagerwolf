@@ -1,9 +1,8 @@
 import { db } from "../src/db/db";
-import { passwordResetTokens, parlayLegs, parlays, gamePicks, picks, leagueMessages, matchups, memberships, leagues, users } from "../src/db/schema";
+import { parlayLegs, parlays, gamePicks, picks, leagueMessages, matchups, memberships, leagues, users } from "../src/db/schema";
 import { count } from "drizzle-orm";
 
 async function main() {
-  await db.delete(passwordResetTokens);
   await db.delete(parlayLegs);
   await db.delete(parlays);
   await db.delete(gamePicks);
