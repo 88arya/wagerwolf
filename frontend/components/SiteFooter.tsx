@@ -1,4 +1,5 @@
 import Link from "next/link";
+import SupportLink from "@/components/SupportLink";
 import LogoWordmark from "@/components/LogoWordmark";
 
 /**
@@ -39,37 +40,46 @@ const SOCIALS: Array<{ label: string; href: string | null; path: string }> = [
   { label: "TikTok", href: null, path: TIKTOK_PATH },
 ];
 
-const COLUMNS: Array<{ heading: string; links: Array<{ label: string; href: string }> }> = [
+/**
+ * `href` navigates; `support: true` opens the support modal instead.
+ *
+ * The two support rows used to point at /contact, a page that no longer exists:
+ * every contact control in the app is the same modal now, so a link here would
+ * have been the one that still went somewhere. See components/SupportLink.
+ */
+const COLUMNS: Array<{
+  heading: string;
+  links: Array<{ label: string; href?: string; support?: boolean }>;
+}> = [
   {
     heading: "Play",
     links: [
-      { label: "How to Play", href: "/how-to-play" },
+      { label: "How to Play", href: "/docs/how-to-play" },
       { label: "My Leagues", href: "/home" },
     ],
   },
   {
     heading: "Legal",
     links: [
-      { label: "Privacy Policy", href: "/privacy" },
-      { label: "Terms of Service", href: "/terms" },
-      { label: "Responsible Gaming", href: "/responsible-gaming" },
+      { label: "Privacy Policy", href: "/docs/privacy-policy" },
+      { label: "Terms of Service", href: "/docs/terms-of-service" },
+      { label: "Responsible Gaming", href: "/docs/responsible-gaming" },
     ],
   },
   {
     heading: "Support",
     links: [
-      { label: "Contact", href: "/contact" },
-      // NOT /forgot-password — that route is a redirect stub that bounces to /,
-      // and there is nothing behind it: auth is Google-only (POST
-      // /users/auth/google is the entire login surface), so accounts here have
-      // no password to reset. /contact explains where recovery actually
-      // happens. Repoint this the day email/password sign-in exists.
-      { label: "Password Reset", href: "/contact" },
+      { label: "Contact", support: true },
+      // NO PASSWORD RESET ROW. There is no password: auth is Google-only, and
+      // POST /users/auth/google is the entire login surface. The row pointed at
+      // /contact and promised a flow that does not exist anywhere in the app.
+      // /contact still explains where account recovery actually happens, which
+      // is Google. Add this back only alongside real email/password sign-in.
       // No self-serve route for this: PATCH /users/me takes displayName,
       // firstName and lastName only, and there is no change-email flow in the
       // app at all. Pointing at /contact, which has a bullet for it, rather
       // than at a settings page that cannot do the job.
-      { label: "Change Email Address", href: "/contact" },
+      { label: "Change Email Address", support: true },
     ],
   },
 ];
@@ -82,11 +92,17 @@ export default function SiteFooter() {
           <div key={heading}>
             <div className="site-footer-heading">{heading}</div>
             <div className="site-footer-links">
-              {links.map(({ label, href }) => (
-                <Link key={label} href={href} className="site-footer-link">
-                  {label}
-                </Link>
-              ))}
+              {links.map(({ label, href, support }) =>
+                support ? (
+                  <SupportLink key={label} className="site-footer-link support-link">
+                    {label}
+                  </SupportLink>
+                ) : (
+                  <Link key={label} href={href!} className="site-footer-link">
+                    {label}
+                  </Link>
+                ),
+              )}
             </div>
           </div>
         ))}
