@@ -25,7 +25,7 @@ import { usePathname } from "next/navigation";
  * /logo, which still WANTS the footer; folding the two
  * together would silently change those two routes as well.
  */
-const NO_FOOTER = ["/signup", "/sign-in", "/settings", "/privacy", "/terms", "/responsible-gaming"];
+const NO_FOOTER = ["/signup", "/sign-in", "/settings", "/docs"];
 
 export default function FooterSlot({ children }: { children: React.ReactNode }) {
   const pathname = usePathname() ?? "";

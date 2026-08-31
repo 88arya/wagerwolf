@@ -53,7 +53,7 @@ const STRIP_LEAGUE_KEY = "strip_league_id";
 //  - /settings and the three legal pages are bare too: each carries its own
 //    BarePageHeader with the lockup and a Done button, so the utility bar
 //    would be a second header above a page that already has one.
-const NO_CHROME = ["/logo", "/signup", "/sign-in", "/settings", "/privacy", "/terms", "/responsible-gaming"];
+const NO_CHROME = ["/logo", "/signup", "/sign-in", "/settings", "/docs"];
 
 function isPublicRoute(pathname: string) {
   return NO_CHROME.some(p => pathname === p || pathname.startsWith(`${p}/`));

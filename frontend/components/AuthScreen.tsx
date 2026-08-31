@@ -353,7 +353,7 @@ export default function AuthScreen({
             The Privacy Policy is a disclosure that rides along. */}
         {consentLead}{" "}
         <a
-          href="/terms"
+          href="/docs/terms-of-service"
           target="_blank"
           rel="noopener noreferrer"
           style={{ color: "var(--text-2)", textDecoration: "underline" }}
@@ -362,7 +362,7 @@ export default function AuthScreen({
         </a>{" "}
         and{" "}
         <a
-          href="/privacy"
+          href="/docs/privacy-policy"
           target="_blank"
           rel="noopener noreferrer"
           style={{ color: "var(--text-2)", textDecoration: "underline" }}
