@@ -1,0 +1,203 @@
+# Staging deploy — MANUAL ONLY.
+#
+# WHY THERE IS NO PUSH TRIGGER. There is no permanent staging instance. One box
+# runs one stack (Caddy binds 80/443), so staging means a second EC2 instance and
+# roughly double the burn against a fixed credit balance — and before the app has
+# users, the production box IS the staging box: deploy to it, break it, redeploy,
+# with an audience of nobody.
+#
+# So this workflow stays written, tested and free. When you do want a staging
+# environment — a risky migration, or the day real accounts make "test in prod"
+# indefensible — `terraform apply` a second instance, fill in the `staging`
+# GitHub Environment, and dispatch this. Nothing here needs to change.
+#
+# Leaving a `push:` trigger here with no staging secrets configured would simply
+# paint every master push red. Master pushes run ci.yml and nothing else.
+#
+# CI -> build image -> ship it to the box -> deploy frontend.
+#
+# The image is built ONCE here and pinned by commit SHA. Nothing rebuilds it on
+# the server, so the artifact that passed CI is bit-for-bit the artifact that
+# runs — which a "git pull and build on the host" deploy cannot promise.
+name: Deploy · staging
+
+on:
+  workflow_dispatch:
+
+# Never cancel a deploy in flight. A half-finished `docker compose up` is worse
+# than a queued run; later dispatches wait.
+concurrency:
+  group: deploy-staging
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  ci:
+    name: CI
+    uses: ./.github/workflows/ci.yml
+
+  image:
+    name: Build & push image
+    needs: ci
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      image: ${{ steps.meta.outputs.image }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # GHCR rejects uppercase in a repository path, and github.repository_owner
+      # is used verbatim — so lowercase it rather than assume.
+      - name: Compute image reference
+        id: meta
+        run: |
+          owner=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          echo "image=ghcr.io/$owner/wagerwolf-backend:sha-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: backend
+          push: true
+          tags: ${{ steps.meta.outputs.image }}
+          # Layer cache in GitHub's cache backend. Without it every deploy
+          # reinstalls node_modules from scratch, roughly doubling the job.
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  backend:
+    name: Deploy backend (EC2)
+    needs: image
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - uses: actions/checkout@v4
+
+      # BACKEND_ENV is the entire .env file as one secret, scoped to this
+      # GitHub Environment. One secret rather than a dozen: adding a variable
+      # then costs an edit in one place instead of an edit here plus a new
+      # secret, and the two drifting apart is the failure this avoids.
+      - name: Materialise .env
+        env:
+          BACKEND_ENV: ${{ secrets.BACKEND_ENV }}
+          IMAGE: ${{ needs.image.outputs.image }}
+        run: |
+          printf '%s\n' "$BACKEND_ENV" > deploy/.env
+          # Appended rather than stored, so /health reports the commit actually
+          # serving without anyone maintaining it by hand.
+          {
+            echo "GIT_COMMIT_SHA=${GITHUB_SHA::7}"
+            echo "APP_IMAGE=$IMAGE"
+          } >> deploy/.env
+          chmod 600 deploy/.env
+          echo "Wrote $(wc -l < deploy/.env) lines"
+
+      # The compose file, Caddyfile and deploy script travel WITH the deploy,
+      # from this commit. Fetching them from the default branch at run time
+      # means a rollback to an older image can still pick up today's compose
+      # file — a combination that was never tested anywhere.
+      - name: Copy deploy files to the instance
+        uses: appleboy/scp-action@v1
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ubuntu
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          source: "deploy/*"
+          target: /opt/wagerwolf
+          strip_components: 1
+          overwrite: true
+
+      - name: Deploy
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ubuntu
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          # 10 min: an image pull on a burstable instance plus a cold boot that
+          # also runs runStartupSeed().
+          command_timeout: 10m
+          envs: APP_IMAGE
+          script: |
+            set -euo pipefail
+            echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+            cd /opt/wagerwolf
+            chmod +x deploy.sh
+            # Staging migrates on every deploy; production does not. See
+            # db-push.yml for why.
+            APP_IMAGE="${{ needs.image.outputs.image }}" RUN_MIGRATIONS=1 bash deploy.sh
+        env:
+          APP_IMAGE: ${{ needs.image.outputs.image }}
+
+      # deploy.sh already proved the container is healthy from inside the box.
+      # This proves it from outside — i.e. that the security group, Caddy and
+      # DNS all agree — which is a different failure entirely.
+      - name: Verify from the public internet
+        run: |
+          for i in $(seq 1 12); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' "$BACKEND_URL/health" || true)
+            if [ "$code" = "200" ]; then
+              echo "Reachable."; curl -s "$BACKEND_URL/health"; exit 0
+            fi
+            echo "attempt $i: HTTP $code"; sleep 5
+          done
+          echo "::error::Backend healthy on the box but unreachable at $BACKEND_URL"
+          exit 1
+        env:
+          BACKEND_URL: ${{ vars.BACKEND_URL }}
+
+  frontend:
+    name: Deploy frontend (Vercel)
+    needs: backend
+    runs-on: ubuntu-latest
+    environment: staging
+    env:
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Vercel CLI
+        run: npm install --global vercel@latest
+
+      # `vercel pull` fetches the project's Preview env vars, including
+      # NEXT_PUBLIC_API_URL. Those live in Vercel's dashboard because
+      # `vercel build` reads them from the pulled config — setting them in this
+      # workflow would be ignored.
+      - name: Pull Vercel environment
+        working-directory: frontend
+        run: vercel pull --yes --environment=preview --token="$VERCEL_TOKEN"
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+
+      - name: Build
+        working-directory: frontend
+        run: vercel build --token="$VERCEL_TOKEN"
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+
+      - name: Deploy
+        working-directory: frontend
+        run: |
+          url=$(vercel deploy --prebuilt --token="$VERCEL_TOKEN")
+          echo "Deployed: $url"
+          echo "### Staging frontend: $url" >> "$GITHUB_STEP_SUMMARY"
+          if [ -n "${STAGING_DOMAIN:-}" ]; then
+            vercel alias set "$url" "$STAGING_DOMAIN" --token="$VERCEL_TOKEN"
+            echo "Aliased to https://$STAGING_DOMAIN"
+          fi
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          STAGING_DOMAIN: ${{ vars.STAGING_DOMAIN }}

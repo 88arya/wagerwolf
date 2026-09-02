@@ -1,0 +1,128 @@
+# Schema changes, run by hand.
+#
+# Separate from the deploy workflows on purpose. This project uses
+# `drizzle-kit push` rather than generated migrations, so there is no migration
+# history and nothing to roll back to — the only undo is restoring a dump. That
+# is not something to trigger on a git push.
+#
+# Staging migrates automatically as part of its deploy. This workflow exists for
+# production, and for re-running staging out of band.
+#
+# WHY THIS RUNS ON THE BOX RATHER THAN THE RUNNER. Postgres is Supabase now, so
+# a GitHub runner could reach it directly and this workflow could be three lines
+# shorter. It is not, because that would mean storing DATABASE_URL as a second
+# secret alongside the copy already inside BACKEND_ENV — and two copies of a
+# connection string drift. Running on the instance reuses the .env the app is
+# actually using, so "the schema I migrated" and "the database the app talks to"
+# cannot disagree.
+name: Database · push schema
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Target environment
+        type: choice
+        required: true
+        default: staging
+        options: [staging, production]
+      confirm:
+        description: Type the environment name again to confirm
+        type: string
+        required: true
+      force:
+        description: "Pass --force (auto-approves DATA LOSS). Leave off unless you have read the plan."
+        type: boolean
+        default: false
+
+concurrency:
+  group: db-push-${{ inputs.environment }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  push:
+    name: Push schema to ${{ inputs.environment }}
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    steps:
+      # Cheap guard against picking production from the dropdown by accident.
+      # The Environment's required reviewer is the real gate; this one costs
+      # nothing and catches the misclick before a reviewer is paged.
+      - name: Confirm target
+        run: |
+          if [ "$CONFIRM" != "$TARGET" ]; then
+            echo "::error::Confirmation '$CONFIRM' does not match target '$TARGET'"
+            exit 1
+          fi
+        env:
+          CONFIRM: ${{ inputs.confirm }}
+          TARGET: ${{ inputs.environment }}
+
+      - name: Back up the database first
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ubuntu
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          command_timeout: 15m
+          script: |
+            set -euo pipefail
+            cd /opt/wagerwolf
+            set -a; . ./.env; set +a
+
+            mkdir -p backups
+            stamp=$(date -u +%Y%m%dT%H%M%SZ)
+            file="backups/pre-migrate-$stamp.sql.gz"
+
+            # pg_dump comes from a throwaway postgres image rather than being
+            # installed on the host: nothing to keep patched, and the client
+            # version is pinned here instead of drifting with the distro. A
+            # newer client against Supabase's older server is supported; the
+            # reverse is not, which is why this is not `postgres:15`.
+            docker run --rm postgres:18-alpine \
+              pg_dump "$DATABASE_URL" --clean --if-exists \
+              | gzip > "$file"
+
+            size=$(stat -c%s "$file")
+            echo "Dumped $file ($size bytes)"
+            # A gzip of a failed dump is still a few hundred bytes, so "the file
+            # exists" proves nothing.
+            [ "$size" -ge 1024 ] || { echo "Dump implausibly small — aborting" >&2; exit 1; }
+            gzip -t "$file"
+
+            if [ -n "${BACKUP_BUCKET:-}" ]; then
+              aws s3 cp "$file" "s3://$BACKUP_BUCKET/$(basename "$file")"
+            fi
+
+            # Keep the last 10 locally; S3 lifecycle is the real retention. A
+            # full root volume takes the app down with it.
+            ls -1t backups/*.sql.gz | tail -n +11 | xargs -r rm --
+          envs: BACKUP_BUCKET
+        env:
+          BACKUP_BUCKET: ${{ vars.BACKUP_BUCKET }}
+
+      - name: drizzle-kit push
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ubuntu
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          command_timeout: 10m
+          script: |
+            set -euo pipefail
+            cd /opt/wagerwolf
+            # Without --force, drizzle-kit refuses rather than proceeds when it
+            # judges a change destructive. That refusal is the feature: if it
+            # fires on a change you actually intend, re-run with force ticked
+            # having read what it wanted to do.
+            FORCE=""
+            if [ "${{ inputs.force }}" = "true" ]; then
+              FORCE="--force"
+              echo "::warning::Running with --force — data-loss statements are auto-approved"
+            fi
+            # Run inside the deployed image so the schema applied is the schema
+            # that image was built from.
+            docker compose run --rm --no-deps -T app npx drizzle-kit push $FORCE

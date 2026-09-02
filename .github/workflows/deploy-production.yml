@@ -1,0 +1,213 @@
+# Tag -> production.
+#
+# Two gates, deliberately: a tag has to be cut by hand, and the `production`
+# GitHub Environment holds a required reviewer.
+#
+# This workflow does NOT migrate the database. `drizzle-kit push --force`
+# auto-approves data-loss statements and this project has no migration history
+# to roll back to, so schema changes go through db-push.yml — knowingly, and
+# separately from shipping code.
+name: Deploy · production
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  ci:
+    name: CI
+    uses: ./.github/workflows/ci.yml
+
+  image:
+    name: Build & push image
+    needs: ci
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      image: ${{ steps.meta.outputs.image }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Compute image reference
+        id: meta
+        run: |
+          owner=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          echo "image=ghcr.io/$owner/wagerwolf-backend:sha-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: backend
+          push: true
+          tags: ${{ steps.meta.outputs.image }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  backend:
+    name: Deploy backend (EC2)
+    needs: image
+    runs-on: ubuntu-latest
+    # Put a required reviewer on this Environment in GitHub settings — that
+    # approval prompt is the actual production gate. Without it, any `v*` tag
+    # ships with no human in the loop.
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Materialise .env
+        env:
+          BACKEND_ENV: ${{ secrets.BACKEND_ENV }}
+          IMAGE: ${{ needs.image.outputs.image }}
+        run: |
+          printf '%s\n' "$BACKEND_ENV" > deploy/.env
+          {
+            echo "GIT_COMMIT_SHA=${GITHUB_SHA::7}"
+            echo "APP_IMAGE=$IMAGE"
+          } >> deploy/.env
+          chmod 600 deploy/.env
+
+      - name: Copy deploy files to the instance
+        uses: appleboy/scp-action@v1
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ubuntu
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          source: "deploy/*"
+          target: /opt/wagerwolf
+          strip_components: 1
+          overwrite: true
+
+      - name: Deploy
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ubuntu
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          command_timeout: 10m
+          script: |
+            set -euo pipefail
+            echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+            cd /opt/wagerwolf
+            chmod +x deploy.sh
+            # RUN_MIGRATIONS=0 — see the header. deploy.sh rolls back to the
+            # previously-running image if the new one never reports healthy.
+            APP_IMAGE="${{ needs.image.outputs.image }}" RUN_MIGRATIONS=0 bash deploy.sh
+
+      - name: Verify from the public internet
+        run: |
+          for i in $(seq 1 12); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' "$BACKEND_URL/health" || true)
+            if [ "$code" = "200" ]; then
+              echo "Reachable."; curl -s "$BACKEND_URL/health"; exit 0
+            fi
+            echo "attempt $i: HTTP $code"; sleep 5
+          done
+          echo "::error::Backend healthy on the box but unreachable at $BACKEND_URL"
+          exit 1
+        env:
+          BACKEND_URL: ${{ vars.BACKEND_URL }}
+
+  frontend:
+    name: Deploy frontend (Vercel)
+    needs: backend
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Vercel CLI
+        run: npm install --global vercel@latest
+
+      - name: Pull Vercel environment
+        working-directory: frontend
+        run: vercel pull --yes --environment=production --token="$VERCEL_TOKEN"
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+
+      - name: Build
+        working-directory: frontend
+        run: vercel build --prod --token="$VERCEL_TOKEN"
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+
+      - name: Deploy
+        working-directory: frontend
+        run: |
+          url=$(vercel deploy --prebuilt --prod --token="$VERCEL_TOKEN")
+          echo "Deployed: $url"
+          echo "### Production frontend: $url" >> "$GITHUB_STEP_SUMMARY"
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+
+  smoke:
+    name: Smoke check
+    needs: [backend, frontend]
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      # The one unauthenticated read in the app. If this answers, Postgres is
+      # reachable and the week data is real — more than /health proves, since
+      # /health deliberately touches nothing.
+      - name: Public week endpoint answers
+        run: |
+          code=$(curl -s -o /dev/null -w '%{http_code}' "$BACKEND_URL/weeks/public/current")
+          echo "GET /weeks/public/current -> $code"
+          test "$code" = "200"
+        env:
+          BACKEND_URL: ${{ vars.BACKEND_URL }}
+
+      - name: CORS is restricted
+        run: |
+          # FRONTEND_URL unset means cors() reflects any origin. Catch that here
+          # rather than in a report from someone else.
+          hdr=$(curl -s -I -H "Origin: https://not-the-frontend.invalid" \
+            "$BACKEND_URL/health" | grep -i "access-control-allow-origin" || true)
+          if echo "$hdr" | grep -qi "not-the-frontend.invalid"; then
+            echo "::error::Backend reflected an arbitrary Origin — FRONTEND_URL is not set"
+            exit 1
+          fi
+          echo "OK — arbitrary origin not reflected"
+        env:
+          BACKEND_URL: ${{ vars.BACKEND_URL }}
+
+      # Redis is not published to the host by docker-compose.yml, and it runs
+      # with no auth precisely because nothing off the compose network can reach
+      # it. If it answers from the internet, that assumption is false and the
+      # job queue is world-writable.
+      #
+      # 5432 is checked too even though Postgres is Supabase: nothing should be
+      # listening on it here, and a stray port mapping is exactly the kind of
+      # thing this catches.
+      - name: Datastores are not publicly exposed
+        run: |
+          for port in 6379 5432; do
+            if timeout 5 bash -c "cat < /dev/null > /dev/tcp/$EC2_HOST/$port" 2>/dev/null; then
+              echo "::error::Port $port is reachable on $EC2_HOST — it must not be"
+              exit 1
+            fi
+            echo "port $port closed"
+          done
+        env:
+          EC2_HOST: ${{ secrets.EC2_HOST }}

@@ -1,0 +1,103 @@
+# Nightly database backup.
+#
+# THIS IS THE ONLY BACKUP THAT EXISTS. The database is Supabase, and Supabase's
+# free tier takes no automated backups at all — daily dumps with 7-day retention
+# start on Pro. So this is not a belt-and-braces extra sitting on top of a
+# managed provider's snapshots; if it stops running, there is nothing.
+#
+# It runs from the instance rather than the runner because the instance carries
+# an IAM role that can write to the backup bucket. Doing it from a runner would
+# mean either static AWS keys in GitHub secrets or an OIDC provider to set up,
+# for no gain.
+#
+# Runs from Actions rather than a cron on the box on purpose — a cron that stops
+# firing is silent, whereas a failed workflow run is visible and emails you.
+name: Database · nightly backup
+
+on:
+  schedule:
+    # 09:00 UTC — after the Tuesday 06:00 sync and well clear of the 11:00
+    # resolve, so a dump never overlaps the job that rewrites every settled bet.
+    - cron: "0 9 * * *"
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Target environment
+        type: choice
+        required: true
+        default: production
+        options: [staging, production]
+
+concurrency:
+  group: db-backup-${{ inputs.environment || 'production' }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  backup:
+    name: Back up ${{ inputs.environment || 'production' }}
+    runs-on: ubuntu-latest
+    # A scheduled run has no inputs, so it defaults to production. Staging is
+    # disposable and does not need nightly dumps.
+    environment: ${{ inputs.environment || 'production' }}
+    steps:
+      - name: Dump and upload
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ubuntu
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          command_timeout: 15m
+          envs: BACKUP_BUCKET
+          script: |
+            set -euo pipefail
+            cd /opt/wagerwolf
+            # DATABASE_URL comes from the .env the app itself is running with,
+            # so this can never back up a different database than the one in use.
+            set -a; . ./.env; set +a
+
+            stamp=$(date -u +%Y%m%dT%H%M%SZ)
+            file="backups/wagerwolf-$stamp.sql.gz"
+            mkdir -p backups
+
+            # pg_dump from a throwaway postgres image — nothing to keep patched
+            # on the host, and the client version is pinned here rather than
+            # drifting with the distro. A newer client against Supabase's older
+            # server is supported; the reverse is not.
+            #
+            # Connects through the session-mode pooler in DATABASE_URL. If dumps
+            # ever start failing on large tables, switch this one command to the
+            # direct connection string (db.<ref>.supabase.co:5432).
+            docker run --rm postgres:18-alpine \
+              pg_dump "$DATABASE_URL" --clean --if-exists \
+              | gzip > "$file"
+
+            size=$(stat -c%s "$file")
+            echo "Dumped $file ($size bytes)"
+
+            # A gzip of an empty or failed dump is still a few hundred bytes, so
+            # "the file exists" proves nothing. Under 1KB means pg_dump wrote
+            # nothing useful and the pipeline swallowed the error.
+            if [ "$size" -lt 1024 ]; then
+              echo "Dump is implausibly small — treating as failed" >&2
+              exit 1
+            fi
+
+            gzip -t "$file"
+
+            if [ -n "${BACKUP_BUCKET:-}" ]; then
+              aws s3 cp "$file" "s3://$BACKUP_BUCKET/$(basename "$file")"
+              echo "Uploaded to s3://$BACKUP_BUCKET/"
+            else
+              echo "::error::BACKUP_BUCKET is not set — the dump stayed on the instance, which is not a backup"
+              exit 1
+            fi
+
+            # Local copies are a convenience for a fast restore; S3 lifecycle is
+            # the real retention. Keep a week here so a full disk cannot take the
+            # app down with it.
+            ls -1t backups/*.sql.gz | tail -n +8 | xargs -r rm --
+        env:
+          BACKUP_BUCKET: ${{ vars.BACKUP_BUCKET }}
