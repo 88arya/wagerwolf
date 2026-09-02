@@ -1,0 +1,147 @@
+# Build gate for both projects.
+#
+# Runs on every PR and every push to master. Master pushes no longer deploy
+# anywhere — staging is dispatch-only and production is cut from a tag — so this
+# is the only thing a master push does, and there is no double-run to avoid.
+#
+# The deploy workflows still call this via `workflow_call` before they ship, so
+# a release is always gated on the same jobs.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [master]
+  workflow_call:
+
+# A superseded PR or master run is worth nothing — cancel it.
+#
+# github.workflow is the CALLER's name when this runs via workflow_call, so a
+# deploy's CI sits in its own group and can never be cancelled by an ordinary
+# master push. Production deploys are keyed by tag ref besides, so two releases
+# cannot collide either.
+#
+# workflow_dispatch is excluded: a manually dispatched staging deploy is a
+# deliberate act and should not be killed by someone pushing to master.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'push' }}
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: "22"
+
+jobs:
+  backend:
+    name: Backend build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install
+        working-directory: backend
+        run: npm ci
+
+      # `npm run build` is `tsc --noCheck` — the same command the Docker
+      # image build runs. It emits without typechecking, which is deliberate: drizzle-orm
+      # under node16 moduleResolution reports ~66 dual-package type errors that
+      # are cosmetic. See the typecheck job below for what that costs us.
+      - name: Build
+        working-directory: backend
+        run: npm run build
+
+      # The build script cannot fail on a type error, so assert the artifact the
+      # `start` script actually runs was produced. Without this, a build that
+      # emitted nothing would still be a green check.
+      - name: Assert entrypoint emitted
+        run: test -f backend/dist/index.js
+
+  backend-typecheck:
+    name: Backend typecheck (advisory)
+    runs-on: ubuntu-latest
+    # Non-blocking. Under `bundler` resolution the drizzle noise clears and 5
+    # real findings remain (2 in middleware/rateLimit.ts, 3 drizzle relational
+    # -query variance in routes/weeks.routes.ts). Blocking on it today would
+    # make CI permanently red. Fix those 5, then flip this to a required check.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install
+        working-directory: backend
+        run: npm ci
+
+      - name: Typecheck
+        working-directory: backend
+        run: npx tsc -p tsconfig.ci.json
+
+  frontend:
+    name: Frontend build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install
+        working-directory: frontend
+        run: npm ci
+
+      # Clean today (0 errors) and blocking, unlike the backend's.
+      - name: Typecheck
+        working-directory: frontend
+        run: npx tsc --noEmit
+
+      # NEXT_PUBLIC_API_URL is inlined at build time, so the build needs *a*
+      # value. This one is unreachable on purpose: nothing in CI should be able
+      # to reach a real backend, and a placeholder that resolved could hide a
+      # page fetching at build time.
+      - name: Build
+        working-directory: frontend
+        run: npm run build
+        env:
+          NEXT_PUBLIC_API_URL: https://ci.invalid
+          NEXT_PUBLIC_GOOGLE_CLIENT_ID: ci-placeholder.apps.googleusercontent.com
+
+  frontend-lint:
+    name: Frontend lint (advisory)
+    runs-on: ubuntu-latest
+    # 257 errors / 43 warnings as of the first pipeline run, mostly
+    # no-explicit-any and react-hooks/set-state-in-effect. Reported, not gated —
+    # a check that is red on day one is a check nobody reads. Burn it down, then
+    # remove this line.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install
+        working-directory: frontend
+        run: npm ci
+
+      - name: Lint
+        working-directory: frontend
+        run: npm run lint

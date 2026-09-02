@@ -1,0 +1,19 @@
+{
+  // Typecheck-only config for CI. The production build is `tsc --noCheck`
+  // (see package.json), which emits without checking — this is the other half.
+  //
+  // Why it overrides module resolution: the main tsconfig uses node16, under
+  // which drizzle-orm's dual CJS/ESM package resolves to two distinct copies of
+  // its own types. Every `eq(...)` then reports "separate declarations of a
+  // private property", ~66 errors across 8 files, none of them real. `bundler`
+  // resolves one copy and the noise disappears.
+  //
+  // This config never emits, so the resolution difference cannot affect the
+  // shipped output — dist/ is always built by the main tsconfig.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "module": "preserve",
+    "moduleResolution": "bundler",
+    "noEmit": true
+  }
+}
