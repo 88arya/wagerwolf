@@ -1,0 +1,10 @@
+node_modules
+dist
+drizzle
+scripts
+.env
+.env.*
+!.env.example
+*.md
+tsconfig.ci.json
+railway.json
