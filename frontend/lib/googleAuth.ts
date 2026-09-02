@@ -41,7 +41,15 @@ const AUTH_ENDPOINT = "https://accounts.google.com/o/oauth2/v2/auth";
 
 // Shared with the backend's audience check. It is a public value — it is in
 // every authorization URL — which is why it can sit in client code.
-const CLIENT_ID = "1045849865095-o31t34rfsiidk50ep1shaf0nctni7sno.apps.googleusercontent.com";
+//
+// The env var lets staging and production point at separate OAuth clients; the
+// literal is the fallback so nothing breaks when it is unset (local dev, and
+// any environment where one client serving every origin is fine — a single
+// client can carry several Authorized redirect URIs). NEXT_PUBLIC_* is inlined
+// at build time, so this is resolved when the bundle is built, not at runtime.
+const CLIENT_ID =
+  process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID ||
+  "1045849865095-o31t34rfsiidk50ep1shaf0nctni7sno.apps.googleusercontent.com";
 
 /** Absolute, because Google requires it and the backend matches on the origin. */
 export function callbackUrl(): string {
