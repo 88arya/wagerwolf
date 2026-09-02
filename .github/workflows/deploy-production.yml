@@ -54,7 +54,7 @@ jobs:
           echo "image=ghcr.io/$owner/wagerwolf-backend:sha-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
 
       - name: Build and push
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: backend
           push: true
