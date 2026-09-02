@@ -13,9 +13,29 @@ export function requireAuth(req: any, res: any, next: NextFunction) {
   }
 }
 
+/**
+ * Guards the emergency-override routes — POST /espn/resolve/:weekId,
+ * /espn/games/:weekId, /sync/week/:weekId, /weeks/:id/resolve. These force week
+ * resolution and ESPN re-syncs, i.e. they settle everyone's bets.
+ *
+ * FAIL-OPEN IN DEV, FAIL-CLOSED IN PRODUCTION. An unset CRON_SECRET used to
+ * call next() everywhere, which is convenient locally and indefensible in
+ * production: it left bet settlement reachable by anyone who could guess a
+ * route. Dev keeps the convenience because there is nothing to protect; a
+ * deployed environment that forgot the variable gets a 503 instead of an open
+ * door, which is a failure you notice rather than one you don't.
+ */
 export function requireCron(req: any, res: any, next: NextFunction) {
   const secret = process.env.CRON_SECRET;
-  if (!secret) { next(); return; }
+  if (!secret) {
+    if (process.env.NODE_ENV === "production") {
+      console.error("requireCron: CRON_SECRET is unset — refusing the request.");
+      res.status(503).json({ error: "Cron routes are not configured" });
+      return;
+    }
+    next();
+    return;
+  }
   if (req.headers["x-cron-secret"] !== secret) {
     res.status(403).json({ error: "Forbidden" }); return;
   }

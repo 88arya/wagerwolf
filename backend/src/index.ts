@@ -32,7 +32,12 @@ if (missingEnv.length > 0) {
   process.exit(1);
 }
 if (process.env.NODE_ENV === "production" && !process.env.CRON_SECRET) {
-  console.error("CRON_SECRET is not set — cron-protected routes (/espn/resolve, /weeks/:id/resolve, etc.) are open to anyone in production.");
+  // Not fatal: the app is fully usable without it, and refusing to boot would
+  // take the whole site down over a feature nothing user-facing depends on.
+  // requireCron fails closed in production, so the routes answer 503 rather
+  // than running — this warning says the scheduler's manual overrides are
+  // unavailable, not that they are exposed.
+  console.error("CRON_SECRET is not set — cron-protected routes (/espn/resolve, /weeks/:id/resolve, etc.) will refuse every request with a 503.");
 }
 
 const app = express();
