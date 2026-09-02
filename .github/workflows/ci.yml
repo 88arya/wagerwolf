@@ -105,21 +105,30 @@ jobs:
         working-directory: frontend
         run: npm ci
 
-      # Clean today (0 errors) and blocking, unlike the backend's.
-      - name: Typecheck
-        working-directory: frontend
-        run: npx tsc --noEmit
-
+      # BUILD BEFORE TYPECHECK — the order is load bearing, do not swap it.
+      #
+      # tsconfig.json includes `.next/types/**/*.ts`, where Next generates the
+      # global `PageProps` type that every dynamic route signature uses. On a
+      # clean checkout that directory does not exist yet, so `tsc --noEmit`
+      # alone reports 16 "Cannot find name 'PageProps'" errors — which look like
+      # real type errors and are purely an artefact of running before typegen.
+      #
       # NEXT_PUBLIC_API_URL is inlined at build time, so the build needs *a*
-      # value. This one is unreachable on purpose: nothing in CI should be able
-      # to reach a real backend, and a placeholder that resolved could hide a
-      # page fetching at build time.
+      # value. This one is unreachable on purpose: nothing in CI should reach a
+      # real backend, and a placeholder that resolved could hide a page fetching
+      # at build time.
       - name: Build
         working-directory: frontend
         run: npm run build
         env:
           NEXT_PUBLIC_API_URL: https://ci.invalid
           NEXT_PUBLIC_GOOGLE_CLIENT_ID: ci-placeholder.apps.googleusercontent.com
+
+      # Clean today (0 errors) and blocking, unlike the backend's. Runs after
+      # the build so the generated types above are present.
+      - name: Typecheck
+        working-directory: frontend
+        run: npx tsc --noEmit
 
   frontend-lint:
     name: Frontend lint (advisory)
