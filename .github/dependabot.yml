@@ -1,6 +1,24 @@
-# Both projects plus the Actions themselves. Monthly rather than weekly: this is
-# a one-committer repo and a weekly cadence turns into noise that gets ignored,
-# which is worse than no alerts.
+# Dependency updates.
+#
+# WHY MAJORS ARE IGNORED. The first run of this file opened 14 pull requests at
+# once, because Dependabot's initial check ignores the schedule and proposes
+# everything currently outdated. Most were majors and most were red for real
+# reasons: typescript 7 is a rewrite Next 16 cannot detect, bullmq 6 drives the
+# entire season lifecycle, eslint 10 and nodemailer 9 are breaking too.
+#
+# A major bump is a small project — read the changelog, run it, fix what broke.
+# It is not something to arrive unannounced in a pull request that CI paints red
+# and nobody reads. So majors are ignored here and done deliberately; only
+# grouped minor and patch updates arrive on their own.
+#
+# This does NOT disable security updates. Those are a separate feature driven by
+# Dependabot alerts in repository settings, and they are not filtered by the
+# `ignore` rules below. Alerts are currently DISABLED for this repository —
+# worth turning on (Settings → Code security) before the app is public, since it
+# is the only thing that would tell you about a vulnerable transitive package.
+#
+# Monthly rather than weekly: this is a one-committer repo, and a weekly cadence
+# becomes noise that gets ignored, which is worse than no alerts at all.
 version: 2
 updates:
   - package-ecosystem: npm
@@ -11,6 +29,9 @@ updates:
     groups:
       backend-minor:
         update-types: [minor, patch]
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: npm
     directory: /frontend
@@ -20,8 +41,18 @@ updates:
     groups:
       frontend-minor:
         update-types: [minor, patch]
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: monthly
+    open-pull-requests-limit: 5
+    groups:
+      actions-minor:
+        update-types: [minor, patch]
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
