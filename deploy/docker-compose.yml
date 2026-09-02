@@ -1,0 +1,97 @@
+# The backend on one EC2 instance: app + Redis + Caddy.
+#
+# POSTGRES IS NOT HERE. It is Supabase — a managed Postgres on their free tier,
+# reached over the public internet via DATABASE_URL. That is deliberate and it
+# is the better arrangement for this app:
+#
+#   - it takes the data off this instance's EBS volume, which was the one real
+#     weakness of a single-box deployment
+#   - it frees ~300MB, the largest of the four containers
+#   - nothing in the codebase imports a Supabase SDK, so this is a connection
+#     string and nothing more: no lock-in, and switching back or elsewhere is a
+#     one-variable change
+#
+# Two things that follow from it, both easy to get wrong:
+#
+#   1. THE INSTANCE MUST BE IN THE SAME REGION AS THE SUPABASE PROJECT
+#      (us-west-2). Every request makes several queries; a cross-country round
+#      trip of ~60ms each turns into a visibly slow API. infra/variables.tf
+#      defaults to us-west-2 for this reason.
+#   2. SUPABASE'S FREE TIER TAKES NO BACKUPS. Daily backups start on Pro. The
+#      nightly dump in .github/workflows/db-backup.yml is therefore not a
+#      belt-and-braces extra — it is the only backup that exists.
+#
+# NOTE: no `container_name:` anywhere. Compose derives names from the project
+# name instead, so a second stack on the same host (or a rename) cannot collide
+# on a hardcoded `app`. deploy.sh addresses services by compose service name.
+
+services:
+  redis:
+    image: redis:7-alpine
+    # appendonly so the BullMQ job schedulers survive a restart. Without it a
+    # reboot silently drops every repeatable job and the season lifecycle stops
+    # — no Tuesday resolve, no score sync — with nothing in the logs to say so.
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    # Deliberately NOT published to the host. Redis has no auth configured
+    # because nothing off this compose network can reach it; publishing the port
+    # would make that assumption false. The production smoke check asserts 6379
+    # is closed from the internet.
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  app:
+    # Pinned by commit SHA from the deploy, never `latest` — that is what makes
+    # a rollback mean anything. The default exists only so `docker compose
+    # config` works locally.
+    image: ${APP_IMAGE:-ghcr.io/88arya/wagerwolf-backend:latest}
+    environment:
+      NODE_ENV: production
+      PORT: 5000
+      # Supabase, passed through whole rather than assembled from parts. Use the
+      # SESSION-mode pooler (port 5432). Transaction mode (6543) silently breaks
+      # prepared statements and drizzle-kit.
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_URL: redis://redis:6379
+      JWT_SECRET: ${JWT_SECRET}
+      CRON_SECRET: ${CRON_SECRET}
+      FRONTEND_URL: ${FRONTEND_URL}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
+      SPORTSGAMEODDS_KEY: ${SPORTSGAMEODDS_KEY}
+      GIT_COMMIT_SHA: ${GIT_COMMIT_SHA:-}
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2-alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      # A real hostname turns on automatic HTTPS via Let's Encrypt. Set it to
+      # ":80" to serve plain HTTP while DNS is still propagating.
+      BACKEND_DOMAIN: ${BACKEND_DOMAIN:-:80}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      # caddy_data holds the issued certificates. Losing it means re-issuing on
+      # every deploy, which hits Let's Encrypt rate limits (5 per week per
+      # hostname) and then serves an untrusted cert until the window resets.
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      app:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  redis_data:
+  caddy_data:
+  caddy_config:

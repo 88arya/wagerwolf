@@ -1,0 +1,28 @@
+# Caddy terminates TLS and proxies to the app container.
+#
+# BACKEND_DOMAIN is supplied by compose. Set it to a real hostname
+# (api.wagerwolf.app) and Caddy provisions and renews a Let's Encrypt
+# certificate on its own — there is no certbot step and no cron to forget.
+# Set it to ":80" to serve plain HTTP before DNS points here.
+{$BACKEND_DOMAIN} {
+	reverse_proxy app:5000
+
+	encode gzip zstd
+
+	header {
+		# The API is consumed by fetch() from the Vercel frontend, never framed
+		# or rendered as a document, so these cost nothing and close the
+		# cheapest classes of finding in a scan.
+		X-Content-Type-Options nosniff
+		X-Frame-Options DENY
+		Referrer-Policy no-referrer
+		-Server
+	}
+
+	# Access logs stay in the container's stdout, which means `docker compose
+	# logs caddy`. There is no log shipping configured — see DEPLOYMENT.md.
+	log {
+		output stdout
+		format console
+	}
+}
