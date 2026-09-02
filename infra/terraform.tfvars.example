@@ -1,0 +1,12 @@
+# cp terraform.tfvars.example terraform.tfvars, fill it in, then:
+#   terraform init && terraform apply
+#
+# terraform.tfvars is gitignored. It holds a public key, which is not a secret —
+# but terraform.tfstate lands in the same directory and that file records
+# everything Terraform knows, so neither belongs in the repo.
+
+ssh_public_key = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAA... you@machine"
+
+# region        = "us-east-1"
+# instance_type = "t3.small"
+# disk_gb       = 20
