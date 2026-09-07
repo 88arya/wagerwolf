@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { db } from "../db/db";
+import { PUBLIC_USER } from "../db/publicUser";
 import { eq, and, inArray, or, isNull, isNotNull, gt, gte, lte, sql } from "drizzle-orm";
 import { users, leagues, memberships, weeks, matchups, picks, gamePicks, parlays, parlayLegs, props, games, gameLines } from "../db/schema";
 import { requireAuth } from "../middleware/auth";
@@ -23,13 +24,13 @@ const router = Router();
 
 
 // Active memberships only (shown in "My Leagues" list)
-router.get("/", requireAuth, async (req: any, res: any) => {
+router.get("/", requireAuth, async (req: any, res: any, next: any) => {
   try {
     const userMemberships = await db.query.memberships.findMany({
       where: and(eq(memberships.userId, req.userId), eq(memberships.status, "ACTIVE")),
       with: {
         league: true,
-        user: true,
+        user: PUBLIC_USER,
       },
       orderBy: (memberships, { asc }) => [asc(memberships.createdAt)],
     }) as any[];
@@ -209,16 +210,16 @@ router.get("/", requireAuth, async (req: any, res: any) => {
 
     res.json(enriched);
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    next(err); return;
   }
 });
 
 // Pending join requests for the current user
-router.get("/pending", requireAuth, async (req: any, res: any) => {
+router.get("/pending", requireAuth, async (req: any, res: any, next: any) => {
   try {
     const rows = await db.query.memberships.findMany({
       where: and(eq(memberships.userId, req.userId), eq(memberships.status, "PENDING")),
-      with: { league: true, user: true },
+      with: { league: true, user: PUBLIC_USER },
       orderBy: (memberships, { asc }) => [asc(memberships.createdAt)],
     }) as any[];
     res.json(rows.map((r) => ({
@@ -226,12 +227,12 @@ router.get("/pending", requireAuth, async (req: any, res: any) => {
       displayName: r.displayName || r.user?.displayName || r.user?.name || "",
     })));
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    next(err); return;
   }
 });
 
 // Private league: enter invite code → creates PENDING membership awaiting commissioner approval
-router.post("/join-by-code", requireAuth, async (req: any, res: any) => {
+router.post("/join-by-code", requireAuth, async (req: any, res: any, next: any) => {
   try {
     const { code } = req.body;
     if (!code) { res.status(400).json({ error: "Invite code required" }); return; }
@@ -277,7 +278,7 @@ router.post("/join-by-code", requireAuth, async (req: any, res: any) => {
       }
     }
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    next(err); return;
   }
 });
 
@@ -287,12 +288,12 @@ router.post("/join-by-code", requireAuth, async (req: any, res: any) => {
  * own copy of "find an open league", which had drifted into a different (and
  * unbounded) implementation.
  */
-router.post("/join-public", requireAuth, async (req: any, res: any) => {
+router.post("/join-public", requireAuth, async (req: any, res: any, next: any) => {
   try {
     const result = await matchAndJoin(req.userId, {});
     res.status(201).json({ ...result.membership, league: result.league });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    next(err); return;
   }
 });
 
@@ -309,7 +310,7 @@ router.post("/join-public", requireAuth, async (req: any, res: any) => {
  * Three inputs: how many teams, beginner or pro, and which NFL week the season
  * starts. Only the first can be compromised on.
  */
-router.post("/quick-join", requireAuth, async (req: any, res: any) => {
+router.post("/quick-join", requireAuth, async (req: any, res: any, next: any) => {
   try {
     const { maxPlayers, level, startWeek } = req.body ?? {};
     const result = await matchAndJoin(req.userId, {
@@ -329,7 +330,7 @@ router.post("/quick-join", requireAuth, async (req: any, res: any) => {
       startWeek: result.startWeek,
     });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    next(err); return;
   }
 });
 
@@ -340,7 +341,7 @@ router.post("/quick-join", requireAuth, async (req: any, res: any) => {
  * a week that has already resolved is not a start week. Levels ride along so
  * the two pickers have one source and cannot drift apart.
  */
-router.get("/join-options", requireAuth, async (_req: any, res: any) => {
+router.get("/join-options", requireAuth, async (_req: any, res: any, next: any) => {
   try {
     const startWeeks = await selectableStartWeeks();
     res.json({
@@ -349,7 +350,7 @@ router.get("/join-options", requireAuth, async (_req: any, res: any) => {
       levels: LEAGUE_LEVELS,
     });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    next(err); return;
   }
 });
 

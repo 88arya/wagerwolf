@@ -20,6 +20,7 @@ import parlayRoutes from "./routes/parlays.routes";
 import { runStartupSeed } from "./services/startupSeed";
 import { startScheduler, stopScheduler } from "./services/scheduler";
 import { globalLimiter } from "./middleware/rateLimit";
+import { errorHandler, notFoundHandler } from "./middleware/errorHandler";
 
 dotenv.config();
 
@@ -79,6 +80,12 @@ app.use("/parlays", parlayRoutes);
 app.get("/", (req, res) => {
   res.json({ status: "Wagerwolf backend running" });
 });
+
+// Last two, and the order matters: the 404 claims anything no router did, and
+// the error handler must be registered after every route or Express will not
+// route errors to it. See middleware/errorHandler.ts.
+app.use(notFoundHandler);
+app.use(errorHandler);
 
 const PORT = process.env.PORT || 5000;
 

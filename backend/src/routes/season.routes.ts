@@ -1,5 +1,7 @@
 import { Router } from "express";
 import { db } from "../db/db";
+import { PUBLIC_USER } from "../db/publicUser";
+import { requireLeagueMember } from "../services/leagueAccess";
 import { eq, and, asc, or, inArray, gte, lte } from "drizzle-orm";
 import {
   leagues, memberships, weeks, matchups, users,
@@ -9,8 +11,8 @@ import { requireAuth } from "../middleware/auth";
 import { generateLeagueName } from "../services/leagueName";
 import { startLeagueSeason } from "../services/startSeason";
 import { calcProfit, toDecimal } from "../lib/payout";
+import { MAX_NFL_WEEK } from "../services/nflSeason";
 
-const MAX_NFL_WEEK = 17;
 
 async function ensureOpenPublicLeague(creatorId: string) {
   const open = await db.query.leagues.findFirst({
@@ -53,7 +55,7 @@ async function ensureOpenPublicLeague(creatorId: string) {
 
 const router = Router();
 
-router.post("/:leagueId/season/start", requireAuth, async (req: any, res: any) => {
+router.post("/:leagueId/season/start", requireAuth, async (req: any, res: any, next: any) => {
   try {
     const { leagueId } = req.params;
 
@@ -76,14 +78,17 @@ router.post("/:leagueId/season/start", requireAuth, async (req: any, res: any) =
     if (err.message === "Need at least 2 members to start") {
       res.status(400).json({ error: err.message }); return;
     }
-    res.status(500).json({ error: err.message });
+    next(err); return;
   }
 });
 
-router.get("/:leagueId/matchups", requireAuth, async (req: any, res: any) => {
+router.get("/:leagueId/matchups", requireAuth, async (req: any, res: any, next: any) => {
   try {
     const { leagueId } = req.params;
     const { weekNumber } = req.query;
+    // The schedule says who is playing whom, with per-league identity attached.
+    // Members only.
+    if (!(await requireLeagueMember(req, res, leagueId))) return;
 
     const whereClause = weekNumber
       ? and(eq(matchups.leagueId, leagueId), eq(matchups.weekNumber, Number(weekNumber)))
@@ -93,14 +98,14 @@ router.get("/:leagueId/matchups", requireAuth, async (req: any, res: any) => {
       db.query.matchups.findMany({
         where: whereClause,
         with: {
-          homeUser: true,
-          awayUser: true,
+          homeUser: PUBLIC_USER,
+          awayUser: PUBLIC_USER,
         },
         orderBy: [asc(matchups.weekNumber)],
       }),
       db.query.memberships.findMany({
         where: and(eq(memberships.leagueId, leagueId), eq(memberships.status, "ACTIVE")),
-        with: { user: true },
+        with: { user: PUBLIC_USER },
       }),
     ]);
 
@@ -138,7 +143,7 @@ router.get("/:leagueId/matchups", requireAuth, async (req: any, res: any) => {
 
     res.json(augmented);
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    next(err); return;
   }
 });
 
@@ -194,11 +199,12 @@ function serializeParlay(p: any, reveal: boolean) {
 // Current user's matchup for a week: opponent identity, available balance, and
 // projected total (available balance + expected value of pending bets). The
 // opponent's still-pending bets are masked so the user can't copy them before lock.
-router.get("/:leagueId/matchup", requireAuth, async (req: any, res: any) => {
+router.get("/:leagueId/matchup", requireAuth, async (req: any, res: any, next: any) => {
   try {
     const { leagueId } = req.params;
     const userId = req.userId;
     const { weekNumber: weekNumberQ } = req.query;
+    if (!(await requireLeagueMember(req, res, leagueId))) return;
 
     const league = await db.query.leagues.findFirst({ where: eq(leagues.id, leagueId) });
     if (!league) { res.status(404).json({ error: "League not found" }); return; }
@@ -222,7 +228,7 @@ router.get("/:leagueId/matchup", requireAuth, async (req: any, res: any) => {
         eq(matchups.weekNumber, week.number),
         or(eq(matchups.homeUserId, userId), eq(matchups.awayUserId, userId)),
       ),
-      with: { homeUser: true, awayUser: true },
+      with: { homeUser: PUBLIC_USER, awayUser: PUBLIC_USER },
     }) as any;
     if (!matchup) { res.json({ hasMatchup: false, weekNumber: week.number }); return; }
 
@@ -241,7 +247,7 @@ router.get("/:leagueId/matchup", requireAuth, async (req: any, res: any) => {
     const [memberRows, allMatchups, weekGamesRows] = await Promise.all([
       db.query.memberships.findMany({
         where: and(eq(memberships.leagueId, leagueId), inArray(memberships.userId, relevantIds)),
-        with: { user: true },
+        with: { user: PUBLIC_USER },
       }),
       db.query.matchups.findMany({ where: eq(matchups.leagueId, leagueId) }),
       db.select({ id: games.id }).from(games).where(eq(games.weekId, week.id)),
@@ -348,7 +354,7 @@ router.get("/:leagueId/matchup", requireAuth, async (req: any, res: any) => {
       opponent: isBye ? null : buildSide(opponentId as string, oppBets, false),
     });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    next(err); return;
   }
 });
 

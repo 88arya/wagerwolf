@@ -42,7 +42,7 @@ async function fetchWeekWithGames(weekId: string) {
  * score. Public data either way (it is the NFL schedule), but there is no
  * reason to hand the market to an unauthenticated caller.
  */
-router.get("/public/current", async (_req: any, res: any) => {
+router.get("/public/current", async (_req: any, res: any, next: any) => {
   try {
     const now = new Date();
     const withGames = {
@@ -67,7 +67,10 @@ router.get("/public/current", async (_req: any, res: any) => {
           },
         },
       },
-    } as const;
+      // Deliberately NOT `as const`. Drizzle's relational-query config types
+      // want mutable arrays, and `as const` froze `orderBy` into a readonly
+      // tuple that no overload accepts — three errors from one keyword.
+    };
 
     // Same three-step fallback the authenticated branch uses: the week we are
     // inside, else the next one to start, else the first unresolved week at all.
@@ -88,7 +91,7 @@ router.get("/public/current", async (_req: any, res: any) => {
     if (week) await attachBetCounts(week);
     res.json(week ? [week] : []);
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    next(err); return;
   }
 });
 
@@ -108,15 +111,15 @@ router.get("/public/current", async (_req: any, res: any) => {
  *
  * Cached for 15s in betCounts.ts.
  */
-router.get("/:weekId/bet-counts", async (req: any, res: any) => {
+router.get("/:weekId/bet-counts", async (req: any, res: any, next: any) => {
   try {
     res.json(await betCountsForWeek(req.params.weekId));
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    next(err); return;
   }
 });
 
-router.get("/", requireAuth, async (req: any, res: any) => {
+router.get("/", requireAuth, async (req: any, res: any, next: any) => {
   try {
     const { current, leagueId } = req.query;
 
@@ -197,21 +200,21 @@ router.get("/", requireAuth, async (req: any, res: any) => {
     });
     res.json(allWeeks);
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    next(err); return;
   }
 });
 
-router.get("/:id", requireAuth, async (req: any, res: any) => {
+router.get("/:id", requireAuth, async (req: any, res: any, next: any) => {
   try {
     const week = await fetchWeekWithGames(req.params.id);
     if (!week) { res.status(404).json({ error: "Week not found" }); return; }
     res.json(week);
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    next(err); return;
   }
 });
 
-router.delete("/:id", requireAuth, requireCron, async (req: any, res: any) => {
+router.delete("/:id", requireAuth, requireCron, async (req: any, res: any, next: any) => {
   try {
     const week = await db.query.weeks.findFirst({
       where: eq(weeks.id, req.params.id),
@@ -244,11 +247,11 @@ router.delete("/:id", requireAuth, requireCron, async (req: any, res: any) => {
 
     res.json({ message: "Week deleted" });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    next(err); return;
   }
 });
 
-router.post("/:id/lock", requireAuth, requireCron, async (req: any, res: any) => {
+router.post("/:id/lock", requireAuth, requireCron, async (req: any, res: any, next: any) => {
   try {
     const [week] = await db.select().from(weeks).where(eq(weeks.id, req.params.id)).limit(1);
     if (!week) { res.status(404).json({ error: "Week not found" }); return; }
@@ -259,12 +262,12 @@ router.post("/:id/lock", requireAuth, requireCron, async (req: any, res: any) =>
       .returning();
     res.json(updated);
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    next(err); return;
   }
 });
 
 // Manual fallback resolve (for when ESPN data is unavailable)
-router.post("/:id/resolve", requireAuth, requireCron, async (req: any, res: any) => {
+router.post("/:id/resolve", requireAuth, requireCron, async (req: any, res: any, next: any) => {
   try {
     const { id: weekId } = req.params;
     const { results, gameLineResults } = req.body as {
@@ -377,7 +380,7 @@ router.post("/:id/resolve", requireAuth, requireCron, async (req: any, res: any)
 
     res.json({ message: "Week resolved", weekId });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    next(err); return;
   }
 });
 

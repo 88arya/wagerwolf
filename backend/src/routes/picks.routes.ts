@@ -10,7 +10,7 @@ import { altOddsFor } from "../services/propOdds";
 const router = Router();
 
 
-router.post("/", requireAuth, betLimiter, async (req: any, res: any) => {
+router.post("/", requireAuth, betLimiter, async (req: any, res: any, next: any) => {
   try {
     const { leagueId, propId, direction, stake, altLine } = req.body;
     const userId = req.userId;
@@ -122,11 +122,11 @@ router.post("/", requireAuth, betLimiter, async (req: any, res: any) => {
 
     res.status(201).json(pick);
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    next(err); return;
   }
 });
 
-router.get("/", requireAuth, async (req: any, res: any) => {
+router.get("/", requireAuth, async (req: any, res: any, next: any) => {
   try {
     const { leagueId } = req.query;
 
@@ -142,12 +142,12 @@ router.get("/", requireAuth, async (req: any, res: any) => {
 
     res.json(rows);
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    next(err); return;
   }
 });
 
 // Cashout a pending prop pick before kickoff — full stake refund
-router.post("/:id/cashout", requireAuth, betLimiter, async (req: any, res: any) => {
+router.post("/:id/cashout", requireAuth, betLimiter, async (req: any, res: any, next: any) => {
   try {
     const pick = await db.query.picks.findFirst({
       where: eq(picks.id, req.params.id),
@@ -172,7 +172,7 @@ router.post("/:id/cashout", requireAuth, betLimiter, async (req: any, res: any) 
 
     res.json({ message: "Cashed out", refunded: pick.stake });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    next(err); return;
   }
 });
 

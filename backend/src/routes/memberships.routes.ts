@@ -1,5 +1,7 @@
 import { Router } from "express";
 import { db } from "../db/db";
+import { PUBLIC_USER } from "../db/publicUser";
+import { requireLeagueMember } from "../services/leagueAccess";
 import {
   eq, and, inArray, or, isNotNull, ne, gte, lte, desc, asc,
 } from "drizzle-orm";
@@ -20,7 +22,7 @@ import { tallyRecords, compareStandings } from "../services/standings";
 const router = Router({ mergeParams: true });
 
 // Creator joining their own league after creation — always ACTIVE
-router.post("/join", requireAuth, async (req: any, res: any) => {
+router.post("/join", requireAuth, async (req: any, res: any, next: any) => {
   try {
     const { id: leagueId } = req.params;
     const userId = req.userId;
@@ -41,18 +43,21 @@ router.post("/join", requireAuth, async (req: any, res: any) => {
 
     res.status(201).json(outcome.membership);
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    next(err); return;
   }
 });
 
-router.get("/leaderboard", requireAuth, async (req: any, res: any) => {
+router.get("/leaderboard", requireAuth, async (req: any, res: any, next: any) => {
   try {
     const { id: leagueId } = req.params;
+    // Standings are league-private. A token alone used to be enough here, and
+    // league ids travel in every URL a member pastes.
+    if (!(await requireLeagueMember(req, res, leagueId))) return;
 
     const [memberRows, matchupRows] = await Promise.all([
       db.query.memberships.findMany({
         where: and(eq(memberships.leagueId, leagueId), eq(memberships.status, "ACTIVE")),
-        with: { user: true },
+        with: { user: PUBLIC_USER },
       }),
       db.select().from(matchups).where(
         and(
@@ -101,12 +106,12 @@ router.get("/leaderboard", requireAuth, async (req: any, res: any) => {
 
     res.json(leaderboard);
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    next(err); return;
   }
 });
 
 // Update current user's abbreviation for this league
-router.patch("/my-abbreviation", requireAuth, async (req: any, res: any) => {
+router.patch("/my-abbreviation", requireAuth, async (req: any, res: any, next: any) => {
   try {
     const { id: leagueId } = req.params;
     const { abbreviation } = req.body;
@@ -117,12 +122,12 @@ router.patch("/my-abbreviation", requireAuth, async (req: any, res: any) => {
       .where(and(eq(memberships.leagueId, leagueId), eq(memberships.userId, req.userId)));
     res.json({ abbreviation: checked.value });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    next(err); return;
   }
 });
 
 // Update current user's display name for this league
-router.patch("/my-display-name", requireAuth, async (req: any, res: any) => {
+router.patch("/my-display-name", requireAuth, async (req: any, res: any, next: any) => {
   try {
     const { id: leagueId } = req.params;
     const { displayName } = req.body;
@@ -133,12 +138,12 @@ router.patch("/my-display-name", requireAuth, async (req: any, res: any) => {
       .where(and(eq(memberships.leagueId, leagueId), eq(memberships.userId, req.userId)));
     res.json({ displayName: checked.value });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    next(err); return;
   }
 });
 
 // Update current user's shield color for this league
-router.patch("/my-helmet", requireAuth, async (req: any, res: any) => {
+router.patch("/my-helmet", requireAuth, async (req: any, res: any, next: any) => {
   try {
     const { id: leagueId } = req.params;
     const { helmetColor } = req.body;
@@ -161,12 +166,12 @@ router.patch("/my-helmet", requireAuth, async (req: any, res: any) => {
       .where(and(eq(memberships.leagueId, leagueId), eq(memberships.userId, req.userId)));
     res.json({ helmetColor });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    next(err); return;
   }
 });
 
 // Commissioner: list pending join requests
-router.get("/pending", requireAuth, async (req: any, res: any) => {
+router.get("/pending", requireAuth, async (req: any, res: any, next: any) => {
   try {
     const { id: leagueId } = req.params;
     const league = await db.query.leagues.findFirst({ where: eq(leagues.id, leagueId) });
@@ -175,16 +180,16 @@ router.get("/pending", requireAuth, async (req: any, res: any) => {
 
     const pending = await db.query.memberships.findMany({
       where: and(eq(memberships.leagueId, leagueId), eq(memberships.status, "PENDING")),
-      with: { user: true },
+      with: { user: PUBLIC_USER },
     });
     res.json(pending);
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    next(err); return;
   }
 });
 
 // Commissioner: accept a pending member
-router.post("/members/:memberId/accept", requireAuth, async (req: any, res: any) => {
+router.post("/members/:memberId/accept", requireAuth, async (req: any, res: any, next: any) => {
   try {
     const { id: leagueId, memberId } = req.params;
     const league = await db.query.leagues.findFirst({ where: eq(leagues.id, leagueId) });
@@ -208,12 +213,12 @@ router.post("/members/:memberId/accept", requireAuth, async (req: any, res: any)
 
     res.json({ message: "Member accepted" });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    next(err); return;
   }
 });
 
 // Commissioner: remove or reject a member (works for both ACTIVE and PENDING, before season only)
-router.delete("/members/:memberId", requireAuth, async (req: any, res: any) => {
+router.delete("/members/:memberId", requireAuth, async (req: any, res: any, next: any) => {
   try {
     const { id: leagueId, memberId } = req.params;
 
@@ -240,12 +245,12 @@ router.delete("/members/:memberId", requireAuth, async (req: any, res: any) => {
     }
     res.json({ message: "Member removed" });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    next(err); return;
   }
 });
 
 // Member leaves their own league (not commissioner, before season starts)
-router.post("/leave", requireAuth, async (req: any, res: any) => {
+router.post("/leave", requireAuth, async (req: any, res: any, next: any) => {
   try {
     const { id: leagueId } = req.params;
     const userId = req.userId;
@@ -267,14 +272,14 @@ router.post("/leave", requireAuth, async (req: any, res: any) => {
 
     res.json({ message: "Left league" });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    next(err); return;
   }
 });
 
 // ── Bet Feed ──────────────────────────────────────────────────────────────────
 // Returns all visible bets for the current week across all members.
 // Visibility: AFTER_KICKOFF = only games that have kicked off; AFTER_RESOLVE = only resolved weeks.
-router.get("/feed", requireAuth, async (req: any, res: any) => {
+router.get("/feed", requireAuth, async (req: any, res: any, next: any) => {
   try {
     const { id: leagueId } = req.params;
     const weekNumber = req.query.weekNumber ? Number(req.query.weekNumber) : undefined;
@@ -320,7 +325,7 @@ router.get("/feed", requireAuth, async (req: any, res: any) => {
 
     const leagueMembers = await db.query.memberships.findMany({
       where: and(eq(memberships.leagueId, leagueId), eq(memberships.status, "ACTIVE")),
-      with: { user: true },
+      with: { user: PUBLIC_USER },
     });
     const nameMap: Record<string, string> = {};
     for (const m of leagueMembers) if (m.user) nameMap[m.userId] = m.displayName || m.user.displayName;
@@ -464,12 +469,12 @@ router.get("/feed", requireAuth, async (req: any, res: any) => {
 
     res.json(feed);
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    next(err); return;
   }
 });
 
 // ── Chat ──────────────────────────────────────────────────────────────────────
-router.get("/messages", requireAuth, async (req: any, res: any) => {
+router.get("/messages", requireAuth, async (req: any, res: any, next: any) => {
   try {
     const { id: leagueId } = req.params;
     const membership = await db.query.memberships.findFirst({
@@ -484,12 +489,12 @@ router.get("/messages", requireAuth, async (req: any, res: any) => {
     const [rawMessages, memberRows] = await Promise.all([
       db.query.leagueMessages.findMany({
         where: eq(leagueMessages.leagueId, leagueId),
-        with: { user: true },
+        with: { user: PUBLIC_USER },
         // orderBy desc, take 50, then reverse for chronological
       }),
       db.query.memberships.findMany({
         where: and(eq(memberships.leagueId, leagueId), eq(memberships.status, "ACTIVE")),
-        with: { user: true },
+        with: { user: PUBLIC_USER },
       }),
     ]);
 
@@ -508,11 +513,11 @@ router.get("/messages", requireAuth, async (req: any, res: any) => {
 
     res.json(messages.reverse());
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    next(err); return;
   }
 });
 
-router.post("/messages", requireAuth, async (req: any, res: any) => {
+router.post("/messages", requireAuth, async (req: any, res: any, next: any) => {
   try {
     const { id: leagueId } = req.params;
     const { body } = req.body;
@@ -543,11 +548,11 @@ router.post("/messages", requireAuth, async (req: any, res: any) => {
       user: { id: req.userId, displayName: leagueName },
     });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    next(err); return;
   }
 });
 
-router.delete("/messages/:msgId", requireAuth, async (req: any, res: any) => {
+router.delete("/messages/:msgId", requireAuth, async (req: any, res: any, next: any) => {
   try {
     const { id: leagueId, msgId } = req.params;
     const [msg, league] = await Promise.all([
@@ -563,12 +568,12 @@ router.delete("/messages/:msgId", requireAuth, async (req: any, res: any) => {
     await db.delete(leagueMessages).where(eq(leagueMessages.id, msgId));
     res.json({ message: "Deleted" });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    next(err); return;
   }
 });
 
 // ── Member Stats ──────────────────────────────────────────────────────────────
-router.get("/members/:targetUserId/stats", requireAuth, async (req: any, res: any) => {
+router.get("/members/:targetUserId/stats", requireAuth, async (req: any, res: any, next: any) => {
   try {
     const { id: leagueId, targetUserId } = req.params;
 
@@ -586,11 +591,11 @@ router.get("/members/:targetUserId/stats", requireAuth, async (req: any, res: an
           eq(memberships.userId, targetUserId),
           eq(memberships.status, "ACTIVE"),
         ),
-        with: { user: true },
+        with: { user: PUBLIC_USER },
       }),
       db.query.memberships.findMany({
         where: and(eq(memberships.leagueId, leagueId), eq(memberships.status, "ACTIVE")),
-        with: { user: true },
+        with: { user: PUBLIC_USER },
       }),
     ]);
     if (!membership) { res.status(403).json({ error: "Not a member" }); return; }
@@ -749,12 +754,12 @@ router.get("/members/:targetUserId/stats", requireAuth, async (req: any, res: an
       })),
     });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    next(err); return;
   }
 });
 
 // ── Weekly Recap ──────────────────────────────────────────────────────────────
-router.get("/recap", requireAuth, async (req: any, res: any) => {
+router.get("/recap", requireAuth, async (req: any, res: any, next: any) => {
   try {
     const { id: leagueId } = req.params;
     const weekNumber = req.query.weekNumber ? Number(req.query.weekNumber) : undefined;
@@ -828,7 +833,7 @@ router.get("/recap", requireAuth, async (req: any, res: any) => {
           eq(matchups.weekNumber, resolvedWeek.number),
           or(eq(matchups.homeUserId, req.userId), eq(matchups.awayUserId, req.userId)),
         ),
-        with: { homeUser: true, awayUser: true },
+        with: { homeUser: PUBLIC_USER, awayUser: PUBLIC_USER },
       }),
     ]);
 
@@ -893,7 +898,7 @@ router.get("/recap", requireAuth, async (req: any, res: any) => {
       } : null,
     });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    next(err); return;
   }
 });
 

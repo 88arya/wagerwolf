@@ -6,7 +6,11 @@ import { redisConnection } from "../queue/connection";
 function makeStore(prefix: string) {
   return new RedisStore({
     prefix,
-    sendCommand: (...args: string[]) => redisConnection.call(...args) as any,
+    // ioredis' `call` is typed with a required first argument, so a plain
+    // string[] spread does not satisfy it. Destructure to give it the tuple
+    // shape it asks for.
+    sendCommand: (command: string, ...args: string[]) =>
+      redisConnection.call(command, ...args) as any,
   });
 }
 
@@ -46,7 +50,9 @@ export const authLimiter = rateLimit({
   limit: 20,
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: (req) => ipKeyGenerator(req.ip),
+  // `req.ip` is `string | undefined` when Express cannot determine one; an
+  // empty key still buckets those together, which is the safe direction.
+  keyGenerator: (req) => ipKeyGenerator(req.ip ?? ""),
   store: makeStore("rl:auth:"),
 });
 

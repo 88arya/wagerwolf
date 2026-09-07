@@ -7,7 +7,7 @@ import { searchEspnPlayerId, espnImageUrl, getAthleteDetails } from "../services
 
 const router = Router();
 
-router.post("/", requireAuth, requireCron, async (req: any, res: any) => {
+router.post("/", requireAuth, requireCron, async (req: any, res: any, next: any) => {
   try {
     const { name, team, position } = req.body;
     if (!name || !team || !position) {
@@ -17,21 +17,21 @@ router.post("/", requireAuth, requireCron, async (req: any, res: any) => {
     const [player] = await db.insert(players).values({ name, team, position }).returning();
     res.status(201).json(player);
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    next(err); return;
   }
 });
 
-router.get("/", requireAuth, async (req: any, res: any) => {
+router.get("/", requireAuth, async (req: any, res: any, next: any) => {
   try {
     const rows = await db.select().from(players).orderBy(asc(players.name));
     res.json(rows);
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    next(err); return;
   }
 });
 
 // Lazy image + jersey resolution: espnId in DB → ESPN search by name → store for next time
-router.get("/:id/image", requireAuth, async (req: any, res: any) => {
+router.get("/:id/image", requireAuth, async (req: any, res: any, next: any) => {
   try {
     const [player] = await db.select().from(players).where(eq(players.id, req.params.id)).limit(1);
     if (!player) { res.status(404).json({ error: "Not found" }); return; }
@@ -71,7 +71,7 @@ router.get("/:id/image", requireAuth, async (req: any, res: any) => {
     }
     res.json({ imageUrl: espnImageUrl(espnId), jersey, position });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    next(err); return;
   }
 });
 

@@ -23,7 +23,7 @@ function calcGameLineAltOdds(baseOdds: number, baseLine: number, altLine: number
   return Math.max(-500, Math.min(500, baseOdds - Math.round(favSteps * 15)));
 }
 
-router.post("/", requireAuth, betLimiter, async (req: any, res: any) => {
+router.post("/", requireAuth, betLimiter, async (req: any, res: any, next: any) => {
   try {
     const { leagueId, gameLineId, stake, altLine } = req.body;
     const userId = req.userId;
@@ -151,11 +151,11 @@ router.post("/", requireAuth, betLimiter, async (req: any, res: any) => {
 
     res.status(201).json(gamePick);
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    next(err); return;
   }
 });
 
-router.get("/", requireAuth, async (req: any, res: any) => {
+router.get("/", requireAuth, async (req: any, res: any, next: any) => {
   try {
     const { leagueId } = req.query;
 
@@ -171,12 +171,12 @@ router.get("/", requireAuth, async (req: any, res: any) => {
 
     res.json(rows);
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    next(err); return;
   }
 });
 
 // Cashout a pending game pick before kickoff — full stake refund
-router.post("/:id/cashout", requireAuth, betLimiter, async (req: any, res: any) => {
+router.post("/:id/cashout", requireAuth, betLimiter, async (req: any, res: any, next: any) => {
   try {
     const gp = await db.query.gamePicks.findFirst({
       where: eq(gamePicks.id, req.params.id),
@@ -201,7 +201,7 @@ router.post("/:id/cashout", requireAuth, betLimiter, async (req: any, res: any) 
 
     res.json({ message: "Cashed out", refunded: gp.stake });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    next(err); return;
   }
 });
 

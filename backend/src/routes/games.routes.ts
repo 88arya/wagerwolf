@@ -6,7 +6,7 @@ import { requireAuth, requireCron } from "../middleware/auth";
 
 const router = Router();
 
-router.post("/", requireAuth, requireCron, async (req: any, res: any) => {
+router.post("/", requireAuth, requireCron, async (req: any, res: any, next: any) => {
   try {
     const { weekId, homeTeam, awayTeam, gameDate } = req.body;
     if (!weekId || !homeTeam || !awayTeam || !gameDate) {
@@ -16,12 +16,12 @@ router.post("/", requireAuth, requireCron, async (req: any, res: any) => {
     const [game] = await db.insert(games).values({ weekId, homeTeam, awayTeam, gameDate: new Date(gameDate) }).returning();
     res.status(201).json(game);
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    next(err); return;
   }
 });
 
 // Cancel a game — voids all pending bets and refunds stakes
-router.post("/:id/cancel", requireAuth, requireCron, async (req: any, res: any) => {
+router.post("/:id/cancel", requireAuth, requireCron, async (req: any, res: any, next: any) => {
   try {
     const game = await db.query.games.findFirst({
       where: eq(games.id, req.params.id),
@@ -110,7 +110,7 @@ router.post("/:id/cancel", requireAuth, requireCron, async (req: any, res: any) 
       parlaysVoided: affectedParlayIds.size,
     });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    next(err); return;
   }
 });
 

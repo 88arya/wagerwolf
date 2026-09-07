@@ -6,7 +6,7 @@ import { requireAuth, requireCron } from "../middleware/auth";
 
 const router = Router();
 
-router.post("/", requireAuth, requireCron, async (req: any, res: any) => {
+router.post("/", requireAuth, requireCron, async (req: any, res: any, next: any) => {
   try {
     const { gameId, playerId, statType, line } = req.body;
     if (!gameId || !playerId || !statType || line == null) {
@@ -16,11 +16,11 @@ router.post("/", requireAuth, requireCron, async (req: any, res: any) => {
     const [prop] = await db.insert(props).values({ gameId, playerId, statType, line: Number(line) }).returning();
     res.status(201).json(prop);
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    next(err); return;
   }
 });
 
-router.get("/hit-rates", requireAuth, async (req: any, res: any) => {
+router.get("/hit-rates", requireAuth, async (req: any, res: any, next: any) => {
   try {
     const resolvedProps = await db.select({
       playerId: props.playerId,
@@ -46,11 +46,11 @@ router.get("/hit-rates", requireAuth, async (req: any, res: any) => {
 
     res.json(result);
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    next(err); return;
   }
 });
 
-router.get("/", requireAuth, async (req: any, res: any) => {
+router.get("/", requireAuth, async (req: any, res: any, next: any) => {
   try {
     const { weekId } = req.query;
     if (weekId) {
@@ -69,7 +69,7 @@ router.get("/", requireAuth, async (req: any, res: any) => {
       res.json(rows);
     }
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    next(err); return;
   }
 });
 

@@ -118,7 +118,7 @@ async function countWeekBets(userId: string, leagueId: string, weekId: string): 
   return weekPickRows.length + weekGamePickRows.length + weekParlayCount;
 }
 
-router.post("/", requireAuth, betLimiter, async (req: any, res: any) => {
+router.post("/", requireAuth, betLimiter, async (req: any, res: any, next: any) => {
   try {
     const { leagueId, stake, legs } = req.body as {
       leagueId: string;
@@ -281,11 +281,11 @@ router.post("/", requireAuth, betLimiter, async (req: any, res: any) => {
 
     res.status(201).json(parlay);
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    next(err); return;
   }
 });
 
-router.post("/round-robin", requireAuth, betLimiter, async (req: any, res: any) => {
+router.post("/round-robin", requireAuth, betLimiter, async (req: any, res: any, next: any) => {
   try {
     const { leagueId, legs, size, stakePerParlay } = req.body as {
       leagueId: string; legs: LegInput[]; size: number; stakePerParlay: number;
@@ -412,12 +412,12 @@ router.post("/round-robin", requireAuth, betLimiter, async (req: any, res: any) 
 
     res.status(201).json({ parlays: createdParlays, combos: createdParlays.length, totalStake });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    next(err); return;
   }
 });
 
 // Cashout a pending parlay before all games have started — full stake refund
-router.post("/:id/cashout", requireAuth, betLimiter, async (req: any, res: any) => {
+router.post("/:id/cashout", requireAuth, betLimiter, async (req: any, res: any, next: any) => {
   try {
     const parlay = await db.query.parlays.findFirst({
       where: eq(parlays.id, req.params.id),
@@ -458,11 +458,11 @@ router.post("/:id/cashout", requireAuth, betLimiter, async (req: any, res: any) 
 
     res.json({ message: "Cashed out", refunded: parlay.stake });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    next(err); return;
   }
 });
 
-router.get("/", requireAuth, async (req: any, res: any) => {
+router.get("/", requireAuth, async (req: any, res: any, next: any) => {
   try {
     const { leagueId } = req.query;
 
@@ -483,7 +483,7 @@ router.get("/", requireAuth, async (req: any, res: any) => {
 
     res.json(rows);
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    next(err); return;
   }
 });
 
