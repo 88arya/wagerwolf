@@ -11,9 +11,9 @@ import { MIN_AGE } from "../services/age";
 import { sanitizeDisplayName, validateDisplayName, validatePersonName } from "../services/displayName";
 import { validateAbbreviation } from "../services/abbreviationRules";
 import { HELMET_COLOR_LIST } from "../services/helmetColor";
-import { memberships } from "../db/schema";
+import { memberships, picks, gamePicks, parlays, parlayLegs, leagueMessages } from "../db/schema";
 import { releaseSeat } from "../services/leagueSeats";
-import { and } from "drizzle-orm";
+import { and, inArray } from "drizzle-orm";
 
 const router = Router();
 
@@ -101,7 +101,7 @@ function mePayload(user: MeRow) {
   };
 }
 
-router.post("/auth/google", authLimiter, async (req: any, res: any) => {
+router.post("/auth/google", authLimiter, async (req: any, res: any, next: any) => {
   try {
     // Two ways in, both ending at the same verified ID token.
     //
@@ -236,11 +236,11 @@ router.post("/auth/google", authLimiter, async (req: any, res: any) => {
       lastName: user!.lastName,
     });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    next(err); return;
   }
 });
 
-router.get("/me", requireAuth, async (req: any, res: any) => {
+router.get("/me", requireAuth, async (req: any, res: any, next: any) => {
   try {
     const [user] = await db.select(ME_COLUMNS).from(users).where(eq(users.id, req.userId)).limit(1);
     if (!user) { res.status(404).json({ error: "User not found" }); return; }
@@ -249,11 +249,11 @@ router.get("/me", requireAuth, async (req: any, res: any) => {
     // so nothing downstream has to know it stopped being a column.
     res.json(mePayload(user));
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    next(err); return;
   }
 });
 
-router.patch("/me", requireAuth, async (req: any, res: any) => {
+router.patch("/me", requireAuth, async (req: any, res: any, next: any) => {
   try {
     const {
       displayName, firstName, lastName, yearsExperience, country, region,
@@ -356,7 +356,7 @@ router.patch("/me", requireAuth, async (req: any, res: any) => {
       .returning(ME_COLUMNS);
     res.json(mePayload(user));
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    next(err); return;
   }
 });
 
@@ -375,7 +375,7 @@ router.patch("/me", requireAuth, async (req: any, res: any) => {
  * Bets, picks and matchup history are untouched. Deleting them would rewrite
  * other people's seasons — their wins were against this user.
  */
-router.post("/me/deactivate", requireAuth, async (req: any, res: any) => {
+router.post("/me/deactivate", requireAuth, async (req: any, res: any, next: any) => {
   try {
     const active = await db.query.memberships.findMany({
       where: and(eq(memberships.userId, req.userId), eq(memberships.status, "ACTIVE")),
@@ -398,7 +398,118 @@ router.post("/me/deactivate", requireAuth, async (req: any, res: any) => {
     await db.update(users).set({ deactivatedAt: new Date() }).where(eq(users.id, req.userId));
     res.json({ ok: true, leaguesLeft: active.length });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    next(err); return;
+  }
+});
+
+/**
+ * Export everything this account holds, as one JSON document.
+ *
+ * The privacy policy promises a copy of your data on request and there was no
+ * route behind that sentence. This is it: the same projection the account page
+ * reads, plus every row keyed to the user — memberships, bets of all three
+ * kinds, and chat messages. Nothing is summarised or reshaped; the point of an
+ * export is that it is the record, not a report about it.
+ *
+ * League rows themselves are deliberately not included. They are shared
+ * objects belonging to everyone in them, and a user's relationship to a league
+ * is already carried by their membership row.
+ */
+router.get("/me/export", requireAuth, async (req: any, res: any, next: any) => {
+  try {
+    const [user] = await db.select(ME_COLUMNS).from(users).where(eq(users.id, req.userId)).limit(1);
+    if (!user) { res.status(404).json({ error: "User not found" }); return; }
+
+    const [membershipRows, pickRows, gamePickRows, parlayRows, messageRows] = await Promise.all([
+      db.select().from(memberships).where(eq(memberships.userId, req.userId)),
+      db.select().from(picks).where(eq(picks.userId, req.userId)),
+      db.select().from(gamePicks).where(eq(gamePicks.userId, req.userId)),
+      db.select().from(parlays).where(eq(parlays.userId, req.userId)),
+      db.select().from(leagueMessages).where(eq(leagueMessages.userId, req.userId)),
+    ]);
+
+    // A parlay without its legs is a stake and a price with no bet attached.
+    // ParlayLeg is keyed to the parlay, not the user, so it needs the extra hop.
+    const parlayIds = parlayRows.map((p) => p.id);
+    const legRows = parlayIds.length
+      ? await db.select().from(parlayLegs).where(inArray(parlayLegs.parlayId, parlayIds))
+      : [];
+
+    const { googleId, ...safeUser } = user as any;
+    res.setHeader("Content-Disposition", 'attachment; filename="wagerwolf-export.json"');
+    res.json({
+      exportedAt: new Date().toISOString(),
+      account: { ...safeUser, hasGoogle: !!googleId },
+      memberships: membershipRows,
+      picks: pickRows,
+      gamePicks: gamePickRows,
+      parlays: parlayRows.map((p) => ({
+        ...p,
+        legs: legRows.filter((l) => l.parlayId === p.id),
+      })),
+      messages: messageRows,
+    });
+  } catch (err: any) {
+    next(err); return;
+  }
+});
+
+/**
+ * Delete the account, permanently.
+ *
+ * The distinction from `/me/deactivate` is the whole point and it is worth
+ * stating: deactivation is reversible and keeps the bets, because deleting a
+ * season's results would rewrite the seasons of everyone the user played
+ * against. Deletion is what the privacy policy promises and it does not get to
+ * make that trade — so the personal data goes, and the results are severed
+ * from it rather than removed.
+ *
+ * Concretely: memberships are deleted and their seats released (same
+ * accounting as deactivate — the counter is the lock), bets and messages are
+ * deleted, and the `User` row goes last. What survives is other players'
+ * matchup rows, where a deleted opponent renders through the same null-safe
+ * fallbacks a ghost user already uses.
+ *
+ * There is no undo, so it asks for one: the request body must carry
+ * `{ confirm: "DELETE" }`. A destructive route reachable by a single click is
+ * a route somebody deletes their account with by accident.
+ */
+router.delete("/me", requireAuth, async (req: any, res: any, next: any) => {
+  try {
+    if (req.body?.confirm !== "DELETE") {
+      res.status(400).json({ error: 'Send { "confirm": "DELETE" } to delete this account' });
+      return;
+    }
+
+    const active = await db.query.memberships.findMany({
+      where: and(eq(memberships.userId, req.userId), eq(memberships.status, "ACTIVE")),
+    });
+
+    await db.delete(memberships).where(eq(memberships.userId, req.userId));
+    for (const m of active) {
+      await releaseSeat(m.leagueId, { isPublicFill: m.isPublicFill });
+    }
+
+    // ParlayLeg is keyed to the parlay rather than the user, and the schema
+    // declares no foreign key, so nothing cascades — the legs have to go first
+    // or they outlive the ticket they belong to as unreachable rows.
+    const ownParlays = await db.select({ id: parlays.id }).from(parlays).where(eq(parlays.userId, req.userId));
+    const ownParlayIds = ownParlays.map((p) => p.id);
+    if (ownParlayIds.length) {
+      await db.delete(parlayLegs).where(inArray(parlayLegs.parlayId, ownParlayIds));
+    }
+
+    await Promise.all([
+      db.delete(picks).where(eq(picks.userId, req.userId)),
+      db.delete(gamePicks).where(eq(gamePicks.userId, req.userId)),
+      db.delete(parlays).where(eq(parlays.userId, req.userId)),
+      db.delete(leagueMessages).where(eq(leagueMessages.userId, req.userId)),
+    ]);
+
+    await db.delete(users).where(eq(users.id, req.userId));
+    res.json({ ok: true, leaguesLeft: active.length });
+  } catch (err: any) {
+    next(err); return;
   }
 });
 
