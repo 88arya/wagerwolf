@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Fugaz_One, Inter, Inter_Tight } from "next/font/google";
 import "./globals.css";
 import AppFrame from "@/components/AppFrame";
+import { SITE_URL } from "@/lib/siteUrl";
 // The wordmark's face. Declared in wordmarkFonts.ts alongside the other
 // candidates and mounted here rather than there, because the lockup appears in
 // the utility bar, the footer and /signup — i.e. on every route — so it cannot
@@ -51,9 +52,33 @@ const fugazOne = Fugaz_One({
   display: "swap",
 });
 
+const TITLE = "Fantasy Football Sportsbook | Wagerwolf";
+const DESCRIPTION =
+  "Fantasy football with sportsbook scoring. Player props, game lines and parlays against your league, on real NFL data with fake money.";
+
 export const metadata: Metadata = {
-  title: "Fantasy Football Sportsbook | Wagerwolf",
-  description: "Fantasy football format, NFL sportsbook scoring",
+  // metadataBase is what turns every relative image path below into the
+  // absolute URL an unfurler needs. Without it Next warns at build time and
+  // ships the OG image as a relative path, which no external site can resolve
+  // — so a shared link renders bare no matter how good the tags are.
+  metadataBase: new URL(SITE_URL),
+  title: TITLE,
+  description: DESCRIPTION,
+  applicationName: "Wagerwolf",
+  openGraph: {
+    type: "website",
+    siteName: "Wagerwolf",
+    title: TITLE,
+    description: DESCRIPTION,
+    url: SITE_URL,
+    images: [{ url: "/opengraph-image", width: 1200, height: 630, alt: "Wagerwolf" }],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: TITLE,
+    description: DESCRIPTION,
+    images: ["/opengraph-image"],
+  },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

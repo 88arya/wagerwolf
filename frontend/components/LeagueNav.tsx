@@ -128,7 +128,13 @@ export default function LeagueNav({ leagueId }: { leagueId: string }) {
       label: "BET",
       links: [
         { label: "Sportsbook", href: `${base}/bet` },
-        { label: "Specials",   href: `${base}/specials` },
+        // Specials is hidden until it has a backend. The route still resolves —
+        // it renders three promo mechanics as three permanent empty states, and
+        // there is no offers model behind any of them. A nav tab that always
+        // leads to "nothing here" reads as the app being broken, so the tab
+        // comes out and the page stays for whoever is building it. Restore this
+        // line the day an offer can actually be created.
+        // { label: "Specials",   href: `${base}/specials` },
         { label: "My Bets",    href: `${base}/mybets` },
         { label: "History",    href: `${base}/history` },
       ],
