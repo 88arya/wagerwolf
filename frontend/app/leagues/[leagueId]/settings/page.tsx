@@ -6,8 +6,8 @@ import { api } from "@/lib/api";
 import { ACCENT } from "@/lib/constants";
 import { fmtMoney, toCents, toDollars } from "@/lib/money";
 import HelmetAvatar from "@/components/HelmetAvatar";
+import { MAX_NFL_WEEK } from "@/lib/constants";
 
-const MAX_NFL_WEEK = 17;
 
 function CardHeader({ children }: { children: React.ReactNode }) {
   return (

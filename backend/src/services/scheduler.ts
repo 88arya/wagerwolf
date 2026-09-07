@@ -10,6 +10,7 @@ import { getNFLWeekDates, nflYear } from "./espnApi";
 import { distributeWeeklyAllowances } from "./distributeAllowances";
 import { startLeagueSeason } from "./startSeason";
 import { settlePendingBetsOnFinalGames } from "./settleGame";
+import { MAX_NFL_WEEK } from "./nflSeason";
 
 // Tuesday 11:00 AM UTC — resolve last week, distribute allowances for new week
 const RESOLVE_SCHEDULE = "0 11 * * 2";
@@ -87,7 +88,6 @@ async function runAutoStartLeagues(weekNumber: number) {
   }
 }
 
-const MAX_NFL_WEEK = 17;
 
 async function runESPNGameSync() {
   const now = new Date();

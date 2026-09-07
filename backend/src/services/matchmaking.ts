@@ -4,6 +4,7 @@ import { leagues, weeks } from "../db/schema";
 import { coerceLevel, DEFAULT_LEVEL, LeagueLevel } from "./leagueLevel";
 import { generateLeagueName } from "./leagueName";
 import { joinLeague } from "./joinLeague";
+import { MAX_NFL_WEEK } from "./nflSeason";
 
 /**
  * Assignment, not browsing.
@@ -78,7 +79,6 @@ export type MatchResult = {
 
 // Duplicated from leagues.routes.ts, which is where it already lived. The
 // frontend settings page has its own copy too.
-const MAX_NFL_WEEK = 17;
 
 /**
  * The weeks a new league can still start in: every unresolved week, soonest
