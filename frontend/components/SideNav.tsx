@@ -7,7 +7,7 @@ import { useRouter } from "next/navigation";
 import { Globe, MoreHorizontal, Plus } from "lucide-react";
 import type { ComponentType, CSSProperties } from "react";
 import { api } from "@/lib/api";
-import { requestLeagueAction, type LeagueAction } from "@/lib/leagueActions";
+import LeagueActions, { type LeagueAction } from "@/components/LeagueActions";
 import AccountMenu from "@/components/AccountMenu";
 import LogoWordmark from "@/components/LogoWordmark";
 import MenuPanel from "@/components/MenuPanel";
@@ -705,31 +705,36 @@ function DotsMenu({
 /**
  * The Leagues header's menu: the three ways into a league.
  *
- * It does not carry the forms. Each row records the intent and sends you to
- * /home, where components/LeaguesRail opens the real surface — see
- * lib/leagueActions for why the forms cannot live in the sidebar.
+ * IT CARRIES THE FORMS NOW. Each row used to record an intent in
+ * lib/leagueActions and push you to /home, where LeaguesRail was expected to
+ * pick it up and open the real surface. That file is deleted and so is the
+ * round trip: the menu mounts components/LeagueActions directly, so the
+ * control and the thing it controls are one component — the same correction
+ * LeagueNav already applies to LeagueProfileModal.
+ *
+ * The old arrangement was load-bearing only while the rail owned these forms.
+ * It also silently did nothing once the rail came off /home, which is how
+ * joining a league stopped being possible anywhere in the app.
+ *
+ * LeagueActions returns null until `action` is non-null, so mounting it in the
+ * permanent sidebar costs a closed component and nothing else.
  */
 function LeaguesMenu() {
-  const router = useRouter();
-
-  function pick(action: LeagueAction) {
-    requestLeagueAction(action);
-    // Always pushed, even from /home. The router no-ops when the path already
-    // matches, and the event fired above is what reaches an already-mounted
-    // rail — so this is safe in both directions.
-    router.push("/home");
-  }
+  const [action, setAction] = useState<LeagueAction | null>(null);
 
   return (
-    <DotsMenu
-      label="Add a league"
-      items={MORE_ACTIONS.map(a => ({
-        key: a.action,
-        name: a.name,
-        icon: a.icon,
-        onSelect: () => pick(a.action),
-      }))}
-    />
+    <>
+      <DotsMenu
+        label="Add a league"
+        items={MORE_ACTIONS.map(a => ({
+          key: a.action,
+          name: a.name,
+          icon: a.icon,
+          onSelect: () => setAction(a.action),
+        }))}
+      />
+      <LeagueActions action={action} onClose={() => setAction(null)} />
+    </>
   );
 }
 
