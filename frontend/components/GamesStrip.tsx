@@ -409,7 +409,9 @@ export default function GamesStrip({ leagueId, interactive = true }: { leagueId:
   // replaced by the auto-scroll toggle, so nothing calls setMode. The rendering
   // branch and its fetch are left intact rather than deleted, so putting the
   // switch back is a UI change only.
-  const [mode, setMode] = useState<StripMode>("NFL");
+  // Read-only on purpose: the mode chevron was replaced by the auto-scroll
+  // toggle, so there is no setter. See the comment above.
+  const [mode] = useState<StripMode>("NFL");
   const [matchupRows, setMatchupRows] = useState<any[] | null>(null);
   // Bet counts live in their OWN state, keyed by game id, and are never merged
   // back into `week`. Calling setWeek on a 30s cadence would replace the week
@@ -497,16 +499,6 @@ export default function GamesStrip({ leagueId, interactive = true }: { leagueId:
   // and cashout is refused after it, so once every game has started the numbers
   // are frozen and polling them is pure waste. A boolean, so the poll's effect
   // does not restart on every re-render the way a `week` dependency would.
-  const hasUpcoming = Boolean(
-    week?.games?.some(
-      (g: any) =>
-        g.status !== "FINAL" &&
-        g.status !== "CANCELLED" &&
-        g.gameDate &&
-        new Date(g.gameDate).getTime() > Date.now()
-    )
-  );
-
   // Drop cached matchups when the league or week changes. Without this the
   // `if (matchupRows)` guard below would keep showing the previous league's
   // pairings, since that guard blocks any refetch once rows are held.
@@ -663,6 +655,20 @@ export default function GamesStrip({ leagueId, interactive = true }: { leagueId:
   // costs a fixed handful of queries a minute rather than one per viewer.
   useEffect(() => {
     const weekId = week?.id;
+    // The clock is read HERE rather than during render. `Date.now()` in a
+    // render body makes the render impure — two renders of the same props can
+    // disagree — and an effect is where a side effect like reading the time
+    // belongs. Behaviour is unchanged: this only ever re-evaluated when the
+    // week changed, which is still its dependency.
+    const hasUpcoming = Boolean(
+      week?.games?.some(
+        (g: any) =>
+          g.status !== "FINAL" &&
+          g.status !== "CANCELLED" &&
+          g.gameDate &&
+          new Date(g.gameDate).getTime() > Date.now()
+      )
+    );
     if (!weekId || !hasUpcoming) return;
     let alive = true;
     const load = async () => {
@@ -677,7 +683,11 @@ export default function GamesStrip({ leagueId, interactive = true }: { leagueId:
       alive = false;
       clearInterval(interval);
     };
-  }, [hasUpcoming, week?.id]);
+    // See CLAUDE.md "Strip continuity": the once-a-minute live-score poll replaces `week`
+    // wholesale even when it is the same week, so depending on the object
+    // would tear this poll down and restart its 30s interval every 60
+    // seconds. `weekKey` is the identity that actually matters here.
+  }, [weekKey]);
 
   // Only NFL mode collapses when empty. In matchups mode the frame has to stay
   // up regardless — it carries the mode selector, and returning null would take
@@ -699,6 +709,14 @@ export default function GamesStrip({ leagueId, interactive = true }: { leagueId:
   // The strip's header cell: the label, plus the switch that runs or stops the
   // drift. It replaced a dropdown that chose between NFL and MATCHUPS — hence
   // no chevron, and hence setMode having no caller (see the state above).
+  //
+  // ⚠ NOTHING RENDERS THIS. It is built on every render and dropped, which
+  // means the strip currently ships with no header cell and no auto-scroll
+  // toggle — CLAUDE.md ("Content rail") describes the NFL cell sitting flush
+  // to the left edge, so this is a regression rather than a deliberate
+  // removal. Kept intact rather than deleted because the fix is to render it
+  // again, and that is a judgement about the strip's layout. See go_live.md.
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const modeSelector = (
     // Bigger than a card in both directions so it reads as the strip's header.
     // Its height is what makes the strip taller than the cards, which are then

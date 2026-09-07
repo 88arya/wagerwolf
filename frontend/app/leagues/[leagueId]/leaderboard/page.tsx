@@ -49,7 +49,6 @@ export default function LeaderboardPage({ params }: PageProps<"/leagues/[leagueI
     load();
   }, []);
 
-  const isCreator = league?.creatorId === myUserId;
   const hasWeekProfits = Object.keys(weekProfits).length > 0;
   const RANK_MEDALS = ["🥇", "🥈", "🥉"];
 

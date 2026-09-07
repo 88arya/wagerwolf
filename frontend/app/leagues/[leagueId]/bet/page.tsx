@@ -146,6 +146,50 @@ const GAME_CARD_BG = "var(--surface)";
 // and the Away/Home label — so no name overflows its square.
 const TEAM_TILE = 124;
 
+// One half of the selected game's team band. Hoisted to module scope: defined
+// inside the page's render it was a new component type every render, so React
+// tore the band down and rebuilt it instead of updating it. It reads nothing
+// but its props and the module-level team helpers, so it moves out unchanged.
+function TeamSide({ team, record }: { team: string; record: string | null | undefined }) {
+  const url = getTeamLogoUrl(team);
+  const bg = getTeamBannerColor(team);
+  // Always white, not luminance-matched. Only the Rams land on a
+  // light banner (#FFA300 — their alt, used because their logo is a
+  // single navy that would vanish on their primary), and white is
+  // wanted there for consistency with the other 31 teams.
+  const fg = "#FFFFFF";
+  return (
+    <div style={{
+      // Halves of one band rather than free-standing tiles: each
+      // takes half the width and the band's fixed height, which is
+      // the old square's size so the card's footprint is unchanged.
+      flex: 1, minWidth: 0, height: TEAM_TILE,
+      background: bg, padding: "10px 14px",
+      display: "flex", flexDirection: "column",
+      alignItems: "center", justifyContent: "center", gap: 6,
+    }}>
+      {url && <img src={url} alt="" width={38} height={38} referrerPolicy="no-referrer" style={{ objectFit: "contain", flexShrink: 0 }} />}
+      <div style={{
+        fontSize: "0.8rem", fontWeight: 700, color: fg, textAlign: "center",
+        lineHeight: 1.25, maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+      }}>
+        {getTeamFullName(team)}
+      </div>
+      {/* Omitted rather than dashed when ESPN has no record yet —
+          the band is a fixed height, so nothing shifts. */}
+      {record && (
+        <div style={{
+          fontSize: "0.6rem", fontWeight: 500, letterSpacing: "0.08em",
+          color: fg, opacity: 0.75, lineHeight: 1, fontVariantNumeric: "tabular-nums",
+        }}>
+          {record}
+        </div>
+      )}
+    </div>
+  );
+}
+
+
 function PropPlayerRow({ prop, slipLegs, submittedPropIds, pendingPropDirs, weekLocked, onBet, hitRate }: {
   prop: any;
   slipLegs: any[];
@@ -155,7 +199,6 @@ function PropPlayerRow({ prop, slipLegs, submittedPropIds, pendingPropDirs, week
   onBet: (prop: any, direction: "OVER" | "UNDER", blockLine: number) => void;
   hitRate?: { overPct: number; sampleSize: number };
 }) {
-  const step = propStep(prop.statType);
   const placed = submittedPropIds.has(prop.id);
   const pendingDir = pendingPropDirs.get(prop.id);
   // Real ladders vary in length (3 rungs for a QB's passing TDs, 9 for Puka
@@ -287,19 +330,15 @@ export default function BetPage({ params }: PageProps<"/leagues/[leagueId]/bet">
   const router = useRouter();
   const searchParams = useSearchParams();
   const [leagueId, setLeagueId] = useState("");
-  const [balance, setBalance] = useState<number | null>(null);
   const [games, setGames] = useState<any[]>([]);
   const [weekLocked, setWeekLocked] = useState(false);
   const [selectedGame, setSelectedGame] = useState<any | null>(null);
   const [betSection, setBetSection] = useState<string>("lines");
   const [submittedPropIds, setSubmittedPropIds] = useState<Set<string>>(new Set()); // propIds with any pick (for ✓ indicator)
-  const [submittedPickCount, setSubmittedPickCount] = useState(0); // total prop picks for nav count
-  const [submittedLineCount, setSubmittedLineCount] = useState(0); // total game picks for nav count
   const [pendingPropDirs, setPendingPropDirs] = useState<Map<string, string>>(new Map()); // propId → direction of PENDING pick
   const [pendingLineIds, setPendingLineIds] = useState<Set<string>>(new Set()); // gameLineIds with PENDING picks
   const [slipIds, setSlipIds] = useState<Set<string>>(new Set());
   const [slipLegs, setSlipLegs] = useState<any[]>([]);
-  const [isCreator, setIsCreator] = useState(false);
   const [altSpreadIdx, setAltSpreadIdx] = useState(0);
   const [altTotalIdx, setAltTotalIdx] = useState(0);
   const [hitRates, setHitRates] = useState<Record<string, { overPct: number; sampleSize: number }>>({});
@@ -332,6 +371,8 @@ export default function BetPage({ params }: PageProps<"/leagues/[leagueId]/bet">
       return next;
     });
   }
+  // The prop-tab bar, scrolled by its own ‹/› buttons.
+  const tabBarRef = useRef<HTMLDivElement | null>(null);
   const altSpreadScrollRef = useRef<HTMLDivElement | null>(null);
   const altTotalScrollRef = useRef<HTMLDivElement | null>(null);
 
@@ -349,8 +390,6 @@ export default function BetPage({ params }: PageProps<"/leagues/[leagueId]/bet">
 
       // ✓ indicator: which props have any pick
       setSubmittedPropIds(new Set(weekPicks.map((p: any) => p.propId)));
-      setSubmittedPickCount(weekPicks.length);
-      setSubmittedLineCount(weekGamePicks.length);
 
       // Rule 2: block opposite direction if a pending pick exists on same prop
       const pendingMap = new Map<string, string>();
@@ -364,14 +403,6 @@ export default function BetPage({ params }: PageProps<"/leagues/[leagueId]/bet">
     } catch {}
   }
 
-  async function loadBalance(lid: string) {
-    try {
-      const memberships = await api("/memberships");
-      const m = memberships.find((m: any) => m.leagueId === lid);
-      if (m) setBalance(m.balance);
-    } catch {}
-  }
-
   useEffect(() => {
     let weekGamesRef: any[] = [];
     let lidRef = "";
@@ -382,15 +413,11 @@ export default function BetPage({ params }: PageProps<"/leagues/[leagueId]/bet">
       setLeagueId(leagueId);
       lidRef = leagueId;
       try {
-        const [weeks, memberships, leagueData] = await Promise.all([
-          api(`/weeks?current=true&leagueId=${leagueId}`),
-          api("/memberships"),
-          api(`/leagues/${leagueId}`),
-        ]);
-        const m = memberships.find((m: any) => m.leagueId === leagueId);
-        if (m) setBalance(m.balance);
-        const uid = localStorage.getItem("userId") ?? "";
-        setIsCreator(leagueData?.creatorId === uid);
+        // Only the week is read here. The /memberships and /leagues fetches
+        // that used to sit beside it fed `balance` and `isCreator`, two pieces
+        // of state nothing rendered — so they were two round trips per page
+        // load spent on nothing.
+        const weeks = await api(`/weeks?current=true&leagueId=${leagueId}`);
         if (weeks?.length) {
           const week = weeks[0];
           setWeekLocked(week.locked || week.resolved);
@@ -424,7 +451,6 @@ export default function BetPage({ params }: PageProps<"/leagues/[leagueId]/bet">
       setSlipLegs(slip);
     };
     const onBetPlaced = () => {
-      loadBalance(lidRef);
       loadSubmitted(lidRef, weekGamesRef);
     };
     window.addEventListener("betslip-update", onSlipUpdate);
@@ -803,44 +829,6 @@ export default function BetPage({ params }: PageProps<"/leagues/[leagueId]/bet">
             // CIN/DEN (#FB4F14). Deliberate — true primaries were preferred
             // over getTeamSelectedColor's curated substitutions, which exist to
             // break precisely those ties.
-            function TeamSide({ team, record }: { team: string; record: string | null | undefined }) {
-              const url = getTeamLogoUrl(team);
-              const bg = getTeamBannerColor(team);
-              // Always white, not luminance-matched. Only the Rams land on a
-              // light banner (#FFA300 — their alt, used because their logo is a
-              // single navy that would vanish on their primary), and white is
-              // wanted there for consistency with the other 31 teams.
-              const fg = "#FFFFFF";
-              return (
-                <div style={{
-                  // Halves of one band rather than free-standing tiles: each
-                  // takes half the width and the band's fixed height, which is
-                  // the old square's size so the card's footprint is unchanged.
-                  flex: 1, minWidth: 0, height: TEAM_TILE,
-                  background: bg, padding: "10px 14px",
-                  display: "flex", flexDirection: "column",
-                  alignItems: "center", justifyContent: "center", gap: 6,
-                }}>
-                  {url && <img src={url} alt="" width={38} height={38} referrerPolicy="no-referrer" style={{ objectFit: "contain", flexShrink: 0 }} />}
-                  <div style={{
-                    fontSize: "0.8rem", fontWeight: 700, color: fg, textAlign: "center",
-                    lineHeight: 1.25, maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-                  }}>
-                    {getTeamFullName(team)}
-                  </div>
-                  {/* Omitted rather than dashed when ESPN has no record yet —
-                      the band is a fixed height, so nothing shifts. */}
-                  {record && (
-                    <div style={{
-                      fontSize: "0.6rem", fontWeight: 500, letterSpacing: "0.08em",
-                      color: fg, opacity: 0.75, lineHeight: 1, fontVariantNumeric: "tabular-nums",
-                    }}>
-                      {record}
-                    </div>
-                  )}
-                </div>
-              );
-            }
             return (
               // White card with its own padding — the team blocks are inset
               // tiles now rather than halves bleeding to the card's edges.
@@ -906,14 +894,18 @@ export default function BetPage({ params }: PageProps<"/leagues/[leagueId]/bet">
 
           {/* Tab bar */}
           {(() => {
-            const tabScrollRef = { current: null as HTMLDivElement | null };
-            const scroll = (dir: -1 | 1) => tabScrollRef.current?.scrollBy({ left: dir * 120, behavior: "smooth" });
-            const activeIdx = tabs.findIndex((t) => t.key === activeSection);
+            // A plain object standing in for a ref: created fresh on every
+            // render, written to by the callback ref below, and read by the
+            // arrow buttons. It works only because both happen within one
+            // render pass, and React's rules explicitly disallow mutating a
+            // value created during render. `tabBarRef` is a real useRef
+            // declared with the page's other refs.
+            const scroll = (dir: -1 | 1) => tabBarRef.current?.scrollBy({ left: dir * 120, behavior: "smooth" });
             return (
               <div style={{ marginBottom: 14, display: "flex", alignItems: "center", gap: 2 }}>
                 <button type="button" onClick={() => scroll(-1)}
                   style={{ flexShrink: 0, width: 24, height: 36, background: "none", border: "none", padding: 0, cursor: "pointer", color: "var(--text-2)", fontSize: "1rem", display: "flex", alignItems: "center", justifyContent: "center" }}>‹</button>
-                <div ref={(el) => { tabScrollRef.current = el; }} className="tab-bar" style={{ flex: 1, flexWrap: "nowrap", overflow: "hidden" }}>
+                <div ref={tabBarRef} className="tab-bar" style={{ flex: 1, flexWrap: "nowrap", overflow: "hidden" }}>
                   {tabs.map(({ key, label }) => (
                     <button key={key} type="button"
                       className={`tab-btn${activeSection === key ? " active" : ""}`}
@@ -1165,11 +1157,6 @@ export default function BetPage({ params }: PageProps<"/leagues/[leagueId]/bet">
   }
 
   // ── Games list view ─────────────────────────────────────────────────
-  function fmtDateHeader(dateStr: string) {
-    const d = new Date(dateStr);
-    return d.toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric" }).toUpperCase();
-  }
-
   const gamesByDate: { date: string; games: any[] }[] = [];
   for (const game of games) {
     const dateKey = new Date(game.gameDate).toDateString();
@@ -1195,10 +1182,6 @@ export default function BetPage({ params }: PageProps<"/leagues/[leagueId]/bet">
         <div style={{ background: "var(--surface)", borderRadius: "var(--radius)", overflow: "hidden" }}>
           {gamesByDate.flatMap(({ games: dayGames }) => dayGames).map((game: any, gameIdx: number) => {
               const lines: any[] = game.gameLines ?? [];
-              const now = new Date();
-              const isLive = game.status === "IN_PROGRESS" ||
-                (game.status !== "FINAL" && game.status !== "CANCELLED" && game.gameDate && new Date(game.gameDate) <= now);
-
               const mlAway  = lines.find((l) => l.market === "MONEYLINE_AWAY");
               const mlHome  = lines.find((l) => l.market === "MONEYLINE_HOME");
               const spAway  = lines.find((l) => l.market === "SPREAD_AWAY");

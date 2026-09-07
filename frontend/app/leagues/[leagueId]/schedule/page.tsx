@@ -53,7 +53,7 @@ export default function SchedulePage({ params }: PageProps<"/leagues/[leagueId]/
   }
   const weekEntries = [...byWeek.entries()].sort((a, b) => a[0] - b[0]);
 
-  const Side = ({ uid, name, isGhost, profit, won, resolved, align }: {
+  const Side = ({ uid, name, isGhost, won, resolved, align }: {
     uid: string; name: string; isGhost: boolean; profit: number | null; won: boolean; resolved: boolean; align: "left" | "right";
   }) => {
     const rec = isGhost ? null : record(uid);

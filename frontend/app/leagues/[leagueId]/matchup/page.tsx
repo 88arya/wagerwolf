@@ -186,7 +186,6 @@ function TeamHeader({ side, align }: { side: any; align: "left" | "right" }) {
 
 export default function MatchupPage({ params }: PageProps<"/leagues/[leagueId]/matchup">) {
   const router = useRouter();
-  const [leagueId, setLeagueId] = useState("");
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
@@ -194,7 +193,6 @@ export default function MatchupPage({ params }: PageProps<"/leagues/[leagueId]/m
     async function init() {
       if (!localStorage.getItem("token")) { router.push("/"); return; }
       const { leagueId: lid } = await params;
-      setLeagueId(lid);
       try {
         const res = await api(`/leagues/${lid}/matchup`);
         setData(res);
@@ -235,7 +233,7 @@ export default function MatchupPage({ params }: PageProps<"/leagues/[leagueId]/m
         <div className="card">
           <div className="empty">
             <div className="empty-icon">🛌</div>
-            <div className="empty-text">You're on a bye this week</div>
+            <div className="empty-text">You&apos;re on a bye this week</div>
           </div>
         </div>
       )}

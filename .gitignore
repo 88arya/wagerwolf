@@ -26,6 +26,15 @@ sharpapi_nfl.md
 LAUNCH_AUDIT.md
 MARKETS.md
 image.png
+resume-review.md
+resume-points.txt
+espnweekreturn.md
+sharpapi.md
+sharpapi_nfl.md
+
+# The provisioning checklist. Names the accounts, regions and secret layout for
+# the live deploy, so it stays a local working note.
+go_live.md
 
 # Vercel CLI writes the linked project id here during `vercel link`.
 .vercel/

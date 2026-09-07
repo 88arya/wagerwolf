@@ -46,15 +46,6 @@ type FieldKey = "displayName" | "name" | "abbreviation" | "helmet";
 
 type Tab = "personal" | "security" | "league";
 
-// One icon each, drawn on the same 24-unit grid at the same stroke so they read
-// as a set: a person for who you are, a shield for how you get in, a globe for
-// how you appear to other people.
-const ICONS: Record<Tab, string> = {
-  personal: "M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2 M12 3a4 4 0 1 1 0 8 4 4 0 0 1 0-8",
-  security: "M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z",
-  league:   "M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20 M2 12h20 M12 2a15 15 0 0 1 0 20 M12 2a15 15 0 0 0 0 20",
-};
-
 const TABS: Array<{ key: Tab; label: string }> = [
   { key: "personal", label: "Personal information" },
   { key: "security", label: "Login & security" },
@@ -114,6 +105,41 @@ function CheckIcon() {
     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
       <polyline points="20 6 9 17 4 12" />
     </svg>
+  );
+}
+
+/**
+ * One row's Save control, and the confirmation that replaces it.
+ *
+ * Defined at module scope rather than inside the page. It used to be a nested
+ * function, which makes a NEW component type on every render — React then
+ * unmounts the old subtree and mounts a fresh one instead of updating it, so
+ * the button loses focus mid-interaction and any state inside it resets. The
+ * two pieces of page state it reads (`savedField`, `savingField`) come in as
+ * props now, which is what lets it move out.
+ */
+function SaveButton({
+  field, disabled, onClick, savedField, savingField,
+}: {
+  field: FieldKey;
+  disabled: boolean;
+  onClick: () => void;
+  savedField: FieldKey | null;
+  savingField: FieldKey | null;
+}) {
+  if (savedField === field && disabled) {
+    // Sits in the button's place rather than replacing the row, so nothing
+    // reflows between "Save" and the confirmation.
+    return (
+      <span style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: "0.75rem", color: "var(--win)", padding: "8px 4px" }}>
+        <CheckIcon /> Saved
+      </span>
+    );
+  }
+  return (
+    <button type="button" className="mx-btn is-quiet" disabled={disabled || savingField === field} onClick={onClick}>
+      {savingField === field ? "Saving…" : "Save"}
+    </button>
   );
 }
 
@@ -235,23 +261,6 @@ export default function SettingsPage() {
     ? new Date(user.createdAt).toLocaleDateString(undefined, { month: "long", day: "numeric", year: "numeric" })
     : "—";
 
-  function SaveButton({ field, disabled, onClick }: { field: FieldKey; disabled: boolean; onClick: () => void }) {
-    if (savedField === field && disabled) {
-      // Sits in the button's place rather than replacing the row, so nothing
-      // reflows between "Save" and the confirmation.
-      return (
-        <span style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: "0.75rem", color: "var(--win)", padding: "8px 4px" }}>
-          <CheckIcon /> Saved
-        </span>
-      );
-    }
-    return (
-      <button type="button" className="mx-btn is-quiet" disabled={disabled || savingField === field} onClick={onClick}>
-        {savingField === field ? "Saving…" : "Save"}
-      </button>
-    );
-  }
-
   return (
     <DocsShell title="Account" items={railItems}>
           {error && <div className="mx-notice is-bad" style={{ marginBottom: 16 }}>{error}</div>}
@@ -277,6 +286,8 @@ export default function SettingsPage() {
                     <>
                       <button type="button" className="mx-row-action is-plain" onClick={() => setEditing(null)}>Cancel</button>
                       <SaveButton
+                        savedField={savedField}
+                        savingField={savingField}
                         field="name"
                         disabled={!firstName.trim() || !lastName.trim() || !nameChanged}
                         onClick={() => save("name", { firstName: firstName.trim(), lastName: lastName.trim() })}
@@ -376,6 +387,8 @@ export default function SettingsPage() {
                     <>
                       <button type="button" className="mx-row-action is-plain" onClick={() => setEditing(null)}>Cancel</button>
                       <SaveButton
+                        savedField={savedField}
+                        savingField={savingField}
                         field="displayName"
                         disabled={!displayNameOk(displayName) || displayName.trim() === user?.displayName}
                         onClick={() => save("displayName", { displayName: displayName.trim() })}
@@ -420,6 +433,8 @@ export default function SettingsPage() {
                     <>
                       <button type="button" className="mx-row-action is-plain" onClick={() => setEditing(null)}>Cancel</button>
                       <SaveButton
+                        savedField={savedField}
+                        savingField={savingField}
                         field="abbreviation"
                         disabled={!abbrevChanged || (abbrev.length > 0 && abbrev.length !== ABBREV_LEN)}
                         onClick={() => save("abbreviation", { defaultAbbreviation: abbrev || null })}
@@ -507,6 +522,8 @@ export default function SettingsPage() {
                     <>
                       <button type="button" className="mx-row-action is-plain" onClick={() => setEditing(null)}>Cancel</button>
                       <SaveButton
+                        savedField={savedField}
+                        savingField={savingField}
                         field="helmet"
                         disabled={helmet === (user?.defaultHelmetColor ?? null)}
                         onClick={() => save("helmet", { defaultHelmetColor: helmet })}

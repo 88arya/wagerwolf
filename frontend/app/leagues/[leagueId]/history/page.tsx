@@ -29,7 +29,6 @@ export default function HistoryPage({ params }: PageProps<"/leagues/[leagueId]/h
   const [picks, setPicks] = useState<any[]>(cached?.picks ?? []);
   const [gamePicks, setGamePicks] = useState<any[]>(cached?.gamePicks ?? []);
   const [parlays, setParlays] = useState<any[]>(cached?.parlays ?? []);
-  const [league, setLeague] = useState<any>(cached?.league ?? null);
   // Never true on a revisit: the refetch happens behind the last answer.
   const [loading, setLoading] = useState(!cached);
   const [cashingOut, setCashingOut] = useState<string | null>(null);
@@ -45,7 +44,6 @@ export default function HistoryPage({ params }: PageProps<"/leagues/[leagueId]/h
       setPicks(picksData);
       setGamePicks(gamePicksData);
       setParlays(parlaysData);
-      setLeague(leagueData);
       // Written inside `load` rather than at the call site, because this is
       // also the post-cashout refresh — so the stored copy cannot go stale
       // behind a cashout. See lib/pageCache.

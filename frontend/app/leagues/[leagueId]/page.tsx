@@ -22,7 +22,6 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
   const router = useRouter();
   const [leagueId, setLeagueId] = useState("");
   const [userId, setUserId] = useState("");
-  const [membership, setMembership] = useState<any>(null);
   const [league, setLeague] = useState<any>(null);
   const [week, setWeek] = useState<any>(null);
   const [members, setMembers] = useState<any[]>([]);
@@ -44,11 +43,9 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
       setLeagueId(leagueId);
       localStorage.setItem("leagueId", leagueId);
 
-      const [memberships, leagueData] = await Promise.all([
-        api("/memberships"),
-        api(`/leagues/${leagueId}`),
-      ]);
-      setMembership(memberships.find((m: any) => m.leagueId === leagueId) ?? null);
+      // Only the league is read. The /memberships call beside it fed
+      // `membership`, state nothing rendered.
+      const leagueData = await api(`/leagues/${leagueId}`);
       setLeague(leagueData);
 
       try {
@@ -145,18 +142,6 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
   members.forEach(m => { helmetColors[m.userId] = m.helmetColor ?? ACCENT; });
 
   const myRecord = members.find((m) => m.userId === userId);
-  const myRank = myRecord?.rank ?? 0;
-  const regularSeasonWeeks = league?.regularSeasonWeeks ?? 13;
-  const startWeek = league?.startWeek ?? 1;
-  const playoffStartWeek = startWeek + regularSeasonWeeks;
-  const isPlayoffWeek = week && week.number >= playoffStartWeek;
-  const leagueWeekNum = week ? week.number - startWeek + 1 : null;
-  const playoffWeekNum = week && isPlayoffWeek ? week.number - playoffStartWeek + 1 : null;
-  const weekLabel = week
-    ? isPlayoffWeek ? `Playoff Week ${playoffWeekNum}` : `League Week ${leagueWeekNum} of ${regularSeasonWeeks}`
-    : null;
-  const weekStatus = week?.resolved ? "Final" : week?.locked ? "Locked" : week ? "Live" : null;
-  const weekStatusColor = week?.resolved ? "var(--text-3)" : week?.locked ? "var(--loss)" : "var(--win)";
 
   const hasAnyRecord = members.some((m) => m.wins > 0 || m.losses > 0 || m.ties > 0);
   const powerRankings = [...members].sort((a, b) => {
@@ -446,7 +431,6 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
                             const rankChange = m.prevRank != null ? m.prevRank - m.powerRank : 0;
                             const xp = xPctPlot(m.powerRank);
                             const yp = yPctPlot(rankChange);
-                            const isMe = m.userId === userId;
                             const abr = m.abbreviation || m.displayName.slice(0, 3).toUpperCase();
                             return (
                               <div key={m.userId} style={{

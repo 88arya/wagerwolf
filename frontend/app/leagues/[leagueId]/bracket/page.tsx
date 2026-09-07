@@ -123,7 +123,7 @@ export default function BracketPage({ params }: PageProps<"/leagues/[leagueId]/b
 
         {playoff.length === 0 ? (
           <div style={{ padding: "24px 0", color: "var(--text-3)", fontSize: "0.8rem" }}>
-            Playoffs haven't started yet — the bracket is seeded by standings after the regular season
+            Playoffs haven&apos;t started yet — the bracket is seeded by standings after the regular season
           </div>
         ) : (
           <div style={{ display: "flex", gap: 20, alignItems: "stretch", overflowX: "auto", paddingBottom: 8 }}>
