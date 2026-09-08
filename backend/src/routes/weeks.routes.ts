@@ -4,6 +4,7 @@ import { eq, and, inArray, gte, lte, gt, lt, asc, desc, isNull } from "drizzle-o
 import { weeks, games, props, picks, gameLines, gamePicks, parlayLegs, parlays, memberships, matchups, leagues } from "../db/schema";
 import { requireAuth, requireCron } from "../middleware/auth";
 import { calcProfit } from "../lib/payout";
+import { cachedPublicMarkets } from "../services/publicMarkets";
 import { attachBetCounts, betCountsForWeek } from "../services/betCounts";
 
 const router = Router();
@@ -42,6 +43,28 @@ async function fetchWeekWithGames(weekId: string) {
  * score. Public data either way (it is the NFL schedule), but there is no
  * reason to hand the market to an unauthenticated caller.
  */
+/**
+ * GET /weeks/public/markets — a sample of this week's board: one prop per
+ * player and one market per game, shuffled.
+ *
+ * UNAUTHENTICATED, and the second read in the app that is. It exists for the
+ * landing page's marquee, which shows what a market looks like to someone who
+ * has no account and no reason yet to want one.
+ *
+ * It does NOT widen /public/current, which stays fixtures-and-moneylines: this
+ * is a separate, deliberately lossy projection — no prop, game or player ids,
+ * no oddIDs, no alternate ladders. See services/publicMarkets.ts for what that
+ * gives up and why it is enough.
+ */
+router.get("/public/markets", async (req: any, res: any, next: any) => {
+  try {
+    const raw = Number(req.query.limit);
+    res.json(await cachedPublicMarkets(Number.isFinite(raw) ? raw : 12));
+  } catch (err: any) {
+    next(err); return;
+  }
+});
+
 router.get("/public/current", async (_req: any, res: any, next: any) => {
   try {
     const now = new Date();
