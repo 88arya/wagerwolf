@@ -106,6 +106,12 @@ export default function TopBar({ onDismiss }: { onDismiss?: () => void }) {
     }}>
       {/* THE TAGLINE. A plain sentence, not a link and not a countdown.
 
+          The claim leads and the offer follows: "NFL season is here" is the
+          reason to care, "Play now for completely free" is what to do about it.
+          It read the other way round, behind a positioning line ("The World's
+          First Fantasy Football Sportsbook") that the landing headline below now
+          says better and at ten times the size.
+
           "Play now" here is TEXT, not a control. The bar's clickable CTA was
           removed deliberately: the two real entry points are "Sign in" and
           "Get started" in SiteNav directly below. If this should become a link
@@ -119,7 +125,7 @@ export default function TopBar({ onDismiss }: { onDismiss?: () => void }) {
           both of those gone the sentence is the only child, and centring it is
           just centring it. */}
       <span style={{ ...linkStyle, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" }}>
-        Play now for completely free &mdash; The World&rsquo;s First Fantasy Football Sportsbook.
+        NFL season is here &mdash; Play now for completely free.
       </span>
 
       {/* DISMISS.

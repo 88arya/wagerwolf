@@ -253,10 +253,11 @@ export default function AccountMenu({
           gap={panelGap}
           style={{
             // NO `background` HERE — see .utility-menu in globals.css. This
-            // component has two homes and they no longer share a fill: the
-            // sidebar's copy passes `is-shell` and gets --shell-menu-bg, the
-            // bar's passes nothing and keeps --surface. An inline style would
-            // out-specify both.
+            // component has two homes and `is-shell` is what tells them apart:
+            // the sidebar's copy passes it and is squared, the bar's passes
+            // nothing and keeps the card radius. Both are --surface now, but
+            // the fill still cannot live here — an inline style out-specifies
+            // every rule, so setting it would take the scoping with it.
             // THE CARD'S OUTLINE. .app-card is 1px solid var(--border) with
             // var(--radius-card); this panel now carries both, so the two
             // floating surfaces on a signed-in screen are cut and edged the
