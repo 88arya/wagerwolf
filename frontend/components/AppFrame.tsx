@@ -37,8 +37,16 @@ import SideNav from "@/components/SideNav";
  * auth routes that stay OUT of it: each is a `.bare-route`, a self-contained
  * sheet with its own header and a Done button, and wrapping a sheet in a shell
  * would give it two ways back.
+ *
+ * BUT: an allowlist means a NEW SIDEBAR ROW MUST BE ADDED HERE TOO. Miss it and
+ * the route still works, so nothing errors — it just falls through to the
+ * classic branch and comes back wearing AppChrome, so the page renders with the
+ * utility bar and the rotating games strip above it while every other row in
+ * the same sidebar section does not. /inbox shipped that way and it reads as
+ * the strip having leaked onto one page rather than as a missing list entry,
+ * which is why it is called out here rather than left to be rediscovered.
  */
-const SHELL_ROUTES = ["/home", "/friends", "/leaderboard", "/leagues"];
+const SHELL_ROUTES = ["/home", "/leagues"];
 
 function inShell(pathname: string) {
   return SHELL_ROUTES.some(p => pathname === p || pathname.startsWith(`${p}/`));

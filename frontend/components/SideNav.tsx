@@ -188,61 +188,6 @@ function HomeIcon() {
 }
 
 /**
- * Friends, drawn here rather than taken from lucide.
- *
- * A stroke icon like HomeIcon above it — same 24-unit viewBox, same
- * `strokeWidth={2}`, same `currentColor` — so the two sit at the same weight
- * beside each other and both take the row's colour with no special casing.
- *
- * One path, four subpaths: three small circles at the points of a triangle, a
- * larger one in the middle, and the strokes joining them. Not separable into
- * "people" — it is a network mark rather than a group of figures, which is why
- * it reads at 15px where a crowd of heads would not.
- */
-function FriendsIcon() {
-  return (
-    <svg
-      width={ICON}
-      height={ICON}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth={2}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <path d="M10 5a2 2 0 1 0 4 0a2 2 0 1 0-4 0M3 19a2 2 0 1 0 4 0a2 2 0 1 0-4 0m14 0a2 2 0 1 0 4 0a2 2 0 1 0-4 0m-8-5a3 3 0 1 0 6 0a3 3 0 1 0-6 0m3-7v4m-5.3 6.8l2.8-2m7.8 2l-2.8-2" />
-    </svg>
-  );
-}
-
-/**
- * Leaderboard: a podium, drawn here rather than taken from lucide.
- *
- * A FILL icon, like LeagueShield and unlike the two stroke marks above it. The
- * shape is three solid bars — first, second, third — and an outline version
- * would be three hollow rectangles, which at 15px reads as a bar chart rather
- * than a podium. The 24-unit viewBox is the artwork's own; ICON scales it.
- */
-function LeaderboardIcon() {
-  return (
-    <svg
-      width={ICON}
-      height={ICON}
-      viewBox="0 0 24 24"
-      fill="none"
-      aria-hidden="true"
-    >
-      <path
-        fill="currentColor"
-        d="M16 11V3H8v6H2v12h20V11zm-6-6h4v14h-4zm-6 6h4v8H4zm16 8h-4v-6h4z"
-      />
-    </svg>
-  );
-}
-
-/**
  * A league's shield, drawn here rather than taken from lucide.
  *
  * AN OUTLINE MADE OF FILL, which is the thing to know before editing it. The
@@ -641,10 +586,11 @@ function DotsMenu({
           role="menu"
           style={{
             // NO `background` HERE. It is .utility-menu.is-shell's, in
-            // globals.css — var(--shell-menu-bg), #FAFCFF. It moved out of this
-            // object because an inline style out-specifies every rule, so the
-            // fill could not be scoped to the sidebar while both call sites set
-            // it here.
+            // globals.css — var(--surface). It moved out of this object because
+            // an inline style out-specifies every rule, so the fill could not
+            // be scoped to the sidebar while both call sites set it here. That
+            // scoping is what now lets these panels be square and white while
+            // the marketing routes' copy stays rounded.
             // THE CARD'S OUTLINE. .app-card is 1px solid var(--border) with
             // var(--radius-card); this panel now carries both, so the two
             // floating surfaces on a signed-in screen are cut and edged the
@@ -667,13 +613,13 @@ function DotsMenu({
             // rest of the system's rule: structure is a hairline or a gap,
             // never a shadow.
             //
-            // What separates it is the border above, and tone only barely:
-            // --shell-menu-bg (#FAFCFF) on the sidebar's --shell-bg (#F5F8FF)
-            // is three points of blue apart. That is a deliberate choice and it
-            // makes the hairline load bearing rather than decorative — this
-            // panel would read as a floating rectangle-shaped nothing without
-            // it. The earlier note here claimed tone alone was "enough in the
-            // shell"; that was written when the fill was white.
+            // What separates it is the border above, and ONLY the border. The
+            // panel is --surface (#FFFFFF) on the sidebar's --shell-bg
+            // (#F5F8FF) — ten points of blue apart, more than the #FAFCFF it
+            // used to be, but still nowhere near enough on its own for a
+            // square panel with no shadow. The hairline is load bearing, not
+            // decorative; without it this is a floating rectangle-shaped
+            // nothing.
             boxShadow: "none",
             zIndex: 500,
             padding: "6px 0",
@@ -950,12 +896,10 @@ export default function SideNav() {
           heading over them and so nothing to collapse. */}
       <Section>
         <Label href="/home" icon={<HomeIcon />} name="Home" active={isOn("/home")} />
-        <Label href="/friends" icon={<FriendsIcon />} name="Friends" active={isOn("/friends")} />
-        {/* SINGULAR /leaderboard, which is the route that exists. Adding this
-            row is also what un-orphans it: the page has been reachable only by
-            typing the URL since the utility bar left the shell, and its own
-            comment still claims the bar links here. */}
-        <Label href="/leaderboard" icon={<LeaderboardIcon />} name="Leaderboard" active={isOn("/leaderboard")} />
+        {/* Friends and Inbox used to sit here. Friends is a card on /home now
+            — it is a list you read, not a place you go — and Inbox is parked
+            until it has somewhere to live. Both marks survive in
+            components/NavIcons.tsx; neither route exists any more. */}
       </Section>
 
       <Section title="Leagues" action={<LeaguesMenu />}>

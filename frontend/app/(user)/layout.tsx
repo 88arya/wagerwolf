@@ -4,7 +4,7 @@ import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 
 /**
- * /home, /leaderboard.
+ * /home.
  *
  * No nav of its own. The utility bar and the games strip are mounted globally
  * in the root layout (see components/AppChrome), and the UserNav that used to
