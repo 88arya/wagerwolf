@@ -14,6 +14,18 @@ export function fmtMoney(cents: number | null | undefined, opts?: { sign?: boole
   return `${sign}$${fmtAmount(c)}`;
 }
 
+/**
+ * Whole dollars, no cents: 123450 -> "$1,235". For stat cards and headline
+ * figures, where ".00" on every number is noise and two significant cents never
+ * change the reading. NEVER for a balance, a stake or anything a user reconciles
+ * against their own money — those are exact, and fmtMoney is the one for them.
+ */
+export function fmtDollars(cents: number | null | undefined): string {
+  const c = Math.round(Number(cents ?? 0));
+  const sign = c < 0 ? "-" : "";
+  return `${sign}$${Math.round(Math.abs(c) / 100).toLocaleString()}`;
+}
+
 /** Parse a user-entered dollar amount ("12.50", "12", 12.5) into integer cents. */
 export function toCents(input: string | number | null | undefined): number {
   const n = typeof input === "number" ? input : parseFloat(String(input ?? ""));

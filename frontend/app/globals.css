@@ -73,18 +73,24 @@
      the site footer at the bottom. One token so the two cannot drift apart; it
      used to be a BAR_BG literal in TopBar.tsx.
 
-     #272731 — a near-black with a slight cool cast, deliberately neither --text
-     nor a step on the --surface ramp. It went to true #000000 for a while on the
-     argument that a very dark grey reads as neither black nor grey; it is back
-     because pure black against a now-white page ground (--bg is #FFFFFF) was the
-     harshest edge in the app. Off the palette either way, by design. */
-  --bar-bg:       #272731;
+     #000000. It was #272731, a near-black with a cool cast, and went back and
+     forth once before: true black lost on the argument that against a white page
+     ground (--bg is #FFFFFF) it was the harshest edge in the app.
+
+     That argument no longer applies. The footer is a rounded, inset CARD now
+     rather than a band running edge to edge — it has margin and a radius, so it
+     reads as an object sitting on the page instead of a hard seam across it, and
+     black is what an object of that shape wants. --header-bg below is the same
+     value; they are still separate tokens because the bar is still a full-bleed
+     band and may want to diverge again. */
+  --bar-bg:       #000000;
 
   /* The utility bar, and ONLY the utility bar. --bar-bg above is the footer's.
      These were one token precisely so the two bars that bookend the app could
-     not drift apart, and splitting them is a deliberate departure from that —
-     if they are meant to match again, point this at var(--bar-bg) rather than
-     re-typing the hex in two places. */
+     not drift apart, and splitting them was a deliberate departure from that.
+     They happen to hold the same value again — do NOT collapse them back on
+     that basis: the two are different shapes now (a full-bleed band and an inset
+     card) and agreeing today is a coincidence, not a rule. */
   --header-bg:    #000000;
 
   /* Rendered height of the sticky chrome, written by AppChrome. 0 until it
@@ -139,36 +145,64 @@
      the value onto --bg and point this at it. */
   --shell-bg:     #F5F8FF;
 
-  /* THE SIDEBAR'S POPUP PANELS, and only those. The bar's and LeagueNav's stay
-     on --surface; see .utility-menu below for how the two are told apart.
 
-     It sits BETWEEN --surface (#FFFFFF) and --shell-bg (#F5F8FF) — a panel
-     barely lighter than the column it opens over rather than plainly white on
-     it. That narrows the tonal separation these panels used to lean on, which
-     is why the 1px --border they already carry is now doing most of the work of
-     holding the edge. Don't remove it here on the grounds that the fill reads
-     as distinct; at this value it barely does. */
-  --shell-menu-bg: #FAFCFF;
+  /* A PANEL RAISED OFF A WHITE GROUND: /home's cards on .app-card, and the
+     landing page's email field on its dotted hero.
+
+     It was --home-card-bg, named for its only consumer, with a note saying to
+     widen the name when a second one appeared rather than pre-emptively. One
+     has, so the name widened. The alternative was a second token holding the
+     same hex, which is what the --shell-menu-row-fill note further down argues
+     against: two values that must agree are one token, not two that happen to.
+
+     The separation from white is very slight — a tint, not a step — so the 1px
+     --border on each consumer is still doing most of the work of holding its
+     edge. Don't drop a border on the grounds that the fill now distinguishes
+     it; at this value it barely does.
+
+     Not to be confused with --surface-2 (#F0F2F5), which is a real step down
+     the grey ramp for a filled control. This is a hair off white. */
+  --panel-fill:   #FAFCFF;
+
+  /* THE EMAIL FIELD IN THE LANDING PAGE'S CLOSING BAND, sitting on plain white.
+
+     NEUTRAL, where --panel-fill above it is COOL. #FAFAFA has no blue in it at
+     all; #FAFCFF carries three points of it, which is deliberate there because
+     those cards sit inside a shell whose ground is the blue-tinted --shell-bg.
+     This one has nothing blue near it, and the cast read as a colour rather
+     than as a shade.
+
+     Two tokens and not one, for that reason: they are the same lightness doing
+     different jobs against different grounds, and collapsing them would make
+     one of the two wrong the next time either ground moves. */
+  --field-fill:   #FAFAFA;
 
   /* THE TINT UNDER A HOVERED POPUP ROW, and only in the sidebar's panels.
      --sidenav-row-fill is the nav rows' and it is deliberately NOT reused here.
 
      THE POINT IS TO LAND ON THE SAME COLOUR, not the same tint. --sidenav-row-fill
      says the two "are required to be one colour rather than two that happen to
-     agree", and an alpha cannot keep that promise across two grounds: 0.03 over
-     --shell-bg (#F5F8FF) composites to #EEF1F9, but over --shell-menu-bg
-     (#FAFCFF) it comes out #F3F5F9 — five points lighter in R and G, on a panel
-     that opens directly over the column, so both are in view at once.
+     agree", and an alpha cannot keep that promise across two grounds. The nav
+     rows' hover is 0.03 over --shell-bg (#F5F8FF), which composites to #EEF1F9;
+     that is the colour this has to reach from a different starting point.
 
-     0.05 over #FAFCFF gives #EEF1F4: R and G land exactly on the nav rows'
-     hover, B five low, which is imperceptible. An exact match would have to be
-     the opaque #EEF1F9 — the two grounds share B=255 but differ in R and G, so
-     no single alpha hits all three (B wants 0.030, R wants 0.051). Kept as an
-     alpha anyway, so it stays right if either ground moves.
+     RECOMPUTED when the panels went white. The ground was #FAFCFF and 0.05 hit
+     R and G exactly; over --surface (#FFFFFF) the same 0.05 gives #F3F3F4 —
+     five points light in R and, worse, flat, because a tint of slate over white
+     has none of the blue the panel used to supply. On a panel that opens
+     directly over the column, with both in view at once, that reads as two
+     different greys.
+
+     0.065 is the closest an alpha gets from white: R 239 against 238, G 240
+     against 241 — a point either side — and B 241 against 249. B is the one
+     that gives, as it did before, because the two grounds no longer share it at
+     all. An exact match would have to be the opaque #EEF1F9. Kept as an alpha
+     so it stays approximately right if the ground moves again, and because an
+     opaque value would silently stop tracking the nav rows.
 
      RECOMPUTE IF EITHER GROUND CHANGES. This number is only correct relative to
-     the pair above it. */
-  --shell-menu-row-fill: rgba(15, 23, 42, 0.05);
+     the pair it is matched against. */
+  --shell-menu-row-fill: rgba(15, 23, 42, 0.065);
 
   /* ── Status ── */
   --win:          #16A34A;
@@ -310,7 +344,13 @@ input:focus, select:focus {
   border-color: var(--accent);
   box-shadow: 0 0 0 3px var(--accent-dim);
 }
-input::placeholder { color: var(--text-3); }
+/* BOTH ELEMENTS. It was `input` alone, so every textarea in the app fell back
+   to the browser's own placeholder grey — which is close enough to --text-3 to
+   look like a mistake rather than a difference, and it put two different greys
+   side by side wherever a field and a message box share a form. The support
+   dialog is where that showed. */
+input::placeholder,
+textarea::placeholder { color: var(--text-3); }
 select option { background: var(--surface-2); color: var(--text); }
 
 /* ── Buttons ── */
@@ -1445,11 +1485,34 @@ button.dark:hover { opacity: 0.86; background: var(--text); border-color: var(--
    the footer all share one left and right edge. Sits inside .app-scroll as the
    sibling after the page, which is what makes it follow the content rather than
    pin to the viewport. */
+/* A CARD, not a full-bleed band.
+
+   It used to run edge to edge with its contents inset by --rail, so the bar,
+   the nav, the page and the footer all shared one left and right edge. The
+   inset moved outward: --rail is the MARGIN now and the padding is its own
+   number, so the dark fill stops where the content column used to start and the
+   whole thing reads as an object on the page rather than as the bottom of the
+   window.
+
+   The vertical padding is untouched, so the card is exactly as tall as the band
+   was. Only the width changed.
+
+   `--radius-card`, matching .app-card — the two are the only large floating
+   surfaces the app draws, and cutting them differently would read as an
+   accident. The 20px below holds the rounded bottom corners off the edge of the
+   scroller; without it they meet the boundary and stop reading as corners. */
 .site-footer {
   flex-shrink: 0;
   background: var(--bar-bg);
   color: #FFFFFF;
-  padding: 44px var(--rail) 26px;
+  margin: 0 var(--rail) 20px;
+  border-radius: var(--radius-card);
+  padding: 44px 36px 26px;
+}
+@media (max-width: 560px) {
+  /* --rail bottoms out at 20px, so the card would carry 20 outside and 36
+     inside on a phone — most of a narrow screen spent on gutters. */
+  .site-footer { padding: 36px 22px 22px; }
 }
 
 /* Three equal columns, one per link group. There is no fourth track any more:
@@ -1491,32 +1554,84 @@ button.dark:hover { opacity: 0.86; background: var(--text); border-color: var(--
 
 .site-footer-links { display: flex; flex-direction: column; gap: 10px; }
 
-/* Lighter than the utility bar's 0.66rem/800 links: those are two wayfinding
-   items and have to hold the top of the page, these are a list of six and would
-   shout if set the same way. */
-.site-footer-link {
+/* ── One appearance for both elements in this column.
+
+      Most rows are <a>. Contact is a <button>, because it opens a dialog rather
+      than navigating and an <a> with no href is not keyboard-operable. They
+      must be indistinguishable, and getting there took three attempts, so the
+      rule is written to end the argument rather than to win it on points:
+
+      DESCENDANT-SCOPED, so every selector here carries .site-footer-links as
+      well as .site-footer-link. That puts the base at (0,2,0) and the hover at
+      (0,3,0) — above the global `button` rule (0,0,1), above `button:hover`
+      (0,1,1), and above any single-class reset. Nothing global can reach in.
+
+      IT DOES ITS OWN BUTTON RESET rather than composing one from another class.
+      Two single-class rules landing on one element are resolved by their
+      position in this file, not by intent, which is what broke this twice: a
+      reset's `font: inherit` resolves against the PARENT, so it silently took
+      back the size and weight, and its `color: inherit` took back the colour.
+
+      Lighter than the utility bar's 0.66rem/800 links: those are two wayfinding
+      items holding the top of the page, these are a list and would shout. ── */
+.site-footer-links .site-footer-link,
+.site-footer-links .site-footer-link:hover,
+.site-footer-links .site-footer-link:active {
+  display: inline;
+  width: fit-content;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+  transform: none;
+  text-align: left;
+  text-decoration: none;
+  font-family: inherit;
   font-size: 0.8rem;
   font-weight: 450;
+  letter-spacing: normal;
+  white-space: normal;
   /* Grey against the white headings above them. The two carry the hierarchy
      between them — a heading names the group, the links are the group. */
   color: rgba(255, 255, 255, 0.62);
-  width: fit-content;
+  cursor: pointer;
   transition: color 0.12s;
 }
-/* Back to a colour change now that the links sit below white: hovering lifts
-   one to the headings' brightness rather than dimming it. */
-.site-footer-link:hover { color: #FFFFFF; }
+/* Hovering lifts one to the headings' brightness rather than dimming it. */
+.site-footer-links .site-footer-link:hover { color: #FFFFFF; }
 
-/* The bottom bar under the columns: rule across, mark and socials on the left,
-   fine print held right. `align-items: flex-start` and not center — the fine
-   print is several lines and the mark is one, so centring would float the mark
-   against the middle of a paragraph instead of aligning their tops. */
+/* The bottom bar under the columns: mark left, fine print right, no rule.
+
+   THE 92px IS THE CARD'S HEIGHT. With no rule between the two halves, this gap
+   is the only thing separating the link columns from the sign-off, so it has to
+   be large enough to read as a division on its own — a modest one just looks
+   like the columns have a long last row. It is also the one number to change to
+   make the card taller or shorter: the paddings above and below are set against
+   the card's edges and moving them shifts the content rather than spacing it.
+
+   NO border-top. It was a full-width white line, which on a dark ground is the
+   loudest thing in the footer — louder than the mark it was separating off —
+   and the whitespace above already does the separating.
+
+   `align-items: baseline`, not flex-end. flex-end aligns the two BOXES, and a
+   line of text does not fill its own box: line-height leaves half-leading under
+   the descenders, so the copyright sat a few pixels high against the mark's
+   bottom edge — close enough to look unintentional rather than offset. An SVG
+   has no line box, so its baseline is its bottom margin edge, and the mark's
+   viewBox is cropped to the exact ink bounds (see Logo's MARK_VIEWBOX) — which
+   means baseline alignment puts the text's baseline on the wolf's lowest pixel.
+   That is the alignment the eye actually reads.
+
+   It works because the copyright is one line. If it ever wraps, `baseline`
+   aligns the FIRST line and the rest hangs below the mark.
+
+   The class name is a leftover from when this rule drew a rule; kept because
+   renaming it touches the component too and buys nothing. */
 .site-footer-rule {
-  margin-top: 40px;
-  padding-top: 22px;
-  border-top: 1px solid #FFFFFF;
+  margin-top: 92px;
   display: flex;
-  align-items: flex-start;
+  align-items: baseline;
   justify-content: space-between;
   gap: 40px;
   flex-wrap: wrap;
@@ -1525,35 +1640,19 @@ button.dark:hover { opacity: 0.86; background: var(--text); border-color: var(--
 /* The social row. These two classes were referenced by SiteFooter but never
    defined anywhere, which is why the icons sat flush against each other with no
    gap and no colour of their own — they were unstyled inline elements. */
-.site-footer-social {
-  display: flex;
-  align-items: center;
-  gap: 18px;
-}
-.site-footer-social-link {
-  display: inline-flex;
-  color: #FFFFFF;
-  transition: opacity 0.12s;
-}
-/* Anchor only. The span variant is a placeholder for an account that does not
-   exist yet, and lighting up on hover would promise a link that is not there. */
-a.site-footer-social-link:hover { opacity: 0.68; }
-
-/* Mark with the socials stacked beneath it, as in the reference. */
-.site-footer-brand {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  flex-shrink: 0;
-}
 
 
+/* Grey, matching the link columns above rather than the headings. It is a
+   sign-off, not a label — the loudest white in the footer should not be the
+   copyright line. Right-aligned, since it now sits at the right edge and a
+   left-aligned block there would leave a ragged edge against the page's. */
 .site-footer-fine {
   max-width: 560px;
-  text-align: left;
+  text-align: right;
   line-height: 1.55;
   font-size: 0.72rem;
-  color: #FFFFFF;
+  color: rgba(255, 255, 255, 0.62);
+  margin: 0;
 }
 
 /* THE DOCUMENTS' OWN MEASURE, narrower than the column around them and centred
@@ -1605,6 +1704,21 @@ a.site-footer-social-link:hover { opacity: 0.68; }
 
    `display: inline` — not inline-flex — so it wraps with the sentence and sits
    on the same baseline rather than forming its own line box. */
+/* ── A button stripped back to text, for a control inside running prose: it
+      takes the paragraph's own family, size, weight and colour, and adds an
+      accent underline.
+
+      ONE CLASS, NOT TWO. There was briefly a `.btn-bare` variant carrying just
+      the reset, for contexts supplying their own type. It had one user, the
+      footer, and it did not work there: two single-class rules on one element
+      are resolved by their order in this file rather than by intent, so the
+      reset's `font: inherit` and `color: inherit` resolved against the PARENT
+      and quietly took back the type and colour the footer had set. That column
+      styles its own elements now — see .site-footer-links — and this is back to
+      being the one thing it always was.
+
+      Repeated for :hover and :active because the global `button` rule is a
+      filled accent pill and would otherwise repaint these on interaction. ── */
 .support-link,
 .support-link:hover,
 .support-link:active {
@@ -1615,23 +1729,26 @@ a.site-footer-social-link:hover { opacity: 0.68; }
   background: none;
   box-shadow: none;
   transform: none;
+  text-align: left;
+  /* The `font` shorthand does NOT cover letter-spacing or white-space, and the
+     global button rule sets both (0.01em and nowrap) — left alone they tracked
+     the label wider than its surroundings and stopped it wrapping. */
   font: inherit;
-  color: var(--accent);
+  letter-spacing: inherit;
+  white-space: normal;
   cursor: pointer;
+}
+
+/* Appearance; the reset is the block above. */
+.support-link,
+.support-link:hover,
+.support-link:active {
+  color: var(--accent);
   text-decoration: underline;
   text-decoration-thickness: 1px;
   text-underline-offset: 2px;
 }
-/* In the footer it is one of a column of links, so it takes their box instead:
-   .site-footer-link supplies colour and spacing, and only the button reset
-   above is wanted. */
-.site-footer-link.support-link,
-.site-footer-link.support-link:hover,
-.site-footer-link.support-link:active {
-  color: inherit;
-  text-decoration: none;
-  text-align: left;
-}
+
 
 
 /* ── Typography ── */
@@ -1685,7 +1802,11 @@ h2 {
 }
 .dot-grid {
   background-image: radial-gradient(var(--dot) 1px, transparent 1px);
-  background-size: 22px 22px;
+  /* 16.5 = 22 x 0.75. The dot itself stays 1px, so tightening the grid makes
+     the field denser rather than heavier - which is the difference between more
+     texture and a greyer page. If it ever shimmers on a fractional device pixel
+     ratio, 16px is the nearest integer and the change nobody would notice. */
+  background-size: 16.5px 16.5px;
   background-position: -1px -1px;
 }
 
@@ -2447,10 +2568,33 @@ hr { border: none; border-top: 1px solid var(--border); margin: 14px 0; }
    see .utility-menu.is-shell .navmenu-profile > span for who sets it and why it
    cannot be a descendant selector. */
 .utility-menu.is-shell {
-  background: var(--shell-menu-bg);
-  /* NO border-radius override. These panels were squared on 30 Aug 2026 and put
-     back the same day: they keep the card's 12px from the base rule, like every
-     other .utility-menu. Only the fill is scoped here. */
+  /* SQUARE AND WHITE, both scoped to the sidebar's panels alone — the bar's
+     copy of AccountMenu and LeagueNav's dropdown keep the base rule's 12px and
+     --surface.
+
+     The fill is `--surface` rather than the `--shell-menu-bg` (#FAFCFF) it used
+     to be. That token is deleted: it existed only for these panels, and a
+     documented token nothing references is worse than no token. Its old
+     comment argued the near-white fill let the 1px border do the work of
+     holding the edge — still true, and more so on plain white.
+
+     Squaring these was tried once before, on 30 Aug 2026, and reverted the same
+     day. This time it is asked for; the note is kept so the reversal is not
+     mistaken for the current state. */
+  background: var(--surface);
+  border-radius: 0;
+}
+/* The row fill squares with the panel. It is the SPAN that rounds in the base
+   rule, not the row, and only here is it cut flat — .sidenav-item's own
+   highlight and every other .utility-menu keep var(--radius).
+
+   The 8px inset stays. It existed to keep a tinted first or last row clear of
+   the panel's 12px corner arc, and there is no arc now — but it is also the
+   row's horizontal padding, and pulling the fill to the panel's edges is the
+   flush-row treatment that was tried and reverted alongside the squaring. Not
+   reintroduced by accident here. */
+.utility-menu.is-shell .navmenu-profile > span {
+  border-radius: 0;
 }
 /* HOW THE SIDEBAR'S PANELS ARRIVE.
 
@@ -4465,32 +4609,1198 @@ input[type="checkbox"].auth-check[aria-invalid="true"]:focus {
    The overrides here are the ones a textarea needs. .mx-field is written for
    single-line inputs, so it fixes a height and forbids resizing; a message box
    has to grow. */
-.support-sheet { width: min(520px, calc(100vw - 40px)); }
-.support-lede {
+/* -- The support dialog: one card, from all four entry points.
+
+      NOT .mx-sheet. That is the .mx-* vocabulary's modal surface and it carries
+      var(--radius); this is square, so it states its own box rather than
+      overriding one property of a shared class and leaving the next reader to
+      work out which parts still apply.
+
+      IT KEEPS THE SHADOW. CLAUDE.md's rule is that .mx-sheet is the only thing
+      in this system allowed one, because a modal genuinely floats above the
+      page - that reasoning is about being a modal, not about being that class.
+
+      ROUNDED, WHILE EVERYTHING INSIDE IT IS NOT. That is not an inconsistency:
+      --radius-card is the token for a large floating surface, which this is and
+      .app-card is, while the .mx-* vocabulary the fields and the Send button
+      come from is square by rule. The card is the object; the controls sit on
+      it. Both of those already say `border-radius: 0` themselves, so nothing
+      here has to hold them square.
+
+      `position: relative` for the close button, which is placed against this
+      box rather than flowed with the heading beside it. -- */
+.support-sheet {
+  position: relative;
+  /* The message box is the thing being sized: at 430 it was a narrow column
+     that wrapped a sentence every few words, which makes anything longer than a
+     line feel like more work than it is. The 40 subtracted is .mx-scrim's own
+     padding, so the card still stops short of the edges on a phone. */
+  width: min(560px, calc(100vw - 40px));
+  background: var(--surface);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-lg);
+  padding: 22px 24px 24px;
+  margin: auto;
+}
+
+/* The confirmation state, which holds one sentence where the form held six
+   things. The card is sized for the form, so left alone it becomes a 560px band
+   around a line of text — mostly empty, and reading as something that failed to
+   load rather than something that worked.
+
+   The close button follows the smaller padding: its glyph aligns to the content
+   edge the same way, 20 - (26 - 13) / 2 = 13.5. */
+.support-sheet.is-sent {
+  width: min(360px, calc(100vw - 40px));
+  /* The top is 38, not 18, and that is CLEARANCE rather than taste. The close
+     button is absolutely positioned, so it takes no space and the text flows
+     underneath it — and the text is centred, which walks its first line
+     straight into the corner the button sits in. 10 (its top) + 26 (its box)
+     = 36, so the content has to start below that.
+
+     The other three sides come back down: the extra height is spent once at the
+     top rather than padding a card that holds one sentence. */
+  padding: 38px 22px 22px;
+}
+.support-sheet.is-sent .support-x { top: 10px; right: 13.5px; }
+.support-sheet.is-sent .support-sent { min-height: 52px; }
+
+/* Absolute, so the title sits on its own optical centre-line rather than being
+   pushed left by a control in the same row. Pulled out to the card's corner
+   with a hit area larger than the glyph - a 13px cross is not a target. */
+.support-x,
+.support-x:hover,
+.support-x:active {
+  position: absolute;
+  top: 12px;
+  /* THE GLYPH lines up with the fields' right edge, not the button's box. The
+     hit area is 26px around a 13px cross, so it carries 6.5px of slack a side;
+     sitting the box on the 24px content edge would leave the cross visibly
+     inboard of everything under it. 24 - (26 - 13) / 2 = 17.5. */
+  right: 17.5px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  transform: none;
+  background: none;
+  color: var(--text-3);
+  cursor: pointer;
+  transition: color 0.12s;
+}
+.support-x:hover { color: var(--text); }
+
+/* Black and plain. Not .mx-pane-title, which would be right if this were a pane
+   in a page; a dialog this small wants its heading a step quieter. */
+.support-title {
+  margin: 0;
+  font-size: 1rem;
+  /* 600, the system's ceiling for a small label. It was briefly 700 — Gilroy
+     Bold, past the band CLAUDE.md sets — and came back the same session. The
+     week selector on /home is still the one deliberate exception; this is not
+     a second one. */
+  font-weight: 600;
+  letter-spacing: -0.016em;
+  text-transform: none;
+  color: var(--text);
+  /* Room for the close button, so a longer heading can never run under it. */
+  padding-right: 26px;
+}
+
+/* Grey, because the sentence is scaffolding. The address inside it is the only
+   part anyone reads twice. */
+.support-line {
   margin: 6px 0 16px;
-  font-size: 0.85rem;
+  font-size: 0.82rem;
+  font-weight: 500;
+  line-height: 1.5;
   color: var(--text-2);
 }
+
+/* BLACK AND NOT UNDERLINED. Black rather than --accent because there is nothing
+   else on this card for an accent to distinguish it from, and blue would be a
+   second signal for one piece of information. No underline because the arrow
+   already says it is a link, and an underline under an address full of dots and
+   an @ makes it harder to read for no gain. Hover is the affordance instead. */
+.support-email {
+  color: var(--text);
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+}
+/* NO HOVER STATE. The address is the card's one piece of content and it is
+   already black among grey; lighting it up on hover would be a third signal for
+   something the arrow and the weight have said twice. */
+/* The global input rule is `width: 100%` already; these set the rest. Stacked
+   with a gap rather than laid out in a grid - two fields in a column need no
+   layout system. */
+.support-input { margin-bottom: 10px; }
 textarea.support-box {
   width: 100%;
   height: auto;
-  min-height: 132px;
-  padding: 10px 12px;
+  min-height: 108px;
+  padding: 9px 11px;
   line-height: 1.5;
-  /* Vertical only: a textarea that can be dragged wider escapes the sheet. */
+  /* Vertical only: a textarea draggable wider escapes the card. */
   resize: vertical;
 }
+.support-error { margin: 8px 0 0; }
 
-/* Address left, buttons right — and it WRAPS, because the address is a real
-   email and cannot be truncated without becoming useless. At narrow widths the
-   two stack rather than the address being clipped. */
+/* Send alone, held right - the close button in the corner is the cancel, so a
+   second one on this row would be two ways out of a card with one thing in it. */
 .support-actions {
   display: flex;
-  flex-wrap: wrap;
+  justify-content: flex-end;
+  margin-top: 14px;
+}
+
+/* Replaces the heading, the lede, both fields and Send — it is the only thing
+   on the card, so it is centred on both axes and set in full ink rather than
+   the grey the lede used.
+
+   `justify-content` centres the line box within the flex row; `text-align`
+   centres the text within the line box. Both are needed: the first alone leaves
+   a wrapped second line ragged under the first.
+
+   `min-height` holds roughly the height the form occupied, so the card does not
+   collapse to a third of its size the instant it is submitted. */
+.support-sent {
+  margin: 0;
+  min-height: 96px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  font-size: 0.88rem;
+  font-weight: 500;
+  line-height: 1.5;
+  color: var(--text);
+}
+/* ══════════════════════════════════════════════════════════════════════════
+   HOME PULSE (.hp-*) — the platform-wide panel on /home.
+
+   Written in the .mx-* vocabulary rather than the older .card idiom: structure
+   is a 1px rule or a gap, the heaviest weight is 500, and hierarchy comes from
+   size and colour. The one thing it adds is a large number, because a card
+   whose entire job is "how many" has to let you read that at a glance.
+
+   Square, like everything else in that vocabulary. --radius governs the .card
+   idiom, not this one — the only curve here is the artwork's own box, which
+   matches PlayerAvatar's 6px so a team logo and a headshot sit at the same
+   shape beside each other.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+
+
+/* Equal columns, so the cards line up as a row of answers rather than sizing
+   to their contents. Four wrap to two before they wrap to one — a 4→1 jump
+   leaves a very long page on a tablet. */
+.hp-grid { display: grid; gap: var(--hb-gap); }
+.hp-grid.is-three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+/* Two-up, not four-up. These four used to have the full content width; with
+   the rail taking 282px of it, four columns put each card near 170px, which is
+   narrower than the player names inside them. */
+.hp-grid.is-four  { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+
+/* Separate cards with their own borders, not panes of one hairline grid. That
+   grid was a 1px gap over a --border background, which reads as a table: the
+   rules run edge to edge and the whole thing is one object subdivided. These
+   answer four unrelated questions, so they are four objects.
+
+   --radius, not --radius-card. The 12px belongs to .app-card, the shell's one
+   big surface; anything nested inside it takes the smaller house radius, or the
+   corners of the inner cards echo the outer one and the nesting stops reading. */
+.hp-card {
+  background: var(--panel-fill);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  /* No top padding: .hb-card-head supplies its own height, so the label is the
+     card's header rather than its first line of content. That is also what puts
+     the first card's label on the same line as the Inbox title — see .hb-right
+     for the arithmetic, which is identical here. */
+  padding: 0 16px 12px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* The full-width card above the grid. Its own element rather than a grid item
+   spanning every column, because it is not part of that grid — the grid changes
+   between three and four columns with the tab and this must not resize with it. */
+.hp-card.is-wide { /* full width of the centre column; no grid of its own */ }
+
+/* ── THREE REGIONS: Inbox | the week | Friends.
+
+      Which of them are cards is the whole idea, and it is not arbitrary:
+
+      - the LEFT is a column, not a card. A list you scan down is a region of
+        the page; boxing it draws a border around something whose edge is
+        already the page's edge. One hairline does what four sides would.
+      - the CENTRE is plain. It is the content. The cards inside it are cards
+        because each is a separate fact, not because the column wants a frame.
+      - the RIGHT is cards — discrete objects set beside the content, each under
+        its own uppercase micro-label (.section-title, unchanged).
+
+      The grid fills .app-card rather than sitting in a .page-wide, so the left
+      column is flush to the card's edge and its rule runs the full height of
+      whatever the centre grows to. .app-card stays the only scroller — three
+      independent scrollports is a lot of machinery for a page this size. ── */
+/* TWO ROWS, AND THAT IS THE WHOLE TRICK. It reconciles two things that pull
+   against each other:
+
+     - the Inbox hairline has to reach the BOTTOM OF THE CARD, however little
+       content the page has;
+     - the Friends card has to stop level with the last card in the centre
+       column, not run on past it.
+
+   One stretched row cannot do both — everything in it is the same height. So
+   row 1 is `auto` and carries all three columns, which makes it exactly as tall
+   as the tallest of them (in practice the centre), and the rail bottom-aligns
+   to that. Row 2 is `1fr` and holds nothing but .hb-rule, which continues the
+   left column's line to the bottom of the card.
+
+   The centre column's height cannot be referenced by the rail directly in CSS;
+   this indirection through the shared grid row IS the mechanism, not an
+   accident of one. Putting the columns back on a single stretched row silently
+   reverts the alignment. */
+.hb {
+  /* ONE NUMBER FOR EVERY GAP BETWEEN CARDS — vertically down the centre column,
+     horizontally across to the Friends card, and around the outside. It is
+     split in half at the boundary between the two columns (each contributes
+     --hb-gap/2 of padding) because there is no grid `column-gap` that could
+     apply: the columns are the grid's tracks and their padding is what shows.
+     Change it here and all of them move together. */
+  /* 10, down from 14. /home has to fit inside .app-card without scrolling and
+     there are three gaps down the centre column plus one inside the last-week
+     grid, so every point here costs four. */
+  --hb-gap: 10px;
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto 1fr;
+  /* THE TWO RAILS MUST STAY EQUAL. That is what centres the middle column on
+     the content card: the centre track runs from 286 to W-286, so its midpoint
+     is W/2 — the card's own. Give them different widths and the centre absorbs
+     half the difference as an offset, silently and in the direction of the
+     narrower rail. They were 268 and 304, which put it 18px left of centre.
+
+     286 splits that difference, so the centre column kept its width and each
+     rail moved 18px rather than one of them moving 36.
+
+     This centres the middle column on the CARD, not on the window — the card is
+     inset from the shell by the sidebar on one side and --shell-gap on the
+     other, so the two centres are nowhere near each other and only this one is
+     the one that reads. */
+  grid-template-columns: 286px minmax(0, 1fr) 286px;
+  align-items: stretch;
+}
+
+/* All three on row 1 explicitly. Without it the auto-placement algorithm would
+   put them on separate rows the moment one of them is given a grid-row of its
+   own in a media query below. */
+.hb-left,
+.hb-center,
+.hb-right { grid-row: 1; min-width: 0; display: flex; flex-direction: column; }
+
+/* The Inbox column's hairline, continued. An empty element rather than a
+   background gradient on .hb: a gradient would need the 286px track width
+   written out a second time as a background-position, and the two would drift
+   the first time either is nudged. This borrows the track. */
+.hb-rule {
+  grid-row: 2;
+  grid-column: 1;
+  border-right: 1px solid var(--border);
+}
+
+.hb-left { border-right: 1px solid var(--border); }
+
+/* NO separator on the right, and that follows from the rule above rather than
+   being an inconsistency: the rail's contents are cards with their own borders,
+   so a rule beside them would be a second edge a few pixels from the first.
+   The left column has no box of its own, which is exactly why it needs one. */
+/* padding-top 7, not 14, and the difference is the alignment above:
+
+     7 (this) + 1 (the card's border) + 0 (the card's top padding, zeroed below)
+       + 14 (half .hb-card-head's 28px) = 22  ✓
+
+   So the Friends label lands on the same line as the Inbox title, the week
+   selector, and the sidebar's lockup.
+
+   padding-bottom 24 MATCHES .hb-col-body's, and has to: both columns stretch to
+   the same grid row, so the distance from that row's bottom edge to the last
+   card is whatever each sets here. At 14 against the centre's 24 the Friends
+   card hung 10px lower than the last card beside it — close enough to look like
+   a mistake rather than a decision. Change one, change both. */
+.hb-right {
+  gap: var(--hb-gap);
+  /* Half the gap on the left, matching the half the centre column contributes
+     on its right — together they make one --hb-gap between the last card in the
+     column and the Friends card beside it. Bottom matches .hb-col-body's, which
+     is what keeps the two columns' last cards on one line: both stretch to the
+     same grid row, so the distance from its bottom edge is whatever each sets
+     here. */
+  padding: 7px var(--hb-gap) var(--hb-gap) calc(var(--hb-gap) / 2);
+}
+
+/* ── 44px, AND THAT NUMBER IS MEASURED RATHER THAN CHOSEN.
+
+      It puts these headers on the same line as the wordmark and the account
+      circle in the sidebar. The sidebar's own padding-top carries the other
+      half of this arithmetic and documents it there; from this side:
+
+        .app-sidebar padding-top 18 + .sidenav-head margin-top 4
+          + 11 (half the head's 22px)                            = 33 from the
+                                                                   shell's top
+        .app-card margin-top 10 + its 1px border                 = 11
+        so the line sits 33 - 11 = 22 inside the card's content box
+        a 44px row centring its contents puts them at exactly 22  ✓
+
+      44 is also .nav's height, which is not a coincidence: the sidebar head was
+      tuned to centre on LeagueNav's row, and that row is 44 tall inside this
+      same card. Matching .nav is the same alignment stated a shorter way — but
+      the derivation above is what actually holds, since /home has no LeagueNav.
+
+      RECOMPUTE IF .app-card's MARGIN OR THE SIDEBAR'S HEAD MOVES. Nothing
+      enforces it, and it fails silently: the columns simply sit a few pixels
+      off the column beside them, which reads as sloppiness rather than as a
+      broken rule.
+
+      Height is set rather than derived from the tallest child, which is the
+      other half of why this works — the week selector is a pixel or two taller
+      than the Inbox title, and letting it win would drop that heading off the
+      line. */
+.hb-col-head {
+  height: 44px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  padding: 0 18px;
+}
+.hb-col-title {
+  font-size: 0.95rem;
+  /* 600, the ceiling this system allows a small label — .mx-row-label and the
+     active .mx-tab are the same. It is a column heading standing alone at the
+     top of a region with nothing under it yet, so it has to hold that space on
+     its own; 500 read as a caption. Not higher: 700 is the sidebar's, by an
+     explicit exception that says not to take other surfaces past 600. */
+  font-weight: 600;
+  letter-spacing: -0.012em;
+  text-transform: none;
+  color: var(--text);
+  margin: 0;
+}
+/* The centre column has no header any more — the week toggle was the only thing
+   in it — so its cards start at the same height as the Friends card rather than
+   under an empty 44px box. The Inbox column keeps its head, because its title
+   has to stay on the sidebar's line. */
+.hb-center > .hb-col-body {
+  padding-top: 7px;
+  padding-right: calc(var(--hb-gap) / 2);
+}
+.hb-col-body {
+  flex: 1;
+  min-width: 0;
+  padding: 0 var(--hb-gap) var(--hb-gap);
+  display: flex;
+  flex-direction: column;
+  gap: var(--hb-gap);
+}
+/* The rail's cards are already inset by .hb-right's own padding.
+
+   padding-top: 0 because .hb-card-head below supplies its own height — the
+   label is the card's header rather than its first line of content, so the
+   space above it belongs to that box and not to the card. */
+.hb-right > .hp-card { flex: 1; }
+
+/* A header box with a known height, so the label's vertical position comes from
+   this number rather than from whatever line-height .section-title inherits —
+   which is what makes the alignment arithmetic in .hb-right checkable.
+
+   The marks that briefly sat beside these two headings are gone; they are in
+   the empty states below instead, where one 22px icon does more than a 13px one
+   crowding a label. */
+.hb-card-head {
+  display: flex;
+  align-items: center;
+  height: 26px;
+  flex-shrink: 0;
+}
+
+/* ── The empty state both regions render, and for now the only state either
+      has: a mark and a line. No sentence under it — "No new mail" is already
+      the whole message, and a paragraph explaining an empty inbox says less
+      than the two words above it while taking four times the room.
+
+      Centred and vertically middled — the one place in this system a centred
+      block is right, because a left-aligned paragraph adrift in a tall box
+      reads as content that failed to load rather than as a state.
+
+      THE COPY SPEAKS AS THE PRODUCT. "No new mail", not "this is not built
+      yet": an empty state is read by someone deciding what to do next, and the
+      state of the backend is not something they can act on. The components'
+      header comments carry the version for whoever maintains it. ── */
+.fr-empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 20px 4px 28px;
+}
+.fr-mark {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 100px;
+  background: var(--surface-2);
+  color: var(--text-3);
+  margin-bottom: 14px;
+}
+.fr-lead { font-size: 0.86rem; font-weight: 500; color: var(--text); margin: 0; }
+
+/* ── The answer: a mark and a name. 36px to match PlayerAvatar's box, which is
+      the one piece of artwork here that is a photograph rather than a crest. ── */
+.hp-lead { display: flex; align-items: center; gap: 9px; margin-top: 8px; min-width: 0; }
+.hp-lead-text { display: block; min-width: 0; }
+.hp-name {
+  display: block;
+  font-size: 0.88rem;
+  /* 600, the ceiling for a small label in this system and the same weight the
+     Inbox heading takes. It is the card's answer, so it is the one thing that
+     should be readable at a glance from across a row of three. */
+  font-weight: 600;
+  letter-spacing: -0.014em;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.hp-sub {
+  display: block;
+  font-size: 0.7rem;
+  font-weight: 500;
+  color: var(--text-3);
+  margin-top: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* A crest sits on the ground rather than in a tile: a team logo is already a
+   shape with its own silhouette, and boxing it fights that. PlayerAvatar keeps
+   its 6px tile because a cut-out headshot needs an edge to sit against. */
+.hp-mark {
+  width: 30px;
+  height: 30px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+/* Two crests, so they sit inside the same 36px the single one occupies. */
+.hp-mark.is-pair { gap: 1px; }
+/* The blank card's placeholder, before the first resolve. A filled tile rather
+   than empty space: the card has to hold the same height as the three above it
+   or the grid it sits in changes shape between week 1 and week 2. */
+.hp-mark.is-blank {
+  border-radius: 6px;
+  background: var(--surface-2);
+}
+.hp-name.is-blank,
+.hp-stat-value.is-blank { color: var(--text-4); }
+
+.hp-mark-fallback {
+  font-size: 0.62rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--text-2);
+}
+
+/* ── The two figures. A pair, always, so three cards across read as one
+      instrument rather than three — the first is what the card ranks by, the
+      second is the same question asked in money.
+
+      Whole dollars (lib/money's fmtDollars): ".00" on every figure is noise on
+      a card nobody reconciles against, and the cents never change the reading.
+
+      The caption sits ABOVE its value. Under it the eye has to finish the row
+      to learn what the number was, which is the wrong order for a figure you
+      are meant to take in at a glance. ── */
+.hp-stats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin: 10px 0 0;
+  padding-top: 9px;
+  border-top: 1px solid var(--border);
+}
+.hp-stats > div { min-width: 0; }
+.hp-stats dt {
+  font-size: 0.6rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--text-3);
+  white-space: nowrap;
+}
+.hp-stats dd { margin: 3px 0 0; }
+/* 500, not heavier. Hierarchy here is size and colour — this is nearly twice
+   the caption above it and full-strength ink against that caption's grey, and
+   a bold on top of both would be a third signal saying the same thing. */
+.hp-stat-value {
+  font-size: 1.05rem;
+  font-weight: 500;
+  letter-spacing: -0.028em;
+  line-height: 1.05;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.hp-stat-value.is-up { color: var(--win); }
+.hp-stat-value.is-down { color: var(--loss); }
+
+
+
+.hp-empty {
+  font-size: 0.8rem;
+  color: var(--text-3);
+  padding: 14px 0;
+}
+
+/* Friends drops under the content first, then Inbox. The centre is the page;
+   the rails are what it can afford to lose. Their borders become horizontal
+   rules on the way, or a stacked column keeps a rule pointing the wrong way. */
+@media (max-width: 1240px) {
+  /* Once the rail drops away there is nothing left to balance against, so the
+     centre simply takes the rest. The rail moves to its own row under the two
+     columns, and the filler row moves down behind it. */
+  .hb {
+    grid-template-columns: 286px minmax(0, 1fr);
+    grid-template-rows: auto auto 1fr;
+  }
+  .hb-right { grid-column: 1 / -1; grid-row: 2; }
+  .hb-rule { grid-row: 3; }
+  .hb-card.is-rail, .hp-card.is-rail { min-height: 0; }
+}
+@media (max-width: 980px) {
+  .hb {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto auto auto;
+  }
+  .hb-left {
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+  }
+  .hb-center { grid-row: 2; }
+  .hb-right { grid-row: 3; }
+  /* Nothing left to continue: the Inbox column runs the full width here and its
+     rule is horizontal, under itself. */
+  .hb-rule { display: none; }
+}
+@media (max-width: 820px) {
+  .hp-grid.is-three { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 560px) {
+  .hp-grid.is-three, .hp-grid.is-four { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* ── Power rankings rows. A list inside .hp-card.is-wide: league on the left,
+      the fact on the right, hairlines between. No zebra fill and no row border
+      box — the same rule the .mx-row idiom follows. ── */
+.pr-rows { list-style: none; margin: 6px 0 0; padding: 0; }
+.pr-row {
+  display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  margin-top: 16px;
+  gap: 16px;
+  padding: 7px 0;
+  border-top: 1px solid var(--border);
+  min-width: 0;
 }
-.support-direct { font-size: 0.8rem; color: var(--text-2); }
-.support-buttons { display: flex; gap: 8px; }
+.pr-row:first-child { border-top: none; }
+
+.pr-league {
+  font-size: 0.86rem;
+  font-weight: 500;
+  color: var(--text);
+  text-decoration: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+.pr-league:hover { text-decoration: underline; }
+
+.pr-side { display: flex; align-items: center; gap: 14px; flex-shrink: 0; }
+.pr-rank { font-size: 0.86rem; color: var(--text); }
+.pr-of { color: var(--text-3); }
+.pr-meta { font-size: 0.74rem; color: var(--text-3); }
+.pr-balance { font-size: 0.82rem; color: var(--text); }
+
+/* The movement mark. Fixed width so the arrows form a column down the card
+   rather than sliding left and right with the ordinal beside them. */
+.pr-move {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.78rem;
+  min-width: 38px;
+  justify-content: flex-end;
+}
+.pr-move.is-up { color: var(--win); }
+.pr-move.is-down { color: var(--loss); }
+.pr-move.is-flat { color: var(--text-3); }
+.pr-move-n { font-weight: 500; }
+
+/* A quiet link, not a filled button — there is one of these per row and a
+   column of accent pills would out-shout everything else on the page. The
+   underline is what marks it as the row's verb, matching .mx-row-action. */
+.pr-cta {
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.pr-cta:hover { color: var(--accent-hover); }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   LANDING PAGE (.lp-*)
+
+   A headline and the way in. One screen, no sections to scroll through.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+.lp { flex: 0 0 auto; background: var(--bg); }
+
+/* ONE USABLE SCREEN, and both halves of the calc are load bearing.
+
+   `100%` was tried and is wrong twice over: a percentage min-height resolves
+   against .lp, whose height is decided BY this section, so the two size each
+   other - measured, it gave a 1419px section in a 928px viewport and pushed the
+   call to action below the fold.
+
+   `100dvh` alone is wrong too. AppChrome is sticky at the top of .app-scroll
+   and stays pinned, so a full viewport of section is always one chrome-height
+   too tall. --chrome-h is written by AppChrome from a ResizeObserver and is 0
+   where no chrome is mounted, so this degrades to a plain 100dvh there. */
+.lp-section {
+  position: relative;
+  min-height: calc(100dvh - var(--chrome-h));
+  display: flex;
+  align-items: center;
+  padding: 72px var(--rail);
+}
+
+/* ── CENTRED, as an alternative to compare against the left-aligned default.
+
+      Everything needed to revert is in the base rules; this only adds. Three
+      things have to move together or the composition half-centres:
+
+        - the section's flex axis (the .lp-inner block itself),
+        - the text inside that block,
+        - and the two width-capped children under the headline, which are
+          `max-width` blocks and would otherwise stay pinned left inside a
+          centred parent.
+
+      WHAT IT COSTS: --rail no longer means anything on this page. The lockup in
+      the utility bar and the controls in the nav still sit on that gutter, so a
+      centred headline is the one element on the screen not sharing an edge with
+      anything above it. That is the trade, and it is only worth making while
+      this is a one-screen page - a second section below would want the shared
+      left edge back. ── */
+.lp-section.is-centered { justify-content: center; }
+/* THE CAP IS WHAT BREAKS THE HEADLINE, and 900 is chosen against two numbers.
+
+   The <br> is gone - it made Chrome treat each line as its own paragraph, so
+   triple-click selected one line rather than the sentence. The break is a soft
+   wrap now, and a soft wrap only happens if the line does not fit. So:
+
+     - the whole headline at 64px is roughly 1290px, which must NOT fit;
+     - "fantasy football sportsbook." is roughly 840px, which MUST fit, because
+       non-breaking spaces make it one unbreakable run.
+
+   900 sits between them. A cap under ~850 would push that run to overflow
+   rather than wrap (it cannot break); one over ~1290 would let the whole line
+   fit and there would be no second line at all. It was 760 briefly and did the
+   first of those.
+
+   The two blocks under the headline are capped at 460 themselves, so this only
+   ever governs the heading. */
+.lp-section.is-centered .lp-inner {
+  max-width: 900px;
+  text-align: center;
+}
+.lp-section.is-centered .lp-cta-row,
+.lp-section.is-centered .lp-consent {
+  margin-left: auto;
+  margin-right: auto;
+}
+
+/* ── THE DOT FIELD, and it is OPT-IN.
+
+      `.is-dots` rather than `.lp-section`, so a second section added under this
+      one lands on plain white unless it asks for the texture. That scoping - not
+      the fade below - is what keeps the dots off everything that comes later.
+
+      IT SHARES .dot-grid's COLOUR, not its spacing. --dot (rgba(10,10,11,0.13))
+      is the token both use, so changing it moves both; the grid here is tighter
+      than that utility's 22px and is meant to be. The class itself cannot be
+      used anyway - a pseudo-element takes no class, and the mask below needs a
+      pseudo-element - so the declarations are repeated and the token is what
+      keeps the one thing that must agree agreeing.
+
+      A ::before RATHER THAN A BACKGROUND ON THE SECTION. Identical until the
+      mask: `mask-image` fades an element's whole rendering, text included, so
+      painting the dots on the section itself would take the headline with them.
+
+      Ramp draws theirs in WebGL2 - a full-bleed <canvas> behind the hero, with
+      no CSS gradient anywhere on the page. That is the right tool when dots
+      respond per-dot to a cursor or a scroll, and the wrong one for a static
+      field, which is three declarations. ── */
+.lp-section.is-dots::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background-image: radial-gradient(var(--dot) 1px, transparent 1px);
+  /* 16.5 = 22 x 0.75. The dot itself stays 1px, so tightening the grid makes
+     the field denser rather than heavier - which is the difference between more
+     texture and a greyer page. If it ever shimmers on a fractional device pixel
+     ratio, 16px is the nearest integer and the change nobody would notice. */
+  background-size: 16.5px 16.5px;
+  background-position: -1px -1px;
+  /* FADED AT BOTH ENDS, so the field has no edge anywhere - it emerges from
+     under the chrome and dissolves before whatever comes next, rather than
+     starting and stopping on two hard lines.
+
+     The two fades are deliberately UNEQUAL. The bottom runs long (38% of the
+     section) because it has to carry the eye into an empty white section below
+     it. The top runs short (14%) because there is a dark utility bar directly
+     above and the dots only need to clear it, not travel; a top fade as long as
+     the bottom one would eat most of the field before the headline.
+
+     Delete these two lines for a hard-edged field. They are not what scopes it
+     to this section - the .is-dots class does that. */
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0%, #000 14%, #000 62%, transparent 100%);
+  mask-image: linear-gradient(to bottom, transparent 0%, #000 14%, #000 62%, transparent 100%);
+}
+/* No max-width. The headline is one unbroken line and an 860px column would
+   force it to wrap whatever its font-size said; the controls under it set their
+   own widths, so nothing here needs a column. */
+/* Above the dot field, which is a ::before on the same box. */
+.lp-inner { position: relative; z-index: 1; width: 100%; }
+
+/* 4rem = 64px at the 16px root, stated in rem like everything else here so it
+   follows a changed root size rather than pinning to a device pixel.
+
+   NO `white-space: nowrap` any more. It was holding the headline to one line
+   and needed a vw term to stop it running off the side; the line now breaks
+   after "first" from a <br> in the markup, so the longest run is "fantasy
+   football sportsbook." and it fits at 64px with room to spare. clamp() still
+   scales it down on narrow screens - the hard break stays, the type shrinks.
+
+   500, up from 400. The design system has display sizes going LIGHTER
+   (.display and .mx-title are both 400) and this is a deliberate step off that,
+   not an oversight; Gilroy ships four static cuts, so 500 is Medium and the
+   next real step after it is 600. The global h1 is 1.5rem/700, overridden on
+   specificity - a class beats an element. */
+.lp-h1 {
+  margin: 0;
+  font-size: clamp(2rem, 5.4vw, 4rem);
+  font-weight: 500;
+  letter-spacing: -0.03em;
+  /* Tighter than a paragraph's, because the two lines are one sentence and
+     should read as a block rather than as two statements. */
+  line-height: 1.06;
+  color: var(--text);
+}
+
+/* ── The closing band before the footer: the same control, under the line that
+      argues for the format.
+
+      NOT a second full screen. `.lp-section`'s min-height makes a chapter; a
+      closing call to action is a stop. The padding gives it room without
+      claiming a viewport, so the footer arrives right after it rather than a
+      scroll later. ── */
+.lp-section.is-band {
+  min-height: 0;
+  padding-top: 132px;
+  padding-bottom: 132px;
+}
+/* 19px, down from the hero's 34 - the arithmetic is 34 x 0.55. Scoped to the
+   band and not applied to .lp-cta itself, because the two gaps are answering
+   different headlines: 34 is what a 64px display line needs under it before the
+   control stops feeling attached to it, and a 24px sentence needs far less. */
+.lp-section.is-band .lp-cta { margin-top: 19px; }
+
+/* TINTED HERE, WHITE IN THE HERO, and the difference is what is behind each.
+   The hero's field sits on the dot field, where white is what separates it from
+   the texture; this one sits on plain white, where an untinted field would be
+   an outline with nothing in it. --field-fill is a neutral off-white - see the
+   token for why it is not --panel-fill, which is the same lightness with a cool
+   cast for a different ground. */
+.lp-section.is-band .auth-field { background: var(--field-fill); }
+
+/* Well under .lp-h1, not a step under it. The hero's line is the page's one
+   display moment at 64px; this is a closing remark, and at 24 it reads as a
+   sentence rather than a second heading competing with the first.
+
+   FLAT, no clamp. The hero needs one because it is display type that has to
+   survive a narrow viewport; 1.5rem is already a size that fits anywhere, so
+   scaling it would only make it smaller for no reason. `text-transform` is
+   stated because the global h2 is a 0.63rem uppercase micro-label and that one
+   property leaks through otherwise. */
+.lp-h2 {
+  margin: 0;
+  font-size: 1.5rem;
+  /* 500, matching .lp-h1. Settled after trying 600 and 400: the first made a
+     24px line shout at the bottom of a page whose 64px headline does not, and
+     the second let it sink into the control under it. Level with the hero on
+     weight, well under it on size - which leaves size carrying the hierarchy,
+     the way the design system asks. */
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  line-height: 1.25;
+  text-transform: none;
+  color: var(--text);
+}
+
+.lp-cta { margin-top: 34px; }
+
+/* ── Email and the button as ONE control: the button inset into the field's
+      rectangle rather than sitting beside it.
+
+      THE FIELD IS /sign-in's, borrowed not rebuilt - .auth-field, with its
+      floating label and its --auth-control-h height. The button is landing-only,
+      because inset it cannot take .auth-submit's full width and full height.
+
+      `position: relative` here and not on .auth-field, so the button is
+      positioned against the ROW. That keeps it out of the <label>: nesting an
+      interactive element inside one is invalid, and its click would fight the
+      label's job of focusing the input. ── */
+.lp-cta-row {
+  position: relative;
+  /* 500. The button is a fixed --lp-btn-w, so everything past it goes to the
+     field - which is the half that holds a typed address and the half worth
+     widening. It was 460, briefly 560. */
+  max-width: 500px;
+  /* ONE NUMBER FOR TWO THINGS: the button's width, and how far short of it the
+     input's text has to stop. They are only correct relative to each other -
+     a typed address sliding under the button is the failure - so it is written
+     once here and read by both rules below. */
+  --lp-btn-w: 104px;
+}
+/* WHITE, like /sign-in's copy of it. It carried --panel-fill (#FAFCFF) for a
+   moment on the argument that a filled box stops the dotted ground reading
+   through behind the text - but the dots are so faint that the tint was solving
+   a problem the 1px border already solved, and it made the one thing you are
+   asked to touch the dullest object on the screen. White is the brightest
+   surface available, which is the right register for it. */
+.lp-cta-row .auth-field {
+  width: 100%;
+  background: var(--surface);
+  /* Rounded, where .auth-field is square everywhere else. That squareness is
+     the .mx-* rule and it holds on /sign-in, a sheet of square controls; here
+     the field is the only object on the screen and sits on a soft dotted
+     ground, so a hard rectangle is the odd thing rather than the consistent
+     one. --radius-card, the token for a floating surface, because at 60px tall
+     that is what it reads as. */
+  border-radius: var(--radius-card);
+}
+
+/* Inset 7px on three sides, which makes it 46px tall inside a 60px field: small
+   enough to read as sitting IN the box rather than filling it, large enough to
+   stay a comfortable target. Width is fixed rather than derived from the label,
+   so the input's clearance below cannot drift when the wording changes. */
+.lp-play,
+.lp-play:hover,
+.lp-play:active {
+  position: absolute;
+  top: 7px;
+  right: 7px;
+  bottom: 7px;
+  width: var(--lp-btn-w);
+  height: auto;
+  padding: 0;
+  /* CONCENTRIC, not equal. A rounded box inset inside another needs its radius
+     reduced by the inset, or the two curves run at different distances from
+     each other and the gap looks pinched at the corners. The inset is 7px on
+     all three sides, so the inner radius is the outer minus 7. Change the inset
+     and this follows it. */
+  border-radius: calc(var(--radius-card) - 7px);
+  font-size: 0.88rem;
+}
+
+/* .auth-field-input is absolutely positioned with `right: 12px`; this pulls
+   that edge in past the button. 7 of inset plus 11 of breathing room. */
+/* ── EVEN PADDING DOWN BOTH ENDS.
+
+      .auth-field puts its label and input at `left: 12px`, which is right on a
+      square white field and wrong here for two reasons. The box is rounded to
+      12px now, so text at 12px starts exactly where the corner arc does and
+      reads as pressed into it. And the thing it is being judged against is not
+      the button's edge but the button's LABEL: "Play now" is centred in a 104px
+      box inset 7px, so its ink stops roughly 28px from the field's right edge
+      while "Email address" started 12px from the left. Ink to edge, that is
+      more than twice the gap on one side.
+
+      20px splits the difference - clear of the arc, close enough to the label's
+      inset that neither end reads as tighter. Both the label and the input move
+      together or the placeholder and the typed text sit on different lefts.
+
+      OPTICAL, NOT MEASURED. The button's internal padding depends on how wide
+      "Play now" renders in Gilroy, which I have estimated rather than measured;
+      if one side still reads tight this is the value to nudge. ── */
+.lp-cta-row .auth-field-label,
+.lp-cta-row .auth-field-input { left: 20px; }
+
+/* BETWEEN THE TWO STEPS THE RAMP GIVES US. --text-3 (#94A3B8) let the label
+   recede into the fill; --text-2 (#475569) was a step too far and read as
+   something already typed rather than a prompt. There is nothing in between:
+   the greys are Tailwind slate and the ramp goes 400 -> 600, skipping 500.
+
+   `color-mix` rather than the missing hex, so this stays DERIVED from the two
+   tokens either side and follows them if the ramp ever moves. 65/35 lands at
+   roughly #627085, within a couple of points of slate-500.
+
+   Scoped, so /sign-in and /signup keep --text-3 - there the label is one item
+   on a sheet of form and reading quietly is correct. */
+.lp-cta-row .auth-field-label {
+  color: color-mix(in srgb, var(--text-2) 65%, var(--text-3));
+}
+
+/* Pulled in past the button, which is inset 7px with 11px of breathing room. */
+.lp-cta-row .auth-field-input { right: calc(var(--lp-btn-w) + 18px); }
+
+.lp-cta-error { margin: 10px 0 0; }
+
+/* Size and weight taken from .auth-field-label - the "Email address *" resting
+   in the box above - so the two pieces of small print read as one voice.
+   Colour is not: the label is --text-3 because it stands in for a placeholder,
+   this is a sentence meant to be read. */
+.lp-consent {
+  margin: 14px 0 0;
+  /* Matched to .lp-cta-row above it, so the two blocks share an edge when the
+     page is left-aligned and a centre when it is not. Change one, change both. */
+  max-width: 500px;
+  font-size: 0.75rem;
+  font-weight: 450;
+  line-height: 1.5;
+  color: var(--text-3);
+}
+.lp-consent a { color: var(--text-2); text-decoration: underline; }
+
+@media (max-width: 700px) {
+  /* A screen-tall section is a lot of empty on a phone, where the type is
+     smaller and the fold is closer. */
+  .lp-section { min-height: 0; padding: 56px var(--rail) 72px; }
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   PROP MARQUEE (.pm-*) — the landing page's second section.
+
+   Three rows of this week's real props, drifting right, fading out at both
+   edges. The data comes from GET /weeks/public/props and refreshes every
+   minute; see components/PropMarquee.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* CONTAINED BY --rail, not full-bleed. It escaped the section's padding at
+   first, on the argument that a fade needs to reach the window edge - but the
+   rest of the app does not work that way: the utility bar and the nav inset
+   their contents by --rail, and the footer is a card with --rail as its margin.
+   A marquee running to the glass would be the one element on the page ignoring
+   the gutter everything else shares.
+
+   The fade still works; it just dissolves at the content edge rather than the
+   window's, which is the edge the eye is actually using. */
+/* Auto height, not a full screen. The section is the four rows and nothing
+   else now that the heading is gone - roughly 460px of cards - so
+   .lp-section's `min-height` would have left a third of a viewport empty
+   underneath them. Padding gives it room without claiming a screen, the same
+   call .is-band makes for the closing block. */
+.lp-section.is-marquee {
+  display: block;
+  min-height: 0;
+  padding-top: 104px;
+  padding-bottom: 104px;
+}
+
+.pm {
+  /* Nothing above it any more - the section's own padding is the space. */
+  margin-top: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  /* Both edges dissolve rather than stopping. Solid across the middle 76% so
+     the cards under the heading are fully legible, and the fade is symmetric
+     here — unlike the hero's dot field, where the two ends are doing different
+     jobs. */
+  -webkit-mask-image: linear-gradient(to right, transparent 0%, #000 12%, #000 88%, transparent 100%);
+  mask-image: linear-gradient(to right, transparent 0%, #000 12%, #000 88%, transparent 100%);
+}
+
+/* overflow: hidden on the ROW, not on .pm. The mask needs to act on the whole
+   block; clipping there instead would cut the rows off at a hard edge before
+   the gradient ever got to them. */
+.pm-row { overflow: hidden; }
+
+.pm-track {
+  display: flex;
+  gap: 14px;
+  width: max-content;
+  /* NO animation-duration HERE. It is set inline per row by PropMarquee, from
+     that row's card count, so the pace stays constant as the board grows - a
+     fixed duration would make a wider track scroll proportionally faster. The
+     rows still travel together because they hold the same number of cards. */
+  animation-name: pm-drift;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+}
+/* THE STAGGER IS A MARGIN, NOT A DELAY. It used to be negative animation-delays
+   at three different durations, which staggered the rows but let them slide
+   past one another - at equal speed a delay only shifts the phase, and phase
+   and offset are the same thing here, so expressing it twice would be two
+   numbers that have to agree. A margin is independent of the animation and
+   survives it being paused, which is the state the section is in.
+
+   A LADDER FROM THE BOTTOM ROW, 50px a step. The fourth row is the baseline at
+   0 and each row above is indented 50 further right: 150 / 100 / 50 / 0, top to
+   bottom.
+
+   VERIFIED FLUSH FIRST. With all four at 0 the tracks measured identically in
+   the browser - left -2086, width 4906, 20 cards, same transform - so nothing
+   else was offsetting them and this ladder is the only thing separating the
+   rows. That check is worth repeating before changing these: a stagger built on
+   top of an unnoticed offset is not the stagger anyone asked for.
+
+   One card pitch is 246px (232 wide plus the 14 gap), so the widest indent is
+   about two-thirds of a card. */
+.pm-track-0 { margin-left: 150px; }
+.pm-track-1 { margin-left: 100px; }
+.pm-track-2 { margin-left: 50px; }
+.pm-track-3 { margin-left: 0; }
+
+/* -50% to 0 moves RIGHT. The track holds the card list twice, so half its width
+   is exactly one full list — which is why the loop closes seamlessly instead of
+   snapping back. Change the duplication and this stops working. */
+@keyframes pm-drift {
+  from { transform: translateX(-50%); }
+  to   { transform: translateX(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* Held still rather than hidden — the cards are the content, the movement is
+     decoration. Offset so the row does not start on a card boundary. */
+  .pm-track { animation: none; transform: translateX(-12%); }
+}
+
+.pm-card {
+  flex: 0 0 auto;
+  width: 232px;
+  padding: 13px 15px 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  text-align: left;
+}
+.pm-card-head { display: flex; align-items: center; gap: 10px; }
+
+/* ONE BOX, THREE CONTENTS, so a headshot card and a crest card put their text
+   on the same baseline whichever they are. 34px, matching the tile a photo
+   needs; a crest is drawn smaller inside it and centred.
+
+   The crest gets NO tile - it is already a shape with its own silhouette, the
+   same reason .hp-mark on /home draws them bare. The photo does, because a
+   cut-out headshot needs an edge to sit against. The text fallback does too,
+   because three bare letters do not read as a mark. */
+.pm-mark {
+  width: 34px;
+  height: 34px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.pm-mark.is-photo {
+  border-radius: 6px;
+  background: var(--surface-3);
+  overflow: hidden;
+}
+/* PlayerAvatar's exact treatment, which is what the bet page shows: `contain`
+   so the whole headshot fits, then scaled 1.5x from the CENTRE so it fills the
+   tile. ESPN frames these with a lot of transparent margin around the player -
+   contain-then-scale eats that margin, where `cover` would crop the person and
+   contain alone would leave them small in the middle of the box. Both were
+   tried; this is the one that matches the app. */
+.pm-mark.is-photo img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  transform: scale(1.5);
+  transform-origin: center;
+}
+/* NO INITIAL FALLBACK any more. A card whose headshot ESPN will not serve is
+   removed from the list entirely (see PropMarquee) - in a row of faces, one
+   letter reads as a failure rather than as a variant. */
+.pm-mark.is-text {
+  border-radius: 6px;
+  background: var(--surface-2);
+  font-size: 0.58rem;
+  font-weight: 600;
+  color: var(--text-2);
+}
+/* min-width: 0 so a long name ellipses. A flex item defaults to min-width: auto
+   and refuses to shrink past its content, which would push the text out past
+   the card's edge instead of truncating it. */
+.pm-name {
+  min-width: 0;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pm-stat {
+  margin-top: 11px;
+  font-size: 0.6rem;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* margin-top on .pm-line, not only on .pm-stat, because a team card has no
+   eyebrow between the head and this row - without it that card's rule would sit
+   hard against the team name. */
+.pm-line {
+  margin-top: 11px;
+  padding-top: 9px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+.pm-side { font-size: 0.78rem; font-weight: 500; color: var(--text); }
+/* The price is the one accent on the card — it is the number the whole section
+   exists to show, and the design system spends its accent on odds. */
+.pm-odds { font-size: 0.82rem; font-weight: 500; color: var(--accent); }
+
+
+
+

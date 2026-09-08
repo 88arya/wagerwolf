@@ -1,19 +1,23 @@
 /**
  * The signed-in landing page.
  *
- * Deliberately blank, and now blank for one reason rather than two. The main
- * column was always empty by choice — the space a dashboard will go into — and
- * the LeaguesRail that sat in the right-hand column has been removed.
+ * Three regions inside the content card — Inbox, the week, Friends — laid out
+ * by components/HomeBoard, which is also where the reasoning about which of
+ * them are cards lives.
  *
- * Removing the rail used to take joining and creating a league with it: the
- * sidebar's Leagues menu recorded an intent and routed here expecting the rail
- * to open the real surface, so with the rail gone those three rows opened
- * nothing at all. That is fixed and it is no longer this page's problem — the
- * sheets live in components/LeagueActions, which SideNav mounts directly, so
- * all three work from every route. See CLAUDE.md -> Finish the frontend.
+ * NO `.page-wide` WRAPPER, unlike every other page in the shell. Its padding
+ * would inset the Inbox column from the card's left edge, and a flush column
+ * with a hairline down its right side is the whole visual idea. HomeBoard
+ * fills the card itself.
  *
- * What is left here is the dashboard, and only the dashboard.
+ * Before this the page rendered `<div className="page-wide" />` — literally
+ * nothing — and for a while that was worse than blank: the LeaguesRail that
+ * used to sit here was the only mount for the join and create sheets, so
+ * removing it took joining a league with it. Long fixed; the sheets live in
+ * components/LeagueActions, mounted by SideNav, and work from every route.
  */
+import HomeBoard from "@/components/HomeBoard";
+
 export default function HomePage() {
-  return <div className="page-wide" />;
+  return <HomeBoard />;
 }
