@@ -56,6 +56,24 @@ export const authLimiter = rateLimit({
   store: makeStore("rl:auth:"),
 });
 
+/**
+ * The support form is UNAUTHENTICATED — it is on the marketing footer and
+ * inside /docs, both of which serve signed-out visitors — so without this it is
+ * an open pipe from the internet into our own inbox, and into a table anyone
+ * can grow without limit.
+ *
+ * Per IP rather than per user, because most senders have no account. 5/hour is
+ * generous for a human with a problem and useless to anything scripted.
+ */
+export const supportLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  limit: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => ipKeyGenerator(req.ip ?? ""),
+  store: makeStore("rl:support:"),
+});
+
 // Bet placement moves fake money and writes to the DB on every call — cap it
 // per-user so a stuck retry loop or scripted client can't spam bets/cashouts.
 // Always mounted after requireAuth, so req.userId is guaranteed to be set.

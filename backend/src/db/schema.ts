@@ -464,6 +464,34 @@ export const parlayLegsRelations = relations(parlayLegs, ({ one }) => ({
   gameLine: one(gameLines, { fields: [parlayLegs.gameLineId], references: [gameLines.id] }),
 }));
 
+/**
+ * A message sent through the support form.
+ *
+ * WRITTEN BEFORE IT IS SENT, and that ordering is the point of the table. The
+ * mail provider is a third party over the network; if it is down, rate-limiting
+ * us, or misconfigured, the row still exists and the message is not lost while
+ * the sender is told to try again later. `deliveredAt` is stamped only once the
+ * provider accepts it, so anything null is a queue of things to look at.
+ *
+ * `email` is asked for rather than taken from the account: the form is on the
+ * marketing footer and inside /docs, both of which serve signed-out visitors,
+ * and asking everyone is one flow instead of two. `userId` is filled in when
+ * there IS a session, so a signed-in report can be tied to an account without
+ * the sender having to prove who they are.
+ */
+export const supportMessages = pgTable("SupportMessage", {
+  id:          text("id").primaryKey().$defaultFn(() => randomUUID()),
+  // Null for a signed-out sender — most of them, on the marketing routes.
+  userId:      text("userId"),
+  email:       text("email").notNull(),
+  // "contact" | "issue" — which link was pressed. It becomes the subject line,
+  // and it is the only thing sorting a question from a bug report in one inbox.
+  topic:       text("topic").default("contact").notNull(),
+  body:        text("body").notNull(),
+  createdAt:   timestamp("createdAt").defaultNow().notNull(),
+  deliveredAt: timestamp("deliveredAt"),
+});
+
 export const leagueMessagesRelations = relations(leagueMessages, ({ one }) => ({
   league: one(leagues, { fields: [leagueMessages.leagueId], references: [leagues.id] }),
   user:   one(users,   { fields: [leagueMessages.userId],   references: [users.id] }),

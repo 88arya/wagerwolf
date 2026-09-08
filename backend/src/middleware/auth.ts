@@ -14,6 +14,36 @@ export function requireAuth(req: any, res: any, next: NextFunction) {
 }
 
 /**
+ * Fills in req.userId IF a valid token happens to be present, and lets the
+ * request through either way.
+ *
+ * For routes that serve signed-out visitors but can do something better with a
+ * session — the support form is the first: anyone may send a message, and one
+ * from a signed-in user is tied to their account without their being asked who
+ * they are.
+ *
+ * A BAD TOKEN IS TREATED AS NO TOKEN, not as an error. The route does not need
+ * a session, so rejecting an expired one would deny service over a credential
+ * that was never required — a visitor with a stale token in localStorage would
+ * find the contact form broken and no way to guess why.
+ *
+ * NEVER use this where a route reads or writes something private. It cannot
+ * refuse anyone, so `req.userId` being set is not a permission — it is a hint.
+ */
+export function optionalAuth(req: any, _res: any, next: NextFunction) {
+  const token = req.headers.authorization?.replace("Bearer ", "");
+  if (token) {
+    try {
+      const payload = jwt.verify(token, process.env.JWT_SECRET!) as any;
+      req.userId = payload.userId;
+    } catch {
+      // Ignored on purpose — see above.
+    }
+  }
+  next();
+}
+
+/**
  * Guards the emergency-override routes — POST /espn/resolve/:weekId,
  * /espn/games/:weekId, /sync/week/:weekId, /weeks/:id/resolve. These force week
  * resolution and ESPN re-syncs, i.e. they settle everyone's bets.

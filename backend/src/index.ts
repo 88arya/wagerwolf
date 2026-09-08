@@ -17,6 +17,8 @@ import espnRoutes from "./routes/espn.routes";
 import gamelineRoutes from "./routes/gamelines.routes";
 import gamePickRoutes from "./routes/gamepicks.routes";
 import parlayRoutes from "./routes/parlays.routes";
+import homeRoutes from "./routes/home.routes";
+import supportRoutes from "./routes/support.routes";
 import { runStartupSeed } from "./services/startupSeed";
 import { startScheduler, stopScheduler } from "./services/scheduler";
 import { globalLimiter } from "./middleware/rateLimit";
@@ -76,6 +78,8 @@ app.use("/espn", espnRoutes);
 app.use("/gamelines", gamelineRoutes);
 app.use("/gamepicks", gamePickRoutes);
 app.use("/parlays", parlayRoutes);
+app.use("/home", homeRoutes);
+app.use("/support", supportRoutes);
 
 app.get("/", (req, res) => {
   res.json({ status: "Wagerwolf backend running" });
