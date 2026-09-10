@@ -152,6 +152,17 @@ async function runESPNGameSync() {
     console.error(`[cron] SGO discovery failed for week ${week!.number}:`, err);
   }
 
+  // THE LANDING PAGE'S BOARD IS DROPPED HERE, so it is rebuilt from the slate
+  // this job just fetched.
+  //
+  // The window it closes: the resolve at 11:00 UTC makes next week current, but
+  // this job does not run until 18:00 — so for seven hours the "current" week
+  // has no games and no odds. The board is snapshotted on first request and
+  // held for the week (services/publicMarkets), so a single visitor in that
+  // window would freeze an empty marquee until the following Tuesday. Clearing
+  // it after discovery means the next request rebuilds against a full board.
+  await db.update(weeks).set({ publicBoard: null }).where(eq(weeks.id, week!.id));
+
   await runAutoStartLeagues(week!.number);
 }
 

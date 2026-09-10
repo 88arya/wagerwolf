@@ -53,6 +53,25 @@ export type PublicMarket =
       game: string;
     };
 
+/**
+ * THE SIZE OF THE WHOLE BOARD, not of the sample. The landing page's subtitle
+ * counts what a signed-in user can bet this week; the marquee below it shows
+ * ~285 of those, one prop per player and one market per game. Sending the
+ * sample's own length instead would undercount the board by a factor of four
+ * and understate the product.
+ */
+export type BoardTotals = {
+  /** Every available GameLine on the week, ALT ladders included. */
+  lines: number;
+  /** Every available Prop on the week — all stat types, all players. */
+  props: number;
+};
+
+export type PublicBoard = {
+  markets: PublicMarket[];
+  totals: BoardTotals;
+};
+
 function rowsOf(r: any): any[] {
   return Array.isArray(r) ? r : (r?.rows ?? []);
 }
@@ -76,7 +95,7 @@ async function propSample(weekId: string): Promise<PublicMarket[]> {
            pl.name AS player, pl.team AS team, pl.position AS position,
            pl."espnId" AS espn,
            p."statType"::text AS stat, p.line AS line, p.odds AS odds,
-           g."awayTeam" || ' @ ' || g."homeTeam" AS game
+           g."awayTeam" || ' vs ' || g."homeTeam" AS game
       FROM "Prop" p
       JOIN "Player" pl ON pl.id = p."playerId"
       JOIN "Game" g ON g.id = p."gameId"
@@ -124,7 +143,7 @@ async function teamSample(weekId: string): Promise<PublicMarket[]> {
     SELECT DISTINCT ON (g.id, gl.market)
            gl.market AS market, gl.label AS label, gl.odds AS odds,
            CASE WHEN gl.market LIKE '%_HOME' THEN g."homeTeam" ELSE g."awayTeam" END AS team,
-           g."awayTeam" || ' @ ' || g."homeTeam" AS game
+           g."awayTeam" || ' vs ' || g."homeTeam" AS game
       FROM "GameLine" gl
       JOIN "Game" g ON g.id = gl."gameId"
      WHERE g."weekId" = ${weekId}
@@ -173,6 +192,34 @@ async function teamSample(weekId: string): Promise<PublicMarket[]> {
  * That broke twice (2:1 into 3 rows, then 3:1 into 4). A shuffled list cannot
  * have the problem: nothing lines up with anything.
  */
+/**
+ * Two counts, in one round trip.
+ *
+ * NO `available` FILTER, unlike the samples. The samples must not show a card
+ * nobody can bet; a COUNT is answering a different question — how big the
+ * week's board is — and `available` flips to false as the book pulls markets
+ * through the week. Counting only what is still open makes the number shrink
+ * across Sunday, so the figure on the landing page would depend on when the
+ * snapshot below happened to be taken. Every market the week HAS is both the
+ * stabler number and the one the label means.
+ *
+ * THE ALT LADDERS COUNT. They are excluded from the team sample (a ladder is
+ * one market at eight numbers, so sampling it gives eight copies of one card)
+ * but they are genuinely bettable, and ~3,490 is the honest size of the board
+ * where 96 core lines is the honest size of the *fixture* list.
+ */
+async function boardTotals(weekId: string): Promise<BoardTotals> {
+  const rows = await db.execute(sql`
+    SELECT
+      (SELECT count(*) FROM "GameLine" l JOIN "Game" g ON g.id = l."gameId"
+        WHERE g."weekId" = ${weekId})::int AS lines,
+      (SELECT count(*) FROM "Prop" p JOIN "Game" g ON g.id = p."gameId"
+        WHERE g."weekId" = ${weekId})::int AS props
+  `);
+  const r = rowsOf(rows)[0] ?? {};
+  return { lines: Number(r.lines ?? 0), props: Number(r.props ?? 0) };
+}
+
 export async function publicMarketSample(weekId: string): Promise<PublicMarket[]> {
   const [props, teams] = await Promise.all([propSample(weekId), teamSample(weekId)]);
   return [...props, ...teams];
@@ -194,15 +241,44 @@ export async function publicMarketSample(weekId: string): Promise<PublicMarket[]
  * means the rotation happens exactly when the season rolls over, with no
  * weekday maths to get wrong across a timezone or a schedule change.
  *
- * A restart recomputes, and that is harmless: the selection is deterministic —
- * DISTINCT ON with a fixed ORDER BY — so the same week yields the same cards.
- * Prices can differ if the poller has moved a line since, which is a refresh
- * rather than a reshuffle.
+ * A RESTART MUST NOT RECOMPUTE, and for a long time this said the opposite —
+ * that recomputing was harmless because the selection is deterministic. It is
+ * not. Both queries move underneath a running week:
+ *
+ *   - `available = true` SHRINKS as the book pulls markets, so a player's
+ *     chosen prop can vanish and the DISTINCT ON picks a different one — a
+ *     different stat and a different line on the same card.
+ *   - `Player.espnId IS NOT NULL` GROWS: headshots are backfilled lazily by
+ *     GET /players/:id/image as players are viewed inside the app, so more
+ *     players qualify every day and the sample gets longer.
+ *
+ * In-process, none of that showed: the cache was built once and held. Across a
+ * restart it all lands at once, and a restart mid-season is an ordinary event —
+ * every deploy is one. So the board is COMPUTED ONCE AND WRITTEN TO THE WEEK,
+ * and every process from then on reads that row.
+ *
+ * WHY THE WEEK ROW rather than a longer-lived in-process cache: it is the same
+ * lifetime the data actually has, it survives deploys and reboots, and multiple
+ * backend replicas share one answer instead of each freezing a different
+ * Tuesday. Week.publicBoard is null until the first request after rollover.
+ *
+ * WHY TUESDAY, WITHOUT ANY DATE ARITHMETIC. `Week.resolved` flips on the
+ * Tuesday resolve (scheduler.ts, 11:00 UTC), so "the first unresolved week" IS
+ * next week's slate from that moment. The rotation happens exactly when the
+ * season rolls over, with no weekday maths to get wrong across a timezone or a
+ * schedule change.
+ *
+ * WHAT IS STILL LIVE: nothing. The prices on these cards are the prices at
+ * snapshot time and do not follow the poller. That is the trade for stability,
+ * and it is the right one here — this is a marketing surface showing what a
+ * board looks like, not a price anyone acts on.
  */
-/* THE WHOLE POOL, not a page of it. The limit is applied after the shuffle
-   below — see cachedPublicMarkets — so it must not be baked into what is
-   cached, or the cache would have to be keyed per limit for no reason. */
-let cache: { weekId: string; data: PublicMarket[] } | null = null;
+/* A READ-THROUGH MEMO, not the cache any more. The row is the authority; this
+   only saves a query per request. It is keyed by week so a rollover drops it,
+   and it holds the whole pool rather than a page — the limit is applied after
+   the shuffle below, so baking it in would mean keying per limit for no
+   reason. */
+let memo: { weekId: string; board: PublicBoard } | null = null;
 
 async function currentWeekId(): Promise<string | null> {
   const rows = await db.execute(sql`
@@ -211,21 +287,64 @@ async function currentWeekId(): Promise<string | null> {
   return rowsOf(rows)[0]?.id ?? null;
 }
 
-export async function cachedPublicMarkets(limit: number): Promise<PublicMarket[]> {
+/**
+ * The stored board for a week, computing and storing it if this is the first
+ * request since rollover.
+ *
+ * THE WRITE IS CONDITIONAL — `WHERE "publicBoard" IS NULL` — so two requests
+ * arriving together cannot overwrite each other with two different snapshots.
+ * The loser's work is discarded and it re-reads the winner's, which is what
+ * keeps "one board per week" true under concurrency and across replicas.
+ */
+async function storedBoard(weekId: string): Promise<PublicBoard> {
+  const existing = rowsOf(await db.execute(sql`
+    SELECT "publicBoard" AS board FROM "Week" WHERE id = ${weekId}
+  `))[0]?.board;
+  if (existing?.markets) return existing as PublicBoard;
+
+  const [markets, totals] = await Promise.all([
+    publicMarketSample(weekId),
+    boardTotals(weekId),
+  ]);
+  const board: PublicBoard = { markets, totals };
+
+  // AN EMPTY BOARD IS NEVER STORED. A snapshot is held for the whole week, so
+  // storing one taken before the slate exists would freeze an empty marquee
+  // until the next Tuesday. The scheduler clears this column after SGO
+  // discovery for the same reason; this is the second guard, for the case where
+  // the column is cleared and a request arrives before the odds land.
+  if (markets.length === 0) return board;
+
+  const written = rowsOf(await db.execute(sql`
+    UPDATE "Week" SET "publicBoard" = ${JSON.stringify(board)}::jsonb
+     WHERE id = ${weekId} AND "publicBoard" IS NULL
+     RETURNING id
+  `));
+  if (written.length > 0) return board;
+
+  // Someone else got there first. Theirs is the board of record.
+  const winner = rowsOf(await db.execute(sql`
+    SELECT "publicBoard" AS board FROM "Week" WHERE id = ${weekId}
+  `))[0]?.board;
+  return (winner as PublicBoard) ?? board;
+}
+
+export async function cachedPublicBoard(limit: number): Promise<PublicBoard> {
   const weekId = await currentWeekId();
   // No open week — between the last resolve and the next schedule landing. An
-  // empty board is a real state and the marquee hides itself on it.
-  if (!weekId) return [];
+  // empty board is a real state and the marquee hides itself on it, heading
+  // and all.
+  if (!weekId) return { markets: [], totals: { lines: 0, props: 0 } };
 
-  if (!cache || cache.weekId !== weekId) {
-    cache = { weekId, data: await publicMarketSample(weekId) };
+  if (!memo || memo.weekId !== weekId) {
+    memo = { weekId, board: await storedBoard(weekId) };
   }
   // SHUFFLED PER REQUEST, over a POOL that is fixed for the week. The two are
   // different decisions and only one of them rotates weekly: which markets are
   // on the board is settled on Tuesday, the order they appear in is not, so
   // two visits to the landing page do not show an identical wall of cards.
   //
-  // A copy, never the cached array — shuffling in place would leave the cache
+  // A copy, never the memoised array — shuffling in place would leave it
   // permanently reordered and make the "fixed pool" claim quietly false.
   //
   // SLICED AFTER THE SHUFFLE, and that ordering is the fix for a real bug. The
@@ -234,8 +353,12 @@ export async function cachedPublicMarkets(limit: number): Promise<PublicMarket[]
   // props only and returned ZERO team cards. The endpoint's own default of 12
   // did exactly that. Shuffling first makes the slice a fair sample of both
   // kinds instead of a prefix of one.
+  //
+  // THE TOTALS ARE STORED WITH THE SAMPLE, in one row, so the count beside the
+  // marquee and the cards in it are always describing the same snapshot of the
+  // same week. Neither can move without the other.
   const n = Math.min(Math.max(Math.trunc(limit) || 12, 1), MAX);
-  return shuffle(cache.data).slice(0, n);
+  return { markets: shuffle(memo.board.markets).slice(0, n), totals: memo.board.totals };
 }
 
 /**

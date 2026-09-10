@@ -211,6 +211,24 @@ export const weeks = pgTable("Week", {
   resolved:             boolean("resolved").default(false).notNull(),
   locked:               boolean("locked").default(false).notNull(),
   allowanceDistributed: boolean("allowanceDistributed").default(false).notNull(),
+  /**
+   * THE LANDING PAGE'S BOARD, FROZEN. The marquee's card sample and the market
+   * count beside it are computed once, the first time this week becomes the
+   * current one, and read from here forever after.
+   *
+   * It is stored rather than recomputed because the queries behind it are not
+   * stable across a week: they filter on `available`, which shrinks as the book
+   * pulls markets, and on `Player.espnId`, which GROWS as headshots backfill
+   * lazily. An in-process cache hid that until the process restarted — and a
+   * deploy mid-season is an ordinary event. Persisting it makes "the same board
+   * all week" true rather than usually true, and shares it across replicas.
+   *
+   * Null means not yet computed. See services/publicMarkets.
+   */
+  publicBoard:          jsonb("publicBoard").$type<{
+                          markets: unknown[];
+                          totals: { lines: number; props: number };
+                        }>(),
   createdAt:            timestamp("createdAt").defaultNow().notNull(),
 });
 

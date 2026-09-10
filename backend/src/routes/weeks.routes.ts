@@ -4,7 +4,7 @@ import { eq, and, inArray, gte, lte, gt, lt, asc, desc, isNull } from "drizzle-o
 import { weeks, games, props, picks, gameLines, gamePicks, parlayLegs, parlays, memberships, matchups, leagues } from "../db/schema";
 import { requireAuth, requireCron } from "../middleware/auth";
 import { calcProfit } from "../lib/payout";
-import { cachedPublicMarkets } from "../services/publicMarkets";
+import { cachedPublicBoard } from "../services/publicMarkets";
 import { attachBetCounts, betCountsForWeek } from "../services/betCounts";
 
 const router = Router();
@@ -45,7 +45,14 @@ async function fetchWeekWithGames(weekId: string) {
  */
 /**
  * GET /weeks/public/markets — a sample of this week's board: one prop per
- * player and one market per game, shuffled.
+ * player and one market per game, shuffled, plus the SIZE of the board it was
+ * drawn from.
+ *
+ * THE RESPONSE IS AN OBJECT, not the bare array it used to be: { markets,
+ * totals }. The landing page's subtitle counts every available line and prop on
+ * the week (thousands), while the marquee under it shows ~285 — so the two
+ * numbers are different questions and the sample's own length cannot answer the
+ * first. One request answers both, and both describe the same week.
  *
  * UNAUTHENTICATED, and the second read in the app that is. It exists for the
  * landing page's marquee, which shows what a market looks like to someone who
@@ -59,7 +66,7 @@ async function fetchWeekWithGames(weekId: string) {
 router.get("/public/markets", async (req: any, res: any, next: any) => {
   try {
     const raw = Number(req.query.limit);
-    res.json(await cachedPublicMarkets(Number.isFinite(raw) ? raw : 12));
+    res.json(await cachedPublicBoard(Number.isFinite(raw) ? raw : 12));
   } catch (err: any) {
     next(err); return;
   }
