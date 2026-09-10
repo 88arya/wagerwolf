@@ -18,24 +18,41 @@ import { fetchUsage } from "./sportsGameOdds";
  * given tick they are simply at different TTKs.
  *
  *   > 72h   every 24h    lines barely move
- *   72-24h  every  6h    early shaping
- *   24-6h   every  2h    injury and inactive news
- *   < 6h    every  1h    final moves
- *   kicked off           stop entirely; bets are locked
+ *   72-24h  every  8h    early shaping
+ *   24-3h   every  3h    injury and inactive news
+ *   < 3h    every  1h    final moves
+ *   kicked off           stop entirely; bets are locked, and this is what makes
+ *                        the board PREGAME ONLY — no live odds, by design
  *
- * Cost, worst case (16 games, all of a week's slate):
- *   ~26 refreshes per game  ->  16 x 26 = 416 entities per week
- *   5-week month: 2080 + 80 (next-week discovery) + 80 (settlement) = 2240 / 2500
+ * Cost, worst case (16 games, all of a week's slate), simulated against the
+ * 30-minute scheduler tick rather than estimated:
+ *   21 refreshes per game  ->  16 x 21 = 336 entities per week
+ *   4-week month: 1344 + 64 + 64 = 1472 / 2500  (59%)
+ *   5-week month: 1680 + 80 + 80 = 1840 / 2500  (74%)
  *
- * The 5-week month is the binding case. A naive flat cadence blows it.
+ * THE 5-WEEK MONTH IS THE BINDING CASE and 74% is the target, not an accident.
+ * The previous table (24h / 6h / 2h / 1h) simulated to 28 refreshes per game
+ * and 2400/2500 — 96%, a hundred entities of headroom — while its own comment
+ * claimed 2240. The comment was arithmetic; 28 is what the tick actually
+ * produces. Leaving ~650 spare is what absorbs a re-run, a backfill, a week
+ * with a 17th game, or a month where something has to be re-fetched.
+ *
+ * WHY THE LAST TIER STAYS HOURLY at a 3-hour width rather than 6: the final
+ * hours are where the line actually moves, and widening that tier saves two
+ * refreshes a game while giving up the part of the curve worth having. The
+ * saving came from the 72-24h band instead, where it costs nothing.
+ *
+ * If you re-tune these, re-run the simulation rather than counting by hand —
+ * boundary effects against a 30-minute tick are exactly what the old comment
+ * got wrong.
  */
 
 interface Tier { withinHours: number; everyMinutes: number }
 
 const TIERS: Tier[] = [
-  { withinHours: 6,        everyMinutes: 60 },
-  { withinHours: 24,       everyMinutes: 120 },
-  { withinHours: 72,       everyMinutes: 360 },
+  { withinHours: 3,        everyMinutes: 60 },
+  { withinHours: 24,       everyMinutes: 180 },
+  { withinHours: 72,       everyMinutes: 480 },
   { withinHours: Infinity, everyMinutes: 1440 },
 ];
 
@@ -57,6 +74,11 @@ export function isDue(game: { gameDate: Date; oddsPolledAt: Date | null }, now: 
 
 // Stop spending on odds when the month is nearly gone, so settlement — which
 // cannot be deferred without leaving bets pending — always has room.
+//
+// This is the floor, not the plan. The cadence above is sized to finish a
+// 5-week month at ~74%, so this should never fire; it exists for the month
+// where something unforeseen has been re-fetched. If you see the budget-guard
+// warning in the logs, the cadence is wrong, not this number.
 const RESERVE_ENTITIES = 150;
 
 /**

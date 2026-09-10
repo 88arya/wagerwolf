@@ -453,7 +453,51 @@ export function normalizeEvent(ev: any): SGOEvent | null {
   };
 }
 
+/**
+ * THE OTHER LIMIT. The quota everything else in this file is designed around is
+ * 2500 *entities* a month; this is the second one — **10 requests a minute** —
+ * and it is unrelated. A call can be cheap in entities and still breach it.
+ *
+ * IT WAS BEING BREACHED. `resolveWeek` and `settleGame` each call
+ * fetchEventsByID with ONE eventID inside a per-game loop, so a Tuesday resolve
+ * fired ~16 requests back to back with nothing pacing them. Cost in entities is
+ * identical either way — one entity per event returned — so the spend guard
+ * never noticed, and the failure would have been a 429 in the middle of
+ * settlement rather than anything the budget maths would predict.
+ *
+ * A ROLLING WINDOW RATHER THAN A FIXED DELAY, so the common case pays nothing.
+ * The poller's own tick is one or two requests and never waits; only a burst
+ * reaches the limit, and then it waits exactly long enough for the oldest of
+ * the last ten to fall out of the window.
+ *
+ * 8, not 10: the ceiling is the number that gets you a 429, so sitting on it
+ * means one retry or one clock skew is a failure. Two in hand costs a resolve
+ * about 15 seconds.
+ *
+ * Every outbound call goes through this — `request` and `fetchUsage` both — so
+ * a new call site is paced without having to remember.
+ */
+const MAX_REQ_PER_MIN = 8;
+const recentRequests: number[] = [];
+
+async function throttle(): Promise<void> {
+  for (;;) {
+    const now = Date.now();
+    while (recentRequests.length && now - recentRequests[0] >= 60_000) {
+      recentRequests.shift();
+    }
+    if (recentRequests.length < MAX_REQ_PER_MIN) {
+      recentRequests.push(now);
+      return;
+    }
+    const waitMs = 60_000 - (now - recentRequests[0]) + 50;
+    console.log(`[sgo] rate limit: holding ${Math.ceil(waitMs / 1000)}s`);
+    await new Promise((r) => setTimeout(r, waitMs));
+  }
+}
+
 async function request(path: string): Promise<any[]> {
+  await throttle();
   const res = await fetch(`${BASE}${path}`, { headers: { "x-api-key": key() } });
   const body: any = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(`SportsGameOdds ${res.status}: ${JSON.stringify(body).slice(0, 300)}`);
@@ -497,6 +541,7 @@ export async function fetchEventsByDate(startsAfter: Date, startsBefore: Date, l
 
 /** Entities consumed this month, for logging and guard rails. */
 export async function fetchUsage(): Promise<{ used: number; max: number }> {
+  await throttle();
   const res = await fetch(`${BASE}/account/usage`, { headers: { "x-api-key": key() } });
   const body: any = await res.json().catch(() => ({}));
   const m = body?.data?.rateLimits?.["per-month"] ?? {};

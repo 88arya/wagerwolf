@@ -56,3 +56,6 @@ deploy/.env
 # SSH deploy keys, if generated in the repo root.
 *-deploy
 *-deploy.pub
+
+# Design source artwork and exports — reference material, not shipped.
+design/
