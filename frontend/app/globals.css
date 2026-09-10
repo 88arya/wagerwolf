@@ -1401,6 +1401,14 @@ button.dark:hover { opacity: 0.86; background: var(--text); border-color: var(--
    drawer only manages if you also build the drawer. Section labels stay in the
    flow as inline separators, so "LEAGUES" still says what the names after it
    are. */
+/* A bar that is not filling is a clock that is not running, and drawing one
+   would say the section is about to move when it never will. The component
+   makes the matching decision and never starts the timer. */
+@media (prefers-reduced-motion: reduce) {
+  .why-progress { display: none; }
+  .why-detail { animation: none; }
+}
+
 @media (max-width: 900px) {
   .app-shell { flex-direction: column; }
   .app-sidebar {
@@ -5298,6 +5306,25 @@ textarea.support-box {
   display: flex;
   align-items: center;
   padding: 72px var(--rail);
+  /* THE COLUMN EVERYTHING MID-PAGE IS BORDERED INTO. The heading over a
+     section, the three facts under the helmets and the helmets themselves all
+     read this, so the outer edge of a card lands on the same vertical as the
+     first character of the sentence above it. Written once because "aligned"
+     means "the same number", and three copies of a number are three chances to
+     stop being aligned.
+
+     900, MATCHING THE HERO AND THE CLOSING BAND (.lp-section.is-centered
+     .lp-inner), so every block on the page stops on the same two verticals.
+     It went to 1080 for one revision, to make the helmets bigger by widening
+     what they are pinned to - which grew the section past every other block
+     instead. Cards get bigger by taking more OF this column, never by moving
+     its edges.
+
+     Stated separately from that 900 rather than shared with it: the hero's cap
+     is load bearing for a different reason - it is what forces the headline to
+     break after "first" - and a change there should not silently move the
+     helmets. */
+  --lp-measure: 900px;
 }
 
 /* ── CENTRED, as an alternative to compare against the left-aligned default.
@@ -5499,6 +5526,15 @@ textarea.support-box {
      a typed address sliding under the button is the failure - so it is written
      once here and read by both rules below. */
   --lp-btn-w: 104px;
+  /* HOW FAR THE BUTTON SITS INSIDE THE FIELD, on three sides. It was 7, which
+     left a 46px button in a 60px box; 4 makes it 52 and closes the gap without
+     letting it fill the field edge to edge - some inset is what keeps it
+     reading as a control IN the box rather than the box's own right-hand half.
+
+     ONE NUMBER, THREE CONSUMERS: the button's offsets, its concentric radius,
+     and how far short of it the input's text stops. They are only correct
+     relative to each other, so they read it rather than repeating it. */
+  --lp-btn-inset: 4px;
 }
 /* WHITE, like /sign-in's copy of it. It carried --panel-fill (#FAFCFF) for a
    moment on the argument that a filled box stops the dotted ground reading
@@ -5518,31 +5554,33 @@ textarea.support-box {
   border-radius: var(--radius-card);
 }
 
-/* Inset 7px on three sides, which makes it 46px tall inside a 60px field: small
-   enough to read as sitting IN the box rather than filling it, large enough to
-   stay a comfortable target. Width is fixed rather than derived from the label,
-   so the input's clearance below cannot drift when the wording changes. */
+/* Inset --lp-btn-inset on three sides, which makes it 52px tall inside a 60px
+   field: small enough to read as sitting IN the box rather than filling it,
+   large enough to stay a comfortable target. Width is fixed rather than derived
+   from the label, so the input's clearance below cannot drift when the wording
+   changes. */
 .lp-play,
 .lp-play:hover,
 .lp-play:active {
   position: absolute;
-  top: 7px;
-  right: 7px;
-  bottom: 7px;
+  top: var(--lp-btn-inset);
+  right: var(--lp-btn-inset);
+  bottom: var(--lp-btn-inset);
   width: var(--lp-btn-w);
   height: auto;
   padding: 0;
   /* CONCENTRIC, not equal. A rounded box inset inside another needs its radius
      reduced by the inset, or the two curves run at different distances from
-     each other and the gap looks pinched at the corners. The inset is 7px on
-     all three sides, so the inner radius is the outer minus 7. Change the inset
-     and this follows it. */
-  border-radius: calc(var(--radius-card) - 7px);
+     each other and the gap looks pinched at the corners. Derived from the inset
+     rather than restated, so it follows any change to it. */
+  border-radius: calc(var(--radius-card) - var(--lp-btn-inset));
   font-size: 0.88rem;
 }
 
 /* .auth-field-input is absolutely positioned with `right: 12px`; this pulls
-   that edge in past the button. 7 of inset plus 11 of breathing room. */
+   that edge in past the button. The inset plus 11px of breathing room - the
+   breathing room is what stops a typed address touching the button, and it does
+   not change when the inset does. */
 /* ── EVEN PADDING DOWN BOTH ENDS.
 
       .auth-field puts its label and input at `left: 12px`, which is right on a
@@ -5580,7 +5618,7 @@ textarea.support-box {
 }
 
 /* Pulled in past the button, which is inset 7px with 11px of breathing room. */
-.lp-cta-row .auth-field-input { right: calc(var(--lp-btn-w) + 18px); }
+.lp-cta-row .auth-field-input { right: calc(var(--lp-btn-w) + var(--lp-btn-inset) + 11px); }
 
 .lp-cta-error { margin: 10px 0 0; }
 
@@ -5623,24 +5661,107 @@ textarea.support-box {
 
    The fade still works; it just dissolves at the content edge rather than the
    window's, which is the edge the eye is actually using. */
-/* Auto height, not a full screen. The section is the four rows and nothing
-   else now that the heading is gone - roughly 460px of cards - so
-   .lp-section's `min-height` would have left a third of a viewport empty
-   underneath them. Padding gives it room without claiming a screen, the same
-   call .is-band makes for the closing block. */
+/* Auto height, not a full screen. The section is a heading over four rows -
+   roughly 590px - so .lp-section's `min-height` would have left a chunk of a
+   viewport empty underneath them. Padding gives it room without claiming a
+   screen, the same call .is-band makes for the closing block.
+
+   THE TOP PADDING CAME DOWN with the heading going back in: the heading block
+   is 100px of its own, and 104 above it put the title further from the hero
+   than the cards had been. */
 .lp-section.is-marquee {
   display: block;
   min-height: 0;
-  padding-top: 104px;
+  padding-top: 72px;
   padding-bottom: 104px;
 }
 
+/* The 16px grey line under a section title. Its own element rather than
+   .lp-sec-title-2, which is the same 48px as the title and only differs in
+   colour - this is a sentence under a heading, not a second beat of one. */
+.lp-sec-sub {
+  margin-top: 16px;
+  font-size: 16px;
+  font-weight: 500;
+  line-height: 1.5;
+  color: var(--text-3);
+}
+
+/* SHARED BY BOTH MID-PAGE SECTIONS - the marquee and the head-to-head under it
+   - which is why these are lp-sec-* and not pm-*. They were pm-* while the
+     marquee was the only thing with a heading.
+
+   THE HEADING IS BACK, and deliberately - this section carried one before
+   ("The lines are real, and they move.") and it was cut because a sentence
+   asserting the cards below are genuine is weaker than the cards being
+   genuine. This copy does a different job: it names what you DO with the
+   board, and the subtitle counts it. Neither claims the cards are real.
+
+   CENTRED, though the section is not `is-centered`. The rows are masked
+   symmetrically and run off both edges, so they have no left edge for a
+   flush-left title to line up with - the centre is the only alignment the
+   block actually offers. */
+/* 940, not 720. The heading's second line is 36 characters at 48px - about
+   830px - so a 720 cap wrapped it into three ragged lines and lost the
+   two-beat shape the colour split is there to make. Wide enough for the longer
+   line to hold, and the copy is centred so it never reaches either edge. */
+.lp-sec-head {
+  margin: 0 auto 44px;
+  max-width: var(--lp-measure);
+  text-align: center;
+}
+/* 48/500. Not .lp-h2, which is a clamp topping out at 41.6px - this is a
+   stated size rather than a fluid one, so it is its own rule. The tracking is
+   the house value for large text; hierarchy here is size and colour, and the
+   weight stays at the body's 400. */
+.lp-sec-title {
+  font-size: 48px;
+  font-weight: 500;
+  line-height: 1.05;
+  letter-spacing: -0.028em;
+  color: var(--text);
+  /* BOTH OF THESE ARE LOAD BEARING. The global h2 is a 0.63rem uppercase
+     micro-label with 22px/10px margins, and a class only overrides what it
+     states - leave these out and the title renders UPPERCASE with a stray
+     margin above it. .mx-pane-title carries the same note for the same
+     reason. */
+  text-transform: none;
+  margin: 0;
+}
+/* The heading's second line: same size and weight, grey instead of black.
+   --text-3, the same grey as .lp-consent on the first screen - one rung lighter
+   than --text-2.
+   `display: block` is what puts it on its own line - the break is structural
+   rather than a <br>, which Chrome treats as a paragraph boundary and which
+   would stop the heading selecting as one sentence (the same reason .lp-h1
+   forces its break with non-breaking spaces instead). */
+.lp-sec-title-2 {
+  display: block;
+  color: var(--text-3);
+}
+
 .pm {
-  /* Nothing above it any more - the section's own padding is the space. */
-  margin-top: 0;
   display: flex;
   flex-direction: column;
   gap: 14px;
+  /* THE MASK CLIPS, and this is what stops it cutting the hover.
+     `mask-clip` defaults to `border-box`, so a mask does not merely fade the
+     element - it confines every pixel it paints to that box, overflow included.
+     The rows escape their own `overflow: hidden` with 24px of padding and a
+     -24px margin, which puts that escape room ABOVE .pm's border box on the
+     first row and below it on the last - so the mask cut exactly the top of the
+     top row and the bottom of the bottom row, and nothing in between.
+
+     Matching padding here extends the border box over that room. The negative
+     margin cancels it, and the arithmetic lands on its own: sibling margins
+     collapse, so 44 above becomes 20 to .pm's edge and still 44 to the cards,
+     and 22 below becomes -2 and still 22. Change the rows' 24 and change this
+     one with it.
+
+     The gradient is horizontal and uniform vertically, so a taller box does not
+     alter the fade. */
+  padding: 24px 0;
+  margin: -24px 0;
   /* Both edges dissolve rather than stopping. Solid across the middle 76% so
      the cards under the heading are fully legible, and the fade is symmetric
      here — unlike the hero's dot field, where the two ends are doing different
@@ -5649,10 +5770,93 @@ textarea.support-box {
   mask-image: linear-gradient(to right, transparent 0%, #000 12%, #000 88%, transparent 100%);
 }
 
+/* THE COUNT, bottom right of the section. A sibling of .pm rather than a child:
+   .pm carries the edge mask, and this sits in the right-hand fade where it would
+   render at partial opacity.
+
+   Right-aligned to the rail, so it lands on the same edge as the nav and the
+   footer's contents above and below it - the rows themselves are full-bleed
+   inside the mask and have no edge to line up with. */
+.pm-foot {
+  margin-top: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+}
+/* The house micro-label: 0.625rem, uppercase, 0.12em, weight 500, --text-3 -
+   the same spec as .eyebrow and .label, written out rather than borrowed
+   because this is not inside a card. */
+.pm-total-label {
+  font-size: 0.625rem;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+/* FILLED, NOT BORDERED. Everything else in this section is a 1px hairline on
+   white, so a filled block is the one thing on the screen that reads as a
+   figure rather than as another card. --surface-3 is the darker of the two
+   greys available; --surface-2 disappeared against the ground at this size.
+
+   The number is --text pure black at 500: the label is the grey half of the
+   pair, and the fill is doing the work a border would, so the ink can be
+   plain. Not the accent - that is spent on odds, and a count is not a price. */
+.pm-total-count {
+  padding: 5px 8px;
+  /* SQUARE. The cards beside it are --radius-card, but this is not a card - a
+     hard rectangle is what makes it read as a stamp on the section rather than
+     a very small one of the things drifting above it. */
+  border-radius: 0;
+  background: var(--surface-3);
+  /* THE LABEL'S OWN TYPE, exactly: 0.625rem at 0.12em, so the two halves are
+     one line of small print in two colours rather than a label with a bigger
+     number after it. Only the weight and the colour separate them.
+
+     `text-transform` is absent on purpose - there is nothing to case in a
+     figure, and stating it would imply otherwise. */
+  font-size: 0.625rem;
+  letter-spacing: 0.12em;
+  font-weight: 500;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
 /* overflow: hidden on the ROW, not on .pm. The mask needs to act on the whole
    block; clipping there instead would cut the rows off at a hard edge before
    the gradient ever got to them. */
-.pm-row { overflow: hidden; }
+/* THE PADDING IS FOR THE HOVER, and the negative margin cancels it so the
+   layout is unchanged. `overflow: hidden` clips both axes - there is no way to
+   hide the horizontal overflow and let the vertical through, since an
+   `overflow-x: hidden` computes the other axis to `auto` - so a card scaled up
+   under the pointer would have its top and bottom sliced off, and its shadow
+   with them.
+
+   24, NOT 10. The scale needs 2.6px a side on a 115px card, which 10 covered -
+   the SHADOW is what did not fit: `0 4px 16px` reaches 20px below the card and
+   12px above. Size the slack off the shadow, not off the scale.
+
+   THE ROWS THEREFORE OVERLAP: 24px of padding either side against a 14px gap
+   means each row's box runs 34px into its neighbour's. That is why the rows
+   take `pointer-events: none` and the cards take it back - without it the next
+   row's transparent padding sits over the bottom of this row's cards and eats
+   the hover, so a card would refuse to lift when the pointer was on its lower
+   edge.
+
+   AND WHY THE HOVERED ROW IS RAISED: rows paint in DOM order, so row 2 paints
+   over the shadow row 1 casts into it. z-index on the card cannot fix that -
+   .pm-track has a transform and is therefore its own stacking context, so the
+   card's z-index only competes inside its own row. The ROW is the thing that
+   has to rise. */
+.pm-row {
+  overflow: hidden;
+  padding: 24px 0;
+  margin: -24px 0;
+  position: relative;
+  z-index: 0;
+  pointer-events: none;
+}
+.pm-row:has(.pm-card:hover) { z-index: 1; }
 
 .pm-track {
   display: flex;
@@ -5698,50 +5902,114 @@ textarea.support-box {
   to   { transform: translateX(0); }
 }
 
+/* EVERY ROW STOPS, not just the one under the pointer. Holding a card still
+   while the three beside it keep moving reads as that row having broken; the
+   whole strip pausing reads as the strip waiting for you.
+
+   `:has(.pm-card:hover)` rather than `.pm:hover`, so the gaps between rows and
+   the fade at either end do not stop it - only a card does. `animation-play-
+   state` rather than removing the animation: it freezes the track where it
+   stands and resumes from the same place, where a swap to `none` would snap
+   every row back to its start position. */
+.pm:has(.pm-card:hover) .pm-track { animation-play-state: paused; }
+
 @media (prefers-reduced-motion: reduce) {
   /* Held still rather than hidden — the cards are the content, the movement is
      decoration. Offset so the row does not start on a card boundary. */
   .pm-track { animation: none; transform: translateX(-12%); }
 }
 
+/* ── The card, from the Figma spec (Create player and team cards) ──────────
+   232 wide and BOTH KINDS ARE THE SAME BOX. They used to differ by 22px:
+   the eyebrow was prop-only, so a row mixing the two had ragged bottoms. The
+   spec gives a team card the same four slots, which is what lets the height be
+   stated once instead of falling out of whichever contents a card happens to
+   have.
+
+   The width and the 14px gap either side of it are unchanged - the track's
+   pitch, its duration and the row stagger all depend on 246px (see
+   CARD_PITCH in PropMarquee) and none of this touches them. */
 .pm-card {
   flex: 0 0 auto;
   width: 232px;
-  padding: 13px 15px 14px;
+  /* 115, down from the spec's 122. The four slots stack to 75.7px inside the
+     padding, so 122 left 22px of free space that space-between spent in one
+     gap - a hole in the middle of a card this small. 115 leaves ~13px there,
+     which reads as a gap between two groups rather than as slack. */
+  height: 115px;
+  padding: 12px;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-card);
   text-align: left;
+  /* The two groups are pushed to the card's ends rather than stacked from the
+     top: the free space lands between the head and the market, which is the
+     one gap in the layout that is allowed to breathe. */
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  /* position + z-index so the hovered card lifts ABOVE its neighbours. Without
+     it the next card in the track paints over the shadow on this one's right
+     edge, and the lift only half happens. */
+  position: relative;
+  z-index: 0;
+  /* Taken back from .pm-row, which disables it so the overlapping rows cannot
+     intercept each other's hovers. The card is the only thing in the strip that
+     should answer the pointer. */
+  pointer-events: auto;
+  transition: transform 0.18s ease, box-shadow 0.18s ease;
+}
+/* THE ONE SHADOW ON THE LANDING PAGE. The design system reserves --shadow-md
+   for true overlays and builds everything else from hairlines - a hovered card
+   is the exception because it is momentarily an overlay: it rises off the strip
+   and the shadow is what says so. Do not read this as licence for a resting
+   shadow on any other card. */
+.pm-card:hover {
+  transform: scale(1.045);
+  box-shadow: var(--shadow-md);
+  z-index: 1;
+}
+@media (prefers-reduced-motion: reduce) {
+  /* The lift still happens - it is a state change, not decoration - but it
+     arrives at once rather than growing into place. */
+  .pm-card { transition: none; }
 }
 .pm-card-head { display: flex; align-items: center; gap: 10px; }
 
-/* ONE BOX, THREE CONTENTS, so a headshot card and a crest card put their text
-   on the same baseline whichever they are. 34px, matching the tile a photo
-   needs; a crest is drawn smaller inside it and centred.
+/* ONE BOX, TWO CONTENTS, so a headshot card and a crest card put their text on
+   the same line whichever they are.
 
-   The crest gets NO tile - it is already a shape with its own silhouette, the
-   same reason .hp-mark on /home draws them bare. The photo does, because a
-   cut-out headshot needs an edge to sit against. The text fallback does too,
-   because three bare letters do not read as a mark. */
+   THE CREST NOW GETS THE TILE TOO. It used to be drawn bare, on the argument
+   that a silhouette carries its own edge - but the spec puts both marks in the
+   same bordered square, and beside a headshot in one the bare crest read as a
+   missing frame rather than a deliberate variant. The border is the card's own,
+   1px var(--border), which is what ties the mark to the box around it. */
 .pm-mark {
-  width: 34px;
-  height: 34px;
+  width: 36px;
+  height: 36px;
   flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-}
-.pm-mark.is-photo {
-  border-radius: 6px;
-  background: var(--surface-3);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
   overflow: hidden;
 }
-/* PlayerAvatar's exact treatment, which is what the bet page shows: `contain`
-   so the whole headshot fits, then scaled 1.5x from the CENTRE so it fills the
-   tile. ESPN frames these with a lot of transparent margin around the player -
-   contain-then-scale eats that margin, where `cover` would crop the person and
-   contain alone would leave them small in the middle of the box. Both were
-   tried; this is the one that matches the app. */
+/* BACK TO PlayerAvatar's TREATMENT: contain, then 1.5x from the CENTRE. This
+   was briefly `cover` with the origin near the top, and it was wrong for a
+   reason worth writing down.
+
+   ESPN's headshots are wider than they are tall and carry a lot of transparent
+   margin around the player, who is not centred in the frame. `cover` on a
+   square tile scales the SHORT side to fit, so the height already fills and
+   the vertical origin does nothing - every card got the full-height middle
+   band, transparent margin included, cropped left and right. How much margin
+   there is varies per photo, so the head landed at a different size and offset
+   on every card. That variation is the glitchiness.
+
+   contain-then-scale eats the margin instead of framing it, which is why the
+   bet page has always looked steady. If this changes, change PlayerAvatar. */
 .pm-mark.is-photo img {
   width: 100%;
   height: 100%;
@@ -5749,32 +6017,57 @@ textarea.support-box {
   transform: scale(1.5);
   transform-origin: center;
 }
-/* NO INITIAL FALLBACK any more. A card whose headshot ESPN will not serve is
-   removed from the list entirely (see PropMarquee) - in a row of faces, one
-   letter reads as a failure rather than as a variant. */
+/* The crest is drawn smaller inside the tile and centred - it is a mark with
+   its own margin, where the headshot is a cut-out that fills its frame. */
+.pm-mark.is-crest img {
+  width: 20px;
+  height: 20px;
+  object-fit: contain;
+}
+/* NO INITIAL FALLBACK for a player: a card whose headshot ESPN will not serve
+   is removed from the list entirely (see PropMarquee) - in a row of faces, one
+   letter reads as a failure rather than as a variant. A TEAM card keeps this,
+   because its subject is the name beside the mark rather than the mark. */
 .pm-mark.is-text {
-  border-radius: 6px;
   background: var(--surface-2);
   font-size: 0.58rem;
   font-weight: 600;
   color: var(--text-2);
 }
+
 /* min-width: 0 so a long name ellipses. A flex item defaults to min-width: auto
    and refuses to shrink past its content, which would push the text out past
    the card's edge instead of truncating it. */
+.pm-id { flex: 1; min-width: 0; }
 .pm-name {
-  min-width: 0;
-  font-size: 0.85rem;
+  font-size: 12.5px;
   font-weight: 600;
+  line-height: 1;
   color: var(--text);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* THE FIXTURE IS BACK, and under the name rather than under the whole card.
+   It was removed when it sat on its own row at the bottom - five rows of
+   "DAL @ NYG" in small grey type turned the section into a wall of it. Paired
+   with the name it is doing a different job: saying which game this market is
+   from, next to whose it is. The API has always sent it. */
+.pm-game {
+  margin-top: 4px;
+  font-size: 10px;
+  color: var(--text-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 
+/* BOTH KINDS CARRY THIS NOW - the stat for a prop, "Moneyline"/"Spread" for a
+   team market. A team card used to go without, on the argument that its label
+   ("SEA -3.5") already named the market; the spec splits that in two, so the
+   eyebrow names the market and the line below states the number. */
 .pm-stat {
-  margin-top: 11px;
-  font-size: 0.6rem;
+  font-size: 9.5px;
   font-weight: 500;
   letter-spacing: 0.1em;
   text-transform: uppercase;
@@ -5784,23 +6077,675 @@ textarea.support-box {
   text-overflow: ellipsis;
 }
 
-/* margin-top on .pm-line, not only on .pm-stat, because a team card has no
-   eyebrow between the head and this row - without it that card's rule would sit
-   hard against the team name. */
 .pm-line {
-  margin-top: 11px;
-  padding-top: 9px;
+  margin-top: 4px;
+  padding-top: 6px;
   border-top: 1px solid var(--border);
   display: flex;
-  align-items: baseline;
+  align-items: flex-end;
   justify-content: space-between;
   gap: 10px;
 }
-.pm-side { font-size: 0.78rem; font-weight: 500; color: var(--text); }
+.pm-side { font-size: 14px; font-weight: 600; line-height: 1.25; color: var(--text); }
 /* The price is the one accent on the card — it is the number the whole section
    exists to show, and the design system spends its accent on odds. */
-.pm-odds { font-size: 0.82rem; font-weight: 500; color: var(--accent); }
+.pm-odds { font-size: 14px; font-weight: 600; line-height: 1; color: var(--accent); }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   PLAYOFF REVEAL (.pb-*) — the landing page's fourth section.
+
+   The bracket starts empty and fills as the page scrolls past it, ending on
+   the visitor as champion. See components/PlayoffReveal for the geometry and
+   for why it is one SVG rather than a grid of divs.
+
+   THE PIN IS THE SECTION. There is no .lp-section wrapper here, deliberately:
+   that class is `min-height: 100dvh` plus `align-items: center`, which is the
+   right shape for a screen of copy and the wrong one for a 320vh track whose
+   child does the centring. The two would fight over the same axis.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* 320vh: one screen of hold at each end plus the travel between. Shorter and
+   the four stages arrive on top of one another; longer and the page feels
+   stuck. The number is only ever read as `height - pin height`, so changing it
+   changes the pace and nothing else. */
+.pb-track {
+  position: relative;
+  height: 320vh;
+}
+
+/* `top: var(--chrome-h)`, not 0. AppChrome is sticky at the top of the same
+   scrollport, so a pin at 0 slides under the utility bar. The component also
+   PARSES this value to find the scroll position at which progress is 0 — the
+   two must stay the same number, which is why it is read rather than
+   duplicated. */
+.pb-pin {
+  position: sticky;
+  top: var(--chrome-h);
+  height: calc(100dvh - var(--chrome-h));
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 52px;
+  /* ON THE RAIL. Two earlier versions were not — the bracket was 1528 and then
+     1378 wide, and a name's pixel budget is absolute, so it overhung the
+     column. Wrapping the names over two lines brought it to exactly 1220,
+     which is what --rail caps content at, so its edges now line up with TopBar
+     and the nav above it. */
+  padding: 0 var(--rail);
+}
+
+/* The heading pins WITH the graphic rather than sitting in the page above it.
+   Outside the pin it scrolls away in the first screen and leaves an unlabelled
+   bracket filling itself in silence. */
+.pb-head {
+  max-width: 900px;
+  text-align: center;
+}
+
+.pb-svg {
+  display: block;
+  width: 100%;
+  /* The rail's content width, so the bracket's edges land on the same verticals
+     as TopBar and the nav. It is also exactly 6×SLOT_W + 5×GAP — see the LAYOUT
+     block in PlayoffReveal — so at this width one user unit is one pixel and
+     the type inside renders at its nominal size. */
+  max-width: 1220px;
+  height: auto;
+  overflow: visible;
+  /* SVG does not inherit the document font in every engine — it falls back to
+     a serif — and every label in here is house micro-type. */
+  font-family: var(--font-sans);
+}
+
+/* ── Round labels ──────────────────────────────────────────────────────────
+   The house micro-label, as SVG text: 10px, uppercase, 0.12em, weight 500,
+   --text-3. Seven of them, one per column including the champion's, all
+   identical — the row only works because every entry is the same kind of
+   thing. A trophy icon stood in for the seventh for a while and read as the
+   odd one out. */
+.pb-label {
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  fill: var(--text-3);
+}
 
 
+/* ── Slots ─────────────────────────────────────────────────────────────────
+   Two rects crossfading, because stroke-dasharray does not interpolate: a
+   single rect going from dashed-empty to solid-filled snaps rather than
+   transitions. The dashed one is the honest state of a season in progress. */
+.pb-slot-empty {
+  fill: none;
+  stroke: var(--border-2);
+  stroke-width: 1;
+  stroke-dasharray: 4 4;
+  vector-effect: non-scaling-stroke;
+  transition: opacity 0.35s ease;
+}
+.pb-slot.is-on .pb-slot-empty,
+.pb-champ.is-on .pb-slot-empty { opacity: 0; }
+
+.pb-slot-full,
+.pb-champ-full {
+  opacity: 0;
+  transform: translateY(5px);
+  transition: opacity 0.45s ease, transform 0.45s ease;
+}
+.pb-slot.is-on .pb-slot-full,
+.pb-champ.is-on .pb-champ-full {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.pb-slot-full rect {
+  fill: var(--surface);
+  stroke: var(--border);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+/* THE BORDER TOO. It came off for a while, on the argument that the box should
+   be the same box for everyone and only its contents differ — which held while
+   the champion was a tinted square and carried the emphasis on its own. It
+   does not now: the champion is white like everything else, marked only by an
+   accent border, helmet and name. Your slots take the same three, so the
+   accent thread runs through four identical treatments from your seed to the
+   centre instead of changing costume at the last card. */
+.pb-slot.is-you .pb-slot-full rect {
+  stroke: var(--accent);
+  /* 1.5, matching .pb-run.is-lit. The accent border and the accent thread meet
+     at this card's edge, so at 1 against the line's 1.5 the border read as the
+     thinner, weaker end of the same stroke. The grey cards need no equivalent —
+     they are already 1 against 1. */
+  stroke-width: 1.5;
+}
+
+/* BLACK, AND EXACTLY ONE BLUE. Every helmet on the board is --text; the
+   visitor's is --accent. That single exception is the answer to "which one is
+   me", readable across the room before a name has been. Twelve team colours
+   would say the same thing twelve times and therefore say nothing, which is
+   also why the losing halves of the bracket are never coloured. */
+.pb-slot-full use { fill: var(--text); }
+.pb-slot.is-you .pb-slot-full use { fill: var(--accent); }
+
+/* 12px, not 13. The longest name is 27 characters and the seed slot gives it
+   166px of run; at 13 it overruns the box. Check that measurement before
+   raising this — the names live in components/PlayoffReveal. */
+.pb-name {
+  font-size: 12px;
+  font-weight: 500;
+  fill: var(--text);
+}
+.pb-slot.is-you .pb-name { font-weight: 600; fill: var(--accent); }
+
+/* ── The champion ──────────────────────────────────────────────────────────
+   WHITE, like every other card. It was tinted --accent-dim, on the argument
+   that one filled square was enough to end the sentence — but a 10% blue wash
+   under blue type is the one place on the board where ink and ground share a
+   hue, and both went muddy for it. The accent is carried entirely by the
+   things ON the card now: the border, the helmet and the name. Same emphasis,
+   at full strength, with nothing washing out behind it. */
+.pb-champ-full rect {
+  fill: var(--surface);
+  stroke: var(--accent);
+  /* Same 1.5, and for the same reason — the riser lands on this edge. */
+  stroke-width: 1.5;
+  vector-effect: non-scaling-stroke;
+}
+/* SILVER, and the only thing on the board that is not black, grey or accent.
+   --text-3 is the slate ramp's light rung: cool enough to read as metal against
+   the card's white, dark enough to hold a wreath's thin leaves at 78 units. It
+   is `color` and not `fill` because the artwork is set in `currentColor` — the
+   source SVG shipped as two golds and was recoloured on the way into
+   scripts/icons, which is what lets one token drive both.
+
+   THE CLASS OUTLIVES ANY ONE CANDIDATE. Which artwork sits here is undecided
+   and being judged one drawing at a time (see MARKS in PlayoffReveal), so this
+   rule states what the slot IS — silver, currentColor-driven — not what the
+   wreath happens to need. A candidate that needs its own rule is a candidate
+   that is not interchangeable with the others. */
+/* THE ACCENT, and the card is now entirely in it: border, artwork, name, and
+   the thread arriving from the Wagerbowl. That is not the excess it would be
+   anywhere else on this board — the accent means "this is you" everywhere it
+   appears here, and the champion card is the one place every one of those
+   things is true at once.
+
+   IT WAS GOLD FOR A WHILE (#c9a227), and silver before that. Gold was a fourth
+   hue with no precedent in the app; it went out with the trophy it was drawn
+   for. If any candidate brings it back, declare it here rather than as a token
+   and update the Design system section of CLAUDE.md, which says three colours
+   plus team colours. */
+.pb-champ-award { color: var(--accent); }
+
+/* The Wagerwolf mark, in the SAME silver as the artwork it sits with — so the
+   two read as one object rather than as a badge stuck to a trophy.
+
+   It was --accent, on the argument that the champion's card is the one place a
+   second colour is warranted. It is not: the card already carries the accent
+   three times over, on its border, on "YOU", and on the lit thread arriving at
+   it, and a blue mark on a silver cup made a fourth that competed with all
+   three. Silver-on-silver leaves the accent saying one thing — this is you. */
+.pb-crest path { fill: var(--text-3); }
+
+/* ON the artwork rather than beside it, where silver-on-silver would be a shape
+   cut out of a shape. The one place a fourth accent on this card is earned —
+   the border, "YOU" and the lit thread arriving at it are the other three. */
+.pb-crest.is-accent path { fill: var(--accent); }
+/* ACCENT, not black. It is the only name on the board set in the accent at
+   this size, and it agrees with the helmet directly above it — black type
+   under a blue mark inside a blue border read as three unrelated decisions. */
+.pb-champ-name {
+  font-size: 19px;
+  font-weight: 600;
+  fill: var(--accent);
+  letter-spacing: -0.02em;
+}
+
+/* ── Connectors ────────────────────────────────────────────────────────────
+   Drawn on rather than faded in — pathLength=1 normalises the dash maths, so
+   a 20px stub and a 200px run take the same time and the round arrives as one
+   gesture instead of a ragged sweep. */
+.pb-run {
+  fill: none;
+  /* --border-2, one step above the grid's --border. It went to --border-3 for
+     a spell, when the grid was --border-2 and a connector at the same value sat
+     IN the texture rather than on it; lightening the grid removed the reason,
+     and the darker line made the diagram read heavier than it should. */
+  stroke: var(--border-2);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  /* 0.4s, down from 0.55. The reveal is staggered now — legs, then the join,
+     then the card — and at 0.55 each step still had a beat of the last one
+     running under it, so the three read as one blur rather than as an order.
+     The delays themselves are inline, from the component. */
+  transition: stroke-dashoffset 0.4s ease;
+}
+.pb-run.is-on { stroke-dashoffset: 0; }
+.pb-run.is-lit { stroke: var(--accent); stroke-width: 1.5; }
+
+/* ── Reduced motion ────────────────────────────────────────────────────────
+   Nobody who asked not to be animated should have to scroll three screens to
+   read a bracket. The track collapses to the pin's own height, which makes the
+   component's `span <= 0` branch fire and paint every stage on the first
+   frame — the two halves have to agree, and this is the CSS half. */
+@media (prefers-reduced-motion: reduce) {
+  .pb-track { height: auto; }
+  .pb-pin { position: static; height: auto; padding: 96px var(--rail); }
+  .pb-slot-empty,
+  .pb-slot-full,
+  .pb-champ-full,
+  .pb-run { transition: none; }
+}
+
+/* ── Narrow ────────────────────────────────────────────────────────────────
+   Below 900 the pin comes off and the bracket is simply shown, complete. A
+   mirrored bracket cannot narrow — it is seven columns by definition — so at
+   this width it is a diagram to look at rather than a thing to scrub, and the
+   same `span <= 0` branch fills it in.
+
+   The type is bumped in USER UNITS because the whole viewBox is being scaled
+   down: 10px of label inside a 1220-wide box drawn at 380 renders at ~3px. */
+@media (max-width: 900px) {
+  .pb-track { height: auto; }
+  .pb-pin { position: static; height: auto; padding: 72px var(--rail); gap: 40px; }
+  .pb-label { font-size: 22px; letter-spacing: 0.1em; }
+  .pb-name { font-size: 24px; }
+  .pb-champ-name { font-size: 32px; }
+}
 
 
+/* ══════════════════════════════════════════════════════════════════════════
+   WHY (.why-*) — the landing page's fourth section, and the only one that
+   argues rather than demonstrates. Four claims, hairline-separated. See
+   components/WhyWagerwolf for what each one is backed by.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* Auto height, like the marquee. A viewport of four rows would be four rows
+   with a screen of air around them; the section is as tall as its content and
+   the padding does the separating.
+
+   Between the bracket's 112px bottom and the closing band's 132px top, so the
+   page keeps stepping down toward the close rather than landing in three equal
+   blocks. */
+.lp-section.is-why {
+  display: block;
+  min-height: 0;
+  padding-top: 96px;
+  padding-bottom: 112px;
+}
+
+/* Centred over a left-aligned body, matching .pm-head and .pb-head. Three
+   centred headings down the middle of the page is the spine that holds it
+   together; what sits under each of them does not have to agree. */
+.why-head {
+  max-width: var(--lp-measure, 900px);
+  margin: 0 auto 64px;
+  text-align: center;
+}
+
+/* CLAIMS LEFT, PANEL RIGHT — see design/benchmarks/why-section.png.
+
+   5/6 rather than half and half: the panel is the larger object and the list is
+   a column of short lines, so an even split left the text loose and the panel
+   cramped. `center` on the cross axis, so a four-row list sits against the
+   middle of a much taller panel rather than hanging from its top edge. */
+.why-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 5fr) minmax(0, 6fr);
+  gap: 64px;
+  align-items: center;
+}
+
+.why-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+/* A RULE UNDER EVERY ROW, including the last, and none above the first: the
+   group reads as a banded block that starts at its first claim, which is where
+   the eye starts anyway. A box around it would be the nested-box idiom the
+   design system spends its whole .mx-* vocabulary avoiding.
+
+   `relative` for the progress bar below, which is positioned against this. */
+.why-row {
+  position: relative;
+  border-bottom: 1px solid var(--border);
+}
+
+/* THE SEPARATOR, FILLING. The open row's own rule turns black left to right
+   over the dwell, and when it lands the next claim opens — so the section's
+   clock is a line the layout was going to draw anyway rather than a widget
+   added beside it.
+
+   `bottom: -1px`, because an absolute box is placed against the PADDING box and
+   the border sits outside that. At 0 it would float a black hairline one pixel
+   above the grey one; at -1 it lands on it, and the grey rule turns black
+   instead of gaining a second line under it.
+
+   scaleX, not width. Both draw the same 1px bar, but a transform is composited
+   and a width animation relayouts the row sixty times a second for six seconds
+   — on a row whose height must not move, that is the one property not to touch.
+
+   The DURATION IS NOT HERE. It comes in as an inline style from the same
+   constant that drives the advance; see DWELL in WhyWagerwolf. */
+.why-progress {
+  position: absolute;
+  left: 0;
+  bottom: -1px;
+  width: 100%;
+  height: 1px;
+  background: var(--text);
+  transform: scaleX(0);
+  transform-origin: left;
+  animation-name: why-fill;
+  animation-timing-function: linear;
+  animation-fill-mode: forwards;
+}
+@keyframes why-fill {
+  to {
+    transform: scaleX(1);
+  }
+}
+
+.why-claim-h {
+  margin: 0;
+}
+
+/* THE ROW IS THE BUTTON, so every one of these declarations is undoing the
+   global `button` rule — which is a filled accent pill, and would otherwise
+   repaint each claim as one. The :hover and :active repeats are not redundant
+   for the same reason; drop them and the pill comes back on interaction. That
+   is the same trap .mx-btn documents.
+
+   NOTHING MOVES OR CHANGES COLOUR ON HOVER OR CLICK, and that takes work
+   rather than omission: the global rule carries `transition: background 0.15s,
+   opacity 0.15s, transform 0.1s` and a `:active { transform: scale(0.98) }`, so
+   a claim would shrink under the pointer unless both are explicitly undone.
+   The open row is the state; a second, lighter signal for something merely
+   being pointed at offers the same information twice. .mx-tab makes the same
+   argument for the same reason.
+
+   The :hover block therefore sets no colour at all — it exists only to hold
+   off the pill, and letting it inherit is what guarantees it can never drift
+   into being a hover state again.
+
+   --text-3 closed. The three closed claims are there to say how much more there
+   is, not to compete with the one that is open. */
+.why-claim {
+  display: block;
+  width: 100%;
+  padding: 20px 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+  font-family: inherit;
+  font-size: 21px;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  line-height: 1.25;
+  text-align: left;
+  color: var(--text-3);
+  cursor: pointer;
+  transition: none;
+  /* ONE LINE, for the same reason the detail is two: the row must not change
+     height when the cycle moves. Every claim clears the column comfortably at
+     21px, so the ellipsis is a guard rather than a look. */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.why-claim:hover,
+.why-claim:active {
+  background: none;
+  box-shadow: none;
+  transform: none;
+}
+
+/* Open: black, and the padding closes up because the detail underneath is
+   carrying the row's bottom space now. `default` rather than `pointer` — the
+   row is already open and clicking it does nothing, and a hand cursor over a
+   control with no effect is a promise the row cannot keep. */
+.why-row.is-open .why-claim {
+  padding-bottom: 12px;
+  color: var(--text);
+  cursor: default;
+}
+
+/* --text-2, not --text-3. The grey under a heading is a subtitle and can be
+   faint; this is the substance of the claim above it and has to be read.
+
+   EXACTLY TWO LINES, HELD BY THE CSS. `height` is 2 x the line-height, so a
+   short detail still occupies two lines and a long one is clamped to two — the
+   row is the same height whatever is in it. That is not tidiness: the list
+   advances on a timer, and a detail that wrapped to three would shove every
+   row under it and the panel beside it, every six seconds.
+
+   The copy is written to fit inside 50ch x 2. The clamp is the guard for when
+   it stops fitting, and an ellipsis is a better failure than a moving page.
+
+   IT ARRIVES, rather than appearing. A fade and a short settle downward, as if
+   unfolding from under the claim above it — it is rendered only when its row is
+   open, so it mounts fresh on every advance and the animation runs with no key
+   and no imperative reset, the same way the progress bar does.
+
+   OPACITY AND TRANSFORM ONLY — NOT HEIGHT, and that is the load-bearing part.
+   Growing the detail's box would look like the obvious way to open a row, but
+   the outgoing row collapses INSTANTLY while the incoming one takes a third of
+   a second to grow, so the list would be briefly shorter on every advance and
+   the panel beside it, which is centred against the list, would rock. With the
+   height snapping and only the ink animating, the column's total height never
+   changes at all and nothing outside the row moves. */
+.why-detail {
+  margin: 0 0 22px;
+  max-width: 50ch;
+  font-size: 16px;
+  /* 500, matching .lp-sec-sub — the grey line under the marquee and bracket
+     headings — so the page's supporting text is one weight throughout. It was
+     400, the body weight, on the argument that this is the only running prose
+     in the section; agreeing with the rest of the page beat that.
+
+     Not 450, which was tried: Gilroy ships here as four static cuts (400, 500,
+     600, 700 in app/wordmarkFonts.ts), so there is no axis between them and 450
+     would have rendered as one of the two anyway. Inter is the face with a live
+     axis in this app, and it is scoped to the sidebar. */
+  font-weight: 500;
+  line-height: 1.55;
+  height: 3.1em;
+  color: var(--text-2);
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  animation: why-reveal 0.34s ease-out both;
+}
+@keyframes why-reveal {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* THE PANEL, AND ITS CORNERS ARE ROUNDED CONCENTRICALLY WITH THE TILES.
+
+   THE RADIUS IS DERIVED, NOT PICKED: tile radius plus the wall's gap. That is
+   the concentric-radii rule, and it is the whole reason a number is not typed
+   here. The corner tiles sit one gap inside the panel, so an outer radius of
+   exactly (inner + gap) puts the panel's curve parallel to theirs at every
+   point — a constant-width band of panel around the corner, the same width as
+   the straight edges.
+
+   Get it wrong in either direction and the four corner tiles stop matching the
+   other five. Too large and the panel's curve cuts across them (which is why
+   this was square for a while — --radius-xl at 20px against a 12px tile and a
+   2px gap overhangs by 6px and clips each corner tile). Too small and the
+   panel corner looks pinched inside the tile it contains.
+
+   Both terms therefore have to be read from where they are defined, which is
+   why --wall-gap lives on THIS rule rather than on .why-wall: custom properties
+   inherit downward, so the panel can set it and the wall can consume it, but
+   not the other way round.
+
+   `overflow: hidden` stays and still earns its place: it is the mask the tiles
+   are cropped by, so artwork with its own bleed cannot escape the grid.
+
+   THE ASPECT RATIO IS WHY THE PANEL SURVIVED ITS CONTENTS FOUR TIMES. It has
+   held a drifting wall of team abbreviations, three per-claim figures, the mark
+   alone and a device mockup; all four are gone. A fixed shape is what makes
+   each swap cheap — nothing about the panel's size depends on what is inside
+   it, so the claims beside it never move. Size the box here; let the contents
+   fill or centre themselves in their own rule. */
+.why-figure {
+  --wall-gap: 2px;
+  border-radius: calc(var(--radius-lg) + var(--wall-gap));
+  background: var(--surface-2);
+  /* SQUARE, because what is in it is a 3x3 grid of squares — see .why-wall.
+     It was 6/5 while the panel held a single centred object, where the ratio
+     was a composition choice; it is a constraint now. (5x5 first, then 3x3 —
+     the count changed, the constraint did not.) */
+  aspect-ratio: 1 / 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  /* BOTH axes. It centred on the cross axis only when the panel held rows that
+     spanned it; anything that does not fill the box needs both. The wall does
+     fill it, so this is currently inert — kept because every previous occupant
+     of this panel needed it and the next one probably will too. */
+  align-items: center;
+  justify-content: center;
+}
+
+/* THE LOGO WALL (.why-wall / .why-tile).
+
+   A 5x5 grid of rounded tiles filling the panel, the middle one carrying the
+   brand. It reads as an app grid on purpose: the neighbours are the things
+   people already have installed, and the point of the composition is that
+   Wagerwolf sits among them rather than being described next to them.
+
+   THE PANEL IS SQUARE FOR THIS (see .why-figure). A 5x5 grid of squares only
+   comes out square if its container does, and forcing the tiles square inside a
+   6/5 box would have left a band of dead panel above and below the grid.
+
+   THE GAP AND THE INSET ARE ONE VALUE, --wall-gap, and that is why it is a
+   custom property rather than the number written twice. `padding` sits on the
+   wall rather than on .why-figure, so the same value governs both the space
+   between tiles and the space to the panel edge — the thing that makes the outer ring look like part
+   of the same grid rather than a margin around it. box-sizing is border-box
+   globally, so the padding comes out of the panel rather than adding to it.
+
+   The tiles are --surface (white) on the panel's --surface-2, so the 1px lines
+   between them are the panel showing through. There is no border anywhere in
+   here: at this gap a hairline on each tile would double up into a 2px rule
+   between neighbours and a 1px one at the edge, which is the one place the
+   grid would visibly stop being regular. */
+.why-wall {
+  /* --wall-gap is INHERITED from .why-figure, which needs the same number for
+     its own corner radius — see there. It is 2px: at 1 the lines between tiles
+     read as hairlines and the grid looked like one object scored into squares;
+     2 is enough for the tiles to read as separate things sitting together.
+     Raise it there and the outer ring, and the panel's corners, both follow. */
+  width: 100%;
+  height: 100%;
+  display: grid;
+  /* Count comes from the component (see --wall-n there), so the stylesheet and
+     TILES cannot disagree about how many cells there are. */
+  grid-template-columns: repeat(var(--wall-n, 3), 1fr);
+  grid-template-rows: repeat(var(--wall-n, 3), 1fr);
+  gap: var(--wall-gap);
+  padding: var(--wall-gap);
+}
+
+/* `overflow: hidden` so artwork dropped in cannot spill past the rounding —
+   the tiles are the mask, and a logo with its own bleed should be cropped by
+   the corner rather than paint over it. */
+.why-tile {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  background: var(--surface);
+  border-radius: var(--radius-lg);
+}
+
+/* EVERY TILE IS WHITE, INCLUDING OURS. The brand tile inherits .why-tile's
+   ground and changes one thing: the mark is the accent.
+
+   IT USED TO BE THE INVERSE — accent ground, white mark — and the swap is the
+   whole composition, not a preference. With the neighbours desaturated (see
+   below) the wall is a field of greys, so blue is the only colour in it; a
+   filled accent SQUARE reads as a different kind of object among 24 logos,
+   where a blue MARK on the same white ground reads as one of them that happens
+   to be ours. Same reason the design system spends its accent on the thing that
+   is on rather than on a panel behind it.
+
+   So .why-tile.is-brand carries no background of its own. Adding one back is
+   the edit that undoes this. */
+.why-tile.is-brand {
+  color: var(--accent);
+}
+
+/* THE NEIGHBOURS ARE BLACK AND WHITE. Third-party artwork arrives in its own
+   brand colours — that is what a logo is — and 24 of those on one panel is the
+   most colourful surface in an app whose design system allows exactly one
+   accent. Desaturating them makes the wall a texture that our mark sits in
+   rather than 25 things competing.
+
+   SCOPED AWAY FROM THE BRAND TILE TWICE OVER, belt and braces: `:not(.is-brand)`
+   states the intent, and the selector is `img` where ours is an inline <svg>
+   from <Logo>, so the filter could not reach it anyway. Written explicitly
+   because the second guarantee disappears the moment someone swaps the mark for
+   an <img>.
+
+   `contain` handles both shapes of artwork without a second rule: a square app
+   icon fills a square tile exactly, and a wider wordmark letterboxes inside it
+   rather than being cropped. */
+.why-tile:not(.is-brand) img {
+  /* SIZE COMES FROM THE COMPONENT, inline, because it is computed per logo from
+     that logo's aspect ratio — see tileSize() in WhyWagerwolf. There is no
+     padding here any more: the old 14% inset applied the same margin to a
+     square shield and a 4.66:1 wordmark, which is what made them read as
+     different sizes. The inset is now whatever equal-area sizing leaves.
+
+     `contain` is belt and braces. Width and height are set to the ink's own
+     ratio, so it should have nothing to do; it is what keeps a logo undistorted
+     if a file is ever replaced without its `ar` being re-measured. */
+  object-fit: contain;
+  filter: grayscale(1);
+}
+
+/* SIZED IN PERCENT, not from a `size` prop: the tile is a fifth of a panel
+   that is itself a fraction of the viewport, so the only stable way to keep the
+   mark's optical weight is to tie it to the tile. `width: auto` against the
+   artwork's viewBox holds the ink's own proportions — the bare mark is taller
+   than it is wide, so forcing both axes would letterbox it. */
+.why-tile.is-brand svg {
+  /* --brand-h is set on the tile by the component, from the SAME tileSize()
+     the eight logos go through — so our mark is sized by the rule rather than
+     exempt from it. It was a hand-picked 52% before, which is exactly the kind
+     of number that stops agreeing with its neighbours the moment one of them
+     changes. */
+  height: var(--brand-h, 72%);
+  width: auto;
+}
+
+@media (max-width: 900px) {
+  /* One column, panel last — and NOT hidden. It carries the brand moment
+     before the call to action, and a phone is the last place to drop that.
+
+     NO aspect-ratio override here any more. It used to go to 4/3 for the
+     wider single-column panel; the wall has to stay square at every width or
+     its tiles stop being squares, so .why-figure's 1/1 now holds everywhere. */
+  .lp-section.is-why { padding-top: 64px; padding-bottom: 80px; }
+  .why-head { margin-bottom: 40px; }
+  .why-grid { grid-template-columns: 1fr; gap: 40px; }
+  .why-claim { font-size: 19px; padding: 16px 0; }
+}

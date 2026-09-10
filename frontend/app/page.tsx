@@ -26,6 +26,9 @@
 import SignedOutOnly from "@/components/SignedOutOnly";
 import LandingCta from "@/components/LandingCta";
 import PropMarquee from "@/components/PropMarquee";
+import { HelmetMarkDefs } from "@/components/HelmetMark";
+import PlayoffReveal from "@/components/PlayoffReveal";
+import WhyWagerwolf from "@/components/WhyWagerwolf";
 
 export default function LandingPage() {
   return (
@@ -77,23 +80,64 @@ export default function LandingPage() {
         {/* SECTION TWO - the sportsbook half of the headline, shown rather than
             claimed.
 
-            NO HEADING. It carried "The lines are real, and they move." over a
-            paragraph naming the 22 stat types and the feed - and the cards say
-            all of it better: real players, real prices, moving. A sentence
-            asserting that the thing below it is real is weaker than the thing
-            being real.
+            IT HAS A HEADING AGAIN, and the distinction matters because the last
+            one was cut on purpose. That one read "The lines are real, and they
+            move." over a paragraph naming the 22 stat types - a sentence
+            asserting the cards below it are genuine, which is weaker than the
+            cards being genuine. This pair does not make that claim: the title
+            names what you do with the board, the subtitle counts what is on
+            it. Do not reintroduce copy that argues for the cards.
 
-            `is-centered` came off with the text; there is nothing left to
-            centre, and the rows set their own offsets. */}
+            NOT `is-centered` - that class centres the section's whole flex
+            column, which would drag the rows with it. The heading centres
+            itself; see .pm-head.
+
+            THE HEADING IS INSIDE PropMarquee, not here. Its subtitle counts the
+            week's lines and props, and those numbers ride on the same response
+            as the cards - one fetch, one week, no way for the two to disagree.
+            It is also why the section empties cleanly: the component returns
+            null on an unpriced week and takes the heading with it. */}
         <section className="lp-section is-marquee">
           <PropMarquee />
         </section>
 
-        {/* THE CLOSING BAND. The same control again, under the line that argues
-            for the format rather than naming it - so someone who scrolled past
-            the hero unconvinced meets the offer once more, having by then read
-            the case for it. The hero says what this IS; this says why it beats
-            the thing you already play.
+        {/* SECTION THREE - the fantasy half of the headline, and the same
+            argument as the marquee made in the other direction: the format is
+            shown rather than claimed.
+
+            IT IS THE SEASON'S END, not its shape. A weekly matchup graphic was
+            tried here and removed - two helmets facing each other said "head to
+            head" and stopped there, which is a rule rather than a reason. What
+            makes this a league is that the weeks add up to something, so the
+            graphic is the bracket they add up to, and it finishes on the
+            visitor.
+
+            ONLY THE MECHANIC IS ILLUSTRATED. Seed numbers and helmet
+            silhouettes: no team names, no scores, no money figures. Every other
+            section on this page shows real markets, and a fabricated final
+            score sitting under them would be the one thing here that is not
+            true. */}
+        <HelmetMarkDefs />
+        <PlayoffReveal />
+
+        {/* SECTION FOUR - why you would play this instead of the thing you
+            already play. The only section on the page that argues rather than
+            demonstrates, which is why it is words and why it comes after the
+            two that demonstrate: every claim in it is a fact you have just
+            watched be true. See components/WhyWagerwolf. */}
+        <WhyWagerwolf />
+
+        {/* THE CLOSING BAND. The same control again, so someone who scrolled
+            past the hero unconvinced meets the offer once more, having by then
+            read the case for it.
+
+            IT NO LONGER CARRIES THE ARGUMENT. Its line was "Your season
+            shouldn't end in week 3." - the best sentence on the page for
+            saying why, doing that job at the very bottom, UNDER the offer
+            rather than above it. It is section four's heading now, and this
+            band says what happens next instead. Do not put a why back here;
+            two of them on one screen is one too many, and the section above
+            owns it.
 
             `is-band` rather than a second full screen: a closing call to action
             is a stop, not another chapter, and a viewport of it would make the
@@ -102,7 +146,15 @@ export default function LandingPage() {
             No `is-dots`. The texture belongs to the first screen only. */}
         <section className="lp-section is-centered is-band">
           <div className="lp-inner">
-            <h2 className="lp-h2">Your season shouldn&rsquo;t end in week 3.</h2>
+            {/* THE OFFER, AND NOTHING ELSE. Three words and a question mark,
+                over the control that answers it.
+
+                It described the next step for a while - "Pick your week. We'll
+                find your league." - which was accurate to quick-join but was
+                still the band explaining something. By this point in the page
+                the reader has had the claim, the odds, the season and the
+                argument; the last thing on it should ask rather than tell. */}
+            <h2 className="lp-h2">Ready to play?</h2>
             {/* No footnote here. It is the same control as the hero's and the
                 same agreement, stated once on the page rather than twice -
                 see LandingCta's `consent` prop for why the default is ON and

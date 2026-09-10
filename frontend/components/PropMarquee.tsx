@@ -39,6 +39,14 @@ import { getTeamFullName, getTeamLogoUrl } from "@/lib/teamLogos";
  * every 60s. Do not move the animation into React state.
  */
 
+/* THE RESPONSE IS AN OBJECT, not a bare array. `totals` counts every available
+   line and prop on the week — thousands — where `markets` is the ~285-card
+   sample drawn from them. The two answer different questions, which is why the
+   sample's own length cannot stand in for the count. */
+type Totals = { lines: number; props: number };
+
+type Board = { markets: Market[]; totals?: Totals };
+
 type Market =
   | {
       kind: "prop";
@@ -94,23 +102,23 @@ const headshot = (espnId: string) =>
   `https://a.espncdn.com/i/headshots/nfl/players/full/${espnId}.png`;
 
 /**
- * The player's headshot, drawn the way the bet page draws it.
+ * The player's headshot in the card's bordered tile.
  *
- * COPIED FROM PlayerAvatar, deliberately and exactly: a 6px tile on
- * --surface-3, the image `contain` inside it, scaled 1.5x from the CENTRE. Two
- * near-misses came first and both looked wrong - `cover` with a top origin
- * crops into the head, and plain `contain` with no scale leaves the player
- * adrift in the middle of the box. ESPN frames these with a lot of transparent
- * margin, and contain-then-scale is what eats the margin instead of the person.
+ * PlayerAvatar's exact treatment — `contain`, then scaled 1.5x from the centre.
+ * ESPN frames these with a lot of transparent margin around a player who is not
+ * centred in it, and contain-then-scale eats that margin. `cover` was tried here
+ * and looked unsteady: it fills the short side, so the tile shows the full-height
+ * middle band including the margin, and the margin differs per photo. See
+ * .pm-mark.is-photo img in globals.css.
  *
- * If PlayerAvatar's treatment changes, change this too. It is not imported
- * because that component resolves images lazily through an AUTHENTICATED route
- * (GET /players/:id/image) and takes a playerId this page deliberately does not
- * receive - so it would fetch on every card and 401 on every one.
+ * It is not imported from PlayerAvatar even so: that component resolves
+ * images lazily through an AUTHENTICATED route (GET /players/:id/image) and
+ * takes a playerId this page deliberately does not receive — so it would fetch
+ * on every card and 401 on every one.
  *
- * The initial is the fallback, as it is there: only players with an espnId are
- * sampled, so the URL should resolve, but ESPN can still 404 and a broken-image
- * glyph on the landing page is worse than a letter.
+ * There is no fallback. Only players with an espnId are sampled, so the URL
+ * should resolve; when ESPN still 404s, onBroken removes the card from the list
+ * entirely rather than leaving a letter in a row of faces.
  */
 function Headshot({ espnId, onBroken }: { espnId: string; onBroken: () => void }) {
   return (
@@ -136,65 +144,61 @@ function Crest({ team }: { team: string }) {
 
   // ESPN's CDN refuses any request carrying a Referer — see PlayerAvatar.
   return (
-    <span className="pm-mark">
-      <img
-        src={logo}
-        alt=""
-        width={24}
-        height={24}
-        referrerPolicy="no-referrer"
-        onError={() => setFailed(true)}
-      />
+    <span className="pm-mark is-crest">
+      <img src={logo} alt="" referrerPolicy="no-referrer" onError={() => setFailed(true)} />
     </span>
   );
 }
 
+/**
+ * ONE LAYOUT FOR BOTH KINDS, per the Figma spec.
+ *
+ * Four slots, top to bottom: mark + name, the fixture under the name, the
+ * market as an eyebrow, and the line against its price. A prop fills them with
+ * the player, his stat and "Over 62.5"; a team market with the team,
+ * "Moneyline" or "Spread", and the book's own label. They used to diverge —
+ * the eyebrow was prop-only and neither carried a fixture — which is what made
+ * the two heights differ by 22px.
+ */
 function Card({ m, onBroken }: { m: Market; onBroken?: () => void }) {
   const isProp = m.kind === "prop";
   return (
     <div className="pm-card">
       <div className="pm-card-head">
-        {/* A cut-out headshot needs an edge to sit against, so it keeps a tile;
-            the crest does not, being a silhouette already. Same split /home's
-            cards make between PlayerAvatar and .hp-mark. */}
+        {/* Same bordered tile either way now; what differs is what goes in it —
+            a headshot fills its frame, a crest sits smaller and centred. */}
         {isProp ? <Headshot espnId={m.espnId} onBroken={onBroken ?? (() => {})} /> : <Crest team={m.team} />}
-        {/* NAME ONLY. A prop card carried "LAR · WR" under the player and a
-            team card repeated its own market - both were saying again what the
-            picture and the line below already say.
-
-            The team's FULL name, not the abbreviation: the crest and the book's
-            own label ("SEA ML") both already carry the short form, so spelling
-            it out is the one place the card can say who this is rather than
-            abbreviating it a third time. */}
-        <span className="pm-name">
-          {isProp ? m.player : getTeamFullName(m.team)}
-        </span>
+        <div className="pm-id">
+          {/* The team's FULL name, not the abbreviation: the crest and the
+              book's own label ("SEA ML") both already carry the short form, so
+              this is the one place the card can say who it is in full. */}
+          <div className="pm-name">{isProp ? m.player : getTeamFullName(m.team)}</div>
+          <div className="pm-game">{m.game}</div>
+        </div>
       </div>
 
-      {/* PROPS ONLY. A prop needs its market named - "receiving yards" is not
-          derivable from anything else on the card. A team card's market is
-          already in the label below it ("SEA ML", "SEA -3.5"), so an eyebrow
-          reading "Moneyline" over it was the same word twice. */}
-      {isProp && <div className="pm-stat">{m.statType}</div>}
+      <div>
+        {/* The market, named on both kinds — "receiving yards" is not derivable
+            from anything else on a prop card, and pairing it with a team card's
+            "Moneyline" is what makes the two read as one layout. */}
+        <div className="pm-stat">{isProp ? m.statType : m.market}</div>
 
-      <div className="pm-line">
-        {/* A prop quotes ONE SIDE — Prop.odds is the over and the under is not
-            stored — so the card names the side. A team market has the book's
-            own label, which already reads as a bet ("SEA -3.5", "SEA ML"). */}
-        <span className="pm-side">{isProp ? `Over ${m.line}` : m.label}</span>
-        <span className="pm-odds">{fmtOdds(m.odds)}</span>
+        <div className="pm-line">
+          {/* A prop quotes ONE SIDE — Prop.odds is the over and the under is not
+              stored — so the card names the side. A team market has the book's
+              own label, which already reads as a bet ("SEA -3.5", "SEA ML"). */}
+          <span className="pm-side">{isProp ? `Over ${m.line}` : m.label}</span>
+          <span className="pm-odds">{fmtOdds(m.odds)}</span>
+        </div>
       </div>
-
-      {/* NO FIXTURE LINE. It read "DAL @ NYG" under every card, which is the
-          least interesting thing on a card whose subject is a player or a team -
-          and five rows of it turned the section into a wall of small grey text.
-          The `game` field still arrives from the API; nothing renders it. */}
     </div>
   );
 }
 
+
 export default function PropMarquee() {
   const [markets, setMarkets] = useState<Market[]>([]);
+  const [totals, setTotals] = useState<Totals | null>(null);
   /* Headshots ESPN did not serve. An espnId on the row only says we resolved
      one, not that the CDN has the image - so a card can still come up blank.
      The card is DROPPED rather than falling back to an initial: every other
@@ -210,7 +214,11 @@ export default function PropMarquee() {
   useEffect(() => {
     let live = true;
     api(`/weeks/public/markets?limit=${LIMIT}`)
-      .then((d: Market[]) => { if (live) setMarkets(Array.isArray(d) ? d : []); })
+      .then((d: Board) => {
+        if (!live) return;
+        setMarkets(Array.isArray(d?.markets) ? d.markets : []);
+        setTotals(d?.totals ?? null);
+      })
       .catch(() => { /* an unpriced week is a valid state; the section hides */ });
     return () => { live = false; };
   }, []);
@@ -248,7 +256,29 @@ export default function PropMarquee() {
   if (rows.length === 0) return null;
 
   return (
-    <div className="pm" aria-hidden="true">
+    <>
+      {/* THE HEADING LIVES HERE, not in app/page.tsx, for one reason: the
+          subtitle's numbers come from the same response as the cards. Kept in
+          the page it would need its own fetch, and the two could then disagree
+          about which week they were describing.
+
+          It also disappears with the section. Both early returns above are hit
+          on a week the feed has not priced, and "This week: 0 lines" over a
+          blank strip is worse than nothing at all. */}
+      <div className="lp-sec-head">
+        {/* TWO LINES, ONE HEADING. The second is the same 48px as the first
+            and grey rather than black - the colour is what separates them, not
+            the size, so they still read as one sentence in two beats. It is a
+            <span> inside the h2 rather than a second element because it IS the
+            heading; splitting it into a <p> made it a caption on the line
+            above. */}
+        <h2 className="lp-sec-title">
+          Place wagers on every game.
+          <span className="lp-sec-title-2">Parlay your bets for bigger payouts.</span>
+        </h2>
+      </div>
+
+      <div className="pm" aria-hidden="true">
       {rows.map(({ i, cards }) => (
         <div className="pm-row" key={i}>
           {/* The list twice. The track is translated by exactly half its width,
@@ -278,6 +308,25 @@ export default function PropMarquee() {
           </div>
         </div>
       ))}
-    </div>
+      </div>
+
+      {/* THE SIZE OF THE BOARD, under the corner of it. Lines plus props, which
+          is every market a signed-in user can bet this week - not the ~285 the
+          rows above sample, and the gap between the two numbers is the point:
+          the strip is a window onto something much larger.
+
+          OUTSIDE .pm, so the mask does not touch it. .pm fades its own edges to
+          transparent at 12% and 88%, and a figure sitting in the right-hand
+          fade would be the one piece of real information on the page rendered
+          half-legible. */}
+      {totals && (
+        <div className="pm-foot">
+          <span className="pm-total-label">Total markets:</span>
+          <span className="pm-total-count">
+            {(totals.lines + totals.props).toLocaleString()}
+          </span>
+        </div>
+      )}
+    </>
   );
 }

@@ -32,6 +32,22 @@ const MARK =
 const MARK_VIEWBOX = "20.61 14 58.62 72.1";
 const MARK_ASPECT = 58.62 / 72.1;
 
+/**
+ * The mark's geometry, for anything drawing it inside an SVG of its own rather
+ * than through <Logo />. PlayoffReveal is that case: its bracket is one SVG and
+ * the mark goes on the champion's trophy in that coordinate space, so it needs
+ * the path and the box rather than a component that brings its own <svg>.
+ *
+ * Exported as the numbers behind MARK_VIEWBOX, not the string, because a caller
+ * placing this by hand has to cancel the box's origin — the path's own
+ * coordinates start at (20.61, 14), not (0, 0).
+ */
+export const WOLF_MARK = MARK;
+export const WOLF_MARK_X = 20.61;
+export const WOLF_MARK_Y = 14;
+export const WOLF_MARK_W = 58.62;
+export const WOLF_MARK_H = 72.1;
+
 export default function Logo({
   size = 28,
   bare = false,
