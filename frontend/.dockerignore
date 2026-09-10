@@ -1,0 +1,10 @@
+# Keep the build context small and the image reproducible. node_modules in
+# particular must not be copied: the builder runs `npm ci` itself, and a host
+# tree built on Windows carries platform-specific binaries that break on Alpine.
+node_modules
+.next
+.git
+.env*
+!.env.example
+npm-debug.log*
+scripts/icons
