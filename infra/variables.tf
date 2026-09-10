@@ -7,14 +7,24 @@ variable "project" {
 variable "region" {
   description = <<-DESC
     MUST MATCH THE SUPABASE PROJECT'S REGION. The database is Supabase and every
-    request makes several queries, so a cross-region round trip (~60ms
-    us-east-1 <-> us-west-2) compounds into a visibly slow API. The Supabase
-    project is in us-west-2, so this is us-west-2.
+    request makes several queries, so a cross-region round trip (~60ms coast to
+    coast) compounds into an API that is slow forever, in a way that reads as an
+    application problem rather than a config one.
+
+    us-east-1 as of 10 Sept 2026, chosen because that is where the operator and
+    the early audience are. Cost is identical either way — t3.small is $0.0208/hr
+    and gp3 $0.08/GB in both — so the pairing is the only thing that matters,
+    not the coast.
+
+    IT USED TO DEFAULT TO us-west-2 WHILE terraform.tfvars.example SUGGESTED
+    us-east-1, which meant leaving the example file alone put the instance on the
+    opposite coast from the Supabase project the docs told you to match. Both say
+    us-east-1 now, and the example states it rather than commenting it out.
 
     Changing it means moving the Supabase project too, not just this.
   DESC
   type        = string
-  default     = "us-west-2"
+  default     = "us-east-1"
 }
 
 variable "instance_type" {

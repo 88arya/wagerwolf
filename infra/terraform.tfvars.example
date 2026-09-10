@@ -7,6 +7,15 @@
 
 ssh_public_key = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAA... you@machine"
 
-# region        = "us-east-1"
+# THE REGION IS UNCOMMENTED ON PURPOSE. It was a commented-out hint, which meant
+# leaving the file alone silently fell through to variables.tf's default — and
+# the two disagreed, so "change nothing" produced an instance on the far coast
+# from the Supabase project you were told to match. State it, and state it here.
+#
+# It must equal the Supabase project's region. Which coast does not matter; the
+# pairing does — every request makes several queries, so a cross-country hop of
+# ~60ms each compounds into an API that is slow forever.
+region = "us-east-1"
+
 # instance_type = "t3.small"
 # disk_gb       = 20

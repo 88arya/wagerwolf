@@ -19,14 +19,14 @@ how the pipeline behaves once it is.
 ## Shape
 
 ```
-EC2 t3.small (Ubuntu 24.04, us-west-2)
+EC2 t3.small (Ubuntu 24.04, us-east-1)
 └─ docker compose            memory-capped: 1728M of 2048M
    ├─ caddy      :80 :443   TLS, routes by Host across three names
    ├─ web        :3000      Next.js standalone (internal only)
    ├─ app        :5000      the Express backend (internal only)
    └─ redis      :6379      internal only, never published
 
-Supabase (us-west-2)  ───►  Postgres, via the session-mode pooler
+Supabase (us-east-1)  ───►  Postgres, via the session-mode pooler
 ```
 
 **Compute on one box, data on Supabase.** The managed-AWS equivalent — RDS +
@@ -42,7 +42,7 @@ more, so moving it elsewhere is a one-variable change.
 Patching is `unattended-upgrades`. The instance remains a single point of failure
 for *availability*; it is no longer one for *data*.
 
-**The instance region must match the Supabase project's** (`us-west-2`). Every
+**The instance region must match the Supabase project's** (`us-east-1`). Every
 request makes several queries, so a ~60ms cross-country round trip on each turns
 into a visibly slow API.
 
@@ -221,7 +221,7 @@ avoids. `GIT_COMMIT_SHA` and `APP_IMAGE` are appended by the workflow — do not
 put them here.
 
 ```
-DATABASE_URL=postgresql://postgres.<ref>:<pw>@aws-0-us-west-2.pooler.supabase.com:5432/postgres
+DATABASE_URL=postgresql://postgres.<ref>:<pw>@aws-0-us-east-1.pooler.supabase.com:5432/postgres
 JWT_SECRET=<openssl rand -hex 32>
 CRON_SECRET=<openssl rand -hex 32>
 FRONTEND_URL=https://wagerwolf.app,https://www.wagerwolf.app
