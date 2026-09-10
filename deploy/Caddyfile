@@ -26,3 +26,42 @@
 		format console
 	}
 }
+
+# THE SITE ITSELF, on the same box and the same Caddy as the API.
+#
+# Same-origin is the reason this is worth doing at all: the browser talks to
+# wagerwolf.app for pages and api.wagerwolf.app for data, both terminating here,
+# so there is one TLS setup and one place to reason about headers.
+#
+# NO `X-Frame-Options: DENY` HERE, unlike the API block. The API answers JSON
+# and should never be framed; the site is a site, and denying framing outright
+# breaks link previews and anything that embeds a page legitimately. The rest of
+# the hardening applies to both.
+{$APP_DOMAIN} {
+	reverse_proxy web:3000
+	encode gzip zstd
+	header {
+		X-Content-Type-Options nosniff
+		Referrer-Policy strict-origin-when-cross-origin
+		-Server
+	}
+	log {
+		output stdout
+		format console
+	}
+}
+
+# `www` redirects rather than serving a second copy: two hostnames serving
+# identical content splits crawlers and cookies for no benefit. 308 preserves
+# the method, so a POST that lands here is not silently downgraded to GET.
+#
+# CANONICAL_URL IS A FULL URL, SCHEME INCLUDED, and that is deliberate. This
+# line used to be `redir https://{$APP_DOMAIN}{uri}`, which hardcodes the scheme
+# and quietly assumes APP_DOMAIN is a bare hostname. It is in production — but
+# running the stack locally means giving Caddy `http://site.localhost` to switch
+# auto-HTTPS off, and the redirect then emitted `https://http://site.localhost/`.
+# A 308 to a malformed URL is the kind of thing that works everywhere you test
+# it and breaks the one place you did not.
+{$WWW_DOMAIN} {
+	redir {$CANONICAL_URL}{uri} 308
+}

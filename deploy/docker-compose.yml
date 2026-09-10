@@ -32,6 +32,7 @@ services:
     # reboot silently drops every repeatable job and the season lifecycle stops
     # — no Tuesday resolve, no score sync — with nothing in the logs to say so.
     command: redis-server --appendonly yes
+    mem_limit: 192m
     volumes:
       - redis_data:/data
     # Deliberately NOT published to the host. Redis has no auth configured
@@ -65,9 +66,48 @@ services:
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
       SPORTSGAMEODDS_KEY: ${SPORTSGAMEODDS_KEY}
       GIT_COMMIT_SHA: ${GIT_COMMIT_SHA:-}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      SUPPORT_FROM: ${SUPPORT_FROM:-}
+      SUPPORT_INBOX: ${SUPPORT_INBOX:-}
+    mem_limit: 640m
     depends_on:
       redis:
         condition: service_healthy
+    restart: unless-stopped
+
+  # The Next.js frontend, served from this box instead of Vercel.
+  #
+  # MEMORY IS CAPPED ON EVERY SERVICE, and that is the point of the limits added
+  # in this pass rather than a tidy-up. A t3.small has 2 GB; before this the
+  # compose file set no limits at all, so a leak in any one container could take
+  # the whole box — API, Redis and site together — instead of just itself.
+  # Capped, the kernel kills the offender and `restart: unless-stopped` brings it
+  # back while everything else keeps serving.
+  #
+  # Budget: web 768M + app 640M + redis 192M + caddy 128M = 1728M, leaving ~300M
+  # for the host. Raise one and lower another; do not raise the total.
+  #
+  # NEXT_PUBLIC_* ARE ABSENT HERE ON PURPOSE. They are compiled into the client
+  # bundle at build time (see frontend/Dockerfile), so setting them as container
+  # env would look like configuration and do nothing. The image is built per
+  # environment instead.
+  web:
+    image: ${WEB_IMAGE:-ghcr.io/88arya/wagerwolf-frontend:latest}
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      # Next's server is not the memory hog the build is, but an unbounded heap
+      # inside a 768M cap means the OOM killer decides instead of V8.
+      NODE_OPTIONS: --max-old-space-size=512
+    mem_limit: 768m
+    healthcheck:
+      # `/` rather than a dedicated endpoint: it is the one route guaranteed to
+      # exist, and rendering it proves the server is actually serving.
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
     restart: unless-stopped
 
   caddy:
@@ -79,6 +119,12 @@ services:
       # A real hostname turns on automatic HTTPS via Let's Encrypt. Set it to
       # ":80" to serve plain HTTP while DNS is still propagating.
       BACKEND_DOMAIN: ${BACKEND_DOMAIN:-:80}
+      # The site's own hostnames, same treatment. `www` only redirects.
+      APP_DOMAIN: ${APP_DOMAIN:-:8080}
+      WWW_DOMAIN: ${WWW_DOMAIN:-:8081}
+      # Where `www` sends people. A FULL URL — see the Caddyfile.
+      CANONICAL_URL: ${CANONICAL_URL:-https://${APP_DOMAIN}}
+    mem_limit: 128m
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       # caddy_data holds the issued certificates. Losing it means re-issuing on
@@ -88,6 +134,10 @@ services:
       - caddy_config:/config
     depends_on:
       app:
+        condition: service_healthy
+      # Caddy must not accept traffic before the site can answer it, or the
+      # first requests after a deploy get a 502 from the proxy.
+      web:
         condition: service_healthy
     restart: unless-stopped
 

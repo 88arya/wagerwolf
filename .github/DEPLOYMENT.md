@@ -1,7 +1,12 @@
 # Deployment
 
-Backend on **one AWS EC2 instance** running docker compose. Frontend on
-**Vercel**. Postgres on **Supabase**. Driven by GitHub Actions.
+**Site and backend both on one AWS EC2 instance** running docker compose.
+Postgres on **Supabase**. Driven by GitHub Actions.
+
+The frontend moved off Vercel on 10 Sept 2026 — Hobby forbids commercial use,
+Pro is $20/month, and the box was already paid for. It also collapses CORS and
+the OAuth redirect allowlist into one origin. The cost is the CDN and the last
+bit of redundancy; see go_live.md.
 
 **Production only, to start.** The staging path is written and dispatch-only —
 see Flow below for why.
@@ -15,8 +20,9 @@ how the pipeline behaves once it is.
 
 ```
 EC2 t3.small (Ubuntu 24.04, us-west-2)
-└─ docker compose
-   ├─ caddy      :80 :443   TLS, reverse proxy
+└─ docker compose            memory-capped: 1728M of 2048M
+   ├─ caddy      :80 :443   TLS, routes by Host across three names
+   ├─ web        :3000      Next.js standalone (internal only)
    ├─ app        :5000      the Express backend (internal only)
    └─ redis      :6379      internal only, never published
 
@@ -61,7 +67,7 @@ push to master ───────────► ci.yml
                             NOTHING DEPLOYS on a master push
 
 git tag v* ───────────────► deploy-production.yml
-   (or manual dispatch)     ci ─► build image ─► GHCR ─► [approval] ─► ssh deploy ─► Vercel ─► smoke
+   (or manual dispatch)     ci ─► build 2 images ─► GHCR ─► [approval] ─► ssh deploy ─► smoke
 
 manual only ──────────────► deploy-staging.yml  only if a staging box exists
 manual only ──────────────► db-push.yml         schema change, backs up first
@@ -84,6 +90,11 @@ deploy is proving: the pipeline itself (SSH, scp, compose, rollback), the
 `FRONTEND_URL`), Let's Encrypt issuance through Caddy, Google OAuth on a real
 HTTPS callback, and the compiled image on Alpine against Postgres 18 in a
 container rather than `ts-node` against a Windows service.
+
+**Two images now, both pinned by commit SHA.** The frontend's `NEXT_PUBLIC_*`
+are compiled in, so its image is environment-specific and cannot be promoted
+between environments — rebuild instead. `deploy.sh` health-gates both and rolls
+**both** back together, since they are one commit's worth of API contract.
 
 **The image is built once, in CI, and pinned by commit SHA.** Nothing rebuilds
 on the server, so the artifact that passed CI is the artifact that runs. `latest`
@@ -147,19 +158,24 @@ Then set `BACKEND_DOMAIN=api.wagerwolf.app` in the env blob below and Caddy
 provisions a Let's Encrypt certificate on its own. Before DNS resolves, set
 `BACKEND_DOMAIN=:80` to serve plain HTTP.
 
-### 4. Vercel
+### 4. Nothing — the site ships with the backend
 
-Root directory `frontend/`, framework Next.js. **Turn off Vercel's own Git
-auto-deploy** or every push deploys twice, once past CI and once through it.
+This step was Vercel and is gone. `deploy-production.yml` builds a second image
+from `frontend/Dockerfile` and the same `deploy.sh` brings it up beside the API.
+Delete `VERCEL_TOKEN`, `VERCEL_ORG_ID` and `VERCEL_PROJECT_ID` if they exist;
+nothing reads them.
 
-Set `NEXT_PUBLIC_API_URL` on the **Production** environment. `vercel build`
-reads it from Vercel, so setting it in the workflow does nothing.
+Three DNS records instead, all **A**, all to the same Elastic IP: `api`, the
+apex, and `www`. Caddy issues a certificate per hostname and routes by `Host`;
+`www` 308s to the apex.
 
-If you later add a staging box, set it on **Preview** too — and to a *different*
-backend, or staging writes to the production database.
+**`NEXT_PUBLIC_*` are baked in at build time**, so they are build args fed from
+the `BACKEND_URL` and `SITE_URL` Variables, and the frontend image is
+environment-specific. Setting them as container env would do nothing, silently.
 
-`vercel link` in `frontend/` once locally, then read `VERCEL_ORG_ID` and
-`VERCEL_PROJECT_ID` out of `.vercel/project.json`.
+If you later add a staging box it needs its *own* build with its own
+`BACKEND_URL`, pointed at a *different* backend — or staging writes to the
+production database.
 
 ### 5. Google Cloud Console
 
@@ -188,13 +204,13 @@ production gate — without it any `v*` tag ships unattended.
 | `EC2_HOST` | Elastic IP from Terraform |
 | `SSH_PRIVATE_KEY` | contents of `wagerwolf-deploy` (the private half) |
 | `BACKEND_ENV` | the whole backend env file, see below |
-| `VERCEL_TOKEN` | Vercel account token |
-| `VERCEL_ORG_ID` | from `.vercel/project.json` |
-| `VERCEL_PROJECT_ID` | from `.vercel/project.json` |
 
 | Variable | Value |
 |---|---|
-| `BACKEND_URL` | `https://api.wagerwolf.app`, no trailing slash |
+| `BACKEND_URL` | `https://api.wagerwolf.app`, no trailing slash. Also compiled into the frontend bundle |
+| `SITE_URL` | `https://wagerwolf.app`, no trailing slash |
+| `APP_DOMAIN` | `wagerwolf.app` — bare hostname, Caddy site address |
+| `WWW_DOMAIN` | `www.wagerwolf.app` — bare hostname |
 | `BACKUP_BUCKET` | `backup_bucket` output from Terraform |
 | `STAGING_DOMAIN` | *(staging environment only, optional)* domain to alias previews to |
 
@@ -208,7 +224,7 @@ put them here.
 DATABASE_URL=postgresql://postgres.<ref>:<pw>@aws-0-us-west-2.pooler.supabase.com:5432/postgres
 JWT_SECRET=<openssl rand -hex 32>
 CRON_SECRET=<openssl rand -hex 32>
-FRONTEND_URL=https://wagerwolf.app,https://wagerwolf.vercel.app
+FRONTEND_URL=https://wagerwolf.app,https://www.wagerwolf.app
 GOOGLE_CLIENT_ID=...
 GOOGLE_CLIENT_SECRET=...
 SPORTSGAMEODDS_KEY=...
@@ -227,7 +243,9 @@ production data.
 
 ## First run
 
-1. Billing alarm. Then `terraform apply`.
+1. **AWS Budgets** — not a CloudWatch billing alarm. Both warn you; only Budgets
+   counts toward the $20 Free Tier activity. Then `terraform apply`, which
+   should credit the "launch an EC2 instance" activity in the same pass.
 2. Fill in the `production` GitHub Environment. Leave `staging` empty.
 3. `git tag v0.1.0 && git push origin v0.1.0`. Approve when prompted.
    **Expect this one to need a second attempt** — it is the first time any of it

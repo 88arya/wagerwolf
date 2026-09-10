@@ -35,6 +35,7 @@ jobs:
       packages: write
     outputs:
       image: ${{ steps.meta.outputs.image }}
+      web_image: ${{ steps.meta.outputs.web_image }}
     steps:
       - uses: actions/checkout@v7
 
@@ -52,15 +53,39 @@ jobs:
         run: |
           owner=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
           echo "image=ghcr.io/$owner/wagerwolf-backend:sha-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+          echo "web_image=ghcr.io/$owner/wagerwolf-frontend:sha-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
 
-      - name: Build and push
+      - name: Build and push backend
         uses: docker/build-push-action@v6
         with:
           context: backend
           push: true
           tags: ${{ steps.meta.outputs.image }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=backend
+          cache-to: type=gha,mode=max,scope=backend
+
+      # THE FRONTEND IS BUILT PER ENVIRONMENT, not built once and promoted.
+      # NEXT_PUBLIC_* are string-substituted into the client bundle by the
+      # compiler, so they cannot be injected at run time — the image IS the
+      # configuration. That is why they are build args here and why there is no
+      # NEXT_PUBLIC_* in docker-compose.yml.
+      #
+      # They come from Variables rather than Secrets: both are public by
+      # definition, they end up in JavaScript every visitor downloads.
+      #
+      # Separate cache scopes, or the two builds evict each other's layers and
+      # every deploy is a cold build of both.
+      - name: Build and push frontend
+        uses: docker/build-push-action@v6
+        with:
+          context: frontend
+          push: true
+          tags: ${{ steps.meta.outputs.web_image }}
+          build-args: |
+            NEXT_PUBLIC_API_URL=${{ vars.BACKEND_URL }}
+            NEXT_PUBLIC_SITE_URL=${{ vars.SITE_URL }}
+          cache-from: type=gha,scope=frontend
+          cache-to: type=gha,mode=max,scope=frontend
 
       # GHCR KEEPS EVERY IMAGE FOREVER OTHERWISE, and this is a PRIVATE repo, so
       # the free allowance is 500MB. The runtime image is ~180MB on node:22-alpine,
@@ -76,10 +101,19 @@ jobs:
       # has already succeeded — the cost of not pruning is pennies, the cost of
       # a false red on a shipped release is confusion.
       - name: Prune old images from GHCR
-        uses: actions/delete-package-versions@v5
         continue-on-error: true
+        uses: actions/delete-package-versions@v5
         with:
           package-name: wagerwolf-backend
+          package-type: container
+          min-versions-to-keep: 5
+          delete-only-untagged-versions: false
+
+      - name: Prune old frontend images from GHCR
+        continue-on-error: true
+        uses: actions/delete-package-versions@v5
+        with:
+          package-name: wagerwolf-frontend
           package-type: container
           min-versions-to-keep: 5
           delete-only-untagged-versions: false
@@ -99,11 +133,18 @@ jobs:
         env:
           BACKEND_ENV: ${{ secrets.BACKEND_ENV }}
           IMAGE: ${{ needs.image.outputs.image }}
+          WEB_IMAGE: ${{ needs.image.outputs.web_image }}
+          APP_DOMAIN: ${{ vars.APP_DOMAIN }}
+          WWW_DOMAIN: ${{ vars.WWW_DOMAIN }}
         run: |
           printf '%s\n' "$BACKEND_ENV" > deploy/.env
           {
             echo "GIT_COMMIT_SHA=${GITHUB_SHA::7}"
             echo "APP_IMAGE=$IMAGE"
+            echo "WEB_IMAGE=$WEB_IMAGE"
+            echo "APP_DOMAIN=$APP_DOMAIN"
+            echo "WWW_DOMAIN=$WWW_DOMAIN"
+            echo "CANONICAL_URL=${{ vars.SITE_URL }}"
           } >> deploy/.env
           chmod 600 deploy/.env
 
@@ -132,7 +173,9 @@ jobs:
             chmod +x deploy.sh
             # RUN_MIGRATIONS=0 — see the header. deploy.sh rolls back to the
             # previously-running image if the new one never reports healthy.
-            APP_IMAGE="${{ needs.image.outputs.image }}" RUN_MIGRATIONS=0 bash deploy.sh
+            APP_IMAGE="${{ needs.image.outputs.image }}" \
+            WEB_IMAGE="${{ needs.image.outputs.web_image }}" \
+            RUN_MIGRATIONS=0 bash deploy.sh
 
       - name: Verify from the public internet
         run: |
@@ -148,44 +191,9 @@ jobs:
         env:
           BACKEND_URL: ${{ vars.BACKEND_URL }}
 
-  frontend:
-    name: Deploy frontend (Vercel)
-    needs: backend
-    runs-on: ubuntu-latest
-    environment: production
-    env:
-      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
-      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
-    steps:
-      - uses: actions/checkout@v7
-
-      - name: Install Vercel CLI
-        run: npm install --global vercel@latest
-
-      - name: Pull Vercel environment
-        working-directory: frontend
-        run: vercel pull --yes --environment=production --token="$VERCEL_TOKEN"
-        env:
-          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-
-      - name: Build
-        working-directory: frontend
-        run: vercel build --prod --token="$VERCEL_TOKEN"
-        env:
-          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-
-      - name: Deploy
-        working-directory: frontend
-        run: |
-          url=$(vercel deploy --prebuilt --prod --token="$VERCEL_TOKEN")
-          echo "Deployed: $url"
-          echo "### Production frontend: $url" >> "$GITHUB_STEP_SUMMARY"
-        env:
-          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-
   smoke:
     name: Smoke check
-    needs: [backend, frontend]
+    needs: [backend]
     runs-on: ubuntu-latest
     environment: production
     steps:
@@ -199,6 +207,32 @@ jobs:
           test "$code" = "200"
         env:
           BACKEND_URL: ${{ vars.BACKEND_URL }}
+
+      # THE SITE ITSELF, which used to be Vercel's job to prove. Same box and
+      # same Caddy as the API now, so a deploy that brings the API up and leaves
+      # the site down is a state that can exist and has to be checked.
+      - name: Site answers over HTTPS
+        run: |
+          for i in $(seq 1 12); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' "$SITE_URL/" || true)
+            if [ "$code" = "200" ]; then echo "Site reachable."; exit 0; fi
+            echo "attempt $i: HTTP $code"; sleep 5
+          done
+          echo "::error::Site not reachable at $SITE_URL"
+          exit 1
+        env:
+          SITE_URL: ${{ vars.SITE_URL }}
+
+      # Standalone builds ship `.next/static` and `public` as separate COPY
+      # steps; miss either and the site serves HTML with no CSS and no images,
+      # which returns 200 and looks fine to a health check. Assert a real asset.
+      - name: Static assets are served
+        run: |
+          code=$(curl -s -o /dev/null -w '%{http_code}' "$SITE_URL/logo.svg")
+          echo "GET /logo.svg -> $code"
+          test "$code" = "200"
+        env:
+          SITE_URL: ${{ vars.SITE_URL }}
 
       - name: CORS is restricted
         run: |

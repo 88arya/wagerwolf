@@ -158,46 +158,19 @@ jobs:
         env:
           BACKEND_URL: ${{ vars.BACKEND_URL }}
 
-  frontend:
-    name: Deploy frontend (Vercel)
-    needs: backend
-    runs-on: ubuntu-latest
-    environment: staging
-    env:
-      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
-      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
-    steps:
-      - uses: actions/checkout@v7
-
-      - name: Install Vercel CLI
-        run: npm install --global vercel@latest
-
-      # `vercel pull` fetches the project's Preview env vars, including
-      # NEXT_PUBLIC_API_URL. Those live in Vercel's dashboard because
-      # `vercel build` reads them from the pulled config — setting them in this
-      # workflow would be ignored.
-      - name: Pull Vercel environment
-        working-directory: frontend
-        run: vercel pull --yes --environment=preview --token="$VERCEL_TOKEN"
-        env:
-          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-
-      - name: Build
-        working-directory: frontend
-        run: vercel build --token="$VERCEL_TOKEN"
-        env:
-          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-
-      - name: Deploy
-        working-directory: frontend
-        run: |
-          url=$(vercel deploy --prebuilt --token="$VERCEL_TOKEN")
-          echo "Deployed: $url"
-          echo "### Staging frontend: $url" >> "$GITHUB_STEP_SUMMARY"
-          if [ -n "${STAGING_DOMAIN:-}" ]; then
-            vercel alias set "$url" "$STAGING_DOMAIN" --token="$VERCEL_TOKEN"
-            echo "Aliased to https://$STAGING_DOMAIN"
-          fi
-        env:
-          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-          STAGING_DOMAIN: ${{ vars.STAGING_DOMAIN }}
+  # THE FRONTEND JOB IS GONE, and deliberately so.
+  #
+  # It deployed to Vercel. Production stopped doing that on 10 Sept 2026 — the
+  # site is now a container in the same docker compose stack as the API, built
+  # per environment because NEXT_PUBLIC_* are compiled into the bundle. The
+  # `backend` job above already brings the whole stack up, so a staging deploy
+  # gets the site for free once WEB_IMAGE and APP_DOMAIN are set the way
+  # deploy-production.yml sets them.
+  #
+  # Left as a note rather than rewritten: no staging box exists, so this would
+  # be untested code for a hypothetical environment. Mirror the production
+  # workflow's `image` and `backend` jobs on the day one does — the diff is the
+  # frontend build-args and WEB_IMAGE, nothing structural.
+  #
+  # Nothing in this repo depends on VERCEL_TOKEN / VERCEL_ORG_ID /
+  # VERCEL_PROJECT_ID any more; those secrets can be deleted.
