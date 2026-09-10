@@ -6,9 +6,11 @@
     "dev": "next dev --webpack",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "icons": "node scripts/build-icons.mjs"
   },
   "dependencies": {
+    "@iconify/react": "^6.0.2",
     "@react-oauth/google": "^0.13.5",
     "lucide-react": "^1.21.0",
     "next": "16.2.4",
@@ -16,6 +18,7 @@
     "react-dom": "19.2.4"
   },
   "devDependencies": {
+    "@iconify-json/lucide": "^1.2.130",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
