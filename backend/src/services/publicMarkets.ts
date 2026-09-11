@@ -278,6 +278,26 @@ export async function publicMarketSample(weekId: string): Promise<PublicMarket[]
    and it holds the whole pool rather than a page — the limit is applied after
    the shuffle below, so baking it in would mean keying per limit for no
    reason. */
+/**
+ * TWO CACHES ARE STACKED HERE, and knowing that is the difference between a
+ * five-minute fix and an hour of confusion.
+ *
+ *   1. `Week.publicBoard` — a jsonb column, written once per week.
+ *   2. `memo` — this, a module-level copy held in the process.
+ *
+ * The memo is only refreshed when the week **ID** changes. So clearing the
+ * database column does NOT take effect in a running process: the id is the same,
+ * the memo is not re-read, and the stale board keeps being served.
+ *
+ * ANY MID-WEEK CORRECTION THEREFORE NEEDS AN APP RESTART as well as the column
+ * cleared. This bit on 11 Sept 2026: the first production odds sync ran after
+ * the board had already been computed and cached empty, and the marquee kept
+ * serving zero markets through a column clear, a redeploy of Caddy, and several
+ * confident explanations, until the app container was restarted.
+ *
+ * It is not worth adding invalidation for — the board legitimately changes once
+ * a week, and a restart is what a deploy does anyway. It is worth knowing.
+ */
 let memo: { weekId: string; board: PublicBoard } | null = null;
 
 async function currentWeekId(): Promise<string | null> {

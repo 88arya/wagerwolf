@@ -21,7 +21,7 @@ how the pipeline behaves once it is.
 ```
 EC2 t3.small (Ubuntu 24.04, us-east-1)
 └─ docker compose            memory-capped: 1728M of 2048M
-   ├─ caddy      :80 :443   TLS, routes by Host across three names
+   ├─ caddy      :80 :443   TLS (Cloudflare Origin CA), routes by Host
    ├─ web        :3000      Next.js standalone (internal only)
    ├─ app        :5000      the Express backend (internal only)
    └─ redis      :6379      internal only, never published
@@ -166,8 +166,45 @@ Delete `VERCEL_TOKEN`, `VERCEL_ORG_ID` and `VERCEL_PROJECT_ID` if they exist;
 nothing reads them.
 
 Three DNS records instead, all **A**, all to the same Elastic IP: `api`, the
-apex, and `www`. Caddy issues a certificate per hostname and routes by `Host`;
-`www` 308s to the apex.
+apex, and `www` — all **PROXIED (orange)**. Caddy routes by `Host` and `www`
+308s to the apex.
+
+**TLS IS A CLOUDFLARE ORIGIN CERTIFICATE, NOT LET'S ENCRYPT, AND THE ORANGE
+CLOUD IS NOW MANDATORY.** This inverts the grey-cloud instruction this document
+used to carry, so it is worth reading rather than skimming.
+
+Let's Encrypt could not issue. Its *secondary* validation perspectives
+consistently returned `networking error looking up A/AAAA` for all three
+hostnames, while everything checkable verified clean: the delegation agreed
+across Google, Cloudflare and Quad9; both authoritative nameservers answered
+over UDP, TCP and EDNS+DO from two separate networks; a cache-busting probe
+proved DNSSEC was not enabled and not broken; and LE *reached the box and got
+HTTP 200 on the challenge*. The error type was `acme:error:dns` throughout,
+never `rateLimited`, and LE reported no incident. The cause sits in perspectives
+that cannot be observed from here, so the fix routes around ACME instead of
+continuing to diagnose it.
+
+So: **SSL/TLS -> Origin Server -> Create Certificate** in Cloudflare, covering
+`wagerwolf.app` and `*.wagerwolf.app`. Valid 15 years. The two files live in
+`/opt/wagerwolf/certs/` (mode 600) and are mounted read-only into Caddy, which
+pins them with an explicit `tls` directive — that also disables Caddy's
+automatic HTTPS, so it never attempts ACME again.
+
+Consequences, all load bearing:
+
+- **All three DNS records must be PROXIED (orange).** The certificate is trusted
+  only by Cloudflare. Grey-cloud any record and a browser reaches the origin
+  directly and rejects it. The old grey-cloud rule existed solely to keep the
+  HTTP-01 challenge reachable; there is no challenge now.
+- **SSL/TLS mode must be Full (Strict).** Plain `Full` accepts any certificate
+  from the origin including a forged one — encrypted but unauthenticated.
+  Strict verifies this CA.
+- **The certificate is not in git and not in a GitHub secret.** It was copied to
+  the box out of band. A 15-year key has no business being re-materialised on
+  every CI run. `.gitignore` covers `*.pem`, `*.key` and the Cloudflare download.
+- **Renewal: none until 2041.** To replace it, re-issue from the same dashboard
+  page and swap both files in `/opt/wagerwolf/certs`.
+
 
 **`NEXT_PUBLIC_*` are baked in at build time**, so they are build args fed from
 the `BACKEND_URL` and `SITE_URL` Variables, and the frontend image is
