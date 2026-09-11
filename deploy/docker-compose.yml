@@ -127,6 +127,11 @@ services:
     mem_limit: 128m
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      # The Cloudflare Origin certificate and its key. Read-only, and NOT in
+      # git — see .gitignore. Shipped to the box out of band, not by the deploy
+      # workflow, because a 15-year key has no business in a CI secret that is
+      # re-materialised on every run.
+      - ./certs:/etc/caddy/certs:ro
       # caddy_data holds the issued certificates. Losing it means re-issuing on
       # every deploy, which hits Let's Encrypt rate limits (5 per week per
       # hostname) and then serves an untrusted cert until the window resets.

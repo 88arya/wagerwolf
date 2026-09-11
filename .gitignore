@@ -59,3 +59,9 @@ deploy/.env
 
 # Design source artwork and exports — reference material, not shipped.
 design/
+
+# TLS private keys and certificates — never commit these.
+origincert_privkey.txt
+*.pem
+*.key
+*-origin-cert*

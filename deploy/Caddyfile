@@ -1,3 +1,30 @@
+# CLOUDFLARE ORIGIN CERTIFICATE, NOT LET'S ENCRYPT.
+#
+# Every site block below pins an explicit `tls` certificate, which also turns
+# Caddy's automatic HTTPS OFF for that site — it will not attempt ACME at all.
+#
+# WHY. Let's Encrypt could not issue: its SECONDARY validation perspectives
+# consistently reported "networking error looking up A/AAAA" for all three
+# hostnames, while the delegation, both authoritative nameservers, DNSSEC
+# (cache-busted), UDP, TCP and EDNS all verified clean from two networks and
+# four anycast resolvers, and LE reached this box and got HTTP 200 on the
+# challenge. The error type was `acme:error:dns`, never `rateLimited`, and LE
+# reported no incident. The cause sits in perspectives we cannot observe, so
+# the fix routes around ACME rather than continuing to diagnose it.
+#
+# The certificate is issued by Cloudflare's Origin CA, valid 15 years, and is
+# trusted ONLY by Cloudflare. THAT MAKES THE ORANGE CLOUD MANDATORY: with the
+# proxy off, a browser hits this origin directly and rejects the certificate.
+# The grey-cloud rule the docs used to carry existed to keep the HTTP-01
+# challenge reachable; it is inverted now, because there is no challenge.
+#
+# SSL/TLS mode must be FULL (STRICT) in Cloudflare. Full alone accepts any
+# certificate, including a forged one; strict verifies this CA, which is what
+# makes the Cloudflare-to-origin hop authenticated rather than merely encrypted.
+#
+# Renewal: none for 15 years. Re-issue from SSL/TLS -> Origin Server and replace
+# both files in /opt/wagerwolf/certs.
+
 # Caddy terminates TLS and proxies to the app container.
 #
 # BACKEND_DOMAIN is supplied by compose. Set it to a real hostname
@@ -5,6 +32,7 @@
 # certificate on its own — there is no certbot step and no cron to forget.
 # Set it to ":80" to serve plain HTTP before DNS points here.
 {$BACKEND_DOMAIN} {
+	tls /etc/caddy/certs/origin.pem /etc/caddy/certs/origin.key
 	reverse_proxy app:5000
 
 	encode gzip zstd
@@ -38,6 +66,7 @@
 # breaks link previews and anything that embeds a page legitimately. The rest of
 # the hardening applies to both.
 {$APP_DOMAIN} {
+	tls /etc/caddy/certs/origin.pem /etc/caddy/certs/origin.key
 	reverse_proxy web:3000
 	encode gzip zstd
 	header {
@@ -63,5 +92,6 @@
 # A 308 to a malformed URL is the kind of thing that works everywhere you test
 # it and breaks the one place you did not.
 {$WWW_DOMAIN} {
+	tls /etc/caddy/certs/origin.pem /etc/caddy/certs/origin.key
 	redir {$CANONICAL_URL}{uri} 308
 }
