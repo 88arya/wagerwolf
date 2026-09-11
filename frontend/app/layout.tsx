@@ -97,7 +97,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             route in the app — for one screen's sign-in button. The full-tab
             redirect flow needs neither: lib/googleAuth builds the authorization
             URL itself and the browser navigates. Nothing loads from Google
-            until someone actually presses the button. */}
+              until someone actually presses the button.
+
+              THE PACKAGE ITSELF IS GONE as of 11 Sept 2026. It sat in
+              package.json long after the component was deleted, imported by
+              nothing — dead weight in every install and every lockfile audit. */}
         <AppFrame
           // Passed rather than imported inside AppFrame, which is a client
           // component: SiteFooter is a server component and stays one this
