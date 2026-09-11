@@ -196,8 +196,21 @@ Settings → Environments → create `production`. Create `staging` only when a
 staging box exists; an empty Environment is harmless but the workflow that uses
 it is dispatch-only anyway.
 
-**Put a required reviewer on `production`.** That approval prompt is the actual
-production gate — without it any `v*` tag ships unattended.
+**Required reviewers are NOT available on this repo, and that is fine.** Protection
+rules — reviewers, wait timers, branch restrictions — are a paid feature for
+PRIVATE repositories; they need GitHub Pro or a public repo. This repo is private
+on Free, so the option simply is not rendered.
+
+**The real gate is the trigger.** `deploy-production.yml` fires on `push: tags:
+["v*"]` and `workflow_dispatch` only — never on a push to master. A deploy is
+therefore already a deliberate act: cut a tag, or click Run workflow. The
+approval prompt was defence in depth on top of that, not the only thing between
+a merge and production.
+
+Create the environment named `production` regardless — the jobs declare
+`environment: production` and it should exist. Repository-level secrets and
+variables work either way. If you later want the approval step, GitHub Pro is
+$4/month, or making the repo public enables it for free.
 
 | Secret | Value |
 |---|---|
