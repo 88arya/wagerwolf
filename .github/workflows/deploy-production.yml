@@ -1,7 +1,8 @@
 # Tag -> production.
 #
-# Two gates, deliberately: a tag has to be cut by hand, and the `production`
-# GitHub Environment holds a required reviewer.
+# The gate is that a tag has to be cut by hand — this never fires on a push.
+# A second gate (a required reviewer on the `production` Environment) is not
+# available: protection rules are paid on private repos. See the `backend` job.
 #
 # This workflow does NOT migrate the database. `drizzle-kit push --force`
 # auto-approves data-loss statements and this project has no migration history
@@ -122,9 +123,11 @@ jobs:
     name: Deploy backend (EC2)
     needs: image
     runs-on: ubuntu-latest
-    # Put a required reviewer on this Environment in GitHub settings — that
-    # approval prompt is the actual production gate. Without it, any `v*` tag
-    # ships with no human in the loop.
+    # A required reviewer here would add an approval prompt, but Environment
+    # protection rules are a PAID feature on private repos — unavailable on Free,
+    # so the setting is not even rendered. The gate is the trigger instead: this
+    # workflow fires on a `v*` tag or a manual dispatch, never on a push, so a
+    # deploy is already a deliberate act rather than a consequence of merging.
     environment: production
     steps:
       - uses: actions/checkout@v7

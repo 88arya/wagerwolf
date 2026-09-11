@@ -49,8 +49,10 @@ jobs:
     environment: ${{ inputs.environment }}
     steps:
       # Cheap guard against picking production from the dropdown by accident.
-      # The Environment's required reviewer is the real gate; this one costs
-      # nothing and catches the misclick before a reviewer is paged.
+      # THIS IS THE ONLY GATE on this workflow — Environment protection rules
+      # (required reviewers) are a paid feature on private repos, so there is no
+      # approval prompt behind it. Typing the target back is what stands between
+      # a misclick and drizzle-kit running against production.
       - name: Confirm target
         run: |
           if [ "$CONFIRM" != "$TARGET" ]; then
