@@ -21,7 +21,9 @@
  *
  * The chrome around this is NOT part of this file: AppChrome (the utility bar
  * and the games strip) and SiteFooter are mounted by the root layout on every
- * route, and on `/` the bar swaps its lockup for SeasonCountdown.
+ * route. (It used to say the bar swaps its lockup for SeasonCountdown on `/`;
+ * that stopped being true when TopBar became a one-sentence tagline bar, and
+ * SeasonCountdown was deleted on 11 Sept 2026.)
  */
 import SignedOutOnly from "@/components/SignedOutOnly";
 import LandingCta from "@/components/LandingCta";

@@ -29,8 +29,8 @@ import type { CSSProperties } from "react";
  *  - "My account" and its dropdown — components/AccountMenu, rendered by
  *    SiteNav's right-hand slot
  *  - "Play now" -> /signup — SiteNav's "Get started", beside "Sign in"
- *  - SeasonCountdown, which this sentence replaced. That file is still in the
- *    tree and nothing imports it: it read "The countdown begins — 20d 01h 55m
+ *  - SeasonCountdown, which this sentence replaced. DELETED 11 Sept 2026 in the
+ *    stray-file sweep, having been dead code since. `git log --  *    frontend/components/SeasonCountdown.tsx` has it. It read: it read "The countdown begins — 20d 01h 55m
  *    56s until the first game of the 2026-27 NFL season" and pulled
  *    GET /weeks/public/current on every landing view to compute it. This says
  *    what the product IS rather than when it starts, needs no request, and
