@@ -82,6 +82,14 @@ jobs:
     name: Deploy backend (EC2)
     needs: image
     runs-on: ubuntu-latest
+    # `packages: read` IS REQUIRED and its absence is not obvious. The job-level
+    # default is the workflow's `contents: read`, and GHCR will happily accept a
+    # `docker login` with a token that cannot pull — authorisation is checked at
+    # PULL time, not at login. So the log reads "Login Succeeded" and then
+    # "denied", which looks like bad credentials and is actually a missing scope.
+    permissions:
+      contents: read
+      packages: read
     environment: staging
     steps:
       - uses: actions/checkout@v7
