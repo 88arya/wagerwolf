@@ -3,6 +3,7 @@ import { eq, and, isNull, inArray, count } from "drizzle-orm";
 import { weeks, games, gameLines, players, props, picks, gamePicks, parlayLegs } from "../db/schema";
 import { getNFLWeekGames } from "./espnApi";
 import { SGOEvent, SGOProp, fetchEventsByID, fetchEventsByDate } from "./sportsGameOdds";
+import { backfillPlayerIdentities } from "./playerIdentity";
 
 export async function syncESPNGames(weekId: string): Promise<{ synced: number }> {
   const week = await db.query.weeks.findFirst({ where: eq(weeks.id, weekId) });
@@ -314,6 +315,23 @@ export async function syncOdds(weekId: string): Promise<{ games: number; lines: 
   }
 
   console.log(`[sync] Odds for week ${week.number}: ${gamesSynced} games, ${lines} lines, ${propsWritten} props`);
+
+  // IDENTITY IS RESOLVED HERE, not when someone looks at the player.
+  //
+  // The sync is what CREATES players, so it is the only place that knows a new
+  // one has arrived. Before this, `espnId` was written solely by
+  // `GET /players/:id/image` — a signed-in, view-time request — so the landing
+  // page's prop cards could never appear on a fresh deployment, because the
+  // marquee's whole audience is people who have not signed in.
+  //
+  // Awaited rather than fired and forgotten: a caller that reports "1072 props
+  // written" should not return while a third of them are still ineligible to be
+  // displayed. It is bounded and never throws — see backfillPlayerIdentities.
+  const ids = await backfillPlayerIdentities();
+  if (ids.scanned) {
+    console.log(`[sync] Player identities: ${ids.resolved}/${ids.scanned} resolved` +
+      (ids.unresolved ? `, ${ids.unresolved} unmatched by ESPN` : ""));
+  }
   return { games: gamesSynced, lines, props: propsWritten };
 }
 
@@ -335,6 +353,23 @@ export async function syncOddsForGames(
     if (r.lines || r.props) gamesSynced++;
     lines += r.lines;
     propsWritten += r.props;
+  }
+
+  // IDENTITY IS RESOLVED HERE, not when someone looks at the player.
+  //
+  // The sync is what CREATES players, so it is the only place that knows a new
+  // one has arrived. Before this, `espnId` was written solely by
+  // `GET /players/:id/image` — a signed-in, view-time request — so the landing
+  // page's prop cards could never appear on a fresh deployment, because the
+  // marquee's whole audience is people who have not signed in.
+  //
+  // Awaited rather than fired and forgotten: a caller that reports "1072 props
+  // written" should not return while a third of them are still ineligible to be
+  // displayed. It is bounded and never throws — see backfillPlayerIdentities.
+  const ids = await backfillPlayerIdentities();
+  if (ids.scanned) {
+    console.log(`[sync] Player identities: ${ids.resolved}/${ids.scanned} resolved` +
+      (ids.unresolved ? `, ${ids.unresolved} unmatched by ESPN` : ""));
   }
   return { games: gamesSynced, lines, props: propsWritten };
 }

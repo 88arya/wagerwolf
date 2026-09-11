@@ -3,7 +3,8 @@ import { db } from "../db/db";
 import { eq, asc } from "drizzle-orm";
 import { players } from "../db/schema";
 import { requireAuth, requireCron } from "../middleware/auth";
-import { searchEspnPlayerId, espnImageUrl, getAthleteDetails } from "../services/espnApi";
+import { espnImageUrl } from "../services/espnApi";
+import { resolvePlayerIdentity } from "../services/playerIdentity";
 
 const router = Router();
 
@@ -30,46 +31,32 @@ router.get("/", requireAuth, async (req: any, res: any, next: any) => {
   }
 });
 
-// Lazy image + jersey resolution: espnId in DB → ESPN search by name → store for next time
+/**
+ * The lazy path, and now only the SECOND chance.
+ *
+ * Identity is resolved when a player arrives from the odds sync — see
+ * services/playerIdentity, which this delegates to so the two cannot drift.
+ * This route remains because the sweep is best-effort: ESPN's search is a name
+ * match and misses people, so a player it could not resolve still gets one more
+ * attempt the first time someone actually looks at them.
+ *
+ * It used to be the ONLY place `espnId` was ever written, which meant the
+ * landing page could never show a prop card on a fresh deployment. See the
+ * header of services/playerIdentity for why that was backwards.
+ */
 router.get("/:id/image", requireAuth, async (req: any, res: any, next: any) => {
   try {
     const [player] = await db.select().from(players).where(eq(players.id, req.params.id)).limit(1);
     if (!player) { res.status(404).json({ error: "Not found" }); return; }
 
-    let espnId = player.espnId;
-    // Team disambiguates same-name players — see searchEspnPlayerId.
-    if (!espnId) espnId = await searchEspnPlayerId(player.name, player.team);
+    const identity = await resolvePlayerIdentity(player as any);
+    if (!identity) { res.json({ imageUrl: null, jersey: null }); return; }
 
-    if (!espnId) { res.json({ imageUrl: null, jersey: null }); return; }
-
-    // ESPN OWNS THE POSITION. What the row arrives with is a guess made from
-    // the market it was first seen in (POSITION_HINT in services/syncWeek.ts),
-    // and that guess is wrong for anyone who appears outside their own
-    // position — a quarterback with a rushing-yards prop is filed as RB if the
-    // rushing market happens to come first in the feed's array.
-    //
-    // This used to overwrite only the literal string "FLEX", so it rescued the
-    // players the feed said nothing about and left every confidently-wrong
-    // guess in place forever. Nothing else ever revisits the field: the odds
-    // sync updates `team` on an existing player and never `position`.
-    //
-    // The `!jersey` guard is what keeps this to one request per player. The
-    // jersey is only ever written here, so an empty one means "never resolved",
-    // and once both are filled nothing re-fetches.
-    let jersey = player.jersey;
-    let position = player.position;
-    if (!jersey || position === "FLEX") {
-      const details = await getAthleteDetails(espnId);
-      jersey = jersey ?? details.jersey;
-      if (details.position) position = details.position;
-    }
-
-    if (espnId !== player.espnId || jersey !== player.jersey || position !== player.position) {
-      await db.update(players)
-        .set({ espnId, imageUrl: espnImageUrl(espnId), jersey, position })
-        .where(eq(players.id, player.id));
-    }
-    res.json({ imageUrl: espnImageUrl(espnId), jersey, position });
+    res.json({
+      imageUrl: espnImageUrl(identity.espnId),
+      jersey: identity.jersey,
+      position: identity.position,
+    });
   } catch (err: any) {
     next(err); return;
   }
