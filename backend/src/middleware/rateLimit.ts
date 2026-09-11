@@ -1,6 +1,7 @@
 import { rateLimit, ipKeyGenerator } from "express-rate-limit";
 import { RedisStore } from "rate-limit-redis";
 import jwt from "jsonwebtoken";
+import { timingSafeEqual } from "crypto";
 import { redisConnection } from "../queue/connection";
 
 function makeStore(prefix: string) {
@@ -30,6 +31,48 @@ function userOrIpKey(req: any): string {
   return ipKeyGenerator(req.ip);
 }
 
+/**
+ * Load-test bypass for the app-wide limiter, and ONLY the app-wide limiter.
+ *
+ * Measuring real throughput from one host is impossible while globalLimiter caps
+ * that host at 300/min: a 20-second run returns 429 for all but the first few
+ * hundred requests, and the "req/s" it reports is a rejection rate. Raising the
+ * limit for everyone to run a test is the obvious fix and the wrong one — it has
+ * to be reverted afterwards, and a revert is exactly the step that gets
+ * forgotten.
+ *
+ * So the bypass is keyed to a header carrying a secret only the test sends, and
+ * it is scoped deliberately:
+ *
+ *   - it is OFF unless LOADTEST_KEY is set, so it does not exist in any
+ *     environment that has not opted in
+ *   - it skips globalLimiter alone. authLimiter, betLimiter and supportLimiter
+ *     are untouched, so a leaked key still cannot hammer Google's token
+ *     verification, spam bets, or open the support inbox — it can only remove a
+ *     backstop against ordinary reads
+ *   - the compare is timing-safe, and a short key is refused outright rather
+ *     than quietly accepted
+ */
+const LOADTEST_HEADER = "x-loadtest-key";
+const MIN_KEY_LENGTH = 24;
+
+export function isLoadTestRequest(req: any): boolean {
+  const expected = process.env.LOADTEST_KEY;
+  if (!expected || expected.length < MIN_KEY_LENGTH) return false;
+
+  const got = req.headers[LOADTEST_HEADER];
+  if (typeof got !== "string") return false;
+
+  // Compare BYTE lengths, not string lengths: timingSafeEqual throws on
+  // mismatched buffers, and a multi-byte character makes the two disagree. A
+  // throw here would be a 500 on every request carrying a malformed header.
+  const a = Buffer.from(got);
+  const b = Buffer.from(expected);
+  if (a.length !== b.length) return false;
+
+  return timingSafeEqual(a, b);
+}
+
 // App-wide backstop: generous enough for normal usage (chat polls every 5s,
 // live score polling, etc.) but stops a runaway client/script from hammering
 // the API and degrading it for everyone else. Applied first, before routes.
@@ -39,6 +82,7 @@ export const globalLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   keyGenerator: userOrIpKey,
+  skip: isLoadTestRequest,
   store: makeStore("rl:global:"),
 });
 

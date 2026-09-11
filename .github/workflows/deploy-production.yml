@@ -154,6 +154,12 @@ jobs:
           WEB_IMAGE: ${{ needs.image.outputs.web_image }}
           APP_DOMAIN: ${{ vars.APP_DOMAIN }}
           WWW_DOMAIN: ${{ vars.WWW_DOMAIN }}
+          # Its OWN secret, deliberately not folded into BACKEND_ENV. That one
+          # holds the whole env file and cannot be read back, so adding a line
+          # to it means retyping every other line blind — one typo away from a
+          # broken deploy. A separate secret is add-only and delete-only, and
+          # deleting it is how the bypass gets turned off again.
+          LOADTEST_KEY: ${{ secrets.LOADTEST_KEY }}
         run: |
           printf '%s\n' "$BACKEND_ENV" > deploy/.env
           {
@@ -163,6 +169,10 @@ jobs:
             echo "APP_DOMAIN=$APP_DOMAIN"
             echo "WWW_DOMAIN=$WWW_DOMAIN"
             echo "CANONICAL_URL=${{ vars.SITE_URL }}"
+            # Only when set. An absent secret must leave the variable absent
+            # rather than empty-but-present, so the bypass is off by default and
+            # removing the secret genuinely removes it.
+            if [ -n "$LOADTEST_KEY" ]; then echo "LOADTEST_KEY=$LOADTEST_KEY"; fi
           } >> deploy/.env
           chmod 600 deploy/.env
 

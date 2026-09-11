@@ -16,4 +16,11 @@ pool.on("error", (err) => {
   console.error("[db] Idle client error:", err.message);
 });
 
+/**
+ * The same pool the ORM uses, exported so /health can report saturation while a
+ * load test runs. Read-only use — nothing should acquire clients from it
+ * directly; go through `db`.
+ */
+export const dbPool = pool;
+
 export const db = drizzle(pool, { schema });

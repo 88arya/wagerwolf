@@ -65,6 +65,8 @@ services:
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
       SPORTSGAMEODDS_KEY: ${SPORTSGAMEODDS_KEY}
+      # Empty unless a load test is running; see backend/.env.example.
+      LOADTEST_KEY: ${LOADTEST_KEY:-}
       GIT_COMMIT_SHA: ${GIT_COMMIT_SHA:-}
       RESEND_API_KEY: ${RESEND_API_KEY:-}
       SUPPORT_FROM: ${SUPPORT_FROM:-}
