@@ -167,10 +167,16 @@ export default function AuthScreen({
     <div className="bare-route">
       {/* Already signed in? There is nothing here to do. */}
       <SignedOutOnly />
-      {/* Shared with /settings and the legal pages, so the lockup lands on the
-          same pixel on all five. No Done here: this is an entry point, not
-          somewhere you came from. */}
-      <BarePageHeader />
+      {/* Shared with /settings and the legal pages. No Done here: this is an
+          entry point, not somewhere you came from.
+
+          COL_W IS PASSED SO THE LOCKUP SHARES THE COLUMN'S LEFT EDGE. Those
+          other routes start their content at the screen edge and want the
+          header's own 47px gap; this one centres a 570px column, so the
+          default put the mark on a vertical nothing else on the page used. The
+          20 is <main>'s side padding below — the two have to be the same
+          number or they part company on a narrow window. */}
+      <BarePageHeader columnWidth={COL_W} columnGutter={20} />
 
       <main
         style={{

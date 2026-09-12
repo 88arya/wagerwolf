@@ -434,12 +434,38 @@ export default function PlayoffReveal() {
     let raf = 0;
     const measure = () => {
       raf = 0;
+      const cs = getComputedStyle(pin);
+
+      // NO PIN, NO REVEAL — and this test is the narrow layout's whole
+      // enforcement. Below 900 the stylesheet takes the pin off
+      // (`position: static`, `height: auto`) and the bracket is meant to be
+      // simply shown, complete.
+      //
+      // That used to be inferred from `span <= 0` further down, and the
+      // inference was WRONG BY A FRACTION OF A PIXEL. The track's height came
+      // from getBoundingClientRect (fractional) and the pin's from
+      // offsetHeight (rounded to an integer), so an unpinned section whose two
+      // boxes are by definition the same height measured a span of ~0.5px
+      // rather than 0. The guard did not fire, and dividing by half a pixel
+      // made progress swing from 0 to 1 across one pixel of scroll — so on a
+      // phone the bracket still filled itself in as you scrolled past, which
+      // is the exact behaviour the narrow rules exist to remove.
+      //
+      // Asking the pin whether it is pinned cannot be off by a rounding error.
+      if (cs.position !== "sticky") {
+        setProgress(1);
+        return;
+      }
+
       // `top` is `var(--chrome-h)`, resolved to px — the line the pin sticks
       // at, and therefore the rect.top at which progress is exactly 0.
-      const stickAt = parseFloat(getComputedStyle(pin).top) || 0;
+      const stickAt = parseFloat(cs.top) || 0;
       const rect = track.getBoundingClientRect();
-      const span = rect.height - pin.offsetHeight;
-      if (span <= 0) {
+      // BOTH HEIGHTS FROM THE SAME KIND OF MEASUREMENT. Mixing a fractional
+      // rect height with a rounded offsetHeight is what produced the phantom
+      // span above; the epsilon is belt and braces on top of that.
+      const span = rect.height - pin.getBoundingClientRect().height;
+      if (span <= 1) {
         setProgress(1);
         return;
       }
@@ -689,6 +715,13 @@ export default function PlayoffReveal() {
                  too: it is looking at nobody. ── */}
           <Champion shown={on(3)} delay={SLOT_DELAY} />
         </svg>
+
+        {/* THE PHONE'S BRACKET. Both are in the DOM and a media query picks —
+            no resize listener, no state, nothing that can render the wrong one
+            for a frame after hydration. The hidden one costs a few dozen
+            elements and no requests. See NarrowBracket for why a phone gets a
+            different diagram rather than the same one scaled down. */}
+        <NarrowBracket />
       </div>
     </div>
   );
@@ -932,10 +965,22 @@ function Slot({
  * box come down to 130 square, which is what keeps it reading as a different
  * kind of object rather than just the widest slot.
  */
-function Champion({ shown, delay = 0 }: { shown: boolean; delay?: number }) {
+function Champion({
+  shown,
+  delay = 0,
+  x = CHAMP_X,
+  y = CHAMP_Y,
+}: {
+  shown: boolean;
+  delay?: number;
+  /** Defaults to the wide bracket's slot. The narrow layout (see
+   *  NarrowBracket) stacks its rounds and puts the champion at the foot of
+   *  them, which is the same card in a different place — the only thing it
+   *  needs from this component is where to draw it. */
+  x?: number;
+  y?: number;
+}) {
   const hold = delay ? { transitionDelay: `${delay}s` } : undefined;
-  const x = CHAMP_X;
-  const y = CHAMP_Y;
   // The trophy and the name centre as a PAIR, not individually: the name's
   // ascender height is folded in as `nameH` so the optical centre of the two
   // together lands on the box's centre.
@@ -1111,5 +1156,132 @@ function Run({
       d={d}
       pathLength={1}
     />
+  );
+}
+
+/* ── THE NARROW BRACKET ────────────────────────────────────────────────────
+   A phone gets a different diagram, not a smaller one.
+
+   WHY THE WIDE ONE CANNOT SHRINK. It is seven columns by definition — four
+   seeds funnelling in from each side — so its width is a fact about the format
+   rather than a layout choice. One user unit renders as one pixel only at the
+   drawn width of 1220; at 335px every unit is 0.27 of a pixel, which put the
+   names at ~3px. Bumping the type was tried twice and is a dead end: the slot
+   is a fixed box in the same units, so type large enough to read overflows the
+   card it is in. There is no size that is both legible and contained.
+
+   WHAT THIS SHOWS INSTEAD: YOUR RUN. Three rounds stacked top to bottom, each
+   one you against the team in front of you, ending on the champion's card. The
+   wide bracket's argument is "eight teams, three rounds, one champion, and it
+   is you"; this makes the same argument from the inside, and it is arguably
+   the better one on a phone — a bracket you read as a participant rather than
+   as an observer.
+
+   Nothing here is invented. The three opponents are READ OFF the same tree the
+   wide bracket draws, so a change to the seeding moves both: LEFT_SEEDS[1] is
+   who you meet in the wildcard round, LEFT_R1[1] the other left-half winner,
+   and RIGHT_R2 whoever comes out of the right half. Retyping those names here
+   would be the one place the two diagrams could disagree about the same
+   season.
+
+   THE CARD IS THE SAME CARD. <Slot> at the wide bracket's SLOT_W × SLOT_H, so
+   the helmet, the padding, the name wrap and the accent treatment are shared
+   rather than reimplemented — and because the viewBox is 360 rather than 1220,
+   that identical 12px name renders at ~11px on a 335px screen instead of 3.
+   The geometry is the only thing this file states twice.
+   ────────────────────────────────────────────────────────────────────────── */
+
+/** Two cards and the gap between them. 2 × 160 + 40, so the pair spans the box
+ *  exactly and the cards land on the diagram's own edges. */
+const NW = 2 * SLOT_W + 40;
+
+/** One round's pitch: its label, its two cards, and the air under them. */
+const N_BLOCK = 118;
+/** Top of a round's cards, below its label. */
+const N_CARD_TOP = 24;
+/** Where the champion's card starts: below the three rounds, plus its label. */
+const N_CHAMP_Y = 3 * N_BLOCK + 20;
+const N_HEIGHT = N_CHAMP_Y + CHAMP + 4;
+
+/** Your card on the left, the opponent's on the right — and the opponent's is
+ *  flipped, so the two helmets face each other across the gap exactly as they
+ *  do across the wide bracket's centre. */
+const N_LEFT_X = 0;
+const N_RIGHT_X = NW - SLOT_W;
+/** The middle of the gap between the two cards, where "vs" sits. */
+const N_MID_X = NW / 2;
+
+/** The three rounds, and who you meet in each. Read off the tree above — see
+ *  the block comment. */
+const N_ROUNDS = [
+  { label: "Wildcard", opponent: LEFT_SEEDS[1] },
+  { label: "Championship", opponent: LEFT_R1[1] },
+  { label: "Wagerbowl", opponent: RIGHT_R2 },
+];
+
+function NarrowBracket() {
+  return (
+    <svg
+      className="pb-svg-narrow"
+      viewBox={`0 0 ${NW} ${N_HEIGHT}`}
+      role="img"
+      /* BOTH DIAGRAMS CARRY A DESCRIPTION, and only one is ever announced:
+         whichever the media query is not showing is `display: none`, which
+         takes it out of the accessibility tree as well as off the screen. It
+         was `aria-hidden` here at first, on the worry that two labelled
+         graphics would be read twice — which would have left a phone with a
+         bracket that has no description at all, since the wide one is the
+         hidden element at that width. */
+      aria-label="Your playoff run: you win the wildcard round, the championship round and the Wagerbowl, and are crowned champion."
+    >
+      {N_ROUNDS.map((round, i) => {
+        const top = i * N_BLOCK;
+        const cardY = top + N_CARD_TOP;
+        return (
+          <g key={round.label}>
+            <Label x={N_MID_X} y={labelY(cardY)} text={round.label} />
+            {/* SHOWN UNCONDITIONALLY. There is no scroll pin at this width and
+                nothing to scrub, so the diagram is complete from the first
+                frame — see the narrow rules in globals.css, which also cut the
+                per-stage transitions so it does not draw itself in. */}
+            <Slot x={N_LEFT_X} y={cardY} w={SLOT_W} h={SLOT_H} name={YOU} shown />
+            <Slot
+              x={N_RIGHT_X}
+              y={cardY}
+              w={SLOT_W}
+              h={SLOT_H}
+              name={round.opponent}
+              shown
+              flip
+            />
+            {/* The one word the wide bracket does not need: there, two cards
+                either side of an elbow obviously play each other; here they are
+                two cards in a row. */}
+            <text
+              className="pb-label"
+              x={N_MID_X}
+              y={cardY + SLOT_H / 2}
+              textAnchor="middle"
+              dominantBaseline="central"
+            >
+              vs
+            </text>
+            {/* NO CONNECTOR BETWEEN ROUNDS. The wide bracket needs its
+                elbows: they are what say which pairs feed which slot in a
+                seven-column tree that is otherwise just cards on a grid. Here
+                the rounds are a stack, and a stack already reads top to
+                bottom — so an accent riser down the middle was a line saying
+                what the order of the rows had already said, and at this width
+                it was the loudest thing in the diagram. The accent is spent on
+                your card in each round instead, which is the thing worth
+                pointing at. */
+            }
+          </g>
+        );
+      })}
+
+      <Label x={N_MID_X} y={labelY(N_CHAMP_Y)} text="Champion" />
+      <Champion shown x={(NW - CHAMP) / 2} y={N_CHAMP_Y} />
+    </svg>
   );
 }

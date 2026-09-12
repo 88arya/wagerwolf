@@ -62,18 +62,26 @@ export default function LandingPage() {
                   so the sentence selects, copies and reads as the one sentence
                   it is.
 
-                  HOW THE BREAK IS FORCED: non-breaking spaces bind "fantasy
-                  football sportsbook." into a single unbreakable run, leaving
-                  the space after "first" as the only place the line can break.
-                  The width cap on .lp-section.is-centered .lp-inner then makes
-                  sure it has to. Both halves are required - drop either and the
-                  break moves.
+                  HOW THE BREAK IS FORCED: .lp-h1-run binds "fantasy football
+                  sportsbook." into a single unbreakable run (white-space:
+                  nowrap), leaving the space after "first" as the only place the
+                  line can break. The width cap on .lp-section.is-centered
+                  .lp-inner then makes sure it has to. Both halves are required
+                  - drop either and the break moves.
+
+                  IT IS A SPAN RATHER THAN NON-BREAKING SPACES, and that is the
+                  mobile half of it. &nbsp; is unbreakable at every width, so on
+                  a phone the run stayed one 400px-wide line inside a ~343px
+                  column and the headline overflowed the screen. A class can be
+                  released by a media query; a character cannot. See the narrow
+                  block at the bottom of globals.css.
 
                   It falls after "first" because that is the sentence's own
                   joint: the claim, then the thing being claimed. Breaking after
                   "football" was tried and reverted - it stranded "sportsbook."
                   alone, 34 characters over 11. */}
-              The world&rsquo;s first fantasy&nbsp;football&nbsp;sportsbook.
+              The world&rsquo;s first{" "}
+              <span className="lp-h1-run">fantasy football sportsbook.</span>
             </h1>
             <LandingCta />
           </div>

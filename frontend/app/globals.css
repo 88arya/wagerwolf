@@ -555,6 +555,36 @@ button.dark:hover { opacity: 0.86; background: var(--text); border-color: var(--
   flex-direction: column;
   background: var(--surface);
 }
+/* ── THE BARE HEADER'S SIDE PADDING ───────────────────────────────────────
+   Two distances, both computed in components/BarePageHeader and handed down
+   as custom properties; this rule is what chooses between them.
+
+   It lives here rather than inline because the choice is a WIDTH question and
+   a media query cannot reach an inline style — and setting the custom property
+   inline does not help either, since an inline custom property beats a rule
+   for the same element. The sheet has to own the property that is read.
+
+   --bare-pad-edge is the lockup's own gap from the screen edge, which is what
+   every bare route wants when its content starts at the edge too (/settings,
+   the docs pages) and what /sign-in and /signup want at desktop widths, where
+   a mark in the corner over a centred column is the composition.
+
+   --bare-pad-col is the left edge of that centred column, and it is only set
+   on routes that pass a column width. It takes over on a phone, where the
+   column has collapsed onto its own gutter and fills the screen: there a
+   lockup still at 47px is the one thing not sharing the edge everything else
+   is on. */
+.bare-head {
+  padding-left: var(--bare-pad-edge);
+  padding-right: var(--bare-pad-edge);
+}
+@media (max-width: 700px) {
+  .bare-head.is-column {
+    padding-left: var(--bare-pad-col);
+    padding-right: var(--bare-pad-col);
+  }
+}
+
 /* The content block inside a bare route must NOT keep .page's own
    `min-height: 100%`. Stacked under the header that would make the page taller
    than the viewport by exactly the header's height, which is the scrollbar this
@@ -5639,9 +5669,15 @@ textarea.support-box {
 .lp-consent a { color: var(--text-2); text-decoration: underline; }
 
 @media (max-width: 700px) {
-  /* A screen-tall section is a lot of empty on a phone, where the type is
-     smaller and the fold is closer. */
-  .lp-section { min-height: 0; padding: 56px var(--rail) 72px; }
+  /* PADDING ONLY. `min-height: 0` used to be here too, on the argument that a
+     screen-tall section is a lot of empty on a phone - and it was wrong about
+     WHICH section it was flattening. The marquee, the why block and the
+     closing band each zero their own min-height in their own rule, so the one
+     section this ever reached was the HERO, which is exactly the one that has
+     to stay a full screen: a headline and the control under it with nothing
+     else competing is the whole first impression. Flattened, the page opened
+     on a headline with the next section's heading already crowding it. */
+  .lp-section { padding: 56px var(--rail) 72px; }
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
@@ -6164,6 +6200,24 @@ textarea.support-box {
    identical — the row only works because every entry is the same kind of
    thing. A trophy icon stood in for the seventh for a while and read as the
    odd one out. */
+/* THE PHONE'S DIAGRAM, hidden until the media query below swaps the two. It
+   is the SAME cards in a different geometry — your three rounds stacked — for
+   the reason set out in NarrowBracket: the wide bracket's width is a fact
+   about the format, so at 335px its type is ~3px and no font size is both
+   legible and inside its card. See the narrow block further down. */
+.pb-svg-narrow {
+  display: none;
+  width: 100%;
+  /* The cards are the wide bracket's 160 units in a 360-unit box, so at this
+     cap a name renders at about its nominal 12px — the whole point of the
+     second layout. Wider than this and the cards start looking like billboards
+     on a tablet, which is why it stops rather than filling the rail. */
+  max-width: 420px;
+  height: auto;
+  overflow: visible;
+  font-family: var(--font-sans);
+}
+
 .pb-label {
   font-size: 10px;
   font-weight: 500;
@@ -6348,13 +6402,39 @@ textarea.support-box {
    same `span <= 0` branch fills it in.
 
    The type is bumped in USER UNITS because the whole viewBox is being scaled
-   down: 10px of label inside a 1220-wide box drawn at 380 renders at ~3px. */
+   down: 10px of label inside a 1220-wide box drawn at 380 renders at ~3px.
+
+   HOW FAR IT CAN BE BUMPED IS NOT A TASTE QUESTION — the slot is a fixed box
+   in the same units. A name's text column is SLOT_W less two pads, the helmet
+   and the gap off it: 97 units. wrapName splits every name to at most
+   ONE_LINE_MAX = 14 characters, and 14 average characters measure ~80 units at
+   12 and ~87 at 13, so 13 is the last size that still sits inside the card.
+
+   IT WAS 24/22/32, which is where the text stopped fitting: a wrapped line at
+   24 is ~160 units in a 97-unit column, so every name ran out of both sides of
+   its box at once (the line is centred, so an overrun reaches the helmet and
+   the card edge together). The three sizes move TOGETHER — a label larger than
+   the names it heads inverts the hierarchy — so all three are scaled by the
+   same ~1.1, which is what the names' 97 units will carry.
+
+   The honest cost: at 375px these render around 3.6px. The bracket is a
+   diagram of a FORMAT at that width — three rounds funnelling into one
+   champion, one of them blue — and that reads at any size. The names are tone,
+   and tone that overflows its box is worse than tone you have to lean in for.
+   Making them genuinely legible needs a narrow LAYOUT (fewer columns, or the
+   two halves stacked), not a larger font in the same viewBox. */
 @media (max-width: 900px) {
   .pb-track { height: auto; }
   .pb-pin { position: static; height: auto; padding: 72px var(--rail); gap: 40px; }
-  .pb-label { font-size: 22px; letter-spacing: 0.1em; }
-  .pb-name { font-size: 24px; }
-  .pb-champ-name { font-size: 32px; }
+  /* THE SWAP. Not a scale-down — see .pb-svg-narrow and NarrowBracket. The
+     type sizes stay at their stated values in both layouts, because the narrow
+     one changes the BOX rather than the type: 160-unit cards in a 360-unit
+     viewBox drawn at ~335px put a 12px name on screen at ~11px. Three passes
+     were spent bumping these instead (22/24/32, then 11/13/21) and both failed
+     the same way — the slot is a fixed box in the same units, so legible type
+     overflows the card it is in. */
+  .pb-svg { display: none; }
+  .pb-svg-narrow { display: block; }
 }
 
 
@@ -6749,3 +6829,160 @@ textarea.support-box {
   .why-grid { grid-template-columns: 1fr; gap: 40px; }
   .why-claim { font-size: 19px; padding: 16px 0; }
 }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   LANDING — NARROW
+
+   The phone pass over the landing page, gathered in ONE place rather than
+   scattered through the blocks above it. That is deliberate: every rule in
+   here overrides a rule stated earlier at the same specificity, so it has to
+   come last in the sheet to win. A narrow override written next to the rule it
+   undoes would silently lose to whatever the marquee states further down.
+
+   Two things change behaviour below 900, and the rest is type and rhythm:
+
+     1. THE MARQUEE STOPS MOVING AND BECOMES SWIPEABLE — AS ONE BLOCK.
+        Auto-scrolling rows are a desktop pleasure and a phone nuisance: they
+        fight the thumb, they cannot be paused by a pointer that does not
+        hover, and they burn battery on a surface nobody is reading yet. So
+        the strip is static until swiped, and then it moves exactly as far as
+        the finger did.
+     2. THE BRACKET IS A DIFFERENT DIAGRAM, AND IT IS SIMPLY THERE. Below 900
+        the wide bracket is swapped for NarrowBracket — your three rounds
+        stacked, same cards, a 360-unit box instead of 1220 (see .pb-svg-narrow
+        for why scaling the wide one is a dead end). It also comes off its
+        scroll pin at that width, and the per-stage transitions are cut here so
+        it paints complete on the first frame rather than drawing itself in
+        when the component's `span <= 0` branch sets progress to 1.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* The headline's unbreakable run — see app/page.tsx for why the break falls
+   where it does. A class, not the &nbsp; characters it replaced, precisely so
+   the narrow rule below can release it. */
+.lp-h1-run { white-space: nowrap; }
+
+@media (max-width: 900px) {
+  /* ── The marquee: static by default, swipeable as ONE strip ────────────
+     THE SCROLLPORT IS .pm, NOT .pm-row, and that is the whole point. Four
+     rows that each scroll independently come apart the moment a thumb lands
+     on one of them — the strip stops being one object drifting past and
+     becomes four unrelated lists, and there is no way to get them back into
+     register once they have been dragged out of it. One scrollport moves all
+     four together, which is what the animation did.
+
+     The rows therefore give up their own clipping: `overflow: visible` lets
+     each track's max-content width overflow the row, which is what gives .pm
+     something to scroll in the first place. .pm's `overflow-y: hidden` then
+     does the clipping the rows used to do.
+
+     `pointer-events: auto` is load bearing. The rows disown the pointer so
+     that the 24px of hover room they overlap into each other cannot eat a
+     card's hover (see .pm-row) — and a scroll container that ignores the
+     pointer also ignores a thumb. */
+  .pm {
+    overflow-x: auto;
+    overflow-y: hidden;
+    pointer-events: auto;
+    -webkit-overflow-scrolling: touch;
+    /* A horizontal swipe that runs out of strip should stop, not hand itself
+       to the browser as a back-navigation gesture. */
+    overscroll-behavior-x: contain;
+    scrollbar-width: none;
+    /* The edge fade pulls back to almost nothing. At 12%/88% it is a soft
+       frame on rows that drift past it; on rows you are dragging it
+       half-erases the card you are dragging toward, and would be eating a
+       third of a 343px screen. */
+    -webkit-mask-image: linear-gradient(to right, transparent 0%, #000 4%, #000 96%, transparent 100%);
+    mask-image: linear-gradient(to right, transparent 0%, #000 4%, #000 96%, transparent 100%);
+  }
+  .pm::-webkit-scrollbar { display: none; }
+  .pm-row { overflow: visible; pointer-events: auto; }
+
+  /* `animation-name: none` rather than `animation: none`, because the
+     DURATION is an inline style set per row by PropMarquee and inline styles
+     win — killing the name is what actually stops it, and it leaves that
+     inline value harmlessly unused.
+
+     `transform: none` undoes the reduced-motion rule's -12% parking offset in
+     the case where both apply: a scrollport that starts mid-card looks like
+     content has been cut off, where on a moving track the same offset is what
+     stops the row starting on a seam. */
+  .pm-track { animation-name: none; transform: none; }
+
+  /* THE STAGGER STAYS. It was zeroed here for one revision, on the argument
+     that four rows parked at their first card read as four rows that failed
+     to load the same amount. That was the wrong read: flush, they are four
+     straight columns of cards and the strip looks like a table. The 150/100/
+     50/0 ladder is what makes it a field of cards, and it is the shape the
+     desktop marquee has at every moment of its drift.
+
+     A shared scrollport is what makes keeping it free. The offsets are
+     margins on the tracks, so one scroll moves all four by the same distance
+     and the ladder is preserved through the whole swipe — the thing that
+     could NOT survive four independent scrollports, which is why they went. */
+
+  /* ── The bracket, shown rather than revealed ───────────────────────────
+     The pin is already gone at this width. These are the per-stage
+     transitions that would otherwise run once, when the component's
+     `span <= 0` branch jumps progress from 0 to 1 on mount — half a second of
+     self-drawing with no scroll behind it, which is the reveal without the
+     thing that motivates it. Same list the reduced-motion block cuts. */
+  .pb-slot-empty,
+  .pb-slot-full,
+  .pb-champ-full,
+  .pb-run { transition: none; }
+
+  /* ── Type and rhythm ──────────────────────────────────────────────────
+     .lp-sec-title is a stated 48px because at desktop widths it is a decision
+     rather than a fluid value. On a phone 48px is four words a line, so it
+     steps down — twice, since 34 is still too big at 375. */
+  .lp-sec-title { font-size: 34px; }
+  .lp-sec-head { margin-bottom: 32px; }
+
+  /* Both were sized against a screen-tall hero. The ≤700 rule brings
+     .lp-section's padding down; these two state their own and so have to be
+     brought down with it. The HERO keeps its full screen — see there. */
+  .lp-section.is-marquee { padding-top: 56px; padding-bottom: 64px; }
+  .lp-section.is-band { padding-top: 88px; padding-bottom: 88px; }
+}
+
+@media (max-width: 700px) {
+  /* THE HEADLINE RUN IS RELEASED. "fantasy football sportsbook." is ~400px at
+     the clamp's 2rem floor, inside a column that is the window less 40px of
+     rail — so bound as one unbreakable run it overflowed every phone. The
+     desktop break it exists to force is a 900px-cap effect and there is no cap
+     left to fight at this width: the sentence simply wraps where it fits. */
+  .lp-h1-run { white-space: normal; }
+
+  /* ── THE CONSENT FOOTNOTE TURNS IN FRONT OF "TERMS" ────────────────────
+     "...our Terms of Service and Privacy Policy." wraps at a phone width, and
+     left to itself the browser broke it between "Privacy" and "Policy" —
+     leaving one word of a document's NAME alone on the last line, which reads
+     as a typo rather than as a wrap.
+
+     Both documents and the "and" joining them are one unbreakable run, so the
+     only place the sentence can turn is in FRONT of it: "By submitting your
+     email, you agree to our" over "Terms of Service and Privacy Policy."
+
+     A run and not a <br>: nothing is forced, so where the sentence fits on
+     one line it stays on one line. The run is ~210px at this size, which
+     clears even a 320px screen.
+
+     Scoped narrow because there is nothing to fix above it: at the 500px cap
+     the footnote is two comfortable lines with no orphan in either. */
+  .lp-consent-run { white-space: nowrap; }
+}
+
+@media (max-width: 560px) {
+  .lp-sec-title { font-size: 28px; }
+
+  /* The tagline bar's sentence. 14px nowrap is ~300px of ink in a 335px
+     column, which leaves the dismiss X — absolutely positioned 20px from the
+     WINDOW edge, not from the content rail — sitting on top of the last word.
+     The margin is what buys the clearance: the span is centred by
+     `justify-content`, so a right margin both reserves the X's room and
+     shifts the sentence off it. */
+  .lp-tagline { font-size: 12px; margin-right: 28px; }
+}
+
+@media (max-width: 400px) { .lp-tagline { font-size: 11px; } }

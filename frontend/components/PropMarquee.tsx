@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api } from "@/lib/api";
 import { getTeamFullName, getTeamLogoUrl } from "@/lib/teamLogos";
 
@@ -205,6 +205,10 @@ export default function PropMarquee() {
      card carries a face, and the one letter in a row of photographs reads as a
      failure rather than as a variant. */
   const [broken, setBroken] = useState<Set<string>>(new Set());
+  /* The strip itself. Only the narrow layout reads it — see the effect below,
+     and the .pm rules at the bottom of globals.css for why it is the strip and
+     not each row that scrolls. */
+  const stripRef = useRef<HTMLDivElement>(null);
 
   // FETCHED ONCE, NOT POLLED. The server rotates this sample once a week, when
   // Week.resolved flips on the Tuesday resolve, so a timer would spend requests
@@ -222,6 +226,49 @@ export default function PropMarquee() {
       .catch(() => { /* an unpriced week is a valid state; the section hides */ });
     return () => { live = false; };
   }, []);
+
+  /* ── PARKED IN THE MIDDLE, NOT AT THE START (narrow layout only) ─────────
+     The rows carry the card list TWICE — that duplication is what makes the
+     desktop animation loop seamlessly — and on a phone the animation is off
+     and the strip is a scrollport instead. Left at scrollLeft 0 that opens on
+     the very first card, so a swipe toward the left finds nothing: the strip
+     reads as broken in one of the two directions a thumb can go.
+
+     Starting one full copy in means both directions have about 35 cards of
+     travel before an edge, which no reader will reach. It costs nothing
+     visually because the two copies are identical — position `x` and
+     `x + half` show the same cards, so the middle looks exactly like the
+     start.
+
+     NOT A WRAP-AROUND. Snapping scrollLeft back by half at the edges would
+     make it genuinely endless, but it fights momentum scrolling on iOS for a
+     boundary that is 8,500px away in each direction. The offset is the whole
+     fix.
+
+     Keyed to the media query rather than to touch: it is the same breakpoint
+     that turns the animation off, so the two cannot disagree about which
+     layout is on screen. Above it the animation owns the transform and this
+     must not touch anything.
+
+     `broken.size` is in the deps because a dropped headshot shortens a row —
+     the strip is re-measured rather than left parked against a width it no
+     longer has. */
+  useEffect(() => {
+    const strip = stripRef.current;
+    if (!strip || markets.length === 0) return;
+    const mq = window.matchMedia("(max-width: 900px)");
+
+    const park = () => {
+      if (!mq.matches) return;
+      // Half the scrollable content is one full copy of the list. Rounded
+      // because a fractional scrollLeft lands the seam on a subpixel.
+      strip.scrollLeft = Math.round(strip.scrollWidth / 2);
+    };
+
+    park();
+    mq.addEventListener("change", park);
+    return () => mq.removeEventListener("change", park);
+  }, [markets.length, broken.size]);
 
   // Empty is a real state — a week the feed has not priced has no markets — and
   // the honest rendering is nothing at all rather than placeholder cards
@@ -278,7 +325,7 @@ export default function PropMarquee() {
         </h2>
       </div>
 
-      <div className="pm" aria-hidden="true">
+      <div className="pm" aria-hidden="true" ref={stripRef}>
       {rows.map(({ i, cards }) => (
         <div className="pm-row" key={i}>
           {/* The list twice. The track is translated by exactly half its width,
