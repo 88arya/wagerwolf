@@ -148,7 +148,8 @@ export default function LandingCta({ consent = true }: {
         By submitting your email, you agree to our{" "}
         {/* THE TWO DOCUMENTS AND THE WORD JOINING THEM ARE ONE RUN, and the
             span exists so a media query can make it unbreakable — see
-            .lp-consent-run at the bottom of globals.css. Left to itself the
+            .consent-run in globals.css, shared with AuthScreen's copy of this
+            same footnote. Left to itself the
             sentence broke inside "Privacy Policy" on a phone, orphaning one
             word of a document's name on its own line. Bound, the sentence can
             only turn in front of the run, so the footnote is "…you agree to
@@ -156,7 +157,7 @@ export default function LandingCta({ consent = true }: {
 
             It is a run rather than a <br>, so nothing is forced: where the
             whole sentence fits on one line it stays on one line. */}
-        <span className="lp-consent-run">
+        <span className="consent-run">
           <a href="/docs/terms-of-service" target="_blank" rel="noopener noreferrer">
             Terms of Service
           </a>{" "}

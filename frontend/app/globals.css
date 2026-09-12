@@ -585,6 +585,29 @@ button.dark:hover { opacity: 0.86; background: var(--text); border-color: var(--
   }
 }
 
+/* ── THE CONSENT FOOTNOTE TURNS IN FRONT OF "TERMS" ───────────────────────
+   "...our Terms of Service and Privacy Policy." wraps at a phone width, and
+   left to itself the browser broke it between "Privacy" and "Policy" —
+   leaving one word of a document's NAME alone on the last line, which reads as
+   a typo rather than as a wrap.
+
+   Both documents and the "and" joining them are one unbreakable run, so the
+   only place the sentence can turn is in FRONT of it: "By submitting your
+   email, you agree to our" over "Terms of Service and Privacy Policy."
+
+   A run and not a <br>: nothing is forced, so where the sentence fits on one
+   line it stays on one line. The run is ~210px at this size, which clears even
+   a 320px screen.
+
+   NOT SCOPED TO THE LANDING PAGE. It lived in the landing block first and the
+   identical footnote on /sign-in and /signup went on breaking, because those
+   are AuthScreen's own markup rather than LandingCta's. Same sentence, same
+   class, one rule — which is what stops it being fixed twice again. */
+.consent-run { white-space: normal; }
+@media (max-width: 700px) {
+  .consent-run { white-space: nowrap; }
+}
+
 /* The content block inside a bare route must NOT keep .page's own
    `min-height: 100%`. Stacked under the header that would make the page taller
    than the viewport by exactly the header's height, which is the scrollbar this
@@ -6953,24 +6976,6 @@ textarea.support-box {
      desktop break it exists to force is a 900px-cap effect and there is no cap
      left to fight at this width: the sentence simply wraps where it fits. */
   .lp-h1-run { white-space: normal; }
-
-  /* ── THE CONSENT FOOTNOTE TURNS IN FRONT OF "TERMS" ────────────────────
-     "...our Terms of Service and Privacy Policy." wraps at a phone width, and
-     left to itself the browser broke it between "Privacy" and "Policy" —
-     leaving one word of a document's NAME alone on the last line, which reads
-     as a typo rather than as a wrap.
-
-     Both documents and the "and" joining them are one unbreakable run, so the
-     only place the sentence can turn is in FRONT of it: "By submitting your
-     email, you agree to our" over "Terms of Service and Privacy Policy."
-
-     A run and not a <br>: nothing is forced, so where the sentence fits on
-     one line it stays on one line. The run is ~210px at this size, which
-     clears even a 320px screen.
-
-     Scoped narrow because there is nothing to fix above it: at the 500px cap
-     the footnote is two comfortable lines with no orphan in either. */
-  .lp-consent-run { white-space: nowrap; }
 }
 
 @media (max-width: 560px) {

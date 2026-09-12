@@ -358,24 +358,36 @@ export default function AuthScreen({
             the only place it exists now that the tickbox is gone — so they lead.
             The Privacy Policy is a disclosure that rides along. */}
         {consentLead}{" "}
-        <a
-          href="/docs/terms-of-service"
-          target="_blank"
-          rel="noopener noreferrer"
-          style={{ color: "var(--text-2)", textDecoration: "underline" }}
-        >
-          Terms of Service
-        </a>{" "}
-        and{" "}
-        <a
-          href="/docs/privacy-policy"
-          target="_blank"
-          rel="noopener noreferrer"
-          style={{ color: "var(--text-2)", textDecoration: "underline" }}
-        >
-          Privacy Policy
-        </a>
-        .
+        {/* ONE UNBREAKABLE RUN ON A PHONE — see .consent-run in globals.css.
+            Without it the line broke between "Privacy" and "Policy", orphaning
+            one word of a document's NAME on the last line. Bound, the sentence
+            can only turn in front of the run, so it reads "…you agree to our"
+            over "Terms of Service and Privacy Policy."
+
+            LandingCta carries the identical span for the identical footnote.
+            The two are separate components with separate copy, which is
+            exactly why this had to be fixed twice — the landing page's was
+            done first and this one was missed. */}
+        <span className="consent-run">
+          <a
+            href="/docs/terms-of-service"
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{ color: "var(--text-2)", textDecoration: "underline" }}
+          >
+            Terms of Service
+          </a>{" "}
+          and{" "}
+          <a
+            href="/docs/privacy-policy"
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{ color: "var(--text-2)", textDecoration: "underline" }}
+          >
+            Privacy Policy
+          </a>
+          .
+        </span>
       </p>
     </div>
   );
