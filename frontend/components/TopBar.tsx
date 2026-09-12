@@ -124,7 +124,13 @@ export default function TopBar({ onDismiss }: { onDismiss?: () => void }) {
           bar's TRUE centre rather than the centre of the space left over. With
           both of those gone the sentence is the only child, and centring it is
           just centring it. */}
-      <span style={{ ...linkStyle, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" }}>
+      {/* .lp-tagline is the phone size only — see the narrow block at the
+          bottom of globals.css. The sentence is 14px and `nowrap`, which is
+          about 300px of ink in the ~335px a 375px screen leaves between the
+          rails, and the dismiss X below sits over the last word of it. A class
+          is the only way to reach this from a media query: everything else on
+          this bar is an inline style, which no stylesheet can override. */}
+      <span className="lp-tagline" style={{ ...linkStyle, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" }}>
         NFL season is here &mdash; Play now for completely free.
       </span>
 
