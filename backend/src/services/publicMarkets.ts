@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import { db } from "../db/db";
+import { currentWeekId } from "./currentWeek";
 
 /**
  * A SAMPLE of the current week's board — player props and team markets — for
@@ -235,11 +236,13 @@ export async function publicMarketSample(weekId: string): Promise<PublicMarket[]
  * is drawn from whatever is left, and by Monday that is almost nothing. The
  * marquee would quietly empty out across the week it was advertising.
  *
- * WHY TUESDAY, WITHOUT ANY DATE ARITHMETIC. `Week.resolved` flips on the
- * Tuesday resolve (scheduler.ts, 11:00 UTC), so "the first unresolved week" IS
- * next week's slate from that moment. Anchoring the cache to that week's id
- * means the rotation happens exactly when the season rolls over, with no
- * weekday maths to get wrong across a timezone or a schedule change.
+ * WHEN IT ROTATES. On whichever week `currentWeekId` names — see
+ * services/currentWeek.ts, which is the one definition the games strip uses
+ * too. This file used to carry its own, "the first unresolved week", on the
+ * grounds that `Week.resolved` flips on the Tuesday resolve and so needs no
+ * weekday arithmetic. That holds only while the resolve is punctual; when it is
+ * not, the marquee sticks on a played-out slate while the strip above it has
+ * already moved on, which is precisely what shipped on 16 Sept 2026.
  *
  * A RESTART MUST NOT RECOMPUTE, and for a long time this said the opposite —
  * that recomputing was harmless because the selection is deterministic. It is
@@ -261,12 +264,6 @@ export async function publicMarketSample(weekId: string): Promise<PublicMarket[]
  * lifetime the data actually has, it survives deploys and reboots, and multiple
  * backend replicas share one answer instead of each freezing a different
  * Tuesday. Week.publicBoard is null until the first request after rollover.
- *
- * WHY TUESDAY, WITHOUT ANY DATE ARITHMETIC. `Week.resolved` flips on the
- * Tuesday resolve (scheduler.ts, 11:00 UTC), so "the first unresolved week" IS
- * next week's slate from that moment. The rotation happens exactly when the
- * season rolls over, with no weekday maths to get wrong across a timezone or a
- * schedule change.
  *
  * WHAT IS STILL LIVE: nothing. The prices on these cards are the prices at
  * snapshot time and do not follow the poller. That is the trade for stability,
@@ -295,17 +292,25 @@ export async function publicMarketSample(weekId: string): Promise<PublicMarket[]
  * serving zero markets through a column clear, a redeploy of Caddy, and several
  * confident explanations, until the app container was restarted.
  *
- * It is not worth adding invalidation for — the board legitimately changes once
- * a week, and a restart is what a deploy does anyway. It is worth knowing.
+ * It is not worth adding invalidation for a POPULATED board — that legitimately
+ * changes once a week, and a restart is what a deploy does anyway.
+ *
+ * AN EMPTY BOARD IS DIFFERENT, AND IS NOT MEMOISED AT ALL. See the guard in
+ * `cachedPublicBoard`. `storedBoard` already refuses to write an empty snapshot
+ * to the column for this reason, but the memo used to freeze one in the process
+ * regardless — so the column guard bought nothing once a single request had
+ * landed in the gap, which is exactly the 11 Sept failure above.
+ *
+ * That gap used to be rare and is now ROUTINE. `currentWeekId` follows
+ * services/currentWeek, which rolls over at the old week's `endDate` — about
+ * fifteen minutes after the Tuesday 18:00 ESPN/SGO discovery that populates the
+ * new week's odds. Fifteen minutes is the whole margin, and if discovery is
+ * late, slow or fails, the marquee is pointed at a week with no props at all.
+ * Before the ladder moved to dates, rollover trailed the resolve and the new
+ * week always had odds by then; the old reasoning was written for that world.
  */
 let memo: { weekId: string; board: PublicBoard } | null = null;
 
-async function currentWeekId(): Promise<string | null> {
-  const rows = await db.execute(sql`
-    SELECT id FROM "Week" WHERE resolved = false ORDER BY number LIMIT 1
-  `);
-  return rowsOf(rows)[0]?.id ?? null;
-}
 
 /**
  * The stored board for a week, computing and storing it if this is the first
@@ -357,7 +362,15 @@ export async function cachedPublicBoard(limit: number): Promise<PublicBoard> {
   if (!weekId) return { markets: [], totals: { lines: 0, props: 0 } };
 
   if (!memo || memo.weekId !== weekId) {
-    memo = { weekId, board: await storedBoard(weekId) };
+    const board = await storedBoard(weekId);
+    // NEVER MEMOISE AN EMPTY BOARD. The memo is only ever refreshed on a week
+    // ID change, so caching the gap between rollover and the odds landing pins
+    // an empty marquee for the life of the process — through a column clear and
+    // through the scheduler's own reset, fixable only by a restart. Leaving it
+    // unmemoised costs two queries per landing-page request for the minutes
+    // that gap is open, and the marquee fills itself the moment the odds do.
+    if (board.markets.length === 0) return board;
+    memo = { weekId, board };
   }
   // SHUFFLED PER REQUEST, over a POOL that is fixed for the week. The two are
   // different decisions and only one of them rotates weekly: which markets are

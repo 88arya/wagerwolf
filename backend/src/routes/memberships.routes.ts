@@ -18,6 +18,7 @@ import { scheduleMatchups } from "../services/scheduleMatchups";
 import { pickHelmetColor } from "../services/helmetColor";
 import { generateAbbreviation } from "../services/abbreviation";
 import { tallyRecords, compareStandings } from "../services/standings";
+import { currentWeek } from "../services/currentWeek";
 
 const router = Router({ mergeParams: true });
 
@@ -299,24 +300,27 @@ router.get("/feed", requireAuth, async (req: any, res: any, next: any) => {
 
     const now = new Date();
 
-    if (league.feedVisibility === "AFTER_RESOLVE") {
-      const week = await db.query.weeks.findFirst({
-        where: weekNumber ? eq(weeks.number, weekNumber) : eq(weeks.resolved, false),
-        // If no weekNumber, we want the current (unresolved) week — if it's not resolved, show nothing
-      });
-      if (!week?.resolved) { res.json([]); return; }
+    // THE CURRENT WEEK, by the shared ladder in services/currentWeek — not by
+    // an unordered `findFirst` on `resolved = false`, which is what this was.
+    // With no orderBy, "the current week" was whichever row Postgres handed
+    // back; and reading `resolved` as a clock is the mistake that put a
+    // week-old slate on the landing page (see services/currentWeek).
+    const targetWeek = weekNumber
+      ? await db.query.weeks.findFirst({ where: eq(weeks.number, weekNumber) })
+      : await currentWeek(now);
+
+    if (league.feedVisibility === "AFTER_RESOLVE" && !targetWeek?.resolved) {
+      res.json([]); return;
     }
 
-    // Resolve the target week to get game IDs for filtering
+    // Game IDs for filtering, off the same `targetWeek` resolved above. It used
+    // to be looked up a SECOND time here with the same unordered query, so the
+    // visibility check and the filter could legitimately disagree about which
+    // week they were talking about.
     let targetWeekGameIds: string[] | null = null;
-    {
-      const targetWeek = await db.query.weeks.findFirst({
-        where: weekNumber ? eq(weeks.number, weekNumber) : eq(weeks.resolved, false),
-      });
-      if (targetWeek) {
-        const weekGames = await db.select({ id: games.id }).from(games).where(eq(games.weekId, targetWeek.id));
-        targetWeekGameIds = weekGames.map((g) => g.id);
-      }
+    if (targetWeek) {
+      const weekGames = await db.select({ id: games.id }).from(games).where(eq(games.weekId, targetWeek.id));
+      targetWeekGameIds = weekGames.map((g) => g.id);
     }
 
     if (!targetWeekGameIds || targetWeekGameIds.length === 0) {

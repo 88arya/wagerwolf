@@ -1,6 +1,7 @@
-import { sql, eq, and, asc, desc, lte, gte, gt } from "drizzle-orm";
+import { sql, eq, desc } from "drizzle-orm";
 import { db } from "../db/db";
 import { weeks } from "../db/schema";
+import { currentWeek } from "./currentWeek";
 
 /**
  * The numbers behind /home's two panels: what the platform is betting on this
@@ -343,23 +344,15 @@ export type Pulse = Awaited<ReturnType<typeof buildPulse>>;
 
 async function buildPulse(limit: number) {
   // The week we are inside, else the next to start, else the first unresolved
-  // one at all — the same three-step fallback /weeks/public/current uses, so
-  // the panel and the games strip can never disagree about which week it is.
+  // one at all — services/currentWeek.ts, the same ladder the games strip uses,
+  // so the panel and the strip can never disagree about which week it is. This
+  // used to be a fourth hand-written copy of it.
   const now = new Date();
-  const current =
-    (await db.query.weeks.findFirst({
-      where: and(eq(weeks.resolved, false), lte(weeks.startDate, now), gte(weeks.endDate, now)),
-      orderBy: asc(weeks.number),
-    })) ??
-    (await db.query.weeks.findFirst({
-      where: and(eq(weeks.resolved, false), gt(weeks.startDate, now)),
-      orderBy: asc(weeks.startDate),
-    })) ??
-    (await db.query.weeks.findFirst({ where: eq(weeks.resolved, false), orderBy: asc(weeks.number) }));
+  const current = await currentWeek(now);
 
   // Last week is the most recently RESOLVED week, not `current.number - 1`.
-  // Between Sunday night and the Tuesday 11:00 UTC resolve, this week's games
-  // are played but ungraded — and grading is what the money panel reads. So it
+  // Between Sunday night and the resolve that follows the week's endDate (the
+  // hourly job in scheduler.ts), this week's games are played but ungraded — and grading is what the money panel reads. So it
   // keeps showing the week before until the resolve lands, rather than briefly
   // showing an empty ledger for a week that has finished.
   const last = await db.query.weeks.findFirst({

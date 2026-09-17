@@ -2,7 +2,7 @@ import { Router } from "express";
 import { db } from "../db/db";
 import { PUBLIC_USER } from "../db/publicUser";
 import { eq, and, inArray, or, isNull, isNotNull, gt, gte, lte, sql } from "drizzle-orm";
-import { users, leagues, memberships, weeks, matchups, picks, gamePicks, parlays, parlayLegs, props, games, gameLines } from "../db/schema";
+import { users, leagues, memberships, matchups, picks, gamePicks, parlays, parlayLegs, props, games, gameLines } from "../db/schema";
 import { requireAuth } from "../middleware/auth";
 import { scheduleMatchups } from "../services/scheduleMatchups";
 import { resolveLeagueIdentity } from "../services/leagueIdentity";
@@ -13,6 +13,7 @@ import { tallyRecords, compareStandings } from "../services/standings";
 import { matchAndJoin, selectableStartWeeks } from "../services/matchmaking";
 import { LEAGUE_LEVELS } from "../services/leagueLevel";
 import { isUniqueViolation } from "../db/pgErrors";
+import { currentWeek as resolveCurrentWeek } from "../services/currentWeek";
 
 const router = Router();
 
@@ -35,10 +36,13 @@ router.get("/", requireAuth, async (req: any, res: any, next: any) => {
       orderBy: (memberships, { asc }) => [asc(memberships.createdAt)],
     }) as any[];
 
-    const currentWeek = await db.query.weeks.findFirst({
-      where: eq(weeks.resolved, false),
-      orderBy: (weeks, { asc }) => [asc(weeks.number)],
-    });
+    // THE SHARED LADDER (services/currentWeek), not "the first unresolved week".
+    // This served `nflWeek` straight to the client and scoped all four bet
+    // counts below, off a definition that reads `Week.resolved` as a clock. On
+    // 16 Sept 2026 the resolve was a week late, so this said week 1 while the
+    // games strip on the same screen said week 2 — the league cards reported a
+    // week number and a bet count for a slate that had already been played.
+    const currentWeek = await resolveCurrentWeek();
 
     const leagueIds = userMemberships.map((m: any) => m.leagueId);
 

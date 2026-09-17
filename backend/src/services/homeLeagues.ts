@@ -1,7 +1,8 @@
 import { and, eq, inArray, isNotNull, or, sql } from "drizzle-orm";
 import { db } from "../db/db";
-import { memberships, matchups, leagues, weeks, games } from "../db/schema";
+import { memberships, matchups, leagues, games } from "../db/schema";
 import { tallyRecords, compareStandings } from "./standings";
+import { currentWeek } from "./currentWeek";
 
 /**
  * One row per league the signed-in user plays in, for the Power rankings card
@@ -158,10 +159,11 @@ export async function homeLeaguesFor(userId: string): Promise<LeagueRow[]> {
 async function standingBetsThisWeek(userId: string, leagueIds: string[]): Promise<Map<string, number>> {
   const counts = new Map<string, number>();
 
-  const week = await db.query.weeks.findFirst({
-    where: eq(weeks.resolved, false),
-    orderBy: (w: any, { asc }: any) => [asc(w.number)],
-  });
+  // THE SHARED LADDER (services/currentWeek), not "the first unresolved week".
+  // `Week.resolved` is a job-completion flag, not a clock: when the resolve is
+  // late, that definition names a slate already played, and this card would
+  // count last week's standing wagers as this week's.
+  const week = await currentWeek();
   if (!week) return counts;
 
   const weekGames = await db.select({ id: games.id }).from(games).where(eq(games.weekId, week.id));
