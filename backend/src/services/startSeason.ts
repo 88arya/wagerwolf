@@ -1,6 +1,6 @@
 import { db } from "../db/db";
 import { eq, and } from "drizzle-orm";
-import { leagues, matchups, users, weeks } from "../db/schema";
+import { leagues, matchups, users } from "../db/schema";
 import { distributeWeeklyAllowances } from "./distributeAllowances";
 
 function generateRoundRobin(userIds: string[]): Array<[string, string][]> {
@@ -67,12 +67,17 @@ export async function startLeagueSeason(leagueId: string): Promise<{ weeks: numb
 
   await db.update(leagues).set({ seasonStarted: true, hasGhost }).where(eq(leagues.id, leagueId));
 
+  // SCOPED TO THIS LEAGUE, and it writes no stamp on the week.
+  //
+  // It used to call the unscoped form and then stamp `allowanceDistributed`
+  // globally, which did two wrong things at once: it reset the balances of
+  // every OTHER league playing that week — mid-week, wiping live bets — and the
+  // stamp then made the scheduler skip that week's real distribution, so those
+  // same leagues never got paid. One commissioner pressing Start could empty a
+  // week for everybody. See services/distributeAllowances.
   try {
-    await distributeWeeklyAllowances(league.startWeek);
-    await db.update(weeks)
-      .set({ allowanceDistributed: true })
-      .where(eq(weeks.number, league.startWeek));
-  } catch { /* week may not exist yet — scheduler will handle it */ }
+    await distributeWeeklyAllowances(league.startWeek, leagueId);
+  } catch { /* week may not exist yet — the scheduler's catch-up pass handles it */ }
 
   console.log(`[season] League ${leagueId} started — ${totalRounds} weeks scheduled`);
   return { weeks: totalRounds };
