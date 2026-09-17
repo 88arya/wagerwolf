@@ -149,6 +149,97 @@ async function voidUngradedProps(game: any): Promise<string[]> {
 }
 
 /**
+ * Refund everything riding on a game that was never played.
+ *
+ * `settleFinalGame` returns immediately on any status but FINAL, so a CANCELLED
+ * game was settled by nothing at all: its picks, its game picks and every
+ * parlay leg touching it stayed PENDING forever, while `resolveWeekById` marked
+ * the week resolved around them. The stake had already been deducted at
+ * placement, so that is not a bet left open — it is money taken for a game that
+ * did not happen.
+ *
+ * VOID IS THE RIGHT GRADE, and it is the one the product already documents:
+ * "cashed out, or the player never played". Nobody played. Every stake comes
+ * back, whichever side it was on.
+ *
+ * NOT GUARDED ON `oddsSettledAt`, unlike `voidUngradedProps`. That guard exists
+ * so a failed grading FETCH cannot be mistaken for "the player did not play" —
+ * it is protection against a missing answer. Here there is no question to
+ * answer: the status says the game was cancelled, and no feed is going to
+ * change its mind.
+ *
+ * Idempotent, like everything else in this file: only PENDING rows are touched.
+ */
+export async function voidBetsOnUnplayedGame(
+  gameId: string,
+  reason: string,
+): Promise<void> {
+  const game = await db.query.games.findFirst({
+    where: eq(games.id, gameId),
+    with: { props: true, gameLines: true },
+  }) as any;
+  if (!game) return;
+
+  const propIds = (game.props as any[]).map((p) => p.id);
+  const lineIds = (game.gameLines as any[]).map((gl) => gl.id);
+  if (propIds.length === 0 && lineIds.length === 0) return;
+
+  let refunded = 0;
+
+  if (propIds.length > 0) {
+    const pending = await db.query.picks.findMany({
+      where: and(eq(picks.outcome, "PENDING"), inArray(picks.propId, propIds)),
+    });
+    for (const pk of pending) {
+      await db.update(picks)
+        .set({ outcome: "VOID", voidReason: reason })
+        .where(eq(picks.id, pk.id));
+      await credit(pk.userId, pk.leagueId, pk.stake);
+      refunded++;
+    }
+  }
+
+  if (lineIds.length > 0) {
+    const pending = await db.query.gamePicks.findMany({
+      where: and(eq(gamePicks.outcome, "PENDING"), inArray(gamePicks.gameLineId, lineIds)),
+    });
+    for (const gp of pending) {
+      await db.update(gamePicks)
+        .set({ outcome: "VOID", voidReason: reason })
+        .where(eq(gamePicks.id, gp.id));
+      await credit(gp.userId, gp.leagueId, gp.stake);
+      refunded++;
+    }
+  }
+
+  // Legs are voided but NOT refunded individually — a parlay's stake was struck
+  // once, against the combined odds, so the refund decision belongs to
+  // `settleParlay` over the whole ticket. See the parlay rules in CLAUDE.md: a
+  // voided leg refunds the ticket only while the ticket is still alive.
+  const legs = await db.query.parlayLegs.findMany({
+    where: and(
+      eq(parlayLegs.outcome, "PENDING"),
+      or(
+        propIds.length > 0 ? inArray(parlayLegs.propId, propIds) : sql`false`,
+        lineIds.length > 0 ? inArray(parlayLegs.gameLineId, lineIds) : sql`false`,
+      ),
+    ),
+  });
+  for (const leg of legs) {
+    await db.update(parlayLegs).set({ outcome: "VOID" }).where(eq(parlayLegs.id, leg.id));
+  }
+
+  await settleTouchedParlays([...new Set(legs.map((l) => l.parlayId))]);
+
+  if (refunded || legs.length) {
+    console.log(
+      `[settle] Game ${gameId} was not played — refunded ${refunded} wager(s) ` +
+      `and voided ${legs.length} parlay leg(s)`
+    );
+  }
+}
+
+/**
  * Settle everything riding on one FINAL game.
  *
  * Idempotent: only PENDING rows are touched, so the minute-by-minute caller and

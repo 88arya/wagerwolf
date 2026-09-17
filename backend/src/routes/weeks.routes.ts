@@ -6,6 +6,9 @@ import { requireAuth, requireCron } from "../middleware/auth";
 import { calcProfit } from "../lib/payout";
 import { cachedPublicBoard } from "../services/publicMarkets";
 import { attachBetCounts, betCountsForWeek } from "../services/betCounts";
+import { currentWeekSteps } from "../services/currentWeek";
+import { resolveWeekById, UnscoredGamesError } from "../services/resolveWeek";
+import { distributeWeeklyAllowances } from "../services/distributeAllowances";
 
 const router = Router();
 
@@ -102,21 +105,15 @@ router.get("/public/current", async (_req: any, res: any, next: any) => {
       // tuple that no overload accepts — three errors from one keyword.
     };
 
-    // Same three-step fallback the authenticated branch uses: the week we are
-    // inside, else the next one to start, else the first unresolved week at all.
-    let week =
-      (await db.query.weeks.findFirst({
-        where: and(eq(weeks.resolved, false), lte(weeks.startDate, now), gte(weeks.endDate, now)),
-        orderBy: asc(weeks.number), with: withGames,
-      })) ??
-      (await db.query.weeks.findFirst({
-        where: and(eq(weeks.resolved, false), gt(weeks.startDate, now)),
-        orderBy: asc(weeks.startDate), with: withGames,
-      })) ??
-      (await db.query.weeks.findFirst({
-        where: eq(weeks.resolved, false),
-        orderBy: asc(weeks.number), with: withGames,
-      }));
+    // The ladder lives in services/currentWeek.ts — the week we are inside, else
+    // the next to start, else the first unresolved one. It was written out here
+    // and in three other places, and the fourth copy (the landing page's board)
+    // had drifted to a different rule entirely. Only the projection is local.
+    let week: any = null;
+    for (const step of currentWeekSteps(now)) {
+      week = await db.query.weeks.findFirst({ ...step, with: withGames });
+      if (week) break;
+    }
 
     if (week) await attachBetCounts(week);
     res.json(week ? [week] : []);
@@ -200,24 +197,24 @@ router.get("/", requireAuth, async (req: any, res: any, next: any) => {
       }
 
       const now = new Date();
-      let week = await db.query.weeks.findFirst({
-        where: and(eq(weeks.resolved, false), lte(weeks.startDate, now), gte(weeks.endDate, now)),
-        orderBy: asc(weeks.number),
-        with: { games: { orderBy: [asc(games.gameDate), asc(games.id)], with: { props: { with: { player: true } }, gameLines: true } } },
-      });
-      if (!week) {
+      // Same ladder as /public/current, from services/currentWeek.ts. This
+      // branch differs only in carrying the whole market — every prop and line.
+      let week: any = null;
+      for (const step of currentWeekSteps(now)) {
+        // The projection stays INLINE. Hoisted to a const it widens to
+        // `orderBy: SQL<unknown>[]`, which no `with` overload accepts — the
+        // same contextual-typing trap the `withGames` note above describes for
+        // `as const`. Inline, the literal is typed by the parameter it fills.
         week = await db.query.weeks.findFirst({
-          where: and(eq(weeks.resolved, false), gt(weeks.startDate, now)),
-          orderBy: asc(weeks.startDate),
-          with: { games: { orderBy: [asc(games.gameDate), asc(games.id)], with: { props: { with: { player: true } }, gameLines: true } } },
+          ...step,
+          with: {
+            games: {
+              orderBy: [asc(games.gameDate), asc(games.id)],
+              with: { props: { with: { player: true } }, gameLines: true },
+            },
+          },
         });
-      }
-      if (!week) {
-        week = await db.query.weeks.findFirst({
-          where: eq(weeks.resolved, false),
-          orderBy: asc(weeks.number),
-          with: { games: { orderBy: [asc(games.gameDate), asc(games.id)], with: { props: { with: { player: true } }, gameLines: true } } },
-        });
+        if (week) break;
       }
       if (week) await attachBetCounts(week);
       res.json(week ? [week] : []);
@@ -296,120 +293,169 @@ router.post("/:id/lock", requireAuth, requireCron, async (req: any, res: any, ne
   }
 });
 
-// Manual fallback resolve (for when ESPN data is unavailable)
+/**
+ * POST /weeks/:id/allowances — pay a week's allowance by hand.
+ *
+ * THE RECOVERY FOR `[cron] MISSED`. The hourly pass refuses to distribute a
+ * week that has already kicked off, because distribution OVERWRITES balance and
+ * a stake is deducted at placement — so a mid-week reset refunds every bet
+ * already struck while leaving the bets live. It logs and leaves it for a
+ * human. Before this route there was no way for that human to act except raw
+ * SQL, which meant the refusal was effectively a permanent loss.
+ *
+ * `force` IS REQUIRED ONCE THE WEEK HAS STARTED, and it is not a formality —
+ * it is the operator saying they have looked at the open bets and accept that
+ * resetting balances will unwind them. Before kickoff there is nothing to
+ * unwind and no flag is needed.
+ *
+ * `leagueId` scopes it to one league and writes no stamp, exactly as
+ * `startLeagueSeason` does — see services/distributeAllowances. Topping up the
+ * one league that was missed has not paid the week platform-wide, and claiming
+ * otherwise is what made the scheduler skip everybody else.
+ */
+router.post("/:id/allowances", requireAuth, requireCron, async (req: any, res: any, next: any) => {
+  try {
+    const { id: weekId } = req.params;
+    const { force, leagueId } = req.body as { force?: boolean; leagueId?: string };
+
+    const [week] = await db.select().from(weeks).where(eq(weeks.id, weekId)).limit(1);
+    if (!week) { res.status(404).json({ error: "Week not found" }); return; }
+
+    const started = week.startDate <= new Date();
+    if (started && !force) {
+      res.status(409).json({
+        error:
+          `Week ${week.number} has already kicked off. Paying it now overwrites every ` +
+          `balance, which unwinds any bet already placed on it without cancelling the ` +
+          `bet. Re-send with { "force": true } to do it anyway.`,
+      });
+      return;
+    }
+
+    const paid = await distributeWeeklyAllowances(week.number, leagueId);
+    console.log(
+      `[allowances] MANUAL: week ${week.number}${leagueId ? ` (league ${leagueId})` : ""} ` +
+      `paid ${paid} member(s)${started ? " AFTER KICKOFF, forced" : ""}`
+    );
+    res.json({ weekNumber: week.number, paid, forced: Boolean(started && force), scoped: leagueId ?? null });
+  } catch (err: any) {
+    next(err); return;
+  }
+});
+
+/**
+ * POST /weeks/:id/resolve — the manual fallback, for a week the feeds cannot
+ * close on their own.
+ *
+ * IT INJECTS THE MISSING INPUTS AND THEN RUNS THE ORDINARY RESOLVE. It does not
+ * grade anything itself, and that is the whole point of this rewrite: it used
+ * to be a THIRD copy of the grading rules, beside `settleGame.ts` and
+ * `resolveWeek.ts`, and it had drifted from both in four separate ways —
+ *
+ *   - `won = (OVER && result > line) || (UNDER && result < line)`, the exact
+ *     comparison CLAUDE.md records as fixed, which grades a result landing ON
+ *     the number as a LOSS for everyone holding it. Whole-number totals and
+ *     spreads are ordinary and an NFL game really can end level.
+ *   - game picks read `gameLine.result === true` and never looked at
+ *     `gameLine.pushed`, so a pushed line lost too.
+ *   - alt-line game picks were graded against the MAIN line, because nothing
+ *     re-graded `altLine` against the score the way `settleGame` does.
+ *   - and it never touched parlays AT ALL. No leg was graded, no ticket
+ *     settled — and it marked the week resolved on the way out, so
+ *     `resolveWeekById` could never come back and finish the job
+ *     ("Week already resolved"). Every parlay on a manually-resolved week was
+ *     stranded PENDING, permanently.
+ *
+ * All four are gone by construction now: the only grading authority reachable
+ * from here is `services/grading.ts`, through `resolveWeekById`.
+ *
+ * WHAT THE BODY SUPPLIES is what the feeds could not:
+ *
+ *   - `gameScores` — final scores for games ESPN and SGO both failed to return.
+ *     This is the one that actually unblocks a stuck week, since
+ *     `resolveWeekById` now refuses to close a week over an unscored game.
+ *   - `results` / `gameLineResults` — prop and line results, for markets no
+ *     feed graded. Optional, and mostly unnecessary: `settleFinalGame` grades
+ *     from the score on its own.
+ *
+ * Supplied values WIN. Both grading passes in settleGame.ts filter on
+ * `result == null`, so nothing written here is overwritten by a later fetch.
+ */
 router.post("/:id/resolve", requireAuth, requireCron, async (req: any, res: any, next: any) => {
   try {
     const { id: weekId } = req.params;
-    const { results, gameLineResults } = req.body as {
-      results: { propId: string; result: number }[];
+    const { results, gameLineResults, gameScores } = req.body as {
+      results?: { propId: string; result: number }[];
       gameLineResults?: { gameLineId: string; result: boolean }[];
+      gameScores?: { gameId: string; homeScore: number; awayScore: number }[];
     };
 
     const [week] = await db.select().from(weeks).where(eq(weeks.id, weekId)).limit(1);
     if (!week) { res.status(404).json({ error: "Week not found" }); return; }
     if (week.resolved) { res.status(400).json({ error: "Week already resolved" }); return; }
 
-    for (const { propId, result } of results) {
-      await db.update(props).set({ result }).where(eq(props.id, propId));
+    // Every id must belong to THIS week. Without the check a caller could write
+    // a result onto any prop in the database by passing its id to some other
+    // week's resolve — and this route's whole job is to be trusted with inputs
+    // the feeds could not supply.
+    const weekGames = await db.select({ id: games.id }).from(games).where(eq(games.weekId, weekId));
+    const weekGameIds = new Set(weekGames.map((g) => g.id));
+
+    if (gameScores?.length) {
+      for (const { gameId, homeScore, awayScore } of gameScores) {
+        if (!weekGameIds.has(gameId)) {
+          res.status(400).json({ error: `Game ${gameId} is not in this week` }); return;
+        }
+        if (!Number.isFinite(homeScore) || !Number.isFinite(awayScore)) {
+          res.status(400).json({ error: `Game ${gameId} needs both scores as numbers` }); return;
+        }
+      }
+      for (const { gameId, homeScore, awayScore } of gameScores) {
+        await db.update(games)
+          .set({ homeScore, awayScore, status: "FINAL" })
+          .where(eq(games.id, gameId));
+      }
     }
-    if (gameLineResults) {
+
+    if (results?.length) {
+      const owned = weekGameIds.size
+        ? await db.select({ id: props.id }).from(props).where(inArray(props.gameId, [...weekGameIds]))
+        : [];
+      const ownedIds = new Set(owned.map((p) => p.id));
+      const stray = results.find((r) => !ownedIds.has(r.propId));
+      if (stray) { res.status(400).json({ error: `Prop ${stray.propId} is not in this week` }); return; }
+      for (const { propId, result } of results) {
+        await db.update(props).set({ result }).where(eq(props.id, propId));
+      }
+    }
+
+    if (gameLineResults?.length) {
+      const owned = weekGameIds.size
+        ? await db.select({ id: gameLines.id }).from(gameLines).where(inArray(gameLines.gameId, [...weekGameIds]))
+        : [];
+      const ownedIds = new Set(owned.map((gl) => gl.id));
+      const stray = gameLineResults.find((r) => !ownedIds.has(r.gameLineId));
+      if (stray) { res.status(400).json({ error: `Game line ${stray.gameLineId} is not in this week` }); return; }
       for (const { gameLineId, result } of gameLineResults) {
         await db.update(gameLines).set({ result }).where(eq(gameLines.id, gameLineId));
       }
     }
 
-    // Resolve pending prop picks
-    const weekGames = await db.select({ id: games.id }).from(games).where(eq(games.weekId, weekId));
-    const weekGameIds = weekGames.map((g) => g.id);
-    const weekProps = weekGameIds.length
-      ? await db.select({ id: props.id }).from(props).where(inArray(props.gameId, weekGameIds))
-      : [];
-    const weekPropIds = weekProps.map((p) => p.id);
-
-    const pendingPicks = weekPropIds.length
-      ? await db.query.picks.findMany({
-          where: and(eq(picks.outcome, "PENDING"), inArray(picks.propId, weekPropIds)),
-          with: { prop: true },
-        }) as any[]
-      : [];
-
-    for (const pick of pendingPicks) {
-      const { result } = pick.prop;
-      if (result === null) continue;
-      const effectiveLine = pick.altLine ?? pick.prop.line;
-      const won = (pick.direction === "OVER" && result > effectiveLine) ||
-                  (pick.direction === "UNDER" && result < effectiveLine);
-      const profit = won ? calcProfit(Number(pick.stake), pick.odds) : 0;
-      await db.update(picks).set({ outcome: won ? "WIN" : "LOSS" }).where(eq(picks.id, pick.id));
-      const [mem] = await db.select().from(memberships)
-        .where(and(eq(memberships.userId, pick.userId), eq(memberships.leagueId, pick.leagueId)))
-        .limit(1);
-      if (mem && won) {
-        await db.update(memberships)
-          .set({ balance: mem.balance + Number(pick.stake) + profit })
-          .where(and(eq(memberships.userId, pick.userId), eq(memberships.leagueId, pick.leagueId)));
-      }
-    }
-
-    // Resolve pending game picks
-    const weekGameLineIds = weekGameIds.length
-      ? (await db.select({ id: gameLines.id }).from(gameLines).where(inArray(gameLines.gameId, weekGameIds))).map((gl) => gl.id)
-      : [];
-
-    const pendingGamePicks = weekGameLineIds.length
-      ? await db.query.gamePicks.findMany({
-          where: and(eq(gamePicks.outcome, "PENDING"), inArray(gamePicks.gameLineId, weekGameLineIds)),
-          with: { gameLine: { with: { game: true } } },
-        }) as any[]
-      : [];
-
-    for (const gp of pendingGamePicks) {
-      if (gp.gameLine.result == null) continue;
-      const won: boolean = gp.gameLine.result === true;
-      const profit = won ? calcProfit(Number(gp.stake), gp.odds) : 0;
-      await db.update(gamePicks).set({ outcome: won ? "WIN" : "LOSS" }).where(eq(gamePicks.id, gp.id));
-      const [mem] = await db.select().from(memberships)
-        .where(and(eq(memberships.userId, gp.userId), eq(memberships.leagueId, gp.leagueId)))
-        .limit(1);
-      if (mem && won) {
-        await db.update(memberships)
-          .set({ balance: mem.balance + Number(gp.stake) + profit })
-          .where(and(eq(memberships.userId, gp.userId), eq(memberships.leagueId, gp.leagueId)));
-      }
-    }
-
-    // Floor balances at 0
-    const negativeMembers = await db.select().from(memberships).where(lt(memberships.balance, 0));
-    for (const mem of negativeMembers) {
-      await db.update(memberships).set({ balance: 0 }).where(eq(memberships.id, mem.id));
-    }
-
-    await db.update(weeks).set({ resolved: true, locked: true }).where(eq(weeks.id, weekId));
-
-    // Resolve matchups
-    const pendingMatchups = await db.select().from(matchups)
-      .where(and(eq(matchups.weekNumber, week.number), isNull(matchups.winnerId), eq(matchups.isTie, false)));
-
-    for (const matchup of pendingMatchups) {
-      const [homeMem, awayMem] = await Promise.all([
-        db.select().from(memberships)
-          .where(and(eq(memberships.userId, matchup.homeUserId), eq(memberships.leagueId, matchup.leagueId)))
-          .limit(1),
-        db.select().from(memberships)
-          .where(and(eq(memberships.userId, matchup.awayUserId), eq(memberships.leagueId, matchup.leagueId)))
-          .limit(1),
-      ]);
-      const homeProfit = homeMem[0]?.balance ?? 0;
-      const awayProfit = awayMem[0]?.balance ?? 0;
-      const isTie = homeProfit === awayProfit;
-      const winnerId = isTie ? null : homeProfit > awayProfit ? matchup.homeUserId : matchup.awayUserId;
-      await db.update(matchups)
-        .set({ homeProfit, awayProfit, winnerId, isTie })
-        .where(eq(matchups.id, matchup.id));
-    }
-
-    res.json({ message: "Week resolved", weekId });
+    // THE SAME PATH THE HOURLY CRON TAKES. Scores, grading, voids, parlays,
+    // the balance floor, matchups and the playoff trigger all happen in there,
+    // once. If a game is still unscored it throws rather than closing the week,
+    // and the message names the game — supply it in `gameScores` and run again.
+    const summary = await resolveWeekById(weekId);
+    res.json({ message: "Week resolved", weekId, ...summary });
   } catch (err: any) {
+    // THE ONE ERROR THIS ROUTE MUST ANSWER ITSELF. Everything else goes to the
+    // generic handler, which deliberately hides the detail — but this route's
+    // whole purpose is to be told what the feeds could not supply, and the
+    // error already knows exactly which games those are. Handing back
+    // "Something went wrong" instead makes the escape hatch unusable.
+    if (err instanceof UnscoredGamesError) {
+      res.status(409).json({ error: err.message, games: err.games }); return;
+    }
     next(err); return;
   }
 });
