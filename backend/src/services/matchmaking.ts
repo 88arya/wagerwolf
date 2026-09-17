@@ -1,4 +1,4 @@
-import { eq, sql, SQL } from "drizzle-orm";
+import { eq, and, gt, max, sql, SQL } from "drizzle-orm";
 import { db } from "../db/db";
 import { leagues, weeks } from "../db/schema";
 import { coerceLevel, DEFAULT_LEVEL, LeagueLevel } from "./leagueLevel";
@@ -81,21 +81,80 @@ export type MatchResult = {
 // frontend settings page has its own copy too.
 
 /**
- * The weeks a new league can still start in: every unresolved week, soonest
- * first, capped to a handful.
+ * The weeks a new league can still start in: every week that has NOT KICKED OFF
+ * YET, soonest first, capped to a handful.
  *
- * Derived from the Week table rather than a 1..17 range, because a week that
- * has already resolved is not a start week — a league starting in week 3 when
- * week 8 has been played would have five weeks of games it can never bet on.
+ * Derived from the Week table rather than a 1..17 range, because a week already
+ * behind us is not a start week — a league starting in week 3 when week 8 has
+ * been played would have five weeks of games it can never bet on.
+ *
+ * THE DATE IS THE TEST; `resolved` ONLY NARROWS IT. This filtered on `resolved`
+ * alone, which is a job-completion flag standing in for a clock — and on
+ * 16 Sept 2026 the job was a week late, so week 1 was still "unresolved" four
+ * days after its last game. Anyone quick-joining was being seated in a league
+ * whose season had already been played. `startDate > now` is a fact about the
+ * NFL and cannot be made wrong by a cron failing; the `resolved` clause stays
+ * because a week can be closed out early, but it is no longer load bearing.
+ *
+ * A week that has STARTED but not finished is excluded too, and deliberately:
+ * seating someone on a Saturday into a league whose Thursday game is already
+ * final hands them a week they cannot fully play.
  */
-export async function selectableStartWeeks(limit = 6) {
+export async function selectableStartWeeks(limit = 6, now: Date = new Date()) {
   const rows = await db
     .select({ number: weeks.number, startDate: weeks.startDate })
     .from(weeks)
-    .where(eq(weeks.resolved, false))
+    .where(and(eq(weeks.resolved, false), gt(weeks.startDate, now)))
     .orderBy(weeks.number)
     .limit(limit);
   return rows.filter(w => w.number <= MAX_NFL_WEEK);
+}
+
+/**
+ * The soonest week a new league can start in — the default wherever one is not
+ * chosen, shared by quick-join, league creation and the public-league
+ * autocreator so the three cannot disagree.
+ *
+ * THE FALLBACK IS NOT WEEK 1. Three call sites defaulted to 1 when they found
+ * nothing, which is the worst possible answer: "nothing ahead of us" means the
+ * schedule runs out, and week 1 is the furthest week in the past. It reached
+ * for the start of the season precisely when the season was most over.
+ *
+ * Aiming one past the latest week on record is the honest reading of an empty
+ * list — the schedule has not been published that far yet, and Tuesday's ESPN
+ * sync creates the row. Clamped to MAX_NFL_WEEK so it cannot run off the end.
+ */
+export async function nextStartWeek(now: Date = new Date()): Promise<number> {
+  const [soonest] = await selectableStartWeeks(1, now);
+  if (soonest) return soonest.number;
+
+  const [latest] = await db.select({ n: max(weeks.number) }).from(weeks);
+  const next = (latest?.n ?? 0) + 1;
+  if (next <= MAX_NFL_WEEK) return next;
+
+  // THE SCHEDULE IS EXHAUSTED, AND THERE IS NO HONEST ANSWER.
+  //
+  // Every week up to MAX_NFL_WEEK exists and every one of them has kicked off:
+  // the season is over. The clamp used to be `Math.min(MAX_NFL_WEEK, next)`,
+  // which returned week 17 — a week in the PAST, and the one week guaranteed to
+  // produce a broken league, since `regularSeasonWeeks` is computed as
+  // `max(1, MAX_NFL_WEEK - startWeek - playoffWeeks + 1)` and floors to 1.
+  // Quietly handing back a number that cannot work is the same class of mistake
+  // as the `?? 1` this function replaced, one week at the other end.
+  //
+  // There is no next season to point at: rolling over means new Week rows for a
+  // new year, and this product has no concept of a season boundary at all — the
+  // Week table is a flat 1..17. So the failure is made LOUD and the caller is
+  // told plainly, rather than seated in a league that cannot be played.
+  //
+  // Callers that cannot fail (the public-league autocreator) should be the
+  // thing that changes when season rollover is built; until then this is the
+  // one place the gap is named.
+  throw new Error(
+    `No start week available: every week through ${MAX_NFL_WEEK} has already ` +
+    `kicked off. The season is over and no new Week rows have been created — ` +
+    `league creation cannot pick a playable start week until they are.`
+  );
 }
 
 /**
@@ -107,7 +166,10 @@ export async function selectableStartWeeks(limit = 6) {
  */
 async function resolveStartWeek(requested: number | null | undefined): Promise<number> {
   const options = await selectableStartWeeks(MAX_NFL_WEEK);
-  const first = options[0]?.number ?? 1;
+  // `nextStartWeek` rather than `options[0] ?? 1` — see its note. An empty
+  // options list used to floor everyone to week 1, the one week guaranteed to
+  // be unplayable.
+  const first = options[0]?.number ?? (await nextStartWeek());
   if (requested == null) return first;
   const wanted = Number(requested);
   if (!Number.isFinite(wanted)) return first;

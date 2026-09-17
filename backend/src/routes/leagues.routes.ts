@@ -7,6 +7,7 @@ import { requireAuth } from "../middleware/auth";
 import { getNearestTuesdayNoon } from "../services/scheduleMatchups";
 import { coerceLevel } from "../services/leagueLevel";
 import { MAX_NFL_WEEK } from "../services/nflSeason";
+import { nextStartWeek } from "../services/matchmaking";
 
 
 const router = Router();
@@ -52,10 +53,11 @@ router.post("/", requireAuth, async (req: any, res: any, next: any) => {
         res.status(400).json({ error: `Start week must be between 1 and ${MAX_NFL_WEEK}` }); return;
       }
     } else {
-      const firstUnresolved = await db.query.weeks.findFirst({
-        where: eq(weeks.resolved, false),
-      });
-      sw = firstUnresolved ? firstUnresolved.number : 1;
+      // services/matchmaking's `nextStartWeek`, shared with quick-join and the
+      // public-league autocreator. This was its own `findFirst` on
+      // `resolved = false` with NO orderBy — so "first unresolved week" meant
+      // whichever row Postgres happened to return — falling back to week 1.
+      sw = await nextStartWeek();
     }
 
     const rsw = Math.max(1, MAX_NFL_WEEK - sw - pw + 1);

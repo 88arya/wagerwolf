@@ -12,6 +12,7 @@ import { generateLeagueName } from "../services/leagueName";
 import { startLeagueSeason } from "../services/startSeason";
 import { calcProfit, toDecimal } from "../lib/payout";
 import { MAX_NFL_WEEK } from "../services/nflSeason";
+import { nextStartWeek } from "../services/matchmaking";
 
 
 async function ensureOpenPublicLeague(creatorId: string) {
@@ -25,11 +26,15 @@ async function ensureOpenPublicLeague(creatorId: string) {
   const playoffWeeks = Math.ceil(Math.log2(playoffSize));
   const maxPlayers = 10;
 
-  const firstUnresolved = await db.query.weeks.findFirst({
-    where: eq(weeks.resolved, false),
-  });
-  let startWeek = 1;
-  if (firstUnresolved) startWeek = firstUnresolved.number === 1 ? 2 : firstUnresolved.number;
+  // Shared with quick-join and POST /leagues — see services/matchmaking.
+  //
+  // Two things went with the old version: an unordered `findFirst` on
+  // `resolved = false` (so "first" was whatever Postgres returned), and a
+  // `=== 1 ? 2 : n` special case that existed to avoid opening a league in a
+  // week already under way. The date filter in `selectableStartWeeks` covers
+  // that properly now — week 1 stops being offered once it kicks off, rather
+  // than being skipped by name.
+  const startWeek = await nextStartWeek();
   const regularSeasonWeeks = Math.max(1, MAX_NFL_WEEK - startWeek - playoffWeeks + 1);
 
   let inviteCode = Math.random().toString(36).substring(2, 8).toUpperCase();
@@ -69,8 +74,22 @@ router.post("/:leagueId/season/start", requireAuth, async (req: any, res: any, n
 
     const result = await startLeagueSeason(leagueId);
 
+    // TOPPING THE POOL UP IS A SIDE EFFECT, AND MUST NOT FAIL THE START.
+    //
+    // `startLeagueSeason` has already committed above: matchups are scheduled,
+    // `seasonStarted` is true and the first allowance is paid. A throw from
+    // here reached the route's catch and answered 500, so the commissioner was
+    // told their season had failed to start when in fact it had — and pressing
+    // Start again would then 400 with "Season already started".
+    //
+    // `nextStartWeek` now throws when the schedule is exhausted rather than
+    // silently returning a past week, which is what made this reachable.
     if (league.isPublic) {
-      await ensureOpenPublicLeague(league.creatorId);
+      try {
+        await ensureOpenPublicLeague(league.creatorId);
+      } catch (err) {
+        console.error("[season] Failed to open a replacement public league:", err);
+      }
     }
 
     res.json(result);
