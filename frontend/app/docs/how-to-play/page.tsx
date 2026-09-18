@@ -21,7 +21,16 @@ import type { Metadata } from "next";
 // FACTS VERIFIED against the backend on 18 Sept 2026:
 //   allowance     30000 cents, so $300, on leagues matchmaking creates
 //                 (services/matchmaking.ts createLeagueFor)
-//   league size   default 10, must be even, accepted range 2 to 20
+//   league size   default 10, must be even, accepted range 2 to 20. Enforced in
+//                 BOTH creation paths (leagues.routes.ts rejects an odd
+//                 maxPlayers; matchmaking.ts coerces to 10).
+//
+//                 SIZE IS CAPACITY AND IS ALWAYS EVEN. The ghost opponent in
+//                 step 9 triggers on an odd count of ACTUAL MEMBERS
+//                 (scheduleMatchups.ts, userIds.length % 2), which is what a
+//                 league that starts before it fills produces. The two are not
+//                 in conflict, and step 1 says "size" while step 9 says
+//                 "members" so a reader does not think they are.
 //   invite code   6 characters, letters AND digits
 //                 (Math.random().toString(36).substring(2, 8).toUpperCase())
 //   parlay maths  two legs at -110 is 1.909^2 = 3.645 decimal, so about +264
@@ -98,10 +107,9 @@ export default function HowToPlayPage() {
             make you its commissioner.
           </p>
           <p>
-            Leagues hold ten teams by default, and an even number is required so
-            that everybody has an opponent every week. To play with people you
-            know, start your own league and send them its six character invite
-            code.
+            A league holds ten teams by default, and its size is always an even
+            number between two and twenty. To play with people you know, start
+            your own league and send them its six character invite code.
           </p>
         </Step>
 

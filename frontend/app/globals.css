@@ -4254,6 +4254,23 @@ input[type="checkbox"].auth-check[aria-invalid="true"]:focus {
 }
 
 .docs-shell {
+  /* THE INK IS RE-RESOLVED HERE, and this one declaration is load bearing for
+     dark mode.
+
+     `body` carries `color: var(--text)`, which computes to #000000 because body
+     sits OUTSIDE this element and the dark palette is declared ON it
+     (.docs-shell.is-dark). Inheritance passes the computed colour, so without
+     this line every descendant that does not name a colour of its own inherits
+     body's black and disappears on the dark ground. Rules that say
+     `color: var(--text)` themselves were always fine, which is what made the
+     bug selective and hard to see: .legal p and .legal li set --text-2
+     explicitly and rendered correctly, while How to Play's step TITLES, which
+     carry only a weight and a size, were black on black.
+
+     Restating the token at the boundary makes the shell the place the palette
+     starts, so anything added inside it later inherits the right ink in both
+     themes without having to know about any of this. */
+  color: var(--text);
   /* EXACTLY THE SCROLLER'S HEIGHT, never taller. These pages carry no chrome
      and no footer, so the shell claims that height itself.
 
