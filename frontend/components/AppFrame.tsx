@@ -2,6 +2,7 @@
 
 import { usePathname } from "next/navigation";
 import AppChrome from "@/components/AppChrome";
+import MobileGate from "@/components/MobileGate";
 import SideNav from "@/components/SideNav";
 
 /**
@@ -66,6 +67,13 @@ export default function AppFrame({
 
   if (inShell(pathname)) {
     return (
+      <>
+      {/* THE SHELL IS DESKTOP ONLY. Both of these render on every shell route
+          and CSS picks one — see MobileGate's header for why the choice is a
+          media query rather than a width read in an effect. The classic branch
+          below gets no gate: the landing page and the marketing routes are
+          responsive and stay that way. */}
+      <MobileGate />
       <div className="app-shell">
         <SideNav />
         {/* THE CARD IS THE SCROLLER. Pages inside it need no changes: `.page` /
@@ -77,6 +85,7 @@ export default function AppFrame({
             live on the marketing routes, which still carry it. */}
         <div className="app-card">{children}</div>
       </div>
+      </>
     );
   }
 

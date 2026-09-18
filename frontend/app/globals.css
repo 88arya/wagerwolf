@@ -1509,6 +1509,109 @@ button.dark:hover { opacity: 0.86; background: var(--text); border-color: var(--
   .app-card { margin: var(--shell-gap); }
 }
 
+/* ==========================================================================
+   THE MOBILE GATE — the signed-in shell is desktop only
+   ==========================================================================
+
+   components/MobileGate is rendered by AppFrame's shell branch beside
+   .app-shell on every shell route, and this block is what decides which of
+   the two the viewer sees. Hidden here, shown in the query below; .app-shell
+   goes the other way. See MobileGate's header for why the switch is CSS and
+   not a width read in JavaScript.
+
+   ONLY THE SHELL IS GATED. The landing page and the marketing routes are the
+   classic layout, they are responsive, and they never render this component —
+   so a phone visitor can still read /, /docs and /signup.
+
+   THE BREAKPOINT IS 900px, matching the .app-shell block directly above.
+   That block turns the sidebar into a horizontal strip below 900 and is now
+   UNREACHABLE FOR THE SHELL, since the shell is hidden at exactly the width
+   its own responsive rules start at. It is kept rather than deleted because it
+   is the layout to go back to if this gate is ever narrowed to, say, 760px to
+   let portrait tablets through — lower GATE_MAX below and those rules light up
+   again with nothing else to rewire. */
+.mobile-gate { display: none; }
+
+@media (max-width: 900px) {
+  .app-shell { display: none; }
+
+  .mobile-gate {
+    /* Takes .app-shell's slot exactly: <body> is a flex column of fixed
+       height, so flex: 1 is what fills it and min-height: 0 is what stops the
+       copy from pushing the box past the viewport. */
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    padding: 22px 24px 48px;
+    overflow-y: auto;
+
+    /* THE ONE FULL-ACCENT SURFACE IN THE APP. See MobileGate's header for why
+       this screen gets it when nothing else does. `color` and not a per-rule
+       colour on each child: the lockup is drawn `bare` and inherits the same
+       currentColor the type does, so there is one declaration to change. */
+    background: var(--accent);
+    color: #FFFFFF;
+  }
+
+  /* Top left. `flex: 0 0 auto` so it keeps its own height while the block
+     below takes the rest of the column. */
+  .mobile-gate-brand { flex: 0 0 auto; }
+
+  /* The message, centred in whatever is left under the lockup — `flex: 1` is
+     doing the vertical centring, which is why the brand is a sibling rather
+     than the first child of this block. */
+  .mobile-gate-inner {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: flex-start;
+    max-width: 420px;
+  }
+
+  .mobile-gate-title {
+    /* The global h1/h2 rules make headings 0.63rem uppercase micro-labels, so
+       a real page heading has to state all three back. Same reason
+       .mx-pane-title carries text-transform: none.
+
+       Weight 400 and tight tracking, i.e. the display treatment from the
+       design system — hierarchy here is size and the ground, not weight. */
+    font-size: 1.75rem;
+    font-weight: 400;
+    text-transform: none;
+    letter-spacing: -0.028em;
+    line-height: 1.05;
+    color: inherit;
+    margin: 0;
+  }
+}
+
+/* A PHONE HELD SIDEWAYS IS STILL A PHONE. Landscape on a large handset clears
+   900px of width while leaving ~400px of height, which the width query alone
+   waves through into a shell whose card then has no room to scroll. `pointer:
+   coarse` is what keeps this off a short desktop window — a laptop with the
+   window dragged down to 500px tall has a mouse and is fine.
+
+   It repeats the layout declarations rather than sharing them: a comma-joined
+   selector list cannot span two different media queries, and the alternative —
+   hoisting them out and leaving only `display` in the queries — would paint a
+   full accent screen behind every desktop page. */
+@media (max-height: 520px) and (pointer: coarse) {
+  .app-shell { display: none; }
+  .mobile-gate {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    padding: 18px 24px 28px;
+    overflow-y: auto;
+    background: var(--accent);
+    color: #FFFFFF;
+  }
+}
+
 /* The utility bar and games strip, pinned to the top of the scroller.
    `sticky`, not `fixed`: fixed would take them out of flow and let the content
    start underneath them, and it would put them back outside the scroll region
