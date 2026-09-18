@@ -1671,24 +1671,56 @@ button.dark:hover { opacity: 0.86; background: var(--text); border-color: var(--
   color: #FFFFFF;
   margin: 0 var(--rail) 20px;
   border-radius: var(--radius-card);
-  padding: 44px 36px 26px;
+  /* ONE NUMBER ON ALL FOUR SIDES. It was 44 / 36 / 26 — three values, none of
+     which lined up with either of the others — so a heading sat further from
+     the top edge than Legal did from the left, and the copyright sat closer to
+     the bottom than to the right. Every piece of content is now the same
+     distance from whichever edge is nearest it.
+
+     The card's HEIGHT is not set here and did not change: it comes from
+     .site-footer-rule's 92px margin-top, which is the one number to reach for
+     to make the card taller or shorter. Changing this padding moves the
+     content relative to the edges instead of spacing it.
+
+     Two optical caveats, neither worth correcting with a fudge number. Text
+     does not fill its line box — half-leading sits above the headings' caps and
+     below the copyright's baseline — so the top and bottom gaps read a touch
+     wider than the sides even though they measure the same. And the wolf is an
+     SVG cropped to its ink bounds (Logo's MARK_VIEWBOX), so it alone sits at
+     exactly 40px on both edges it touches. */
+  padding: 40px;
 }
 @media (max-width: 560px) {
   /* --rail bottoms out at 20px, so the card would carry 20 outside and 36
      inside on a phone — most of a narrow screen spent on gutters. */
-  .site-footer { padding: 36px 22px 22px; }
+  .site-footer { padding: 22px; }
 }
 
 /* Three equal columns, one per link group. There is no fourth track any more:
    the brand column that used to lead this row is gone, and leaving its track in
    place would bunch the links to the left against an empty quarter. */
-/* max-content tracks with space-between, NOT repeat(3, 1fr).
-   Equal fractions gave each column a third of the width and then left-aligned
-   its text inside that third — so the last column began two-thirds across and
-   trailed a wide empty gutter to the right edge, which is the whole complaint.
-   Sizing each track to its content and distributing the slack between them puts
-   the first column on the left edge and the last on the right, with the middle
-   one centred in what is left. */
+/* max-content tracks, edges FLUSH WITH THE CARD'S PADDING.
+
+   The row aligns with the bottom bar below it: Legal's left edge on the wolf
+   mark's, Support's right edge on the copyright's. Those two are the card's own
+   padding box, so the columns have to sit on it too — the alternative is a link
+   row inset from a sign-off row by an amount nothing else in the card explains.
+   `space-between` is what puts a track on each edge and splits the rest.
+
+   Three arrangements came before it, recorded so they are not retried.
+   `repeat(3, 1fr)` gave each column a third of the card and left-aligned its
+   text inside that third, so the last began two-thirds across and trailed a
+   wide gutter — flush at neither edge. Clustering at the left with a fixed gap
+   piled every bit of slack on the right. `space-evenly` was symmetric but
+   distributes space at the EDGES as well as between, so both outer columns
+   floated inboard of the mark and the copyright, which is the alignment this
+   arrangement exists to hold.
+
+   What this costs, knowingly: the three columns hold about 270px of text
+   against a ~1150px content box, so the two inner gaps come out near 440px and
+   the row is airy. That is the price of the outer alignment — closing the gaps
+   means giving up one edge or the other. A fourth column, or a brand block
+   leading the row, is what would actually fill it. */
 .site-footer-cols {
   display: grid;
   grid-template-columns: repeat(3, max-content);
@@ -1697,9 +1729,11 @@ button.dark:hover { opacity: 0.86; background: var(--text); border-color: var(--
   align-items: start;
 }
 @media (max-width: 900px) {
-  /* justify-content back to start: with only two tracks, space-between
-     would push them to opposite edges with a chasm between. */
-  .site-footer-cols { grid-template-columns: 1fr 1fr; justify-content: start; gap: 34px; }
+  /* Two tracks, so Support wraps under Legal. 1fr rather than max-content
+     here: at this width the card is narrow enough that equal halves read as
+     columns rather than as a gutter, and `justify-content` has no effect on a
+     fractional track. */
+  .site-footer-cols { grid-template-columns: 1fr 1fr; gap: 34px; }
 }
 @media (max-width: 560px) {
   .site-footer-cols { grid-template-columns: 1fr; justify-content: start; gap: 28px; }

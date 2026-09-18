@@ -74,13 +74,14 @@ const COLUMNS: Array<{
       // that is the in-app convention, the same one /settings uses for
       // "Personal information".
       //
-      // Two entry points, one inbox. There is no support backend — both compose
-      // a mailto: — so the SUBJECT LINE is the only thing that will sort them
-      // once they arrive, which is exactly what `support` carries here. Asking
-      // the sender to pick a category inside the form would be the form asking
-      // a question the link already answered.
+      // One entry point, one inbox. There is no support backend — the row
+      // composes a mailto: — so the SUBJECT LINE is the only thing that will
+      // sort it once it arrives, which is what `support` carries here.
+      //
+      // NO "REPORT AN ISSUE" ROW. It was a second link into the same modal and
+      // the same inbox, differing only in subject line; one Contact row covers
+      // it, and the sender says what is wrong in the message either way.
       { label: "Contact Us", support: "contact" },
-      { label: "Report an Issue", support: "issue" },
       // NO PASSWORD RESET ROW. There is no password: auth is Google-only, and
       // POST /users/auth/google is the entire login surface. The row pointed at
       // a flow that does not exist anywhere in the app. Add it back only
@@ -112,7 +113,33 @@ function FooterLink({ label, href, support }: { label: string; href?: string; su
   if (support) {
     return <SupportLink className="site-footer-link" topic={support}>{label}</SupportLink>;
   }
-  return <Link href={href!} className="site-footer-link">{label}</Link>;
+  // A NEW TAB, matching SideNav's Docs row.
+  //
+  // Every `href` in COLUMNS above is a document under /docs, so this applies to
+  // the documents and to nothing else; the Support column goes through
+  // `support` and opens a dialog in place.
+  //
+  // The two entry points into the section disagreed until 18 Sept 2026. The
+  // sidebar has always opened /docs in its own tab, and the reasoning is in
+  // SideNav: the shell's Done button is `router.back()`, one press per document
+  // read, so consulting three of them in the app's tab left three presses
+  // between the reader and the game. The footer sent the same documents to the
+  // current tab. Nothing regressed to cause that; the footer's links have been
+  // `next/link` since the component was written, and the only `target="_blank"`
+  // it ever carried belonged to the social icons.
+  //
+  // `rel` is stated even though the destination is same-origin. `noopener`
+  // withholds the `window.opener` handle the opened page would otherwise get.
+  return (
+    <Link
+      href={href!}
+      className="site-footer-link"
+      target="_blank"
+      rel="noopener noreferrer"
+    >
+      {label}
+    </Link>
+  );
 }
 
 export default function SiteFooter() {
