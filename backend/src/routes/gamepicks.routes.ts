@@ -4,7 +4,7 @@ import { eq, and, inArray, count, sql } from "drizzle-orm";
 import { gamePicks, gameLines, games, memberships, leagues, picks, props } from "../db/schema";
 import { requireAuth } from "../middleware/auth";
 import { betLimiter } from "../middleware/rateLimit";
-import { calcProfit, fmtMoney } from "../lib/payout";
+import { fmtMoney } from "../lib/payout";
 
 const router = Router();
 
@@ -204,41 +204,5 @@ router.post("/:id/cashout", requireAuth, betLimiter, async (req: any, res: any, 
     next(err); return;
   }
 });
-
-// Internal helper for resolution
-export async function settleGamePick(gamePickId: string) {
-  const gp = await db.query.gamePicks.findFirst({
-    where: eq(gamePicks.id, gamePickId),
-    with: { gameLine: { with: { game: true } } },
-  }) as any;
-  if (!gp || gp.outcome !== "PENDING") return;
-
-  let won: boolean;
-  if (gp.altLine != null) {
-    const { homeScore, awayScore } = gp.gameLine.game;
-    if (homeScore == null || awayScore == null) return;
-    switch (gp.gameLine.market) {
-      case "SPREAD_HOME": won = (homeScore + gp.altLine) > awayScore; break;
-      case "SPREAD_AWAY": won = (awayScore + gp.altLine) > homeScore; break;
-      case "TOTAL_OVER":  won = (homeScore + awayScore) > gp.altLine; break;
-      case "TOTAL_UNDER": won = (homeScore + awayScore) < gp.altLine; break;
-      default: if (gp.gameLine.result == null) return; won = gp.gameLine.result; break;
-    }
-  } else {
-    if (gp.gameLine.result == null) return;
-    won = gp.gameLine.result === true;
-  }
-  const profit = won ? calcProfit(gp.stake, gp.odds) : 0;
-
-  await db.update(gamePicks)
-    .set({ outcome: won ? "WIN" : "LOSS" })
-    .where(eq(gamePicks.id, gp.id));
-
-  if (won) {
-    await db.update(memberships)
-      .set({ balance: sql`${memberships.balance} + ${gp.stake + profit}` })
-      .where(and(eq(memberships.userId, gp.userId), eq(memberships.leagueId, gp.leagueId)));
-  }
-}
 
 export default router;

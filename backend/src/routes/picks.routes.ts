@@ -4,7 +4,7 @@ import { eq, and, inArray, count, sql } from "drizzle-orm";
 import { picks, memberships, leagues, props, games, gamePicks, gameLines } from "../db/schema";
 import { requireAuth } from "../middleware/auth";
 import { betLimiter } from "../middleware/rateLimit";
-import { calcProfit, fmtMoney } from "../lib/payout";
+import { fmtMoney } from "../lib/payout";
 import { altOddsFor } from "../services/propOdds";
 
 const router = Router();
@@ -175,31 +175,5 @@ router.post("/:id/cashout", requireAuth, betLimiter, async (req: any, res: any, 
     next(err); return;
   }
 });
-
-// Internal helper exported for use in resolution routes
-export async function settlePick(pickId: string) {
-  const pick = await db.query.picks.findFirst({
-    where: eq(picks.id, pickId),
-    with: { prop: true },
-  }) as any;
-  if (!pick || pick.outcome !== "PENDING" || pick.prop.result == null) return;
-
-  const effectiveLine = pick.altLine ?? pick.prop.line;
-  const won =
-    (pick.direction === "OVER" && pick.prop.result > effectiveLine) ||
-    (pick.direction === "UNDER" && pick.prop.result < effectiveLine);
-
-  const profit = won ? calcProfit(pick.stake, pick.odds) : 0;
-
-  await db.update(picks)
-    .set({ outcome: won ? "WIN" : "LOSS" })
-    .where(eq(picks.id, pick.id));
-
-  if (won) {
-    await db.update(memberships)
-      .set({ balance: sql`${memberships.balance} + ${pick.stake + profit}` })
-      .where(and(eq(memberships.userId, pick.userId), eq(memberships.leagueId, pick.leagueId)));
-  }
-}
 
 export default router;
