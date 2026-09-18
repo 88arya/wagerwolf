@@ -104,6 +104,9 @@ export default function DocsShell({
    * and the switch belongs to /docs alone — app/docs/layout.tsx is the only
    * caller that passes it.
    *
+   * DARK IS THE DEFAULT on the routes that pass this. Light stays available
+   * from the switch and is remembered under "docs_theme".
+   *
    * THE APP HAS NO DARK MODE and this does not give it one. CLAUDE.md records
    * light as the only theme, with the old ThemeToggle, the `data-theme`
    * attribute and the "theme" localStorage key all deliberately removed. What
@@ -118,7 +121,17 @@ export default function DocsShell({
 }) {
   const router = useRouter();
   const [support, setSupport] = useState(false);
-  const [dark, setDark] = useState(false);
+  /**
+   * DARK IS THE DEFAULT, and the initial value is `true` rather than `false`
+   * so the server renders dark too.
+   *
+   * The effect below cannot run during SSR, so whatever is seeded here is what
+   * the first paint shows. Seeding `false` would give every reader a light
+   * flash before the effect corrected it; seeding `true` moves that flash onto
+   * the smaller group who have explicitly chosen light, and they at least
+   * asked for the theme they end up in.
+   */
+  const [dark, setDark] = useState(true);
   /**
    * Which sections are expanded.
    *
@@ -143,9 +156,13 @@ export default function DocsShell({
   useEffect(() => {
     if (!theme) return;
     try {
-      setDark(localStorage.getItem(THEME_KEY) === "dark");
+      // `!== "light"` and not `=== "dark"`: an absent key means nobody has
+      // chosen, and the default for that reader is dark. Only an explicit
+      // "light" turns it off.
+      setDark(localStorage.getItem(THEME_KEY) !== "light");
     } catch {
-      // Private mode or a full quota. Light is the correct fallback.
+      // Private mode or a full quota. `dark` keeps its seeded `true`, which is
+      // the default anyone who has never chosen would get anyway.
     }
   }, [theme]);
 

@@ -47,13 +47,13 @@ const GROUPS: Array<{
       {
         href: "/docs/privacy-policy",
         name: "Privacy Policy",
-        blurb: "What we store about you, who sees it, and how to have it deleted.",
+        blurb: "What we store about you, who sees it, how long we keep it, and how to have it exported or deleted.",
         Icon: EyeOff,
       },
       {
         href: "/docs/responsible-gaming",
         name: "Responsible Gaming",
-        blurb: "Nothing here is real money, and where to get help if betting is a problem elsewhere.",
+        blurb: "No real money, no deposits, no payouts. Signs worth watching for, and where to get help.",
         Icon: LifeBuoy,
       },
     ],
@@ -65,7 +65,7 @@ const GROUPS: Array<{
       {
         href: "/docs/how-to-play",
         name: "How to Play",
-        blurb: "The eight-step walkthrough, from joining a league to winning a matchup.",
+        blurb: "The ten-step walkthrough, from joining a league to winning a matchup.",
         Icon: ListOrdered,
       },
       {

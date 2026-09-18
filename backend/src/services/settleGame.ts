@@ -117,7 +117,10 @@ async function gradePropsFromESPN(game: any): Promise<void> {
  * snap and leaves is graded on what he did, like any book. Only never playing
  * refunds.
  */
-const DNP_REASON = "Player did not play — stake refunded";
+// USER-FACING COPY, shown on the bet card, so it follows the docs' house rule
+// of no em dashes. A period reads the same and does not import a glyph the rest
+// of the product's copy has been cleared of.
+const DNP_REASON = "Player did not play. Stake refunded.";
 
 async function voidUngradedProps(game: any): Promise<string[]> {
   if (!game.oddsSettledAt) return [];
@@ -372,7 +375,7 @@ export async function settleTouchedParlays(parlayIds: string[]): Promise<void> {
         outcome: settled.outcome as any,
         ...(settled.totalOdds != null ? { totalOdds: settled.totalOdds, payout: settled.payout } : {}),
         ...(settled.outcome === "VOID"
-          ? { voidReason: voidedLeg ? DNP_REASON : "Every leg pushed — stake refunded" }
+          ? { voidReason: voidedLeg ? DNP_REASON : "Every leg pushed. Stake refunded." }
           : {}),
       })
       .where(eq(parlays.id, parlay.id));
