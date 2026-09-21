@@ -74,6 +74,34 @@ import TeamLogo from "@/components/TeamLogo";
 // forward through an already-fetched list.
 const TICK_MS = 60_000;
 
+/**
+ * How often the list refetches. HOURLY, and deliberately not faster.
+ *
+ * WHAT IT FIXES. This component fetched once on mount, and SideNav is mounted
+ * by AppFrame in the root layout and never remounts — so the moneylines here
+ * were frozen at page load for the whole session. Leave a tab open overnight
+ * and it showed yesterday's prices with nothing saying so. TICK_MS is not a
+ * refetch and never was: it only moves `now` forward so kicked-off games drop
+ * out of an already-fetched list.
+ *
+ * WHY NOT FASTER. The scheduler ticks every 30 minutes, but that tick only
+ * refreshes games that are DUE on a per-game ladder — beyond 72 hours out a
+ * price moves once a DAY, and the tightest tier that ever runs is hourly
+ * inside 3 hours (TIERS in backend services/oddsPoller.ts). Polling every five
+ * minutes would be ~288 requests to catch one change. Hourly matches the
+ * fastest rate at which this data can actually differ.
+ *
+ * WHY THE COST IS NOT WHAT IT LOOKS LIKE, in either direction. This poll never
+ * touches SportsGameOdds: /weeks/public/current reads our own database, and
+ * the 2500-entity monthly cap is spent server-side by the poller alone. No
+ * cadence chosen here can affect that quota. It is ordinary request load.
+ *
+ * True event-driven delivery would need SSE or a WebSocket from the poller.
+ * Considered and rejected as real machinery for a nav list showing two numbers
+ * per game.
+ */
+const REFETCH_MS = 60 * 60_000;
+
 // The same box a label's icon gets, because the LEFT column's logos have to land
 // in that same column — see the note on .sidenav-game in globals.css. Changing
 // one without the other breaks the nav's single left edge. (The right column
@@ -126,14 +154,39 @@ export default function SideNavGames() {
   useEffect(() => {
     let live = true;
 
-    // ARRAY, not an object — see the header. `weeks[0]` is the week.
-    api("/weeks/public/current")
-      .then((weeks: any) => { if (live) setGames(weeks?.[0]?.games ?? []); })
-      .catch(() => { if (live) setGames([]); });
+    /**
+     * `first` distinguishes the mount fetch from an hourly refresh, and the
+     * only thing it changes is the failure branch.
+     *
+     * On mount there is nothing on screen, so a failure has to resolve `games`
+     * to [] — it is what takes the component out of its null state, which
+     * renders nothing at all. On a REFRESH there is already a list on screen,
+     * and blanking it because one request failed would turn a transient
+     * network blip into an empty nav. Keeping the stale list is the better of
+     * the two wrong answers: prices an hour old beat no games at all, and the
+     * next refresh is an hour away at most.
+     *
+     * The success branch replaces the list wholesale either way. There is no
+     * loading state on a refresh, so nothing flashes; React re-renders the
+     * rows in place.
+     */
+    const load = (first: boolean) => {
+      // ARRAY, not an object — see the header. `weeks[0]` is the week.
+      api("/weeks/public/current")
+        .then((weeks: any) => { if (live) setGames(weeks?.[0]?.games ?? []); })
+        .catch(() => { if (live && first) setGames([]); });
+    };
+
+    load(true);
 
     setNow(Date.now());
-    const id = window.setInterval(() => setNow(Date.now()), TICK_MS);
-    return () => { live = false; window.clearInterval(id); };
+    const tick = window.setInterval(() => setNow(Date.now()), TICK_MS);
+    const refetch = window.setInterval(() => load(false), REFETCH_MS);
+    return () => {
+      live = false;
+      window.clearInterval(tick);
+      window.clearInterval(refetch);
+    };
   }, []);
 
   // Nothing at all until the fetch lands. A skeleton here would be grey bars in
