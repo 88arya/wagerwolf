@@ -6957,26 +6957,66 @@ textarea.support-box {
    rather than 25 things competing.
 
    SCOPED AWAY FROM THE BRAND TILE TWICE OVER, belt and braces: `:not(.is-brand)`
-   states the intent, and the selector is `img` where ours is an inline <svg>
-   from <Logo>, so the filter could not reach it anyway. Written explicitly
+   states the intent, and the selector reaches only `.why-mark`, which the
+   component renders for the eight neighbours alone — ours is an inline <svg>
+   from <Logo>, so the filter could not touch it anyway. Written explicitly
    because the second guarantee disappears the moment someone swaps the mark for
-   an <img>.
+   a `.why-mark`.
 
    `contain` handles both shapes of artwork without a second rule: a square app
    icon fills a square tile exactly, and a wider wordmark letterboxes inside it
    rather than being cropped. */
-.why-tile:not(.is-brand) img {
+
+/* .why-mark IS A SPAN WITH A BACKGROUND, NOT AN <img>, and the reason is the
+   artwork rather than the layout.
+
+   The eight neighbours are third-party trademarks, none of them licensed to
+   this project. Drawn as <img> they were trivially exportable — "Save image
+   as", drag-to-desktop and "Copy image" each handed over a clean logo file —
+   which made the wall a convenient redistribution point for somebody else's
+   mark. A background-image is not a drag source and is not something the
+   context menu can target, so those three close together.
+
+   RISK REDUCTION, NOT PROTECTION. Anything the browser renders is still
+   reachable from devtools, from the network tab, or by requesting
+   /wall/*.png directly. This closes the casual path and claims nothing more.
+   The two fixes NOT taken, both deliberately: a transparent overlay div, which
+   one devtools click defeats while breaking the layout it sits on, and a
+   page-wide `oncontextmenu` handler, which is hostile to every legitimate
+   reader for no gain.
+
+   If this ever needs to be stronger, the next step is spriting the eight into
+   one atlas — a saved file is then a grid of eight marks rather than a clean
+   logo, and it is one request instead of eight.
+
+   See WhyWagerwolf for the same reasoning at the call site. */
+.why-tile:not(.is-brand) .why-mark {
   /* SIZE COMES FROM THE COMPONENT, inline, because it is computed per logo from
      that logo's aspect ratio — see tileSize() in WhyWagerwolf. There is no
      padding here any more: the old 14% inset applied the same margin to a
      square shield and a 4.66:1 wordmark, which is what made them read as
      different sizes. The inset is now whatever equal-area sizing leaves.
 
-     `contain` is belt and braces. Width and height are set to the ink's own
-     ratio, so it should have nothing to do; it is what keeps a logo undistorted
-     if a file is ever replaced without its `ar` being re-measured. */
-  object-fit: contain;
+     `contain` is belt and braces, and does here exactly what `object-fit:
+     contain` did on the <img>. Width and height are set to the ink's own
+     ratio, so it should have nothing to do; it is what keeps a logo
+     undistorted if a file is ever replaced without its `ar` being
+     re-measured.
+
+     `flex-shrink: 0` because .why-tile is a flex container and this is now a
+     span rather than a replaced element: without it a tile narrower than the
+     computed width would squeeze the mark and break the equal-area sizing the
+     whole wall depends on. */
+  flex-shrink: 0;
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: contain;
   filter: grayscale(1);
+  /* Belt and braces against the drag path specifically. The background is
+     already not a drag source; these also stop a selection being dragged out
+     of the tile, which is the one gesture that can still pick up a box. */
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 /* SIZED IN PERCENT, not from a `size` prop: the tile is a fifth of a panel

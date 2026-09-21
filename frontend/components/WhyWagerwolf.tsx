@@ -391,7 +391,38 @@ export default function WhyWagerwolf() {
                   (() => {
                     const l = LOGOS[i < CENTER ? i : i - 1];
                     return (
-                      <img src={l.src} alt="" style={tileSize(l.ar, l.ink)} />
+                      /* A SPAN WITH A BACKGROUND, NOT AN <img>, and that is
+                         about the eight marks rather than about layout.
+
+                         None of these is licensed to this project. As plain
+                         <img> elements the wall was a convenient
+                         redistribution point for somebody else's trademark:
+                         right-click "Save image as", drag-to-desktop and "Copy
+                         image" all worked and all yielded a clean logo file.
+                         A background-image is not an element the context menu
+                         can target and is not a drag source, so all three
+                         paths close at once, with no overlay div and no
+                         page-wide oncontextmenu handler — the two obvious
+                         fixes, both of which are defeated in one devtools
+                         click while being hostile to ordinary readers.
+
+                         THIS IS RISK REDUCTION AND NOT PROTECTION, and the
+                         distinction should stay honest here: anything the
+                         browser renders can still be taken from devtools, from
+                         the network tab, or by requesting /wall/*.png
+                         directly. The goal is only to close the casual path.
+
+                         Sizing is unchanged: tileSize() still returns the
+                         width and height percentages, and background-size:
+                         contain in globals.css does what object-fit: contain
+                         did. */
+                      <span
+                        className="why-mark"
+                        style={{
+                          ...tileSize(l.ar, l.ink),
+                          backgroundImage: `url("${l.src}")`,
+                        }}
+                      />
                     );
                   })()
                 )}
