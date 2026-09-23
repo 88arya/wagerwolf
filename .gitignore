@@ -1,46 +1,14 @@
 node_modules/
-# Every env variant, not just these two. .env.production holding a live
-# database password was one `git add` away from being committed.
 .env*
 !.env.example
 dist/
 build/
 .claude/
-spec.txt
-claude.txt
 .vscode/
 CLAUDE.md
-comissioner_rules.txt
-espnweekreturn.md
-sportsgameoddsapi.txt
-todolist.txt
-sharpapi.md
-sharpapi_nfl.md
-
-# Font archives dropped in root while picking a wordmark face. The files that
-# are actually used are extracted into frontend/app/fonts; the zips are scratch.
 *.zip
+design/
 
-# Root-level working notes and stray images — personal scratch, not project
-# docs. .github/DEPLOYMENT.md and CLAUDE.md are the docs that do belong.
-LAUNCH_AUDIT.md
-MARKETS.md
-image.png
-resume-review.md
-resume-points.txt
-espnweekreturn.md
-sharpapi.md
-sharpapi_nfl.md
-
-# The provisioning checklist. Names the accounts, regions and secret layout for
-# the live deploy, so it stays a local working note.
-go_live.md
-
-# Vercel CLI writes the linked project id here during `vercel link`.
-.vercel/
-
-# Terraform: state records every attribute of every resource, and tfvars holds
-# whatever you fed in. Neither belongs in the repo.
 infra/.terraform/
 infra/.terraform.lock.hcl
 infra/terraform.tfstate
@@ -49,19 +17,8 @@ infra/*.tfvars
 !infra/*.tfvars.example
 infra/tfplan
 
-# Deploy env files are materialised by the workflow from a GitHub secret and
-# copied to the instance. One must never be committed.
-deploy/.env
-
-# SSH deploy keys, if generated in the repo root.
 *-deploy
 *-deploy.pub
-
-# Design source artwork and exports — reference material, not shipped.
-design/
-
-# TLS private keys and certificates — never commit these.
-origincert_privkey.txt
 *.pem
 *.key
 *-origin-cert*

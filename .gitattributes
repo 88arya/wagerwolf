@@ -1,13 +1,3 @@
-# Line endings for files that are executed on Linux.
-#
-# deploy/deploy.sh runs on the Ubuntu instance. A CRLF copy fails with
-# "bad interpreter: /bin/bash^M" — an error that reads as a missing bash rather
-# than a line-ending problem, and costs an hour the first time you meet it.
-#
-# core.autocrlf=true happens to normalise this on the machine this was written
-# on, but that is a per-machine git setting and the repo should not depend on
-# one. These rules make it a property of the repository instead.
-
 * text=auto
 
 *.sh        text eol=lf
