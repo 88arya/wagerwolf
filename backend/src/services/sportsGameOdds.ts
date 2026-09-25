@@ -65,11 +65,33 @@ export const TEAM_FULL_NAME: Record<string, string> = Object.fromEntries(
 );
 
 /**
- * SGO statID -> our StatType. 22 of our 23 are covered; RECEIVING_TARGETS has
- * no SGO market and is the only one that can never populate.
+ * SGO statID -> our StatType. The feed covers 22 of our 23; RECEIVING_TARGETS
+ * has no SGO market and is the only one that can never populate. We ingest 21
+ * of those 22 — `touchdowns` is mapped nowhere by choice, for the reasons at
+ * the bottom of this table.
  *
  * Cached here on purpose: the /markets endpoint that lists these bills like any
  * other call (one pull cost 35 entities), so it must never run at runtime.
+ *
+ * WHAT WE LEAVE ON THE TABLE, surveyed from one /markets pull (342 rows, 173
+ * distinct market groups) on 21 Sept 2026. Filtering happens at INGEST, not
+ * display: a market absent from this map is never written to the database, so
+ * enabling one later means re-syncing that week rather than flipping a toggle.
+ *
+ *   · 111 of the 173 are quarter/half variants of a full-game market. `Prop`
+ *     and `GameLine` both assume a full game and have no period column, so
+ *     these are structurally unreachable. It is the single biggest unlock
+ *     available, and it is a schema change rather than a mapping one.
+ *   · The rest are stats with no home in our 23-value enum (combo yardage like
+ *     passing+rushing, first/last touchdown scorer, fantasy score, turnovers),
+ *     or team totals and game-level aggregates no table models.
+ *
+ * FIELD_GOAL_LONGEST is mapped below but the feed carries it only as a
+ * game-level total, never per player, so in practice it cannot populate either.
+ *
+ * Mapped is not the same as priced. A market here can still be blank all week
+ * because no book opened it — measured against week 1, DEFENSIVE_INTERCEPTIONS
+ * landed 17 props while SACKS landed none at all.
  */
 const STAT_MAP: Record<string, string> = {
   passing_yards: "PASSING_YARDS",
