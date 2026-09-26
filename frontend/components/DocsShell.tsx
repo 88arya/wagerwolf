@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import type { ComponentType } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ChevronRight, Moon, Sun } from "lucide-react";
 import Logo from "@/components/Logo";
 import SupportModal from "@/components/SupportModal";
+import { writeDocsTheme } from "@/lib/docsTheme";
 
 /**
  * The three-region shell the document-ish routes share: a top bar, a nav rail,
@@ -51,9 +52,6 @@ export type DocsNavItem = {
   children?: DocsNavItem[];
 };
 
-/** Where the docs theme is remembered. Not "theme" — see the note on `theme`. */
-const THEME_KEY = "docs_theme";
-
 export default function DocsShell({
   title,
   items,
@@ -61,6 +59,7 @@ export default function DocsShell({
   crumb,
   done = true,
   theme = false,
+  initialDark = true,
   children,
 }: {
   title: string;
@@ -105,33 +104,43 @@ export default function DocsShell({
    * caller that passes it.
    *
    * DARK IS THE DEFAULT on the routes that pass this. Light stays available
-   * from the switch and is remembered under "docs_theme".
+   * from the switch and is remembered in the "docs_theme" cookie, which the
+   * server reads — see `initialDark`.
    *
    * THE APP HAS NO DARK MODE and this does not give it one. CLAUDE.md records
    * light as the only theme, with the old ThemeToggle, the `data-theme`
    * attribute and the "theme" localStorage key all deliberately removed. What
    * this does is repaint ONE COMPONENT by overriding colour tokens on
    * .docs-shell.is-dark, so the dark values exist nowhere above this element
-   * and cannot cascade into the app. Nothing is written to `document`, no
-   * attribute is set on <html>, and the key is "docs_theme" rather than "theme"
-   * so it cannot be mistaken for the removed global one.
+   * and cannot cascade into the app. No class or attribute is set on <html> or
+   * <body>, and the cookie is "docs_theme" rather than "theme", scoped to
+   * path=/docs, so it cannot be mistaken for the removed global one.
    */
   theme?: boolean;
+  /**
+   * The theme to render, as the server read it from the docs_theme cookie.
+   * app/docs/layout.tsx passes it; nothing else needs to.
+   */
+  initialDark?: boolean;
   children: React.ReactNode;
 }) {
   const router = useRouter();
   const [support, setSupport] = useState(false);
   /**
-   * DARK IS THE DEFAULT, and the initial value is `true` rather than `false`
-   * so the server renders dark too.
+   * SEEDED FROM THE SERVER'S ANSWER, AND NEVER CORRECTED AFTER MOUNT.
    *
-   * The effect below cannot run during SSR, so whatever is seeded here is what
-   * the first paint shows. Seeding `false` would give every reader a light
-   * flash before the effect corrected it; seeding `true` moves that flash onto
-   * the smaller group who have explicitly chosen light, and they at least
-   * asked for the theme they end up in.
+   * This was localStorage read in an effect. The server cannot see
+   * localStorage, so it had to guess, and whoever it guessed wrong for got the
+   * wrong theme for a frame before the effect fixed it: light-then-dark when
+   * the default was light, dark-then-light for anyone who had chosen light
+   * after the default flipped. The cookie reaches the server with the request,
+   * so the first paint is the final one and there is nothing left to correct.
+   *
+   * The old localStorage key is deliberately NOT migrated. Reading it would
+   * need exactly the post-mount correction this removes, and the site had not
+   * launched, so resetting a handful of choices to the dark default is cheap.
    */
-  const [dark, setDark] = useState(true);
+  const [dark, setDark] = useState(initialDark);
   /**
    * Which sections are expanded.
    *
@@ -149,33 +158,12 @@ export default function DocsShell({
     items.filter(i => i.children?.some(c => c.active)).map(i => i.key),
   );
 
-  // In an effect, never in the useState initializer: that runs during SSR,
-  // where there is no localStorage, and a value read there would not match the
-  // server's markup on hydration. Same rule the games strip's auto-scroll
-  // preference follows.
-  useEffect(() => {
-    if (!theme) return;
-    try {
-      // `!== "light"` and not `=== "dark"`: an absent key means nobody has
-      // chosen, and the default for that reader is dark. Only an explicit
-      // "light" turns it off.
-      setDark(localStorage.getItem(THEME_KEY) !== "light");
-    } catch {
-      // Private mode or a full quota. `dark` keeps its seeded `true`, which is
-      // the default anyone who has never chosen would get anyway.
-    }
-  }, [theme]);
-
   function toggleTheme() {
-    setDark(next => {
-      const v = !next;
-      try {
-        localStorage.setItem(THEME_KEY, v ? "dark" : "light");
-      } catch {
-        // Still applies for this visit; it just will not outlive the tab.
-      }
-      return v;
-    });
+    const v = !dark;
+    setDark(v);
+    // Outside the updater: a state updater must be pure, and Strict Mode runs
+    // it twice. A blocked cookie still applies for this visit.
+    writeDocsTheme(v);
   }
 
   return (
