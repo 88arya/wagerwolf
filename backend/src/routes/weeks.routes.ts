@@ -111,7 +111,10 @@ router.get("/public/current", async (_req: any, res: any, next: any) => {
     // had drifted to a different rule entirely. Only the projection is local.
     let week: any = null;
     for (const step of currentWeekSteps(now)) {
-      week = await db.query.weeks.findFirst({ ...step, with: withGames });
+      // `publicBoard` excluded: it is the landing page's frozen marquee, tens of
+      // kB of jsonb that /public/markets already serves, and it rode along on
+      // every strip and sidebar fetch because only the games had a projection.
+      week = await db.query.weeks.findFirst({ ...step, columns: { publicBoard: false }, with: withGames });
       if (week) break;
     }
 

@@ -221,6 +221,49 @@ async function boardTotals(weekId: string): Promise<BoardTotals> {
   return { lines: Number(r.lines ?? 0), props: Number(r.props ?? 0) };
 }
 
+/**
+ * THE TOTALS ARE A HIGH-WATER MARK, not a snapshot. Unlike the card sample, which
+ * stays frozen for the week.
+ *
+ * A snapshot undercounted by construction. It was taken on the first request
+ * after rollover, which is Tuesday evening, and books post game lines early but
+ * player props mostly Wednesday to Saturday: week 3 froze at 426 props on a board
+ * that went on to carry far more (week 1 locally: 1,078 at snapshot, 1,648 by
+ * Sunday). Weeks before it only looked right because rollover used to run late.
+ *
+ * A plain live count is not the answer either, because it can FALL: a refresh
+ * deletes markets the feed stops returning when nothing is riding on them, and a
+ * manual week resync can do the same to games already played. By Monday night
+ * the landing page would be advertising a shrinking board.
+ *
+ * So recount every few minutes and keep the larger. The conditional UPDATE keeps
+ * it monotonic across replicas: a replica with a stale memo can never write a
+ * smaller number over a bigger one, and re-reading the column afterwards means
+ * every process converges on the largest total any of them has seen.
+ *
+ * Compared on the SUM, since the SUM is what the landing page prints. Lines and
+ * props move together as one pair, so the pair on screen always came from a
+ * single real count.
+ */
+const TOTALS_REFRESH_MS = 5 * 60_000;
+
+async function raiseTotals(weekId: string): Promise<BoardTotals | null> {
+  const live = await boardTotals(weekId);
+  const sum = live.lines + live.props;
+  await db.execute(sql`
+    UPDATE "Week"
+       SET "publicBoard" = jsonb_set("publicBoard", '{totals}', ${JSON.stringify(live)}::jsonb)
+     WHERE id = ${weekId}
+       AND "publicBoard" IS NOT NULL
+       AND COALESCE(("publicBoard"->'totals'->>'lines')::int, 0)
+         + COALESCE(("publicBoard"->'totals'->>'props')::int, 0) < ${sum}
+  `);
+  const stored = rowsOf(await db.execute(sql`
+    SELECT "publicBoard"->'totals' AS totals FROM "Week" WHERE id = ${weekId}
+  `))[0]?.totals;
+  return stored ? { lines: Number(stored.lines ?? 0), props: Number(stored.props ?? 0) } : null;
+}
+
 export async function publicMarketSample(weekId: string): Promise<PublicMarket[]> {
   const [props, teams] = await Promise.all([propSample(weekId), teamSample(weekId)]);
   return [...props, ...teams];
@@ -279,7 +322,8 @@ export async function publicMarketSample(weekId: string): Promise<PublicMarket[]
  * TWO CACHES ARE STACKED HERE, and knowing that is the difference between a
  * five-minute fix and an hour of confusion.
  *
- *   1. `Week.publicBoard` — a jsonb column, written once per week.
+ *   1. `Week.publicBoard` — a jsonb column, written once per week. Its totals
+ *      are the one exception and are raised in place; see `raiseTotals`.
  *   2. `memo` — this, a module-level copy held in the process.
  *
  * The memo is only refreshed when the week **ID** changes. So clearing the
@@ -309,7 +353,7 @@ export async function publicMarketSample(weekId: string): Promise<PublicMarket[]
  * Before the ladder moved to dates, rollover trailed the resolve and the new
  * week always had odds by then; the old reasoning was written for that world.
  */
-let memo: { weekId: string; board: PublicBoard } | null = null;
+let memo: { weekId: string; board: PublicBoard; totalsCheckedAt: number } | null = null;
 
 
 /**
@@ -370,7 +414,25 @@ export async function cachedPublicBoard(limit: number): Promise<PublicBoard> {
     // unmemoised costs two queries per landing-page request for the minutes
     // that gap is open, and the marquee fills itself the moment the odds do.
     if (board.markets.length === 0) return board;
-    memo = { weekId, board };
+    // Checked-at 0, so the first request after a deploy recounts rather than
+    // re-serving whatever total the row held when the process stopped.
+    memo = { weekId, board, totalsCheckedAt: 0 };
+  }
+  // A local, not the module variable: the recount below awaits, and a rollover
+  // request can replace `memo` meanwhile. This request stays on its own week.
+  const m = memo;
+
+  // The totals, and only the totals, follow the board up. Stamped BEFORE the
+  // await so concurrent requests in the same window do not each recount; a
+  // failed recount keeps the last good number and tries again next window.
+  if (Date.now() - m.totalsCheckedAt >= TOTALS_REFRESH_MS) {
+    m.totalsCheckedAt = Date.now();
+    try {
+      const totals = await raiseTotals(weekId);
+      if (totals) m.board = { ...m.board, totals };
+    } catch (err) {
+      console.error("[publicMarkets] totals refresh failed:", err);
+    }
   }
   // SHUFFLED PER REQUEST, over a POOL that is fixed for the week. The two are
   // different decisions and only one of them rotates weekly: which markets are
@@ -387,11 +449,13 @@ export async function cachedPublicBoard(limit: number): Promise<PublicBoard> {
   // did exactly that. Shuffling first makes the slice a fair sample of both
   // kinds instead of a prefix of one.
   //
-  // THE TOTALS ARE STORED WITH THE SAMPLE, in one row, so the count beside the
-  // marquee and the cards in it are always describing the same snapshot of the
-  // same week. Neither can move without the other.
+  // THE TOTALS ARE STORED WITH THE SAMPLE, in one row, so both always describe
+  // the same week — but they no longer describe the same MOMENT. The cards are
+  // Tuesday's snapshot; the count is the largest board the week has reached.
+  // A card can therefore be one of the markets counted but no longer open,
+  // which a count of "markets this week" already allowed.
   const n = Math.min(Math.max(Math.trunc(limit) || 12, 1), MAX);
-  return { markets: shuffle(memo.board.markets).slice(0, n), totals: memo.board.totals };
+  return { markets: shuffle(m.board.markets).slice(0, n), totals: m.board.totals };
 }
 
 /**
