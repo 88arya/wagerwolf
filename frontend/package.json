@@ -15,18 +15,18 @@
     "@iconify/react": "^6.0.2",
     "@sentry/browser": "^11.0.0",
     "@sentry/nextjs": "^11.0.0",
-    "lucide-react": "^1.21.0",
-    "next": "16.3.4",
-    "react": "19.2.4",
-    "react-dom": "19.2.4"
+    "lucide-react": "^1.48.0",
+    "next": "16.3.6",
+    "react": "19.3.0",
+    "react-dom": "19.3.0"
   },
   "devDependencies": {
-    "@iconify-json/lucide": "^1.2.130",
+    "@iconify-json/lucide": "^1.2.136",
     "@types/node": "^22.20.4",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
-    "eslint-config-next": "16.3.4",
+    "eslint-config-next": "16.3.6",
     "typescript": "^5",
     "vitest": "^5.0.2"
   },
