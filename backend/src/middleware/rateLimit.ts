@@ -2,7 +2,7 @@ import { rateLimit, ipKeyGenerator } from "express-rate-limit";
 import { RedisStore } from "rate-limit-redis";
 import jwt from "jsonwebtoken";
 import { timingSafeEqual } from "crypto";
-import { redisConnection } from "../queue/connection";
+import { rateLimitRedis } from "../queue/connection";
 
 function makeStore(prefix: string) {
   return new RedisStore({
@@ -11,9 +11,37 @@ function makeStore(prefix: string) {
     // string[] spread does not satisfy it. Destructure to give it the tuple
     // shape it asks for.
     sendCommand: (command: string, ...args: string[]) =>
-      redisConnection.call(command, ...args) as any,
+      rateLimitRedis.call(command, ...args) as any,
   });
 }
+
+/**
+ * EVERY LIMITER FAILS OPEN: if Redis cannot answer, the request goes through
+ * without being counted.
+ *
+ * The alternative was measured, and it is worse. Failing closed means a Redis
+ * outage is an API outage. Before this, requests did not even fail: they hung,
+ * and /health went on saying "ok". What is given up is rate limiting for the
+ * length of an outage: no 300/min backstop, no cap on bets, sign-ins or support
+ * messages. Redis is on the same box and not reachable from outside it, so an
+ * outage is a fault on our side, not something a client can cause to get the
+ * limits lifted.
+ *
+ * The outage itself is reported once by the connection (queue/connection.ts),
+ * so the library's per-request line saying so is dropped; at 300 requests a
+ * minute it would repeat one fact hundreds of times. Every other error it logs
+ * (a bad config, a failed store init) still gets through.
+ */
+const STORE_ERROR_PASSED = "express-rate-limit: error from store, allowing request without rate-limiting.";
+const failOpen = {
+  passOnStoreError: true,
+  logger: {
+    error: (err: unknown, message?: string) => {
+      if (message !== STORE_ERROR_PASSED) console.error(message ?? "", err);
+    },
+    warn: (err: unknown, message?: string) => console.warn(message ?? "", err),
+  },
+};
 
 // Buckets by authenticated user when a valid JWT is present, otherwise by IP.
 // Keeps users on a shared IP (office wifi, NAT) from throttling each other,
@@ -84,6 +112,7 @@ export const globalLimiter = rateLimit({
   keyGenerator: userOrIpKey,
   skip: isLoadTestRequest,
   store: makeStore("rl:global:"),
+  ...failOpen,
 });
 
 // Public auth endpoint has no user yet, so it's IP-keyed. Tight window —
@@ -98,6 +127,7 @@ export const authLimiter = rateLimit({
   // empty key still buckets those together, which is the safe direction.
   keyGenerator: (req) => ipKeyGenerator(req.ip ?? ""),
   store: makeStore("rl:auth:"),
+  ...failOpen,
 });
 
 /**
@@ -116,6 +146,7 @@ export const supportLimiter = rateLimit({
   legacyHeaders: false,
   keyGenerator: (req) => ipKeyGenerator(req.ip ?? ""),
   store: makeStore("rl:support:"),
+  ...failOpen,
 });
 
 // Bet placement moves fake money and writes to the DB on every call — cap it
@@ -128,4 +159,5 @@ export const betLimiter = rateLimit({
   legacyHeaders: false,
   keyGenerator: (req: any) => `user:${req.userId}`,
   store: makeStore("rl:bet:"),
+  ...failOpen,
 });
