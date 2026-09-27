@@ -7,10 +7,14 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "icons": "node scripts/build-icons.mjs"
+    "icons": "node scripts/build-icons.mjs",
+    "test": "vitest run",
+    "test:e2e": "node scripts/e2e-sentry.mjs"
   },
   "dependencies": {
     "@iconify/react": "^6.0.2",
+    "@sentry/browser": "^11.0.0",
+    "@sentry/nextjs": "^11.0.0",
     "lucide-react": "^1.21.0",
     "next": "16.3.4",
     "react": "19.2.4",
@@ -18,12 +22,13 @@
   },
   "devDependencies": {
     "@iconify-json/lucide": "^1.2.130",
-    "@types/node": "^20",
+    "@types/node": "^22.20.4",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.3.4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^5.0.2"
   },
   "engines": {
     "node": ">=22 <25"

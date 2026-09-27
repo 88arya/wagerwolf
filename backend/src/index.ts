@@ -1,3 +1,7 @@
+// FIRST, before express or anything that reaches pg: Sentry instruments modules
+// as they load. See instrument.ts.
+import "./instrument";
+import * as Sentry from "@sentry/node";
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
@@ -103,6 +107,9 @@ async function shutdown() {
   console.log("Shutting down...");
   server.close();
   await stopScheduler();
+  // A deploy is a SIGTERM, and an error reported in the second before it would
+  // otherwise leave with the process. Bounded, like the crash path's flush.
+  await Sentry.close(2000);
   process.exit(0);
 }
 

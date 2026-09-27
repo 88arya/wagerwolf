@@ -11,6 +11,9 @@
  * plain — a page that tries to look designed while the design system is the
  * thing that failed will look broken instead.
  */
+import { useEffect } from "react";
+import * as Sentry from "@sentry/browser";
+
 export default function GlobalError({
   error,
   reset,
@@ -18,6 +21,12 @@ export default function GlobalError({
   error: Error & { digest?: string };
   reset: () => void;
 }) {
+  // Handed over by hand for the same reason as in error.tsx: a boundary
+  // swallows what it catches.
+  useEffect(() => {
+    Sentry.captureException(error);
+  }, [error]);
+
   return (
     <html lang="en">
       <body style={{ margin: 0, fontFamily: "system-ui, sans-serif", background: "#FFFFFF", color: "#000000" }}>

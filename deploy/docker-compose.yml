@@ -14,9 +14,9 @@
 # Two things that follow from it, both easy to get wrong:
 #
 #   1. THE INSTANCE MUST BE IN THE SAME REGION AS THE SUPABASE PROJECT
-#      (us-west-2). Every request makes several queries; a cross-country round
-#      trip of ~60ms each turns into a visibly slow API. infra/variables.tf
-#      defaults to us-west-2 for this reason.
+#      (us-east-1, set in infra/terraform.tfvars). Every request makes several
+#      queries; a cross-country round trip of ~60ms each turns into a visibly
+#      slow API.
 #   2. SUPABASE'S FREE TIER TAKES NO BACKUPS. Daily backups start on Pro. The
 #      nightly dump in .github/workflows/db-backup.yml is therefore not a
 #      belt-and-braces extra — it is the only backup that exists.
@@ -25,9 +25,22 @@
 # name instead, so a second stack on the same host (or a rename) cannot collide
 # on a hardcoded `app`. deploy.sh addresses services by compose service name.
 
+# LOG ROTATION, applied to every service below. Docker's default json-file
+# driver never rotates, so each container's log grows until the disk is full,
+# and a full root volume takes Redis's append-only file, the deploy and the box
+# down together. The score sync logs every minute and Caddy logs every request.
+# 3 x 10M per service caps the total at 120M; anything older than that is only
+# useful if it is shipped somewhere, which this box does not do.
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
   redis:
     image: redis:7-alpine
+    logging: *logging
     # appendonly so the BullMQ job schedulers survive a restart. Without it a
     # reboot silently drops every repeatable job and the season lifecycle stops
     # — no Tuesday resolve, no score sync — with nothing in the logs to say so.
@@ -51,6 +64,7 @@ services:
     # a rollback mean anything. The default exists only so `docker compose
     # config` works locally.
     image: ${APP_IMAGE:-ghcr.io/88arya/wagerwolf-backend:latest}
+    logging: *logging
     environment:
       NODE_ENV: production
       PORT: 5000
@@ -71,6 +85,10 @@ services:
       RESEND_API_KEY: ${RESEND_API_KEY:-}
       SUPPORT_FROM: ${SUPPORT_FROM:-}
       SUPPORT_INBOX: ${SUPPORT_INBOX:-}
+      # Monitoring, both off when empty. See backend/.env.example.
+      SENTRY_DSN: ${SENTRY_DSN:-}
+      SENTRY_TRACES_SAMPLE_RATE: ${SENTRY_TRACES_SAMPLE_RATE:-}
+      HEALTHCHECKS_PING_KEY: ${HEALTHCHECKS_PING_KEY:-}
     mem_limit: 640m
     depends_on:
       redis:
@@ -95,6 +113,7 @@ services:
   # environment instead.
   web:
     image: ${WEB_IMAGE:-ghcr.io/88arya/wagerwolf-frontend:latest}
+    logging: *logging
     environment:
       NODE_ENV: production
       PORT: 3000
@@ -114,6 +133,7 @@ services:
 
   caddy:
     image: caddy:2-alpine
+    logging: *logging
     ports:
       - "80:80"
       - "443:443"

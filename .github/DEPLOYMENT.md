@@ -261,6 +261,8 @@ $4/month, or making the repo public enables it for free.
 | `EC2_HOST` | Elastic IP from Terraform |
 | `SSH_PRIVATE_KEY` | contents of `wagerwolf-deploy` (the private half) |
 | `BACKEND_ENV` | the whole backend env file, see below |
+| `SENTRY_DSN` | *(optional)* backend Sentry DSN (Node project). Appended only when set |
+| `HEALTHCHECKS_PING_KEY` | *(optional)* healthchecks.io project ping key. Appended only when set |
 
 | Variable | Value |
 |---|---|
@@ -269,6 +271,7 @@ $4/month, or making the repo public enables it for free.
 | `APP_DOMAIN` | `wagerwolf.app` — bare hostname, Caddy site address |
 | `WWW_DOMAIN` | `www.wagerwolf.app` — bare hostname |
 | `BACKUP_BUCKET` | `backup_bucket` output from Terraform |
+| `SENTRY_DSN_WEB` | *(optional)* frontend Sentry DSN (Next.js project). Compiled into the bundle; public by design |
 | `STAGING_DOMAIN` | *(staging environment only, optional)* domain to alias previews to |
 
 **`BACKEND_ENV` is the entire env file as one secret**, per environment. One
@@ -385,12 +388,22 @@ and were red; both were fixed in the go-live pass and the flag is gone.
 A failure in either is now a real regression. Do not add `continue-on-error`
 back.
 
-**There are no tests.** CI proves both projects compile, typecheck and lint,
-and that the image builds. It does not prove a bet settles correctly, which is
-the gap that matters most given that `services/grading.ts` is the single
-authority for money. (`LAUNCH_AUDIT.md`, referenced here before, is deleted —
+**The only tests cover monitoring and error handling.** `npm test` in each
+project runs in CI. `npm run test:e2e` in each is local only: the backend's
+needs Redis, and the frontend's runs a full production build. Nothing proves a
+bet settles correctly, which is the gap that matters most given that
+`services/grading.ts` is the single authority for money. (`LAUNCH_AUDIT.md`, referenced here before, is deleted —
 CLAUDE.md is the surviving handoff note.)
 
-**No log shipping and no error tracking.** Logs are `docker compose logs` on the
-box and nothing else. `LAUNCH_AUDIT.md` #18 is still open, and on a single box
-with no aggregation it is more pressing than it was.
+**Error tracking and a scheduler heartbeat are built, and off until configured.**
+Sentry reports from the backend's error handler, the scheduler and the process
+crash handlers (`backend/src/instrument.ts`), and from the Next server and
+browser (`frontend/instrumentation*.ts`). Every scheduler job pings its own
+healthchecks.io check after each run, and pings `/fail` when a step failed
+(`backend/src/lib/heartbeat.ts`). Each is switched on by the secret or variable
+in the tables above. After the first pings, set each auto-created check's
+schedule in healthchecks.io, or it waits a day before alerting.
+
+Container logs rotate at 3 x 10M per service (`x-logging` in
+`docker-compose.yml`). **There is still no log shipping**, so anything older
+than that is gone.

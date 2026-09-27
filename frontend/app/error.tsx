@@ -16,6 +16,7 @@
  */
 import { useEffect } from "react";
 import Link from "next/link";
+import * as Sentry from "@sentry/browser";
 
 export default function Error({
   error,
@@ -25,9 +26,10 @@ export default function Error({
   reset: () => void;
 }) {
   useEffect(() => {
-    // Until there is error tracking, the browser console is the only place this
-    // is recorded at all. See go_live.md — wiring Sentry replaces this line.
+    // A boundary swallows the error, so the global handlers Sentry installs never
+    // see it; it has to be handed over here. A no-op when no DSN was built in.
     console.error(error);
+    Sentry.captureException(error);
   }, [error]);
 
   return (

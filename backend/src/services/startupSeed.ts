@@ -4,6 +4,7 @@ import { weeks, games, leagues, memberships } from "../db/schema";
 import { syncESPNGames } from "./syncWeek";
 import { scheduleMatchups } from "./scheduleMatchups";
 import { pickHelmetColor } from "./helmetColor";
+import { reportError } from "../lib/monitoring";
 
 /**
  * Boot-time repair. Runs on every start and is idempotent.
@@ -123,7 +124,9 @@ export async function runStartupSeed() {
         console.log(`[seed] Attempt ${attempt} failed (connection), retrying in 3s...`);
         await new Promise((r) => setTimeout(r, 3000));
       } else {
-        console.error("[seed] Startup seed failed:", err);
+        // Reported, because this swallows the error so a boot can still serve,
+        // and a repair that never runs is otherwise invisible.
+        reportError("[seed] Startup seed failed:", err, { job: "startup-seed" });
         return;
       }
     }

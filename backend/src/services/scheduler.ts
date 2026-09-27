@@ -11,6 +11,9 @@ import { distributeWeeklyAllowances } from "./distributeAllowances";
 import { startLeagueSeason } from "./startSeason";
 import { settlePendingBetsOnFinalGames } from "./settleGame";
 import { MAX_NFL_WEEK } from "./nflSeason";
+import { reportError, reportCondition } from "../lib/monitoring";
+// Every catch below reports through a `fail` callback; see jobRunner.ts for why.
+import { runJob, reportOnly, StepsFailed, type Fail, type Handler } from "./jobRunner";
 
 /**
  * HOURLY, not Tuesday 11:00 UTC — and the change is a bug fix, not a tuning.
@@ -89,22 +92,22 @@ export const cronQueue = new Queue(QUEUE_NAME, { connection: redisConnection });
  * the whole job is the thing worth rehearsing against a restored snapshot
  * before a deploy that will run it for real.
  */
-export async function runResolveAndAllowances() {
+export async function runResolveAndAllowances(fail: Fail = reportOnly) {
   // Each pass is isolated. They run in order because pass B depends on pass A's
   // effect, but a throw in one must not cancel the two after it — the whole
   // point of the split is that a failure in the money half cannot take the
   // resolve half down with it, or vice versa.
   for (const pass of [resolvePastWeeks, catchUpAllowances, warnOnStuckWeeks]) {
     try {
-      await pass();
+      await pass(fail);
     } catch (err) {
-      console.error(`[cron] ${pass.name} failed:`, err);
+      fail(pass.name, err);
     }
   }
 }
 
 /** Pass A — close out every week whose games are behind us. */
-async function resolvePastWeeks() {
+async function resolvePastWeeks(fail: Fail) {
   const now = new Date();
   const pastUnresolved = await db.query.weeks.findMany({
     where: and(eq(weeks.resolved, false), lt(weeks.endDate, now)),
@@ -115,7 +118,7 @@ async function resolvePastWeeks() {
     try {
       await resolveWeekById(week.id);
     } catch (err) {
-      console.error(`[cron] Failed to resolve week ${week.number}:`, err);
+      fail(`resolve week ${week.number}`, err);
     }
   }
 }
@@ -139,7 +142,7 @@ async function resolvePastWeeks() {
  * where earlier weeks were never created) passes the gate — there is nothing to
  * wait for, and startLeagueSeason has already paid that league its own share.
  */
-async function catchUpAllowances() {
+async function catchUpAllowances(fail: Fail) {
   const now = new Date();
   const undistributed = await db.query.weeks.findMany({
     where: eq(weeks.allowanceDistributed, false),
@@ -166,10 +169,12 @@ async function catchUpAllowances() {
       // itself (`allowanceDistributed = false`, forever) is the permanent
       // record. The log is for the window where a human can still fix it.
       if (week.endDate > now) {
-        console.error(
+        reportCondition(
           `[cron] MISSED: week ${week.number} kicked off without its allowance being ` +
           `distributed. Not paying it now — that would reset balances over live bets. ` +
-          `Needs a manual decision.`
+          `Needs a manual decision.`,
+          ["cron-missed-allowance", String(week.number)],
+          { week: week.number }
         );
       }
       continue;
@@ -185,7 +190,7 @@ async function catchUpAllowances() {
     try {
       await distributeWeeklyAllowances(week.number);
     } catch (err) {
-      console.error(`[cron] Failed to distribute allowances for week ${week.number}:`, err);
+      fail(`distribute allowances week ${week.number}`, err);
     }
   }
 }
@@ -193,17 +198,16 @@ async function catchUpAllowances() {
 /**
  * The season stalling is silent, and that is how it got a week's head start.
  *
- * There is no error tracking on this box (see DEPLOYMENT.md) — one instance,
- * `docker compose logs`, and nothing watching them. This does not change that.
- * What it does is leave a greppable line every hour a week stays unresolved
- * well past its own end, so the state is discoverable at all rather than only
- * visible through its downstream symptoms — which last time meant noticing that
- * the landing page was advertising the wrong slate.
+ * Every hour a week stays unresolved well past its own end, this reports it:
+ * to Sentry when configured, grouped per week so it alerts once and not every
+ * hour, and to stderr regardless. Before, the state was only visible through its
+ * downstream symptoms, which last time meant noticing that the landing page was
+ * advertising the wrong slate.
  *
- * It is a stopgap for real alerting, not a substitute for it. A log nobody
- * tails is not monitoring.
+ * It reports a condition and does not fail the job. Nothing threw, and a failed
+ * heartbeat should mean the scheduler itself is in trouble.
  */
-async function warnOnStuckWeeks() {
+async function warnOnStuckWeeks(_fail: Fail) {
   const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
   const stuck = await db.query.weeks.findMany({
     where: and(eq(weeks.resolved, false), lt(weeks.endDate, cutoff)),
@@ -212,14 +216,16 @@ async function warnOnStuckWeeks() {
 
   for (const week of stuck) {
     const hours = Math.round((Date.now() - week.endDate.getTime()) / 3_600_000);
-    console.error(
+    reportCondition(
       `[cron] STUCK: week ${week.number} is still unresolved ${hours}h after its endDate — ` +
-      `matchups, standings and the next week's allowances are all blocked behind it.`
+      `matchups, standings and the next week's allowances are all blocked behind it.`,
+      ["cron-stuck-week", String(week.number)],
+      { week: week.number }
     );
   }
 }
 
-async function runAutoStartLeagues(weekNumber: number) {
+async function runAutoStartLeagues(weekNumber: number, fail: Fail) {
   const leagueList = await db.query.leagues.findMany({
     where: (l, { and, eq }) => and(eq(l.startWeek, weekNumber), eq(l.seasonStarted, false)),
     with: { memberships: true },
@@ -235,13 +241,13 @@ async function runAutoStartLeagues(weekNumber: number) {
       await startLeagueSeason(league.id);
       console.log(`[cron] Auto-started league ${league.id} for week ${weekNumber}`);
     } catch (err) {
-      console.error(`[cron] Failed to auto-start league ${league.id}:`, err);
+      fail(`auto-start league ${league.id}`, err);
     }
   }
 }
 
 
-async function runESPNGameSync() {
+async function runESPNGameSync(fail: Fail) {
   const now = new Date();
 
   // Determine which week to sync: existing upcoming week, or next after the latest in DB
@@ -291,7 +297,7 @@ async function runESPNGameSync() {
   try {
     await syncESPNGames(week!.id);
   } catch (err) {
-    console.error(`[cron] ESPN game sync failed for week ${week!.number}:`, err);
+    fail(`ESPN game sync week ${week!.number}`, err);
   }
 
   // One date-ranged pull to stamp each new game with its SGO eventID. From here
@@ -301,7 +307,7 @@ async function runESPNGameSync() {
     const matched = await discoverWeekEvents(week!.id);
     console.log(`[cron] Discovered SGO events for week ${week!.number}: ${matched} games`);
   } catch (err) {
-    console.error(`[cron] SGO discovery failed for week ${week!.number}:`, err);
+    fail(`SGO discovery week ${week!.number}`, err);
   }
 
   // THE LANDING PAGE'S BOARD IS DROPPED HERE, so it is rebuilt from the slate
@@ -315,18 +321,14 @@ async function runESPNGameSync() {
   // it after discovery means the next request rebuilds against a full board.
   await db.update(weeks).set({ publicBoard: null }).where(eq(weeks.id, week!.id));
 
-  await runAutoStartLeagues(week!.number);
+  await runAutoStartLeagues(week!.number, fail);
 }
 
 async function runOddsPoll() {
-  try {
-    await pollDueGames();
-  } catch (err) {
-    console.error("[cron] Odds poll failed:", err);
-  }
+  await pollDueGames();
 }
 
-async function runScoreSync() {
+async function runScoreSync(fail: Fail) {
   const now = new Date();
   const week = await db.query.weeks.findFirst({
     where: (w, { and, eq, lte, gte }) =>
@@ -348,11 +350,11 @@ async function runScoreSync() {
     // so a settle missed during a restart still lands before Tuesday's resolve)
     await settlePendingBetsOnFinalGames(week.id);
   } catch (err) {
-    console.error(`[cron] Score sync failed for week ${week.number}:`, err);
+    fail(`score sync week ${week.number}`, err);
   }
 }
 
-const HANDLERS: Record<string, () => Promise<void>> = {
+const HANDLERS: Record<string, Handler> = {
   [JOB.RESOLVE_AND_ALLOWANCES]: runResolveAndAllowances,
   [JOB.ESPN_GAME_SYNC]: runESPNGameSync,
   [JOB.ODDS_POLL]: runOddsPoll,
@@ -395,19 +397,26 @@ export async function startScheduler() {
 
   worker = new Worker(
     QUEUE_NAME,
-    async (job: Job) => {
-      const handler = HANDLERS[job.name];
-      if (!handler) {
-        console.warn(`[cron] No handler registered for job "${job.name}"`);
-        return;
-      }
-      await handler();
-    },
-    { connection: redisConnection, concurrency: 1 }
+    (job: Job) => runJob(job.name, HANDLERS),
+    {
+      connection: redisConnection,
+      concurrency: 1,
+      // BULLMQ KEEPS EVERY FINISHED JOB BY DEFAULT, and the score sync alone
+      // finishes 1,440 a day. Nothing set these before, so Redis has been
+      // keeping every run since launch, inside a 192M cap and persisted to an
+      // append-only file. Failed jobs are kept longer because they are the ones
+      // worth reading.
+      removeOnComplete: { count: 200 },
+      removeOnFail: { count: 1000 },
+    }
   );
 
   worker.on("failed", (job, err) => {
-    console.error(`[cron] Job "${job?.name}" failed:`, err);
+    // StepsFailed has already been reported step by step. Anything else is the
+    // worker itself failing the job (a stall, a lost lock), which nothing has
+    // reported yet.
+    if (err instanceof StepsFailed) console.error(`[cron] ${err.message}`);
+    else reportError(`[cron] Job "${job?.name}" failed:`, err, { job: job?.name });
   });
 
   console.log("[scheduler] BullMQ job schedulers registered, worker started");

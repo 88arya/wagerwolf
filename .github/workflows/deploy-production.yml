@@ -92,6 +92,8 @@ jobs:
           build-args: |
             NEXT_PUBLIC_API_URL=${{ vars.BACKEND_URL }}
             NEXT_PUBLIC_SITE_URL=${{ vars.SITE_URL }}
+            NEXT_PUBLIC_SENTRY_DSN=${{ vars.SENTRY_DSN_WEB }}
+            NEXT_PUBLIC_GIT_COMMIT_SHA=${{ github.sha }}
           cache-from: type=gha,scope=frontend
           cache-to: type=gha,mode=max,scope=frontend,ignore-error=true
 
@@ -160,6 +162,10 @@ jobs:
           # broken deploy. A separate secret is add-only and delete-only, and
           # deleting it is how the bypass gets turned off again.
           LOADTEST_KEY: ${{ secrets.LOADTEST_KEY }}
+          # Monitoring, separate secrets for the same reason. Both are off
+          # while unset; see backend/.env.example.
+          SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+          HEALTHCHECKS_PING_KEY: ${{ secrets.HEALTHCHECKS_PING_KEY }}
         run: |
           printf '%s\n' "$BACKEND_ENV" > deploy/.env
           {
@@ -173,6 +179,8 @@ jobs:
             # rather than empty-but-present, so the bypass is off by default and
             # removing the secret genuinely removes it.
             if [ -n "$LOADTEST_KEY" ]; then echo "LOADTEST_KEY=$LOADTEST_KEY"; fi
+            if [ -n "$SENTRY_DSN" ]; then echo "SENTRY_DSN=$SENTRY_DSN"; fi
+            if [ -n "$HEALTHCHECKS_PING_KEY" ]; then echo "HEALTHCHECKS_PING_KEY=$HEALTHCHECKS_PING_KEY"; fi
           } >> deploy/.env
           chmod 600 deploy/.env
 
