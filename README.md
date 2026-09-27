@@ -35,6 +35,7 @@ mobile right now.
   <tr><td><b>Frontend</b></td><td>Next.js, React</td></tr>
   <tr><td><b>Backend</b></td><td>Node.js, Express, Drizzle ORM, PostgreSQL (Supabase), Redis, BullMQ</td></tr>
   <tr><td><b>Infrastructure</b></td><td>AWS, Terraform, Docker, Caddy, Cloudflare, GitHub Actions</td></tr>
+  <tr><td><b>Observability</b></td><td>Sentry, Healthchecks.io, UptimeRobot</td></tr>
   <tr><td><b>Integrations</b></td><td>SportsGameOdds API, ESPN API, Google OAuth</td></tr>
 </table>
 
@@ -58,6 +59,9 @@ flowchart TB
     worker --> espn[ESPN API]
     api --> google[Google OAuth]
     pg -. nightly dump .-> s3[(S3 backups)]
+    api -. errors .-> sentry[Sentry]
+    web -. errors .-> sentry
+    worker -. heartbeat per job .-> hc[Healthchecks.io]
 ```
 
 ## Technical Design
@@ -84,18 +88,30 @@ flowchart TB
 
 - **Infrastructure as Code:** Terraform provisions AWS EC2, S3, and IAM;
   Docker Compose runs the frontend, API, and Redis.
-- **Continuous integration:** GitHub Actions runs typechecking, linting, and
-  builds on every push.
+- **Continuous integration:** GitHub Actions runs typechecking, linting, unit
+  tests, and builds on every push.
 - **Continuous deployment:** release tags trigger image builds and deploys,
   with automatic rollback on failed health checks.
 - **Backups:** nightly database backups to S3 via a least-privilege IAM role,
   with no stored credentials.
 
+### Observability
+
+- **Error tracking:** Sentry captures errors from the API, Next.js server,
+  and browser, tagging each server error with a user-facing reference ID.
+- **Scheduler monitoring:** per-job heartbeats to Healthchecks.io alert on
+  missed or failed background runs.
+- **Fault isolation:** per-step error handling reports each job failure
+  without halting the remaining steps.
+- **Data scrubbing:** error reports exclude request bodies, auth headers,
+  cookies, IP addresses, and SQL parameters.
+
 ### Security
 
 - **OAuth 2.0:** custom Google sign-in flow with CSRF protection via
   single-use `state` tokens.
-- **Rate limiting:** Redis-backed and shared across instances.
+- **Rate limiting:** Redis-backed, shared across instances, and fail-open
+  during Redis outages.
 
 ## Data Sources
 
