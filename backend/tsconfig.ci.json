@@ -10,10 +10,15 @@
   //
   // This config never emits, so the resolution difference cannot affect the
   // shipped output — dist/ is always built by the main tsconfig.
+  //
+  // It also checks test/, which the main tsconfig leaves out so `tsc` never
+  // emits tests into dist/. rootDir widens to match; nothing is emitted here.
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "module": "preserve",
     "moduleResolution": "bundler",
-    "noEmit": true
-  }
+    "noEmit": true,
+    "rootDir": "."
+  },
+  "include": ["src", "test"]
 }

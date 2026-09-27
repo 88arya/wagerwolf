@@ -37,3 +37,7 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Written and removed by scripts/e2e-sentry.mjs; ignored so a copy left behind by
+# an interrupted run can never be committed.
+/app/zz-sentry-probe/

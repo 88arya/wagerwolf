@@ -89,6 +89,12 @@ jobs:
         working-directory: backend
         run: npx tsc -p tsconfig.ci.json
 
+      # test/unit only: no database, no Redis, no network. test/e2e needs Redis
+      # and runs locally (`npm run test:e2e`).
+      - name: Unit tests
+        working-directory: backend
+        run: npm test
+
   frontend:
     name: Frontend build
     runs-on: ubuntu-latest
@@ -129,6 +135,11 @@ jobs:
       - name: Typecheck
         working-directory: frontend
         run: npx tsc --noEmit
+
+      # `npm run test:e2e` builds with a throwing probe route and stays local.
+      - name: Unit tests
+        working-directory: frontend
+        run: npm test
 
   frontend-lint:
     name: Frontend lint
