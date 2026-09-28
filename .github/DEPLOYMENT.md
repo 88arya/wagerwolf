@@ -130,14 +130,22 @@ Public half goes into `infra/terraform.tfvars`. Private half becomes the
 
 ### 2. The instance, via Terraform
 
+State is remote, in S3, so it is created first by `infra/bootstrap`:
+
 ```bash
+terraform -chdir=infra/bootstrap init
+terraform -chdir=infra/bootstrap apply
 cd infra
 cp terraform.tfvars.example terraform.tfvars   # paste the PUBLIC key
-terraform init
+terraform init -backend-config="bucket=$(terraform -chdir=bootstrap output -raw state_bucket)"
 terraform apply
 ```
 
-Creates: the EC2 instance, a security group (22/80/443 in), an Elastic IP, an S3
+On a machine that already has a local `infra/terraform.tfstate`, add
+`-migrate-state` to that `init` and it copies the state into the bucket.
+
+Creates: the EC2 instance, a security group (22 from `ssh_allowed_cidrs`; 80
+and 443 from Cloudflare's ranges only), an Elastic IP, an S3
 backup bucket, and an IAM instance profile that can write to it. Bootstrap
 installs Docker, adds `ubuntu` to the docker group, creates `/opt/wagerwolf`,
 adds 2GB of swap, and enables `unattended-upgrades`.
@@ -203,6 +211,11 @@ Consequences, all load bearing:
   only by Cloudflare. Grey-cloud any record and a browser reaches the origin
   directly and rejects it. The old grey-cloud rule existed solely to keep the
   HTTP-01 challenge reachable; there is no challenge now.
+- **The security group admits 80 and 443 from Cloudflare's ranges only**
+  (`local.cloudflare_ipv4`/`_ipv6` in `infra/main.tf`). A request that goes
+  straight to the Elastic IP is dropped, which keeps Cloudflare's WAF and rate
+  limiting in front of every request. If Cloudflare adds a range, update those
+  lists and apply.
 - **SSL/TLS mode must be Full (Strict).** Plain `Full` accepts any certificate
   from the origin including a forged one — encrypted but unauthenticated.
   Strict verifies this CA.

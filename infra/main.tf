@@ -11,7 +11,7 @@
 # failure. See .github/DEPLOYMENT.md.
 
 terraform {
-  required_version = ">= 1.5"
+  required_version = ">= 1.10"
 
   required_providers {
     aws = {
@@ -54,6 +54,40 @@ data "aws_vpc" "default" {
   default = true
 }
 
+# Cloudflare's published edge ranges, from https://www.cloudflare.com/ips-v4
+# and /ips-v6, checked 28 Sept 2026. Pinned rather than fetched at plan time so
+# a plan never changes because a URL answered differently. They change rarely;
+# re-check both lists and apply when Cloudflare announces a new range, or
+# requests from that range will be refused at the security group.
+locals {
+  cloudflare_ipv4 = [
+    "173.245.48.0/20",
+    "103.21.244.0/22",
+    "103.22.200.0/22",
+    "103.31.4.0/22",
+    "141.101.64.0/18",
+    "108.162.192.0/18",
+    "190.93.240.0/20",
+    "188.114.96.0/20",
+    "197.234.240.0/22",
+    "198.41.128.0/17",
+    "162.158.0.0/15",
+    "104.16.0.0/13",
+    "104.24.0.0/14",
+    "172.64.0.0/13",
+    "131.0.72.0/22",
+  ]
+  cloudflare_ipv6 = [
+    "2400:cb00::/32",
+    "2606:4700::/32",
+    "2803:f800::/32",
+    "2405:b500::/32",
+    "2405:8100::/32",
+    "2a06:98c0::/29",
+    "2c0f:f248::/32",
+  ]
+}
+
 resource "aws_key_pair" "deploy" {
   key_name   = "${var.project}-deploy"
   public_key = var.ssh_public_key
@@ -76,23 +110,29 @@ resource "aws_security_group" "app" {
     cidr_blocks = var.ssh_allowed_cidrs
   }
 
-  # Caddy needs 80 reachable for the Let's Encrypt HTTP-01 challenge, not merely
-  # to redirect. Closing it breaks certificate renewal 60 days later — long after
-  # anyone would connect the two events.
+  # 80 AND 443 ADMIT CLOUDFLARE ONLY. The origin serves a Cloudflare Origin CA
+  # certificate (see deploy/Caddyfile), which no browser trusts, so every
+  # legitimate request already arrives through Cloudflare. Open to 0.0.0.0/0,
+  # anyone who found the instance IP could skip Cloudflare's WAF, DDoS
+  # protection and rate limiting and talk to Caddy directly. The old note here
+  # kept 80 open for Let's Encrypt's HTTP-01 challenge; there is no ACME any
+  # more, so nothing outside Cloudflare needs either port.
   ingress {
-    description = "HTTP"
-    from_port   = 80
-    to_port     = 80
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
+    description      = "HTTP from Cloudflare"
+    from_port        = 80
+    to_port          = 80
+    protocol         = "tcp"
+    cidr_blocks      = local.cloudflare_ipv4
+    ipv6_cidr_blocks = local.cloudflare_ipv6
   }
 
   ingress {
-    description = "HTTPS"
-    from_port   = 443
-    to_port     = 443
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
+    description      = "HTTPS from Cloudflare"
+    from_port        = 443
+    to_port          = 443
+    protocol         = "tcp"
+    cidr_blocks      = local.cloudflare_ipv4
+    ipv6_cidr_blocks = local.cloudflare_ipv6
   }
 
   egress {
