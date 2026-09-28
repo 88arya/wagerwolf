@@ -27,6 +27,8 @@ import { runStartupSeed } from "./services/startupSeed";
 import { startScheduler, stopScheduler } from "./services/scheduler";
 import { globalLimiter } from "./middleware/rateLimit";
 import { errorHandler, notFoundHandler } from "./middleware/errorHandler";
+import { dbPool } from "./db/db";
+import { redisConnection, rateLimitRedis } from "./queue/connection";
 
 dotenv.config();
 
@@ -103,10 +105,34 @@ const server = app.listen(PORT, async () => {
   await startScheduler();
 });
 
+// Docker waits 10s between SIGTERM and SIGKILL. Everything below has to fit
+// inside that, so the whole sequence is capped a little under it.
+const SHUTDOWN_DEADLINE_MS = 8_000;
+let shuttingDown = false;
+
 async function shutdown() {
+  if (shuttingDown) return;
+  shuttingDown = true;
   console.log("Shutting down...");
-  server.close();
+  setTimeout(() => {
+    console.error("[shutdown] Deadline passed, exiting with work still open");
+    process.exit(1);
+  }, SHUTDOWN_DEADLINE_MS).unref();
+
+  // Stop accepting, let in-flight requests finish, and drop idle keep-alive
+  // sockets, which would otherwise hold `close` open until they time out. It
+  // used to call `server.close()` without waiting and exit straight after, so
+  // every deploy cut off whatever requests were mid-flight.
+  await new Promise<void>((resolve) => {
+    server.close(() => resolve());
+    server.closeIdleConnections();
+  });
   await stopScheduler();
+  await Promise.allSettled([
+    dbPool.end(),
+    redisConnection.quit(),
+    rateLimitRedis.quit(),
+  ]);
   // A deploy is a SIGTERM, and an error reported in the second before it would
   // otherwise leave with the process. Bounded, like the crash path's flush.
   await Sentry.close(2000);
