@@ -177,7 +177,9 @@ export const matchups = pgTable("Matchup", {
   isGhostMatchup: boolean("isGhostMatchup").default(false).notNull(),
   playoffRound:   integer("playoffRound"),
   createdAt:      timestamp("createdAt").defaultNow().notNull(),
-});
+}, (t) => ({
+  leagueWeekIdx: index("Matchup_leagueId_weekNumber_idx").on(t.leagueId, t.weekNumber),
+}));
 
 export const memberships = pgTable("Membership", {
   id:             text("id").primaryKey().$defaultFn(() => randomUUID()),
@@ -264,7 +266,10 @@ export const games = pgTable("Game", {
   // as the weekly game sync. Nullable for games seeded outside ESPN.
   homeRecord:   text("homeRecord"),
   awayRecord:   text("awayRecord"),
-});
+}, (t) => ({
+  // Every week-scoped read (the board, bet counts, settlement's sweep) filters here.
+  weekIdx: index("Game_weekId_idx").on(t.weekId),
+}));
 
 export const players = pgTable("Player", {
   id:       text("id").primaryKey().$defaultFn(() => randomUUID()),
@@ -322,7 +327,13 @@ export const picks = pgTable("Pick", {
   cashedOut: boolean("cashedOut").default(false).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   voidReason: text("voidReason"),
-});
+}, (t) => ({
+  // Postgres does not index foreign keys on its own, and these tables had
+  // nothing but a primary key. Settlement looks bets up by market, and My Bets,
+  // History and the weekly bet cap look them up by member.
+  memberIdx: index("Pick_userId_leagueId_idx").on(t.userId, t.leagueId),
+  propIdx:   index("Pick_propId_idx").on(t.propId),
+}));
 
 export const gameLines = pgTable("GameLine", {
   id:      text("id").primaryKey().$defaultFn(() => randomUUID()),
@@ -354,7 +365,10 @@ export const gamePicks = pgTable("GamePick", {
   cashedOut:  boolean("cashedOut").default(false).notNull(),
   createdAt:  timestamp("createdAt").defaultNow().notNull(),
   voidReason: text("voidReason"),
-});
+}, (t) => ({
+  memberIdx:   index("GamePick_userId_leagueId_idx").on(t.userId, t.leagueId),
+  gameLineIdx: index("GamePick_gameLineId_idx").on(t.gameLineId),
+}));
 
 export const parlays = pgTable("Parlay", {
   id:        text("id").primaryKey().$defaultFn(() => randomUUID()),
@@ -367,7 +381,9 @@ export const parlays = pgTable("Parlay", {
   cashedOut: boolean("cashedOut").default(false).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   voidReason: text("voidReason"),
-});
+}, (t) => ({
+  memberIdx: index("Parlay_userId_leagueId_idx").on(t.userId, t.leagueId),
+}));
 
 export const parlayLegs = pgTable("ParlayLeg", {
   id:         text("id").primaryKey().$defaultFn(() => randomUUID()),
@@ -378,7 +394,11 @@ export const parlayLegs = pgTable("ParlayLeg", {
   odds:       integer("odds").notNull(),
   altLine:    real("altLine"),
   outcome:    outcomeEnum("outcome").default("PENDING").notNull(),
-});
+}, (t) => ({
+  parlayIdx:   index("ParlayLeg_parlayId_idx").on(t.parlayId),
+  propIdx:     index("ParlayLeg_propId_idx").on(t.propId),
+  gameLineIdx: index("ParlayLeg_gameLineId_idx").on(t.gameLineId),
+}));
 
 export const leagueMessages = pgTable("LeagueMessage", {
   id:        text("id").primaryKey().$defaultFn(() => randomUUID()),
@@ -386,7 +406,10 @@ export const leagueMessages = pgTable("LeagueMessage", {
   userId:    text("userId").notNull(),
   body:      text("body").notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-});
+}, (t) => ({
+  // Chat reads one league's newest messages, every 5s while the drawer is open.
+  leagueCreatedIdx: index("LeagueMessage_leagueId_createdAt_idx").on(t.leagueId, t.createdAt),
+}));
 
 // PasswordResetToken IS GONE. Nothing ever wrote to it: auth is Google-only,
 // POST /users/auth/google is the entire login surface, and there was no route,

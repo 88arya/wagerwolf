@@ -8,7 +8,11 @@ dotenv.config();
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   max: 10,
-  idleTimeoutMillis: 500,
+  // Was 500ms, which closed a connection almost as soon as a request finished,
+  // so nearly every burst paid a fresh TCP + TLS + auth handshake to Supabase
+  // over the public internet. 30s keeps warm connections across ordinary gaps
+  // between requests; `max` still bounds what is held against the pooler.
+  idleTimeoutMillis: 30_000,
   connectionTimeoutMillis: 10000,
 });
 
