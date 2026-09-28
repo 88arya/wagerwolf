@@ -1,11 +1,13 @@
 import { Router } from "express";
 import { db } from "../db/db";
-import { eq, and, inArray, count, sql } from "drizzle-orm";
-import { picks, memberships, leagues, props, games, gamePicks, gameLines } from "../db/schema";
+import { eq, and } from "drizzle-orm";
+import { picks, leagues, props } from "../db/schema";
 import { requireAuth } from "../middleware/auth";
 import { betLimiter } from "../middleware/rateLimit";
 import { fmtMoney } from "../lib/payout";
 import { altOddsFor } from "../services/propOdds";
+import { lockMembership, debitStake, creditStake, countWeekBets } from "../services/betLedger";
+import { HttpError } from "../middleware/errorHandler";
 
 const router = Router();
 
@@ -39,86 +41,51 @@ router.post("/", requireAuth, betLimiter, async (req: any, res: any, next: any) 
       res.status(400).json({ error: "This game has already kicked off — bets are locked" }); return;
     }
 
-    const [membership] = await db.select().from(memberships)
-      .where(and(eq(memberships.userId, userId), eq(memberships.leagueId, leagueId)))
-      .limit(1);
-    if (!membership) { res.status(404).json({ error: "Not a member of this league" }); return; }
-    if (membership.balance < Number(stake)) {
-      res.status(400).json({ error: "Insufficient balance" });
-      return;
-    }
+    // One transaction, holding a lock on the member, so concurrent bets see
+    // each other's debits and counts. See services/betLedger.ts.
+    const pick = await db.transaction(async (tx) => {
+      const membership = await lockMembership(tx, userId, leagueId);
+      if (membership.balance < Number(stake)) throw new HttpError(400, "Insufficient balance");
 
-    // Rule 2: cannot bet opposite direction while a pending pick exists on same prop
-    const oppositeDir = direction === "OVER" ? "UNDER" : "OVER";
-    const pendingOpposite = await db.query.picks.findFirst({
-      where: and(
-        eq(picks.userId, userId),
-        eq(picks.leagueId, leagueId),
-        eq(picks.propId, propId),
-        eq(picks.direction, oppositeDir as any),
-        eq(picks.outcome, "PENDING"),
-      ),
-    });
-    if (pendingOpposite) { res.status(409).json({ error: "You have an active bet on the opposite side — cash out first" }); return; }
-
-    const [league] = await db.select({
-      maxStakePerBet: leagues.maxStakePerBet,
-      maxBetsPerWeek: leagues.maxBetsPerWeek,
-    }).from(leagues).where(eq(leagues.id, leagueId)).limit(1);
-
-    if (league?.maxStakePerBet && Number(stake) > league.maxStakePerBet) {
-      res.status(400).json({ error: `Max stake per bet is ${fmtMoney(league.maxStakePerBet)}` }); return;
-    }
-    if (league?.maxBetsPerWeek) {
-      // Get all game IDs for this week
-      const weekGames = await db.select({ id: games.id })
-        .from(games)
-        .where(eq(games.weekId, prop.game.weekId));
-      const weekGameIds = weekGames.map((g: any) => g.id);
-
-      // Get all prop IDs for games in this week
-      const weekProps = weekGameIds.length > 0
-        ? await db.select({ id: props.id }).from(props).where(inArray(props.gameId, weekGameIds))
-        : [];
-      const weekPropIds = weekProps.map((p: any) => p.id);
-
-      // Get all game line IDs for games in this week
-      const weekGameLines = weekGameIds.length > 0
-        ? await db.select({ id: gameLines.id }).from(gameLines).where(inArray(gameLines.gameId, weekGameIds))
-        : [];
-      const weekGameLineIds = weekGameLines.map((gl: any) => gl.id);
-
-      const [{ value: weekPickCount }] = await db.select({ value: count() })
-        .from(picks)
-        .where(and(
+      // Rule 2: cannot bet opposite direction while a pending pick exists on same prop
+      const oppositeDir = direction === "OVER" ? "UNDER" : "OVER";
+      const pendingOpposite = await tx.query.picks.findFirst({
+        where: and(
           eq(picks.userId, userId),
           eq(picks.leagueId, leagueId),
-          weekPropIds.length > 0 ? inArray(picks.propId, weekPropIds) : sql`false`,
-        ));
-      const [{ value: weekGamePickCount }] = await db.select({ value: count() })
-        .from(gamePicks)
-        .where(and(
-          eq(gamePicks.userId, userId),
-          eq(gamePicks.leagueId, leagueId),
-          weekGameLineIds.length > 0 ? inArray(gamePicks.gameLineId, weekGameLineIds) : sql`false`,
-        ));
+          eq(picks.propId, propId),
+          eq(picks.direction, oppositeDir as any),
+          eq(picks.outcome, "PENDING"),
+        ),
+      });
+      if (pendingOpposite) throw new HttpError(409, "You have an active bet on the opposite side — cash out first");
 
-      if (weekPickCount + weekGamePickCount >= league.maxBetsPerWeek) {
-        res.status(400).json({ error: `Maximum ${league.maxBetsPerWeek} bets per week` }); return;
+      const [league] = await tx.select({
+        maxStakePerBet: leagues.maxStakePerBet,
+        maxBetsPerWeek: leagues.maxBetsPerWeek,
+      }).from(leagues).where(eq(leagues.id, leagueId)).limit(1);
+
+      if (league?.maxStakePerBet && Number(stake) > league.maxStakePerBet) {
+        throw new HttpError(400, `Max stake per bet is ${fmtMoney(league.maxStakePerBet)}`);
       }
-    }
+      if (league?.maxBetsPerWeek) {
+        const weekBets = await countWeekBets(tx, userId, leagueId, prop.game.weekId);
+        if (weekBets >= league.maxBetsPerWeek) {
+          throw new HttpError(400, `Maximum ${league.maxBetsPerWeek} bets per week`);
+        }
+      }
 
-    const effectiveOdds = altOddsFor(prop, altLine != null ? Number(altLine) : null, direction);
+      const effectiveOdds = altOddsFor(prop, altLine != null ? Number(altLine) : null, direction);
 
-    const [pick] = await db.insert(picks).values({
-      userId, leagueId, propId, direction, stake: Number(stake),
-      odds: effectiveOdds,
-      altLine: altLine != null ? Number(altLine) : null,
-    }).returning();
+      const [created] = await tx.insert(picks).values({
+        userId, leagueId, propId, direction, stake: Number(stake),
+        odds: effectiveOdds,
+        altLine: altLine != null ? Number(altLine) : null,
+      }).returning();
 
-    await db.update(memberships)
-      .set({ balance: sql`${memberships.balance} - ${Number(stake)}` })
-      .where(and(eq(memberships.userId, userId), eq(memberships.leagueId, leagueId)));
+      await debitStake(tx, userId, leagueId, Number(stake));
+      return created;
+    });
 
     res.status(201).json(pick);
   } catch (err: any) {
@@ -162,13 +129,18 @@ router.post("/:id/cashout", requireAuth, betLimiter, async (req: any, res: any, 
       res.status(400).json({ error: "Cannot cash out after game has started" }); return;
     }
 
-    await db.update(picks)
-      .set({ outcome: "VOID", cashedOut: true })
-      .where(eq(picks.id, pick.id));
+    // The PENDING/cashedOut checks above are a fast path for a clear answer;
+    // this conditional UPDATE is the guard. Two concurrent cashouts both pass
+    // the read, but only one can flip the row, so the stake is refunded once.
+    await db.transaction(async (tx) => {
+      const claimed = await tx.update(picks)
+        .set({ outcome: "VOID", cashedOut: true })
+        .where(and(eq(picks.id, pick.id), eq(picks.outcome, "PENDING"), eq(picks.cashedOut, false)))
+        .returning({ id: picks.id });
+      if (claimed.length === 0) throw new HttpError(400, "Already cashed out");
 
-    await db.update(memberships)
-      .set({ balance: sql`${memberships.balance} + ${pick.stake}` })
-      .where(and(eq(memberships.userId, pick.userId), eq(memberships.leagueId, pick.leagueId)));
+      await creditStake(tx, pick.userId, pick.leagueId, pick.stake);
+    });
 
     res.json({ message: "Cashed out", refunded: pick.stake });
   } catch (err: any) {

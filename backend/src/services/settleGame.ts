@@ -1,10 +1,11 @@
 import { db } from "../db/db";
 import { eq, and, or, inArray, sql } from "drizzle-orm";
-import { games, gameLines, props, picks, gamePicks, parlays, parlayLegs, memberships } from "../db/schema";
+import { games, gameLines, props, picks, gamePicks, parlays, parlayLegs } from "../db/schema";
 import { getGameStats } from "./espnApi";
 import { playerNameKey } from "./playerName";
 import { fetchEventsByID } from "./sportsGameOdds";
 import { Grade, gradeOverUnder, gradeGameLine, creditFor, settleParlay } from "./grading";
+import { creditStake } from "./betLedger";
 
 /**
  * ESPN box-score fields, used only as a fallback.
@@ -29,11 +30,33 @@ const ESPN_STAT_FIELD: Partial<Record<string, string>> = {
   TOUCHDOWNS: "touchdowns",
 };
 
-async function credit(userId: string, leagueId: string, amount: number) {
-  if (amount <= 0) return;
-  await db.update(memberships)
-    .set({ balance: sql`${memberships.balance} + ${amount}` })
-    .where(and(eq(memberships.userId, userId), eq(memberships.leagueId, leagueId)));
+/**
+ * Grade one bet and pay it, as one transaction guarded on the bet still being
+ * PENDING.
+ *
+ * Every caller reads PENDING rows first and then closes them one by one, which
+ * is only idempotent if nothing else closes them in between. The score sync
+ * job, the hourly resolve and the manual resolve routes can all reach the same
+ * game at once, and each used to update and credit as two separate statements:
+ * both runs paid, and a crash between the two writes lost the payout. The
+ * conditional UPDATE lets exactly one run claim the bet, and the credit commits
+ * with it or not at all.
+ */
+async function closeBet(
+  table: any,
+  id: string,
+  set: Record<string, unknown>,
+  owner: { userId: string; leagueId: string },
+  amount: number,
+): Promise<void> {
+  await db.transaction(async (tx) => {
+    const claimed = await tx.update(table)
+      .set(set)
+      .where(and(eq(table.id, id), eq(table.outcome, "PENDING")))
+      .returning({ id: table.id });
+    if (claimed.length === 0 || amount <= 0) return;
+    await creditStake(tx, owner.userId, owner.leagueId, amount);
+  });
 }
 
 /**
@@ -132,10 +155,7 @@ async function voidUngradedProps(game: any): Promise<string[]> {
     where: and(eq(picks.outcome, "PENDING"), inArray(picks.propId, propIds)),
   });
   for (const pk of pendingPicks) {
-    await db.update(picks)
-      .set({ outcome: "VOID", voidReason: DNP_REASON })
-      .where(eq(picks.id, pk.id));
-    await credit(pk.userId, pk.leagueId, pk.stake);
+    await closeBet(picks, pk.id, { outcome: "VOID", voidReason: DNP_REASON }, pk, pk.stake);
   }
 
   const pendingLegs = await db.query.parlayLegs.findMany({
@@ -194,10 +214,7 @@ export async function voidBetsOnUnplayedGame(
       where: and(eq(picks.outcome, "PENDING"), inArray(picks.propId, propIds)),
     });
     for (const pk of pending) {
-      await db.update(picks)
-        .set({ outcome: "VOID", voidReason: reason })
-        .where(eq(picks.id, pk.id));
-      await credit(pk.userId, pk.leagueId, pk.stake);
+      await closeBet(picks, pk.id, { outcome: "VOID", voidReason: reason }, pk, pk.stake);
       refunded++;
     }
   }
@@ -207,10 +224,7 @@ export async function voidBetsOnUnplayedGame(
       where: and(eq(gamePicks.outcome, "PENDING"), inArray(gamePicks.gameLineId, lineIds)),
     });
     for (const gp of pending) {
-      await db.update(gamePicks)
-        .set({ outcome: "VOID", voidReason: reason })
-        .where(eq(gamePicks.id, gp.id));
-      await credit(gp.userId, gp.leagueId, gp.stake);
+      await closeBet(gamePicks, gp.id, { outcome: "VOID", voidReason: reason }, gp, gp.stake);
       refunded++;
     }
   }
@@ -299,8 +313,7 @@ export async function settleFinalGame(gameId: string): Promise<void> {
       const prop = propById.get(pick.propId);
       if (!prop || prop.result == null) continue;
       const grade = gradeOverUnder(prop.result, pick.altLine ?? prop.line, pick.direction);
-      await db.update(picks).set({ outcome: grade }).where(eq(picks.id, pick.id));
-      await credit(pick.userId, pick.leagueId, creditFor(grade, pick.stake, pick.odds));
+      await closeBet(picks, pick.id, { outcome: grade }, pick, creditFor(grade, pick.stake, pick.odds));
     }
   }
 
@@ -314,8 +327,7 @@ export async function settleFinalGame(gameId: string): Promise<void> {
       if (!gl) continue;
       const grade = gradeLineFor(gl, gp.altLine);
       if (grade == null) continue;
-      await db.update(gamePicks).set({ outcome: grade }).where(eq(gamePicks.id, gp.id));
-      await credit(gp.userId, gp.leagueId, creditFor(grade, gp.stake, gp.odds));
+      await closeBet(gamePicks, gp.id, { outcome: grade }, gp, creditFor(grade, gp.stake, gp.odds));
     }
   }
 
@@ -370,21 +382,16 @@ export async function settleTouchedParlays(parlayIds: string[]): Promise<void> {
     if (!settled || settled.outcome === "PENDING") continue;
 
     const voidedLeg = legs.some((l) => l.outcome === "VOID");
-    await db.update(parlays)
-      .set({
-        outcome: settled.outcome as any,
-        ...(settled.totalOdds != null ? { totalOdds: settled.totalOdds, payout: settled.payout } : {}),
-        ...(settled.outcome === "VOID"
-          ? { voidReason: voidedLeg ? DNP_REASON : "Every leg pushed. Stake refunded." }
-          : {}),
-      })
-      .where(eq(parlays.id, parlay.id));
-
     // WIN pays the (possibly re-priced) payout; VOID means every leg pushed and
     // the stake goes back. LOSS returns nothing.
-    if (settled.outcome === "WIN" || settled.outcome === "VOID") {
-      await credit(parlay.userId, parlay.leagueId, settled.payout);
-    }
+    const paid = settled.outcome === "WIN" || settled.outcome === "VOID";
+    await closeBet(parlays, parlay.id, {
+      outcome: settled.outcome as any,
+      ...(settled.totalOdds != null ? { totalOdds: settled.totalOdds, payout: settled.payout } : {}),
+      ...(settled.outcome === "VOID"
+        ? { voidReason: voidedLeg ? DNP_REASON : "Every leg pushed. Stake refunded." }
+        : {}),
+    }, parlay, paid ? settled.payout : 0);
   }
 }
 

@@ -1,12 +1,14 @@
 import { Router } from "express";
 import { db } from "../db/db";
-import { eq, and, inArray, sql } from "drizzle-orm";
-import { leagues, memberships, weeks, games, props, picks, gameLines, gamePicks, parlays, parlayLegs } from "../db/schema";
+import { eq, and } from "drizzle-orm";
+import { leagues, memberships, props, gameLines, parlays, parlayLegs } from "../db/schema";
 import { requireAuth } from "../middleware/auth";
 import { betLimiter } from "../middleware/rateLimit";
 import { calcParlayOdds, calcParlayPayout, fmtMoney } from "../lib/payout";
 import { findFirstConflict, conflictMessage, type ConflictLeg } from "../services/betConflicts";
 import { altOddsFor } from "../services/propOdds";
+import { lockMembership, debitStake, creditStake, countWeekBets } from "../services/betLedger";
+import { HttpError } from "../middleware/errorHandler";
 
 const router = Router();
 
@@ -66,57 +68,6 @@ interface LegInput {
   altLine?: number;
 }
 
-// Helper: count bets for a user+league scoped to a specific weekId
-async function countWeekBets(userId: string, leagueId: string, weekId: string): Promise<number> {
-  // picks: join prop → game where game.weekId = weekId
-  const weekPickRows = await db
-    .select({ id: picks.id })
-    .from(picks)
-    .innerJoin(props, eq(picks.propId, props.id))
-    .innerJoin(games, eq(props.gameId, games.id))
-    .where(and(eq(picks.userId, userId), eq(picks.leagueId, leagueId), eq(games.weekId, weekId)));
-
-  // gamePicks: join gameLine → game where game.weekId = weekId
-  const weekGamePickRows = await db
-    .select({ id: gamePicks.id })
-    .from(gamePicks)
-    .innerJoin(gameLines, eq(gamePicks.gameLineId, gameLines.id))
-    .innerJoin(games, eq(gameLines.gameId, games.id))
-    .where(and(eq(gamePicks.userId, userId), eq(gamePicks.leagueId, leagueId), eq(games.weekId, weekId)));
-
-  // parlays: a parlay counts if it has at least one leg touching this week
-  // find parlayIds for this user+league, then check if any of their legs touch this week
-  const userParlayRows = await db
-    .select({ id: parlays.id })
-    .from(parlays)
-    .where(and(eq(parlays.userId, userId), eq(parlays.leagueId, leagueId)));
-
-  let weekParlayCount = 0;
-  if (userParlayRows.length > 0) {
-    const parlayIds = userParlayRows.map((p) => p.id);
-    // legs via props
-    const legViaPropRows = await db
-      .select({ parlayId: parlayLegs.parlayId })
-      .from(parlayLegs)
-      .innerJoin(props, eq(parlayLegs.propId, props.id))
-      .innerJoin(games, eq(props.gameId, games.id))
-      .where(and(inArray(parlayLegs.parlayId, parlayIds), eq(games.weekId, weekId)));
-    // legs via gameLines
-    const legViaGLRows = await db
-      .select({ parlayId: parlayLegs.parlayId })
-      .from(parlayLegs)
-      .innerJoin(gameLines, eq(parlayLegs.gameLineId, gameLines.id))
-      .innerJoin(games, eq(gameLines.gameId, games.id))
-      .where(and(inArray(parlayLegs.parlayId, parlayIds), eq(games.weekId, weekId)));
-
-    const touchingParlayIds = new Set<string>();
-    for (const r of legViaPropRows) touchingParlayIds.add(r.parlayId);
-    for (const r of legViaGLRows) touchingParlayIds.add(r.parlayId);
-    weekParlayCount = touchingParlayIds.size;
-  }
-
-  return weekPickRows.length + weekGamePickRows.length + weekParlayCount;
-}
 
 router.post("/", requireAuth, betLimiter, async (req: any, res: any, next: any) => {
   try {
@@ -155,10 +106,6 @@ router.post("/", requireAuth, betLimiter, async (req: any, res: any, next: any) 
       .where(and(eq(memberships.userId, userId), eq(memberships.leagueId, leagueId)))
       .limit(1);
     if (!membership) { res.status(404).json({ error: "Not a member of this league" }); return; }
-    if (membership.balance < Number(stake)) {
-      res.status(400).json({ error: "Insufficient balance" });
-      return;
-    }
 
     // Validate each leg and collect odds
     const resolvedLegs: Array<{ propId?: string; gameLineId?: string; direction?: string; odds: number; altLine?: number }> = [];
@@ -242,17 +189,21 @@ router.post("/", requireAuth, betLimiter, async (req: any, res: any, next: any) 
       return;
     }
 
-    if (league?.maxBetsPerWeek && firstWeekId) {
-      const totalWeekBets = await countWeekBets(userId, leagueId, firstWeekId);
-      if (totalWeekBets >= league.maxBetsPerWeek) {
-        res.status(400).json({ error: `Maximum ${league.maxBetsPerWeek} bets per week` }); return;
-      }
-    }
-
     const totalOdds = calcParlayOdds(resolvedLegs.map((l) => l.odds));
     const payout = calcParlayPayout(Number(stake), totalOdds);
 
+    // The balance and weekly-count checks run under a lock on the member, so
+    // concurrent bets see each other. See services/betLedger.ts.
     const parlay = await db.transaction(async (tx) => {
+      const locked = await lockMembership(tx, userId, leagueId);
+      if (locked.balance < Number(stake)) throw new HttpError(400, "Insufficient balance");
+      if (league?.maxBetsPerWeek && firstWeekId) {
+        const totalWeekBets = await countWeekBets(tx, userId, leagueId, firstWeekId);
+        if (totalWeekBets >= league.maxBetsPerWeek) {
+          throw new HttpError(400, `Maximum ${league.maxBetsPerWeek} bets per week`);
+        }
+      }
+
       const [created] = await tx.insert(parlays).values({
         userId,
         leagueId,
@@ -271,10 +222,7 @@ router.post("/", requireAuth, betLimiter, async (req: any, res: any, next: any) 
       }));
       const createdLegs = await tx.insert(parlayLegs).values(legRows).returning();
 
-      await tx
-        .update(memberships)
-        .set({ balance: sql`${memberships.balance} - ${Number(stake)}` })
-        .where(and(eq(memberships.userId, userId), eq(memberships.leagueId, leagueId)));
+      await debitStake(tx, userId, leagueId, Number(stake));
 
       return { ...created, legs: createdLegs };
     });
@@ -359,10 +307,6 @@ router.post("/round-robin", requireAuth, betLimiter, async (req: any, res: any, 
     const combos = getCombinations(resolved, size);
     const totalStake = Number(stakePerParlay) * combos.length;
 
-    if (membership.balance < totalStake) {
-      res.status(400).json({ error: `Insufficient balance — need $${totalStake} for ${combos.length} combos` }); return;
-    }
-
     // Validate each combo for internal conflicts. Checked per combo rather than
     // over the whole set: two legs that clash may never land in the same combo,
     // and only the combos that actually pair them are unplaceable.
@@ -374,14 +318,17 @@ router.post("/round-robin", requireAuth, betLimiter, async (req: any, res: any, 
       }
     }
 
-    if (league?.maxBetsPerWeek && firstWeekId) {
-      const totalWeekBets = await countWeekBets(userId, leagueId, firstWeekId);
-      if (totalWeekBets + combos.length > league.maxBetsPerWeek) {
-        res.status(400).json({ error: `Would exceed max ${league.maxBetsPerWeek} bets per week` }); return;
-      }
-    }
-
     const createdParlays = await db.transaction(async (tx) => {
+      const insufficient = `Insufficient balance — need ${fmtMoney(totalStake)} for ${combos.length} combos`;
+      const locked = await lockMembership(tx, userId, leagueId);
+      if (locked.balance < totalStake) throw new HttpError(400, insufficient);
+      if (league?.maxBetsPerWeek && firstWeekId) {
+        const totalWeekBets = await countWeekBets(tx, userId, leagueId, firstWeekId);
+        if (totalWeekBets + combos.length > league.maxBetsPerWeek) {
+          throw new HttpError(400, `Would exceed max ${league.maxBetsPerWeek} bets per week`);
+        }
+      }
+
       const created = [];
       for (const combo of combos) {
         const totalOdds = calcParlayOdds(combo.map((l) => l.odds));
@@ -403,10 +350,7 @@ router.post("/round-robin", requireAuth, betLimiter, async (req: any, res: any, 
         const createdLegs = await tx.insert(parlayLegs).values(legRows).returning();
         created.push({ ...parlay, legs: createdLegs });
       }
-      await tx
-        .update(memberships)
-        .set({ balance: sql`${memberships.balance} - ${totalStake}` })
-        .where(and(eq(memberships.userId, userId), eq(memberships.leagueId, leagueId)));
+      await debitStake(tx, userId, leagueId, totalStake, insufficient);
       return created;
     });
 
@@ -445,15 +389,17 @@ router.post("/:id/cashout", requireAuth, betLimiter, async (req: any, res: any, 
       }
     }
 
+    // The checks above are a fast path; this conditional UPDATE is the guard,
+    // so two concurrent cashouts refund the stake once. See picks.routes.ts.
     await db.transaction(async (tx) => {
-      await tx
+      const claimed = await tx
         .update(parlays)
         .set({ outcome: "VOID", cashedOut: true })
-        .where(eq(parlays.id, parlay.id));
-      await tx
-        .update(memberships)
-        .set({ balance: sql`${memberships.balance} + ${parlay.stake}` })
-        .where(and(eq(memberships.userId, parlay.userId), eq(memberships.leagueId, parlay.leagueId)));
+        .where(and(eq(parlays.id, parlay.id), eq(parlays.outcome, "PENDING"), eq(parlays.cashedOut, false)))
+        .returning({ id: parlays.id });
+      if (claimed.length === 0) throw new HttpError(400, "Already cashed out");
+
+      await creditStake(tx, parlay.userId, parlay.leagueId, parlay.stake);
     });
 
     res.json({ message: "Cashed out", refunded: parlay.stake });
