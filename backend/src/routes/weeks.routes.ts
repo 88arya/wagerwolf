@@ -154,56 +154,21 @@ router.get("/", requireAuth, async (req: any, res: any, next: any) => {
     const { current, leagueId } = req.query;
 
     if (current === "true") {
+      const now = new Date();
+      // Same ladder as /public/current, from services/currentWeek.ts. This
+      // branch differs only in carrying the whole market — every prop and line
+      // — and, with a leagueId, in narrowing it to that league's own weeks.
+      let range: { min: number; max: number } | undefined;
       if (leagueId) {
         const [league] = await db.select().from(leagues).where(eq(leagues.id, String(leagueId))).limit(1);
         if (!league) { res.status(404).json({ error: "League not found" }); return; }
-        const maxWeek = league.startWeek + league.regularSeasonWeeks + league.playoffWeeks - 1;
-        const now = new Date();
-
-        let week = await db.query.weeks.findFirst({
-          where: and(
-            eq(weeks.resolved, false),
-            gte(weeks.number, league.startWeek),
-            lte(weeks.number, maxWeek),
-            lte(weeks.startDate, now),
-            gte(weeks.endDate, now),
-          ),
-          orderBy: asc(weeks.number),
-          with: { games: { orderBy: [asc(games.gameDate), asc(games.id)], with: { props: { with: { player: true } }, gameLines: true } } },
-        });
-        if (!week) {
-          week = await db.query.weeks.findFirst({
-            where: and(
-              eq(weeks.resolved, false),
-              gte(weeks.number, league.startWeek),
-              lte(weeks.number, maxWeek),
-              gt(weeks.startDate, now),
-            ),
-            orderBy: asc(weeks.startDate),
-            with: { games: { orderBy: [asc(games.gameDate), asc(games.id)], with: { props: { with: { player: true } }, gameLines: true } } },
-          });
-        }
-        if (!week) {
-          week = await db.query.weeks.findFirst({
-            where: and(
-              eq(weeks.resolved, false),
-              gte(weeks.number, league.startWeek),
-              lte(weeks.number, maxWeek),
-            ),
-            orderBy: asc(weeks.number),
-            with: { games: { orderBy: [asc(games.gameDate), asc(games.id)], with: { props: { with: { player: true } }, gameLines: true } } },
-          });
-        }
-        if (week) await attachBetCounts(week);
-        res.json(week ? [week] : []);
-        return;
+        range = {
+          min: league.startWeek,
+          max: league.startWeek + league.regularSeasonWeeks + league.playoffWeeks - 1,
+        };
       }
-
-      const now = new Date();
-      // Same ladder as /public/current, from services/currentWeek.ts. This
-      // branch differs only in carrying the whole market — every prop and line.
       let week: any = null;
-      for (const step of currentWeekSteps(now)) {
+      for (const step of currentWeekSteps(now, range)) {
         // The projection stays INLINE. Hoisted to a const it widens to
         // `orderBy: SQL<unknown>[]`, which no `with` overload accepts — the
         // same contextual-typing trap the `withGames` note above describes for

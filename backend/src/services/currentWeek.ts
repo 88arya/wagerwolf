@@ -34,14 +34,27 @@ import { weeks } from "../db/schema";
  * the SESSION's TimeZone — right only while that happens to be UTC. The rows
  * were written from JS Dates; comparing them to one is what makes this exact.
  */
-export function currentWeekSteps(now: Date = new Date()): { where: any; orderBy: any }[] {
+/*
+ * `range` narrows the ladder to a league's own weeks (startWeek through its
+ * last playoff week). It is the same ladder, not a variant: the bet board's
+ * league branch used to write all three steps out a fifth time with the range
+ * added, which is the drift this file exists to stop.
+ *
+ * Every step skips resolved weeks, and that is what makes the scheduler's
+ * rollover work: resolving a week IS the switch to the next one, for every
+ * surface at once.
+ */
+export function currentWeekSteps(
+  now: Date = new Date(),
+  range?: { min: number; max: number },
+): { where: any; orderBy: any }[] {
+  const open = range
+    ? and(eq(weeks.resolved, false), gte(weeks.number, range.min), lte(weeks.number, range.max))
+    : eq(weeks.resolved, false);
   return [
-    {
-      where: and(eq(weeks.resolved, false), lte(weeks.startDate, now), gte(weeks.endDate, now)),
-      orderBy: asc(weeks.number),
-    },
-    { where: and(eq(weeks.resolved, false), gt(weeks.startDate, now)), orderBy: asc(weeks.startDate) },
-    { where: eq(weeks.resolved, false), orderBy: asc(weeks.number) },
+    { where: and(open, lte(weeks.startDate, now), gte(weeks.endDate, now)), orderBy: asc(weeks.number) },
+    { where: and(open, gt(weeks.startDate, now)), orderBy: asc(weeks.startDate) },
+    { where: open, orderBy: asc(weeks.number) },
   ];
 }
 

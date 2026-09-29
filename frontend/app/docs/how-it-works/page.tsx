@@ -15,6 +15,7 @@ import type { Metadata } from "next";
 //   odds               backend/src/services/sportsGameOdds.ts, oddsPoller.ts
 //   matchups           backend/src/services/resolveWeek.ts
 //   season lifecycle   backend/src/services/autoPlayoffs.ts, scheduler.ts
+//   week close         scheduler.ts resolvePastWeeks (the rollover)
 //   limits             League.maxStakePerBet / maxBetsPerWeek / maxParlayLegs
 //
 // IF YOU CHANGE ONE OF THOSE, CHANGE THIS. A settlement rule the player was
@@ -232,11 +233,13 @@ export default function HowItWorksPage() {
 
       <h2>How a week closes out</h2>
       <p>
-        Once a week&apos;s games are final, every bet on them is graded, the
-        head to head matchups are decided, and the following week&apos;s
-        allowances are distributed. A week becomes eligible to close roughly
-        eighteen hours after its last kickoff, so a Monday night finish closes
-        out on Tuesday evening. After the final regular season week the playoff
+        A week closes once every game in it is final and every bet on it has
+        been graded. At that moment the head to head matchups are decided, the
+        following week opens for betting, and its allowances are distributed,
+        all together. After a Monday night finish that is usually shortly after
+        midnight Eastern. If a result is slow to arrive, the week closes no
+        later than eighteen hours after its last kickoff. After the final
+        regular season week the playoff
         bracket is seeded from the standings and advances itself each week until
         one member is champion. Nobody has to press anything.
       </p>

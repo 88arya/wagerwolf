@@ -1,8 +1,9 @@
 import { Queue, Worker, Job } from "bullmq";
 import { redisConnection } from "../queue/connection";
 import { db } from "../db/db";
-import { eq, and, lt, asc } from "drizzle-orm";
-import { weeks, leagues } from "../db/schema";
+import { eq, and, lt, lte, asc } from "drizzle-orm";
+import { weeks, games } from "../db/schema";
+import { allGamesFinal } from "./weekState";
 import { resolveWeekById } from "./resolveWeek";
 import { syncESPNGames, syncScores } from "./syncWeek";
 import { pollDueGames, discoverWeekEvents } from "./oddsPoller";
@@ -41,9 +42,22 @@ import { runJob, reportOnly, StepsFailed, type Fail, type Handler } from "./jobR
  * resolveWeekById is the very thing that repairs a game the sync missed. Gating
  * resolve on all-final means the one game needing repair is the one blocking
  * the repair. The dates are the reliable signal; leave it on them.
+ *
+ * THAT IS STILL THE DEADLINE, and there is now also a shortcut: the ROLLOVER.
+ * See resolvePastWeeks. A week whose games are all FINAL is resolved early,
+ * once the next week's slate is in, which moves the whole handover (results,
+ * the new board, the allowance) to shortly after Monday night instead of
+ * Tuesday afternoon. Status only ever brings a resolve forward; the deadline
+ * path above is untouched, so a game the score sync missed still gets repaired
+ * by `finalizeScores` at `endDate`, exactly as before.
+ *
+ * Every 15 minutes rather than hourly so the rollover lands within a quarter
+ * hour of the final whistle. A tick with nothing to do is still two queries.
  */
-const RESOLVE_SCHEDULE = "0 * * * *";
-// Tuesday 6:00 PM UTC — sync ESPN games for upcoming week
+const RESOLVE_SCHEDULE = "*/15 * * * *";
+// Tuesday 6:00 PM UTC — sync ESPN games for upcoming week. A BACKSTOP now: the
+// rollover prepares the next week itself, so on a normal week this finds the
+// slate already there and only re-checks it (schedule changes, auto-start).
 const GAME_SYNC_SCHEDULE = "0 18 * * 2";
 // Every 30 minutes — tiered odds poll. The tick itself costs nothing; each run
 // refreshes only the games whose time-to-kickoff says they are due, so spend is
@@ -106,15 +120,62 @@ export async function runResolveAndAllowances(fail: Fail = reportOnly) {
   }
 }
 
-/** Pass A — close out every week whose games are behind us. */
+/**
+ * Pass A — close out every week whose games are behind us.
+ *
+ * TWO WAYS IN. Past `endDate` is the deadline, and resolves unconditionally, as
+ * it always has. Before it, a week whose every game is FINAL takes the ROLLOVER:
+ *
+ *   1. prepare the next week: its slate from ESPN, its odds discovered
+ *   2. resolve this one
+ *   3. pass B, in this same run, pays the next week's allowance
+ *
+ * so results, the new board and the fresh balance arrive together rather than
+ * as a rollout across an afternoon. Nothing marks the switch for the UI: every
+ * "current week" read skips resolved weeks (services/currentWeek), so step 2 is
+ * the switch, and step 1 is what stops that switch landing on an empty week.
+ *
+ * If the next week cannot be prepared, the rollover waits and retries on the
+ * next tick, and the deadline still resolves the week regardless. Waiting is
+ * the cohesive choice: resolving without a next week would hand users results
+ * and a balance with nothing to bet on.
+ *
+ * The last regular week has no next week to wait for.
+ */
 async function resolvePastWeeks(fail: Fail) {
   const now = new Date();
-  const pastUnresolved = await db.query.weeks.findMany({
-    where: and(eq(weeks.resolved, false), lt(weeks.endDate, now)),
+  const started = await db.query.weeks.findMany({
+    where: and(eq(weeks.resolved, false), lte(weeks.startDate, now)),
     orderBy: asc(weeks.number),
+    with: { games: { columns: { status: true } } },
   });
 
-  for (const week of pastUnresolved) {
+  for (const week of started) {
+    const pastDeadline = week.endDate < now;
+    if (!pastDeadline) {
+      if (!allGamesFinal(week.games)) continue;
+      if (week.number < MAX_NFL_WEEK) {
+        // Prepare only if the next slate is not already in. A resolve that
+        // keeps failing retries every tick until the deadline, and repeating
+        // the preparation each time would re-bill discovery for any game the
+        // feed never lists. Tuesday's backstop still re-checks a ready week.
+        const next = await db.query.weeks.findFirst({
+          where: eq(weeks.number, week.number + 1),
+          with: { games: { columns: { id: true } } },
+        });
+        let ready = (next?.games.length ?? 0) > 0;
+        if (!ready) {
+          try {
+            ready = await prepareWeek(week.number + 1, fail);
+          } catch (err) {
+            fail(`rollover: prepare week ${week.number + 1}`, err);
+          }
+        }
+        if (!ready) continue;
+      }
+      console.log(`[cron] Rollover: week ${week.number} is final, resolving ahead of its deadline`);
+    }
+
     try {
       await resolveWeekById(week.id);
     } catch (err) {
@@ -266,17 +327,37 @@ async function runESPNGameSync(fail: Fail) {
     weekNumber = latest ? latest.number + 1 : 1;
   }
 
+  await prepareWeek(weekNumber, fail);
+}
+
+/**
+ * Get a week ready to bet into: the Week row and its dates, its games from
+ * ESPN, their SGO eventIDs, and any league due to start in it. Returns whether
+ * the week has games, which is what the rollover waits on.
+ *
+ * Shared by the rollover (which calls it for the week about to open) and the
+ * Tuesday backstop, and safe to run repeatedly: the week is upserted, games
+ * upsert on espnId, and auto-start only touches leagues not yet started.
+ *
+ * DISCOVERY ONLY RUNS FOR GAMES THAT STILL NEED IT. It is the one broad odds
+ * query of the week and it bills every event it returns, so re-running it for a
+ * slate already matched would double the week's discovery spend for nothing:
+ * from the first match on, the poller addresses each game by id. It does run
+ * again if any game is still unmatched, which is also the retry for a game the
+ * feed had not listed yet on the first attempt.
+ */
+async function prepareWeek(weekNumber: number, fail: Fail): Promise<boolean> {
   if (weekNumber > MAX_NFL_WEEK) {
     console.log("[cron] Season complete, no weeks to sync");
-    return;
+    return false;
   }
 
   // Fetch week date range from ESPN and upsert the Week row
-  const year = nflYear(now);
+  const year = nflYear(new Date());
   const weekDates = await getNFLWeekDates(weekNumber, year);
   if (!weekDates) {
     console.log(`[cron] ESPN returned no games for week ${weekNumber} ${year}`);
-    return;
+    return false;
   }
 
   const existing = await db.query.weeks.findFirst({
@@ -300,28 +381,32 @@ async function runESPNGameSync(fail: Fail) {
     fail(`ESPN game sync week ${week!.number}`, err);
   }
 
-  // One date-ranged pull to stamp each new game with its SGO eventID. From here
-  // the poller addresses games by id, so this is the only broad odds query in
-  // the whole week — everything after it spends only on games actually due.
-  try {
-    const matched = await discoverWeekEvents(week!.id);
-    console.log(`[cron] Discovered SGO events for week ${week!.number}: ${matched} games`);
-  } catch (err) {
-    fail(`SGO discovery week ${week!.number}`, err);
+  const slate = await db.select({ externalId: games.externalId })
+    .from(games).where(eq(games.weekId, week!.id));
+  const unmatched = slate.filter((g) => !g.externalId).length;
+
+  if (unmatched > 0) {
+    try {
+      const matched = await discoverWeekEvents(week!.id);
+      console.log(`[cron] Discovered SGO events for week ${week!.number}: ${matched} games`);
+    } catch (err) {
+      fail(`SGO discovery week ${week!.number}`, err);
+    }
+
+    // THE LANDING PAGE'S BOARD IS DROPPED HERE, so it is rebuilt from the slate
+    // discovery just priced.
+    //
+    // The window it closes: the week can become current before its odds land,
+    // and the board is snapshotted on first request and held for the week
+    // (services/publicMarkets), so a single visitor in that window would freeze
+    // an empty marquee until the following Tuesday. Clearing it after discovery
+    // means the next request rebuilds against a full board. Only when discovery
+    // ran: with nothing newly matched there is nothing new to rebuild from.
+    await db.update(weeks).set({ publicBoard: null }).where(eq(weeks.id, week!.id));
   }
 
-  // THE LANDING PAGE'S BOARD IS DROPPED HERE, so it is rebuilt from the slate
-  // this job just fetched.
-  //
-  // The window it closes: a resolve can make next week current before this job
-  // has fetched its slate — so for a stretch the "current" week has no games
-  // and no odds. The board is snapshotted on first request and
-  // held for the week (services/publicMarkets), so a single visitor in that
-  // window would freeze an empty marquee until the following Tuesday. Clearing
-  // it after discovery means the next request rebuilds against a full board.
-  await db.update(weeks).set({ publicBoard: null }).where(eq(weeks.id, week!.id));
-
   await runAutoStartLeagues(week!.number, fail);
+  return slate.length > 0;
 }
 
 async function runOddsPoll() {
