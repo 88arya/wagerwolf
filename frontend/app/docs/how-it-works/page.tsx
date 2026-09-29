@@ -6,7 +6,7 @@ import type { Metadata } from "next";
 // cannot drift silently:
 //
 //   grading            backend/src/services/grading.ts
-//   voids              backend/src/services/settleGame.ts   (DNP_REASON)
+//   voids              backend/src/services/settleGame.ts   (DNP_REASON), gradeRetry.ts
 //   cashout            POST /picks/:id/cashout and the gamepicks/parlays twins
 //   parlays            grading.ts settleParlay()
 //   allowances         backend/src/services/distributeAllowances.ts
@@ -109,10 +109,12 @@ export default function HowItWorksPage() {
 
       <h2>When a stake is refunded, and when it is not</h2>
       <p>
-        A bet is voided and refunded when the player never took the field. Once
-        a game has finished and a market on it was never graded, we treat that
-        market as belonging to a player who did not play, and the bet card says
-        so.
+        A bet is voided and refunded when the player never took the field. We
+        wait for a finished game&apos;s statistics to be final before grading
+        its player markets, so a slow feed can leave a bet pending for a while
+        after the final whistle. A market that still has no result once the
+        statistics are final belongs to a player who did not play, and the bet
+        card says so.
       </p>
       <p>
         A player who takes one snap and leaves injured does not produce a

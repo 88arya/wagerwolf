@@ -108,7 +108,14 @@ async function finalizeScores(weekGames: any[]): Promise<void> {
   }
 }
 
-export async function resolveWeekById(weekId: string): Promise<{
+/*
+ * `early` is the scheduler's rollover, which only calls in once every bet on
+ * the week has settled. Every other caller is closing the week for good (the
+ * deadline, or a human through the manual routes), so settlement is told it is
+ * at the deadline and stops waiting on SGO: past this point a bet left pending
+ * would stay pending forever.
+ */
+export async function resolveWeekById(weekId: string, opts: { early?: boolean } = {}): Promise<{
   propsMatched: number; propsUnmatched: number;
   gamesSettled: number; gamesUnsettled: number;
 }> {
@@ -143,7 +150,7 @@ export async function resolveWeekById(weekId: string): Promise<{
     }
     if (game.status !== "FINAL") { gamesUnsettled++; continue; }
     try {
-      await settleFinalGame(game.id);
+      await settleFinalGame(game.id, !opts.early);
       gamesSettled++;
     } catch (err) {
       console.error(`[resolve] Failed to settle game ${game.id}:`, err);

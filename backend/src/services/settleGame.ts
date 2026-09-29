@@ -6,6 +6,9 @@ import { playerNameKey } from "./playerName";
 import { fetchEventsByID } from "./sportsGameOdds";
 import { Grade, gradeOverUnder, gradeGameLine, creditFor, settleParlay } from "./grading";
 import { creditStake } from "./betLedger";
+import { GradeAttempts, pastGradeDeadline } from "./gradeRetry";
+
+const sgoAttempts = new GradeAttempts();
 
 /**
  * ESPN box-score fields, used only as a fallback.
@@ -66,14 +69,49 @@ async function closeBet(
  * the same oddID we stored, so the lookup is by id — no player-name matching,
  * and no stat-field table to keep in step. Costs one entity, and `oddsSettledAt`
  * makes sure that happens once rather than on every minute-by-minute tick.
+ *
+ * RETURNS WHETHER PROPS ARE READY TO FINISH, meaning the ESPN fallback and the
+ * DNP void may run. False while SGO has not finalized the event: `oddsSettledAt`
+ * is what licenses `voidUngradedProps` to refund every prop still without a
+ * result, so stamping it off an unfinished feed turned a lagging grader into
+ * refunds, and running the ESPN fallback early would grade props SGO is about
+ * to grade authoritatively. See services/gradeRetry.ts for the backoff and the
+ * deadline past which an unfinalized event is taken as it stands.
+ *
+ * `atDeadline` is the week's resolve. It skips the backoff, because the week is
+ * about to close and a bet left pending then stays pending for good.
  */
-async function gradePropsFromSGO(game: any): Promise<void> {
+async function gradePropsFromSGO(game: any, atDeadline = false): Promise<boolean> {
   const ungraded = (game.props as any[]).filter((p) => p.result == null && p.oddID);
-  if (ungraded.length === 0 || !game.externalId || game.oddsSettledAt) return;
+  if (ungraded.length === 0 || !game.externalId || game.oddsSettledAt) return true;
+
+  const now = new Date();
+  if (!atDeadline && !sgoAttempts.due(game.id, now)) return false;
+  const acceptUnfinalized = atDeadline || pastGradeDeadline(game.gameDate, now);
 
   try {
     const [ev] = await fetchEventsByID([game.externalId]);
-    if (!ev) return;
+    // No event at all past the deadline: the feed has dropped the game, and
+    // waiting longer will not bring it back. Stamp it, so the ESPN fallback
+    // grades what it can and the rest refunds, rather than pending forever.
+    if (!ev && !acceptUnfinalized) {
+      sgoAttempts.record(game.id, now);
+      return false;
+    }
+    // Scores on an unfinalized event are not written at all, not even the ones
+    // present: they may be in-progress values, and a prop graded on one is
+    // settled for good.
+    if (ev && !ev.finalized && !acceptUnfinalized) {
+      sgoAttempts.record(game.id, now);
+      console.log(`[settle] SGO has not finalized game ${game.id} yet, retrying later`);
+      return false;
+    }
+    if (!ev) {
+      await db.update(games).set({ oddsSettledAt: now }).where(eq(games.id, game.id));
+      game.oddsSettledAt = now;
+      sgoAttempts.clear(game.id);
+      return true;
+    }
 
     for (const prop of ungraded) {
       const score = ev.scores[prop.oddID];
@@ -91,10 +129,14 @@ async function gradePropsFromSGO(game: any): Promise<void> {
       game.awayScore = ev.awayScore;
     }
 
-    await db.update(games).set({ oddsSettledAt: new Date() }).where(eq(games.id, game.id));
-    game.oddsSettledAt = new Date();
+    await db.update(games).set({ oddsSettledAt: now }).where(eq(games.id, game.id));
+    game.oddsSettledAt = now;
+    sgoAttempts.clear(game.id);
+    return true;
   } catch (err) {
     console.error(`[settle] SGO grading failed for game ${game.id}:`, err);
+    sgoAttempts.record(game.id, now);
+    return false;
   }
 }
 
@@ -261,17 +303,23 @@ export async function voidBetsOnUnplayedGame(
  *
  * Idempotent: only PENDING rows are touched, so the minute-by-minute caller and
  * Tuesday's resolveWeekById can both run it safely.
+ *
+ * Game lines settle on the final score straight away. Props wait for SGO to
+ * finalize (see gradePropsFromSGO); until then their bets simply stay PENDING
+ * and the next call tries again. `atDeadline` is for resolveWeekById only.
  */
-export async function settleFinalGame(gameId: string): Promise<void> {
+export async function settleFinalGame(gameId: string, atDeadline = false): Promise<void> {
   const game = await db.query.games.findFirst({
     where: eq(games.id, gameId),
     with: { props: { with: { player: true } }, gameLines: true },
   }) as any;
   if (!game || game.status !== "FINAL") return;
 
-  await gradePropsFromSGO(game);
-  await gradePropsFromESPN(game);
-  const voidedParlayIds = await voidUngradedProps(game);
+  let voidedParlayIds: string[] = [];
+  if (await gradePropsFromSGO(game, atDeadline)) {
+    await gradePropsFromESPN(game);
+    voidedParlayIds = await voidUngradedProps(game);
+  }
 
   const { homeScore, awayScore } = game;
 
@@ -393,6 +441,30 @@ export async function settleTouchedParlays(parlayIds: string[]): Promise<void> {
         : {}),
     }, parlay, paid ? settled.payout : 0);
   }
+}
+
+/**
+ * Is any money still riding on this week's games? The rollover's second
+ * condition: every game FINAL says the football is over, this says the grading
+ * is too. Without it the rollover could close a week while props were still
+ * waiting on SGO to finalize, and those bets would never settle.
+ */
+export async function weekHasPendingBets(weekId: string): Promise<boolean> {
+  const weekGames = await db.select({ id: games.id }).from(games).where(eq(games.weekId, weekId));
+  if (weekGames.length === 0) return false;
+  const ids = weekGames.map((g) => g.id);
+
+  const checks = await Promise.all([
+    db.select({ id: picks.id }).from(picks).innerJoin(props, eq(picks.propId, props.id))
+      .where(and(eq(picks.outcome, "PENDING"), inArray(props.gameId, ids))).limit(1),
+    db.select({ id: gamePicks.id }).from(gamePicks).innerJoin(gameLines, eq(gamePicks.gameLineId, gameLines.id))
+      .where(and(eq(gamePicks.outcome, "PENDING"), inArray(gameLines.gameId, ids))).limit(1),
+    db.select({ id: parlayLegs.id }).from(parlayLegs).innerJoin(props, eq(parlayLegs.propId, props.id))
+      .where(and(eq(parlayLegs.outcome, "PENDING"), inArray(props.gameId, ids))).limit(1),
+    db.select({ id: parlayLegs.id }).from(parlayLegs).innerJoin(gameLines, eq(parlayLegs.gameLineId, gameLines.id))
+      .where(and(eq(parlayLegs.outcome, "PENDING"), inArray(gameLines.gameId, ids))).limit(1),
+  ]);
+  return checks.some((rows) => rows.length > 0);
 }
 
 /**

@@ -10,7 +10,7 @@ import { pollDueGames, discoverWeekEvents } from "./oddsPoller";
 import { getNFLWeekDates, nflYear } from "./espnApi";
 import { distributeWeeklyAllowances } from "./distributeAllowances";
 import { startLeagueSeason } from "./startSeason";
-import { settlePendingBetsOnFinalGames } from "./settleGame";
+import { settlePendingBetsOnFinalGames, weekHasPendingBets } from "./settleGame";
 import { MAX_NFL_WEEK } from "./nflSeason";
 import { reportError, reportCondition } from "../lib/monitoring";
 // Every catch below reports through a `fail` callback; see jobRunner.ts for why.
@@ -126,6 +126,7 @@ export async function runResolveAndAllowances(fail: Fail = reportOnly) {
  * TWO WAYS IN. Past `endDate` is the deadline, and resolves unconditionally, as
  * it always has. Before it, a week whose every game is FINAL takes the ROLLOVER:
  *
+ *   0. wait until every bet on the week has settled, props included
  *   1. prepare the next week: its slate from ESPN, its odds discovered
  *   2. resolve this one
  *   3. pass B, in this same run, pays the next week's allowance
@@ -154,6 +155,10 @@ async function resolvePastWeeks(fail: Fail) {
     const pastDeadline = week.endDate < now;
     if (!pastDeadline) {
       if (!allGamesFinal(week.games)) continue;
+      // The football is over; the grading may not be. Props wait on SGO to
+      // finalize (services/gradeRetry.ts), and closing the week before they
+      // settle would leave their bets pending for good.
+      if (await weekHasPendingBets(week.id)) continue;
       if (week.number < MAX_NFL_WEEK) {
         // Prepare only if the next slate is not already in. A resolve that
         // keeps failing retries every tick until the deadline, and repeating
@@ -177,7 +182,7 @@ async function resolvePastWeeks(fail: Fail) {
     }
 
     try {
-      await resolveWeekById(week.id);
+      await resolveWeekById(week.id, { early: !pastDeadline });
     } catch (err) {
       fail(`resolve week ${week.number}`, err);
     }
