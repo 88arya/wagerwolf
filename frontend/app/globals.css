@@ -618,6 +618,97 @@ button.dark:hover { opacity: 0.86; background: var(--text); border-color: var(--
   flex: 1 1 auto;
 }
 
+/* ── THE SIGN-IN LOADING BAR ──────────────────────────────────────────────
+   /auth/callback's whole content while the Google code is exchanged. It
+   replaced a line of text ("Signing you in…"): the wait is about a second and
+   says nothing a person needs to read, so it is motion rather than words.
+
+   An outlined track on the page ground, filling left to right in the accent.
+   The exchange reports no progress, so the fill is a timed curve rather than a
+   measurement: it runs fast, eases off, and stops at 90% instead of reaching
+   the end. The page is replaced by /home when the exchange lands, so the bar
+   never has to finish; a bar sitting at 100% would say "done" while the
+   request is still out. It plays once, not on a loop, because an empty bar
+   refilling reads as starting over.
+
+   A 2px accent outline, then a 2px TRANSPARENT gap, then the fill: the fill
+   floats inside the frame rather than touching it, and the gap shows whatever
+   ground the page has. 14px overall so the fill keeps a 6px body (2 + 2 + 6
+   + 2 + 2). All of it chosen by eye: a solid 2px, then 4px, then 10px bar
+   came first, then a 1px black and a 1px accent outline.
+
+   The fill is absolutely positioned against the padding box, so `inset: 2px`
+   is the gap and its width is 90% of what is left inside it.
+
+   Reduced motion gets a still, half-filled bar: still visibly "loading", with
+   nothing moving. */
+.signin-bar {
+  --signin-gap: 2px;
+  position: relative;
+  box-sizing: border-box;
+  width: 160px;
+  height: 14px;
+  overflow: hidden;
+  border: 2px solid var(--accent);
+  background: transparent;
+}
+.signin-bar::before {
+  content: "";
+  position: absolute;
+  top: var(--signin-gap);
+  bottom: var(--signin-gap);
+  left: var(--signin-gap);
+  width: calc((100% - 2 * var(--signin-gap)) * 0.9);
+  background: var(--accent);
+  transform-origin: left;
+  animation: signin-fill 2.4s cubic-bezier(0.1, 0.7, 0.2, 1) forwards;
+  /* Negative when a bar takes over from another mid-fill, so the fill carries
+     on rather than restarting. Set by components/LoadingBar. */
+  animation-delay: var(--signin-elapsed, 0ms);
+}
+@keyframes signin-fill {
+  from { transform: scaleX(0); }
+  to   { transform: scaleX(1); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .signin-bar::before {
+    animation: none;
+    width: calc((100% - 2 * var(--signin-gap)) * 0.5);
+  }
+}
+
+/* ── WHERE THE BAR SITS: ONE BOX FOR EVERY LOADING SCREEN ─────────────────
+   Full viewport, centred, on the page ground. /auth/callback and the shell's
+   first load both render components/LoadingBar into this, so the bar is in
+   exactly the same place on both and sign-in reads as one load. The callback
+   used to centre its bar under its own header, which put it lower than the
+   shell's, so it visibly jumped up when /home took over.
+
+   `.shell-boot` is the shell's copy of it, while lib/bootGate waits for the
+   shell's first round of requests. The shell underneath is `visibility:
+   hidden`, not `display: none`: it must lay out and mount so its components
+   fire those requests, and hidden it also takes no clicks and no focus. It is
+   off wherever the mobile gate is on (the two media queries below mirror
+   .mobile-gate's), since a phone never sees the shell and would otherwise sit
+   on a bar that covers the gate. The callback's copy is not: sign-in works on
+   a phone. */
+.boot-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface);
+}
+.app-shell.is-booting { visibility: hidden; }
+@media (max-width: 900px) {
+  .shell-boot { display: none; }
+}
+@media (max-height: 520px) and (pointer: coarse) {
+  .shell-boot { display: none; }
+}
+
 /* ══ THE SIGNED-IN APP SHELL ════════════════════════════════════════════════
    Two elements and nothing else: a sidebar standing on the page ground, and
    one card holding whatever page the sidebar selected.

@@ -177,7 +177,8 @@ export default function AccountMenu({
       setFullName(stored.name);
     }
 
-    api("/users/me").then((u: any) => {
+    // Not held behind the boot gate when a stored name is already showing.
+    api("/users/me", undefined, { gate: !stored.name }).then((u: any) => {
       // Falls back to the display name for accounts where Google supplied no
       // given/family name, so they have no first/last on record.
       const full = [u.firstName, u.lastName].filter(Boolean).join(" ");

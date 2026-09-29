@@ -50,7 +50,7 @@ import PowerRankings, { type LeagueRow } from "./PowerRankings";
 import PulseCards, { type Pulse } from "./PulseCards";
 import FriendsCard from "./FriendsCard";
 import { api } from "@/lib/api";
-import { getCached, setCached } from "@/lib/pageCache";
+import { getCached, readCached, setCached } from "@/lib/pageCache";
 
 const PULSE_KEY = "home:pulse";
 const LEAGUES_KEY = "home:leagues";
@@ -70,10 +70,18 @@ export default function HomeBoard() {
   useEffect(() => {
     let live = true;
 
+    // A reload empties memory but not sessionStorage: pick the last answer back
+    // up here, behind the boot gate, and refresh without holding the gate for
+    // data that is already showing. See lib/pageCache and lib/bootGate.
+    const warmPulse = readCached<Pulse>(PULSE_KEY);
+    const warmLeagues = readCached<LeagueRow[]>(LEAGUES_KEY);
+    if (warmPulse) setPulse(warmPulse);
+    if (warmLeagues) setLeagues(warmLeagues);
+
     // limit=1: each card shows exactly one entity, so anything past the leader
     // would be fetched and thrown away. The endpoint defaults to 5 and caps at
     // 10 — raise this at the same time as anything that wants a second row.
-    api("/home/pulse?limit=1")
+    api("/home/pulse?limit=1", undefined, { gate: !warmPulse })
       .then((data: Pulse) => {
         if (!live) return;
         setCached(PULSE_KEY, data);
@@ -81,7 +89,7 @@ export default function HomeBoard() {
       })
       .catch(() => { if (live) setPulseError(true); });
 
-    api("/home/leagues")
+    api("/home/leagues", undefined, { gate: !warmLeagues })
       .then((data: LeagueRow[]) => {
         if (!live) return;
         setCached(LEAGUES_KEY, data);

@@ -5,8 +5,11 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { api } from "@/lib/api";
 import { setToken } from "@/lib/auth";
+import { resetBoot } from "@/lib/bootGate";
+import { clearPageCache } from "@/lib/pageCache";
 import { callbackUrl, takeStoredState } from "@/lib/googleAuth";
 import BarePageHeader from "@/components/BarePageHeader";
+import LoadingBar from "@/components/LoadingBar";
 
 /**
  * Where Google sends the browser back to after a full-tab sign-in.
@@ -91,6 +94,10 @@ export default function GoogleCallbackPage() {
         localStorage.setItem("displayName", res.displayName ?? "");
         // replace, not push: this page must not be a back-button destination —
         // returning to it would re-run an exchange whose code is spent.
+        // A new session loads the shell from nothing, so it gets the one-reveal
+        // first load even in a tab where the gate already opened once.
+        resetBoot();
+        clearPageCache();
         router.replace("/home");
       })
       .catch((err: unknown) => {
@@ -99,21 +106,21 @@ export default function GoogleCallbackPage() {
       });
   }, [router]);
 
+  // While working: the bar and nothing else, in the same full-screen box and
+  // the same spot the shell's first-load bar uses, so the handover to /home is
+  // one continuous bar rather than a second one appearing higher up. No header
+  // for the same reason: the shell's bar has none. See components/LoadingBar.
+  if (!error) return <LoadingBar label="Signing you in" />;
+
   return (
     <div className="bare-route">
       <BarePageHeader />
       <main style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
         <div style={{ textAlign: "center", maxWidth: 380 }}>
-          {error ? (
-            <>
-              <div style={{ fontSize: "0.9rem", color: "var(--text)", marginBottom: 14 }}>{error}</div>
-              <Link href="/signup" className="mx-btn is-primary" style={{ textDecoration: "none" }}>
-                Back to sign in
-              </Link>
-            </>
-          ) : (
-            <div style={{ fontSize: "0.9rem", color: "var(--text-2)" }}>Signing you in…</div>
-          )}
+          <div style={{ fontSize: "0.9rem", color: "var(--text)", marginBottom: 14 }}>{error}</div>
+          <Link href="/signup" className="mx-btn is-primary" style={{ textDecoration: "none" }}>
+            Back to sign in
+          </Link>
         </div>
       </main>
     </div>

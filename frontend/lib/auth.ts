@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { clearPageCache } from "./pageCache";
 
 /**
  * Whether anyone is signed in, as reactive state.
@@ -43,6 +44,9 @@ export function setToken(token: string, userId?: string) {
  * league in the games strip.
  */
 export function signOut() {
+  // Before the localStorage wipe: page-cache keys are prefixed with the userId
+  // stored there, and sessionStorage outlives this call otherwise.
+  clearPageCache();
   localStorage.clear();
   announce();
 }

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { api } from "@/lib/api";
+import { getCached, readCached, setCached } from "@/lib/pageCache";
 import { fmtOdds } from "@/components/BetRows";
 import TeamLogo from "@/components/TeamLogo";
 
@@ -143,10 +144,12 @@ function Side({ team, odds }: { team: string; odds: number | null }) {
   );
 }
 
+const NAV_GAMES_KEY = "nav:games";
+
 export default function SideNavGames() {
   const pathname = usePathname() ?? "";
   const leagueId = LEAGUE_ROUTE.exec(pathname)?.[1] ?? "";
-  const [games, setGames] = useState<Game[] | null>(null);
+  const [games, setGames] = useState<Game[] | null>(() => getCached<Game[]>(NAV_GAMES_KEY) ?? null);
   // 0 until the client sets it. Never read in a useState initialiser: Date.now()
   // there runs during SSR too and would differ from the client's value.
   const [now, setNow] = useState(0);
@@ -170,10 +173,20 @@ export default function SideNavGames() {
      * loading state on a refresh, so nothing flashes; React re-renders the
      * rows in place.
      */
+    // The last list, from lib/pageCache, so a reload does not drop the
+    // section and put it back a round trip later.
+    const warm = readCached<Game[]>(NAV_GAMES_KEY);
+    if (warm) setGames(warm);
+
     const load = (first: boolean) => {
       // ARRAY, not an object — see the header. `weeks[0]` is the week.
-      api("/weeks/public/current")
-        .then((weeks: any) => { if (live) setGames(weeks?.[0]?.games ?? []); })
+      api("/weeks/public/current", undefined, { gate: !(first && warm) })
+        .then((weeks: any) => {
+          if (!live) return;
+          const next: Game[] = weeks?.[0]?.games ?? [];
+          setCached(NAV_GAMES_KEY, next);
+          setGames(next);
+        })
         .catch(() => { if (live && first) setGames([]); });
     };
 

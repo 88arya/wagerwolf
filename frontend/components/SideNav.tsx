@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import { Globe, MoreHorizontal, Plus } from "lucide-react";
 import type { ComponentType, CSSProperties } from "react";
 import { api } from "@/lib/api";
+import { getCached, readCached, setCached } from "@/lib/pageCache";
 import LeagueActions, { type LeagueAction } from "@/components/LeagueActions";
 import AccountMenu from "@/components/AccountMenu";
 import LogoWordmark from "@/components/LogoWordmark";
@@ -830,6 +831,8 @@ function HelpMenu() {
   );
 }
 
+const NAV_LEAGUES_KEY = "nav:leagues";
+
 export default function SideNav() {
   const pathname = usePathname() ?? "";
   // No loading flag beside it: the only thing that ever needed one was the
@@ -837,24 +840,28 @@ export default function SideNav() {
   // under Leagues for someone who has ten of them. The "More" row replaced it
   // and is true before the fetch as much as after, so an empty list is now just
   // a section with one row in it.
-  const [leagues, setLeagues] = useState<League[]>([]);
+  // Seeded from lib/pageCache so a navigation, and (from the effect below) a
+  // reload, paints the list rather than building it row by row.
+  const [leagues, setLeagues] = useState<League[]>(() => getCached<League[]>(NAV_LEAGUES_KEY) ?? []);
 
   const routeLeagueId = LEAGUE_ROUTE.exec(pathname)?.[1] ?? "";
 
   useEffect(() => {
     let live = true;
-    api("/memberships").then((ms: any[]) => {
+    const warm = readCached<League[]>(NAV_LEAGUES_KEY);
+    if (warm) setLeagues(warm);
+    api("/memberships", undefined, { gate: !warm }).then((ms: any[]) => {
       if (!live) return;
-      setLeagues(
-        ms.map((m: any) => ({
+      const next: League[] = ms.map((m: any) => ({
           id: m.leagueId,
           // The league's own name, not your team's: this row IS the league.
           name: m.league?.name ?? "League",
           // Your helmet colour in that league, which is what makes one shield
           // distinguishable from the next at a glance.
           color: m.helmetColor ?? null,
-        })),
-      );
+      }));
+      setCached(NAV_LEAGUES_KEY, next);
+      setLeagues(next);
     })
       .catch(() => { /* leave the list empty; /home carries the real error UI */ });
     return () => { live = false; };

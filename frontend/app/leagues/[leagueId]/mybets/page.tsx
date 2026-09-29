@@ -3,7 +3,7 @@
 import { use, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
-import { getCached, setCached } from "@/lib/pageCache";
+import { getCached, readCached, setCached } from "@/lib/pageCache";
 import { fmtMoney } from "@/lib/money";
 import PlacedBetCard, { type BetKind } from "@/components/PlacedBetCard";
 
@@ -32,14 +32,14 @@ export default function MyBetsPage({ params }: PageProps<"/leagues/[leagueId]/my
   const [loading, setLoading] = useState(!cached);
   const [cashingOut, setCashingOut] = useState<string | null>(null);
 
-  async function load(lid: string, currentWeek: any) {
+  async function load(lid: string, currentWeek: any, gate = true) {
     const weekPropIds = new Set((currentWeek?.games ?? []).flatMap((g: any) => (g.props ?? []).map((p: any) => p.id)));
     const weekLineIds = new Set((currentWeek?.games ?? []).flatMap((g: any) => (g.gameLines ?? []).map((l: any) => l.id)));
 
     const [picksData, gamePicksData, parlaysData] = await Promise.all([
-      api(`/picks?leagueId=${lid}`),
-      api(`/gamepicks?leagueId=${lid}`),
-      api(`/parlays?leagueId=${lid}`),
+      api(`/picks?leagueId=${lid}`, undefined, { gate }),
+      api(`/gamepicks?leagueId=${lid}`, undefined, { gate }),
+      api(`/parlays?leagueId=${lid}`, undefined, { gate }),
     ]);
 
     const nextPicks = picksData.filter((p: any) => weekPropIds.has(p.propId));
@@ -69,11 +69,23 @@ export default function MyBetsPage({ params }: PageProps<"/leagues/[leagueId]/my
       if (!localStorage.getItem("token")) { router.push("/"); return; }
       const lid = leagueId;
 
+      // After a reload memory is empty but sessionStorage is not: repaint the
+      // last answer while the boot gate still has the shell hidden, and do not
+      // hold the gate for a refresh of it. See lib/pageCache.
+      const warm = cached ? undefined : readCached<Cached>(cacheKey(lid));
+      if (warm) {
+        setWeek(warm.week);
+        setPicks(warm.picks);
+        setGamePicks(warm.gamePicks);
+        setParlays(warm.parlays);
+        setLoading(false);
+      }
+
       try {
-        const weeks = await api(`/weeks?current=true&leagueId=${lid}`);
+        const weeks = await api(`/weeks?current=true&leagueId=${lid}`, undefined, { gate: !warm });
         const currentWeek = weeks?.[0] ?? null;
         setWeek(currentWeek);
-        await load(lid, currentWeek);
+        await load(lid, currentWeek, !warm);
       } catch {}
 
       setLoading(false);

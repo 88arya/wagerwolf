@@ -1,9 +1,12 @@
 "use client";
 
+import { useEffect } from "react";
 import { usePathname } from "next/navigation";
 import AppChrome from "@/components/AppChrome";
 import MobileGate from "@/components/MobileGate";
 import SideNav from "@/components/SideNav";
+import LoadingBar from "@/components/LoadingBar";
+import { armBoot, useBooted } from "@/lib/bootGate";
 
 /**
  * Chooses between the app's two layouts, and is the only place that choice is
@@ -53,6 +56,17 @@ function inShell(pathname: string) {
   return SHELL_ROUTES.some(p => pathname === p || pathname.startsWith(`${p}/`));
 }
 
+/**
+ * Arms the boot gate. Rendered LAST in the shell branch, because React runs
+ * effects child first and in sibling order: by the time this effect runs, every
+ * component in the shell has fired its mount fetches, so the gate knows the
+ * whole first round it is waiting for. See lib/bootGate.
+ */
+function ShellBoot() {
+  useEffect(() => { armBoot(); }, []);
+  return null;
+}
+
 export default function AppFrame({
   children,
   footer,
@@ -64,6 +78,7 @@ export default function AppFrame({
   footer: React.ReactNode;
 }) {
   const pathname = usePathname() ?? "";
+  const booted = useBooted();
 
   if (inShell(pathname)) {
     return (
@@ -74,7 +89,14 @@ export default function AppFrame({
           below gets no gate: the landing page and the marketing routes are
           responsive and stay that way. */}
       <MobileGate />
-      <div className="app-shell">
+      {/* THE FIRST LOAD IS ONE REVEAL. Until the shell's first data has landed
+          the whole shell is hidden (not unmounted: it has to mount to fetch)
+          behind the same loading bar sign-in shows, then everything appears
+          at once instead of assembling itself request by request. */}
+      {!booted && (
+        <LoadingBar label="Loading" className="shell-boot" />
+      )}
+      <div className={booted ? "app-shell" : "app-shell is-booting"}>
         <SideNav />
         {/* THE CARD IS THE SCROLLER. Pages inside it need no changes: `.page` /
             `.page-wide` resolve their `min-height: calc(100% - var(--chrome-h))`
@@ -85,6 +107,7 @@ export default function AppFrame({
             live on the marketing routes, which still carry it. */}
         <div className="app-card">{children}</div>
       </div>
+      <ShellBoot />
       </>
     );
   }

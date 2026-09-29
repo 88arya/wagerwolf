@@ -3,7 +3,7 @@
 import { use, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
-import { getCached, setCached } from "@/lib/pageCache";
+import { getCached, readCached, setCached } from "@/lib/pageCache";
 import { fmtMoney } from "@/lib/money";
 import PlacedBetCard, { type BetKind } from "@/components/PlacedBetCard";
 
@@ -33,13 +33,13 @@ export default function HistoryPage({ params }: PageProps<"/leagues/[leagueId]/h
   const [loading, setLoading] = useState(!cached);
   const [cashingOut, setCashingOut] = useState<string | null>(null);
 
-  async function load(lId: string) {
+  async function load(lId: string, gate = true) {
     try {
       const [picksData, gamePicksData, parlaysData, leagueData] = await Promise.all([
-        api(`/picks?leagueId=${lId}`),
-        api(`/gamepicks?leagueId=${lId}`),
-        api(`/parlays?leagueId=${lId}`),
-        api(`/leagues/${lId}`),
+        api(`/picks?leagueId=${lId}`, undefined, { gate }),
+        api(`/gamepicks?leagueId=${lId}`, undefined, { gate }),
+        api(`/parlays?leagueId=${lId}`, undefined, { gate }),
+        api(`/leagues/${lId}`, undefined, { gate }),
       ]);
       setPicks(picksData);
       setGamePicks(gamePicksData);
@@ -58,7 +58,17 @@ export default function HistoryPage({ params }: PageProps<"/leagues/[leagueId]/h
   useEffect(() => {
     async function init() {
       if (!localStorage.getItem("token")) { router.push("/"); return; }
-      await load(leagueId);
+      // After a reload memory is empty but sessionStorage is not: repaint the
+      // last answer while the boot gate still has the shell hidden, and do not
+      // hold the gate for a refresh of it. See lib/pageCache.
+      const warm = cached ? undefined : readCached<Cached>(cacheKey(leagueId));
+      if (warm) {
+        setPicks(warm.picks);
+        setGamePicks(warm.gamePicks);
+        setParlays(warm.parlays);
+        setLoading(false);
+      }
+      await load(leagueId, !warm);
     }
     init();
   }, [leagueId]);
