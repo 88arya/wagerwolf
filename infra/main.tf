@@ -212,6 +212,17 @@ resource "aws_instance" "app" {
   # silently applies to nothing — user_data runs once, at first boot.
   user_data_replace_on_change = true
 
+  # THE AMI IS PINNED TO WHATEVER THE INSTANCE WAS LAUNCHED WITH. The lookup
+  # above takes Canonical's most recent build, so without this every new Ubuntu
+  # release turns the next `terraform apply` into a REPLACEMENT of the production
+  # box, taking /opt/wagerwolf, the .env, the origin certificates and Redis's
+  # data with it. Found 28 Sept 2026 on the first apply after launch, and applied
+  # around with -target. Security patches arrive through unattended-upgrades;
+  # moving to a new AMI is a deliberate rebuild, not a side effect of a plan.
+  lifecycle {
+    ignore_changes = [ami]
+  }
+
   tags = {
     Name    = var.project
     Project = var.project
