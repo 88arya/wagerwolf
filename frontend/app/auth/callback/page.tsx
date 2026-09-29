@@ -43,6 +43,11 @@ export default function GoogleCallbackPage() {
     if (ran.current) return;
     ran.current = true;
 
+    // Fetch /home's code while the exchange is in flight, which is otherwise
+    // dead time. Without it the replace below starts the route load only once
+    // the token is back, and the two waits run end to end.
+    router.prefetch("/home");
+
     const params = new URLSearchParams(window.location.search);
     const code = params.get("code");
     const state = params.get("state");

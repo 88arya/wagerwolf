@@ -53,7 +53,12 @@ const STRIP_LEAGUE_KEY = "strip_league_id";
 //  - /settings and the three legal pages are bare too: each carries its own
 //    BarePageHeader with the lockup and a Done button, so the utility bar
 //    would be a second header above a page that already has one.
-const NO_CHROME = ["/logo", "/signup", "/sign-in", "/settings", "/docs"];
+//  - /auth/callback is the second half of sign-in and carries the same
+//    BarePageHeader. It was missing from this list, so for the round trip of
+//    the token exchange it painted the marketing bar, the games strip and the
+//    footer around "Signing you in…", then /home swapped the whole frame for
+//    the shell. Bare, it matches the screen the person just left.
+const NO_CHROME = ["/logo", "/signup", "/sign-in", "/auth", "/settings", "/docs"];
 
 function isPublicRoute(pathname: string) {
   return NO_CHROME.some(p => pathname === p || pathname.startsWith(`${p}/`));
