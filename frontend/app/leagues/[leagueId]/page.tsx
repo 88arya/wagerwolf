@@ -50,7 +50,7 @@ export default function DashboardPage({ params }: PageProps<"/leagues/[leagueId]
 
       try {
         const [weeks, board] = await Promise.all([
-          api(`/weeks?current=true&leagueId=${leagueId}`),
+          api(`/weeks?current=true&leagueId=${leagueId}&markets=none`),
           api(`/leagues/${leagueId}/leaderboard`),
         ]);
         const currentWeek = weeks?.[0] ?? null;

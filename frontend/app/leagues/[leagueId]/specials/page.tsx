@@ -24,7 +24,7 @@ export default function SpecialsPage({ params }: PageProps<"/leagues/[leagueId]/
       const { leagueId: lid } = await params;
 
       try {
-        const weeks = await api(`/weeks?current=true&leagueId=${lid}`);
+        const weeks = await api(`/weeks?current=true&leagueId=${lid}&markets=none`);
         setWeek(weeks?.[0] ?? null);
       } catch {}
 

@@ -2,6 +2,7 @@ import { db } from "../db/db";
 import { players } from "../db/schema";
 import { eq, isNull, inArray, sql } from "drizzle-orm";
 import { searchEspnPlayerId, getAthleteDetails, espnImageUrl } from "./espnApi";
+import { invalidateAllMarkets } from "./weekBoard";
 
 /**
  * Resolving a player's ESPN identity — headshot, jersey, position.
@@ -128,6 +129,9 @@ export async function backfillPlayerIdentities(
     }
   }
   await Promise.all(Array.from({ length: Math.min(CONCURRENCY, rows.length) }, worker));
+  // The bet board embeds each prop's player row, so a sweep that changed any
+  // of them has to drop its cache. Once per sweep, not per player.
+  if (resolved > 0) invalidateAllMarkets();
 
   return { scanned: rows.length, resolved, unresolved: rows.length - resolved };
 }

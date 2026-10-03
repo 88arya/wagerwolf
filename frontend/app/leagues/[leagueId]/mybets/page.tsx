@@ -33,8 +33,12 @@ export default function MyBetsPage({ params }: PageProps<"/leagues/[leagueId]/my
   const [cashingOut, setCashingOut] = useState<string | null>(null);
 
   async function load(lid: string, currentWeek: any, gate = true) {
-    const weekPropIds = new Set((currentWeek?.games ?? []).flatMap((g: any) => (g.props ?? []).map((p: any) => p.id)));
-    const weekLineIds = new Set((currentWeek?.games ?? []).flatMap((g: any) => (g.gameLines ?? []).map((l: any) => l.id)));
+    // Matched by the game's week, which every bet already carries
+    // (prop → game, gameLine → game). It used to collect the ids of every prop
+    // and line on the board, which meant downloading the whole 1.86 MB board
+    // to answer "is this bet from this week".
+    const weekId = currentWeek?.id;
+    const inWeek = (game: any) => weekId != null && game?.weekId === weekId;
 
     const [picksData, gamePicksData, parlaysData] = await Promise.all([
       api(`/picks?leagueId=${lid}`, undefined, { gate }),
@@ -42,13 +46,12 @@ export default function MyBetsPage({ params }: PageProps<"/leagues/[leagueId]/my
       api(`/parlays?leagueId=${lid}`, undefined, { gate }),
     ]);
 
-    const nextPicks = picksData.filter((p: any) => weekPropIds.has(p.propId));
-    const nextGamePicks = gamePicksData.filter((p: any) => weekLineIds.has(p.gameLineId));
+    const nextPicks = picksData.filter((p: any) => inWeek(p.prop?.game));
+    const nextGamePicks = gamePicksData.filter((p: any) => inWeek(p.gameLine?.game));
     // parlays: include if any leg is in this week
     const nextParlays = parlaysData.filter((p: any) =>
       p.legs?.some((l: any) =>
-        (l.propId && weekPropIds.has(l.propId)) ||
-        (l.gameLineId && weekLineIds.has(l.gameLineId))
+        inWeek(l.prop?.game) || inWeek(l.gameLine?.game)
       )
     );
 
@@ -82,7 +85,7 @@ export default function MyBetsPage({ params }: PageProps<"/leagues/[leagueId]/my
       }
 
       try {
-        const weeks = await api(`/weeks?current=true&leagueId=${lid}`, undefined, { gate: !warm });
+        const weeks = await api(`/weeks?current=true&leagueId=${lid}&markets=none`, undefined, { gate: !warm });
         const currentWeek = weeks?.[0] ?? null;
         setWeek(currentWeek);
         await load(lid, currentWeek, !warm);

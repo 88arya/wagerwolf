@@ -7,6 +7,7 @@ import { calcProfit } from "../lib/payout";
 import { cachedPublicBoard } from "../services/publicMarkets";
 import { attachBetCounts, betCountsForWeek } from "../services/betCounts";
 import { currentWeekSteps } from "../services/currentWeek";
+import { marketsForGames, invalidateAllMarkets } from "../services/weekBoard";
 import { resolveWeekById, UnscoredGamesError } from "../services/resolveWeek";
 import { distributeWeeklyAllowances } from "../services/distributeAllowances";
 
@@ -152,6 +153,11 @@ router.get("/:weekId/bet-counts", async (req: any, res: any, next: any) => {
 router.get("/", requireAuth, async (req: any, res: any, next: any) => {
   try {
     const { current, leagueId } = req.query;
+    // `markets=none` is for pages that want the week and its games but never
+    // show a price: league home, My Bets, standings, schedule, scoreboard,
+    // specials. They used to pull the whole 1.86 MB board to read
+    // `week.number`.
+    const withMarkets = req.query.markets !== "none";
 
     if (current === "true") {
       const now = new Date();
@@ -173,16 +179,26 @@ router.get("/", requireAuth, async (req: any, res: any, next: any) => {
         // `orderBy: SQL<unknown>[]`, which no `with` overload accepts — the
         // same contextual-typing trap the `withGames` note above describes for
         // `as const`. Inline, the literal is typed by the parameter it fills.
+        //
+        // Games only, and fresh: scores and status move every minute. The
+        // markets hang off them from services/weekBoard.ts, which is what
+        // keeps a board load from re-reading 1.4 MB out of Postgres. Never
+        // `publicBoard`, the landing page's 25 kB sample, which nothing here
+        // reads.
         week = await db.query.weeks.findFirst({
           ...step,
-          with: {
-            games: {
-              orderBy: [asc(games.gameDate), asc(games.id)],
-              with: { props: { with: { player: true } }, gameLines: true },
-            },
-          },
+          columns: { publicBoard: false },
+          with: { games: { orderBy: [asc(games.gameDate), asc(games.id)] } },
         });
         if (week) break;
+      }
+      if (week && withMarkets) {
+        const markets = await marketsForGames(week.games.map((g: any) => g.id));
+        for (const g of week.games) {
+          const m = markets.get(g.id);
+          g.props = m?.props ?? [];
+          g.gameLines = m?.gameLines ?? [];
+        }
       }
       if (week) await attachBetCounts(week);
       res.json(week ? [week] : []);
@@ -239,6 +255,7 @@ router.delete("/:id", requireAuth, requireCron, async (req: any, res: any, next:
       await db.delete(games).where(inArray(games.id, gameIds));
     }
     await db.delete(weeks).where(eq(weeks.id, req.params.id));
+    invalidateAllMarkets();
 
     res.json({ message: "Week deleted" });
   } catch (err: any) {
@@ -395,6 +412,9 @@ router.post("/:id/resolve", requireAuth, requireCron, async (req: any, res: any,
       for (const { propId, result } of results) {
         await db.update(props).set({ result }).where(eq(props.id, propId));
       }
+      // Straight to the table, so the board's cache has to hear about it here,
+      // before the game-line block below can return early on a bad id.
+      invalidateAllMarkets();
     }
 
     if (gameLineResults?.length) {
@@ -407,6 +427,7 @@ router.post("/:id/resolve", requireAuth, requireCron, async (req: any, res: any,
       for (const { gameLineId, result } of gameLineResults) {
         await db.update(gameLines).set({ result }).where(eq(gameLines.id, gameLineId));
       }
+      invalidateAllMarkets();
     }
 
     // THE SAME PATH THE HOURLY CRON TAKES. Scores, grading, voids, parlays,

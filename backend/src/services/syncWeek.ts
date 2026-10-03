@@ -4,6 +4,7 @@ import { weeks, games, gameLines, players, props, picks, gamePicks, parlayLegs }
 import { getNFLWeekGames } from "./espnApi";
 import { SGOEvent, SGOProp, fetchEventsByID, fetchEventsByDate } from "./sportsGameOdds";
 import { backfillPlayerIdentities } from "./playerIdentity";
+import { invalidateAllMarkets, invalidateGameMarkets } from "./weekBoard";
 
 export async function syncESPNGames(weekId: string): Promise<{ synced: number }> {
   const week = await db.query.weeks.findFirst({ where: eq(weeks.id, weekId) });
@@ -23,6 +24,7 @@ export async function syncESPNGames(weekId: string): Promise<{ synced: number }>
     await db.delete(props).where(inArray(props.gameId, fakeIds));
     await db.delete(gameLines).where(inArray(gameLines.gameId, fakeIds));
     await db.delete(games).where(inArray(games.id, fakeIds));
+    invalidateAllMarkets();
   }
 
   // Update week dates to match real ESPN schedule
@@ -157,6 +159,20 @@ export async function applyEvent(
 ): Promise<{ lines: number; props: number; retired: number }> {
   // Never move a price on a game that has kicked off — bets are locked there.
   if (new Date(game.gameDate) <= new Date()) return { lines: 0, props: 0, retired: 0 };
+  try {
+    return await writeEvent(ev, game);
+  } finally {
+    // The bet board caches markets per game (services/weekBoard.ts); this is
+    // the write it has to hear about. In a finally, because a write that fails
+    // partway has still changed the rows.
+    invalidateGameMarkets(game.id);
+  }
+}
+
+async function writeEvent(
+  ev: SGOEvent,
+  game: { id: string; gameDate: Date },
+): Promise<{ lines: number; props: number; retired: number }> {
 
   const liveMarkets = new Set<string>();
   let lineCount = 0;

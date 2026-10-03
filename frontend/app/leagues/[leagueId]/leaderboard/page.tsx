@@ -28,7 +28,7 @@ export default function LeaderboardPage({ params }: PageProps<"/leagues/[leagueI
         const [board, leagueData, weeks] = await Promise.all([
           api(`/leagues/${leagueId}/leaderboard`),
           api(`/leagues/${leagueId}`),
-          api(`/weeks?current=true&leagueId=${leagueId}`),
+          api(`/weeks?current=true&leagueId=${leagueId}&markets=none`),
         ]);
         setEntries(board);
         setLeague(leagueData);

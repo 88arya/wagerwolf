@@ -7,6 +7,7 @@ import { fetchEventsByID } from "./sportsGameOdds";
 import { Grade, gradeOverUnder, gradeGameLine, creditFor, settleParlay } from "./grading";
 import { creditStake } from "./betLedger";
 import { GradeAttempts, pastGradeDeadline } from "./gradeRetry";
+import { invalidateGameMarkets } from "./weekBoard";
 
 const sgoAttempts = new GradeAttempts();
 
@@ -117,6 +118,10 @@ async function gradePropsFromSGO(game: any, atDeadline = false): Promise<boolean
       const score = ev.scores[prop.oddID];
       if (typeof score !== "number") continue;
       await db.update(props).set({ result: score }).where(eq(props.id, prop.id));
+      // At the write, not once per settlement: the score sync retries this
+      // every minute while SGO has not finalized, and a run that writes nothing
+      // must not make the bet board re-read the game.
+      invalidateGameMarkets(prop.gameId);
       prop.result = score;
     }
 
@@ -162,6 +167,7 @@ async function gradePropsFromESPN(game: any): Promise<void> {
       if (!playerStats) continue;
       const result = playerStats[statKey] ?? 0;
       await db.update(props).set({ result }).where(eq(props.id, prop.id));
+      invalidateGameMarkets(prop.gameId);
       prop.result = result;
     }
   } catch (err) {
@@ -332,6 +338,7 @@ export async function settleFinalGame(gameId: string, atDeadline = false): Promi
       await db.update(gameLines)
         .set({ result: grade === "WIN", pushed: grade === "PUSH" })
         .where(eq(gameLines.id, gl.id));
+      invalidateGameMarkets(gameId);
       gl.result = grade === "WIN";
       gl.pushed = grade === "PUSH";
     }

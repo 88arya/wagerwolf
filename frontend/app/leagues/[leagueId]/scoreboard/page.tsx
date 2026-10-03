@@ -27,7 +27,7 @@ export default function ScoreboardPage({ params }: PageProps<"/leagues/[leagueId
 
       const [board, weeks] = await Promise.all([
         api(`/leagues/${leagueId}/leaderboard`),
-        api(`/weeks?current=true&leagueId=${leagueId}`),
+        api(`/weeks?current=true&leagueId=${leagueId}&markets=none`),
       ]);
       setMembers(board ?? []);
 

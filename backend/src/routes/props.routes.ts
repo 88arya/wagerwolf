@@ -3,6 +3,7 @@ import { db } from "../db/db";
 import { eq, and, inArray, isNotNull } from "drizzle-orm";
 import { props, games } from "../db/schema";
 import { requireAuth, requireCron } from "../middleware/auth";
+import { invalidateGameMarkets } from "../services/weekBoard";
 
 const router = Router();
 
@@ -14,6 +15,7 @@ router.post("/", requireAuth, requireCron, async (req: any, res: any, next: any)
       return;
     }
     const [prop] = await db.insert(props).values({ gameId, playerId, statType, line: Number(line) }).returning();
+    invalidateGameMarkets(gameId);
     res.status(201).json(prop);
   } catch (err: any) {
     next(err); return;

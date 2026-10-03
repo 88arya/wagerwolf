@@ -28,7 +28,7 @@ export default function SchedulePage({ params }: PageProps<"/leagues/[leagueId]/
       const [all, board, weeks] = await Promise.all([
         api(`/leagues/${leagueId}/matchups`),
         api(`/leagues/${leagueId}/leaderboard`),
-        api(`/weeks?current=true&leagueId=${leagueId}`).catch(() => null),
+        api(`/weeks?current=true&leagueId=${leagueId}&markets=none`).catch(() => null),
       ]);
       setMatchups(all ?? []);
       setMembers(board ?? []);
