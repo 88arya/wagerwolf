@@ -24,6 +24,10 @@
  *   k6 run -e TOKEN=<jwt> -e LEAGUE=<leagueId> -e KEY=<LOADTEST_KEY> \
  *          -e PEAK=1000 loadtest/journey.js
  *
+ * Or a staircase, to find where it bends: STAGES is duration:target pairs,
+ *
+ *   -e STAGES=2m:500,3m:500,2m:1000,3m:1000,30s:0
+ *
  * KEY is the x-loadtest-key that lifts the 300/min per-IP limiter for this
  * client; without it every user shares one IP's budget and the run measures
  * 429s. BASE defaults to production.
@@ -35,6 +39,16 @@ const BASE = __ENV.BASE || "https://api.wagerwolf.app";
 const LEAGUE = __ENV.LEAGUE;
 const PEAK = Number(__ENV.PEAK || 200);
 const HOLD = __ENV.HOLD || "5m";
+const STAGES = __ENV.STAGES
+  ? __ENV.STAGES.split(",").map((st) => {
+      const [duration, target] = st.split(":");
+      return { duration, target: Number(target) };
+    })
+  : [
+      { duration: "2m", target: PEAK },
+      { duration: HOLD, target: PEAK },
+      { duration: "30s", target: 0 },
+    ];
 
 if (!__ENV.TOKEN || !LEAGUE) throw new Error("TOKEN and LEAGUE are required");
 
@@ -52,11 +66,7 @@ export const options = {
     users: {
       executor: "ramping-vus",
       startVUs: 0,
-      stages: [
-        { duration: "2m", target: PEAK },
-        { duration: HOLD, target: PEAK },
-        { duration: "30s", target: 0 },
-      ],
+      stages: STAGES,
       gracefulRampDown: "30s",
     },
   },
