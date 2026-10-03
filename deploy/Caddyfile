@@ -33,7 +33,20 @@
 # Set it to ":80" to serve plain HTTP before DNS points here.
 {$BACKEND_DOMAIN} {
 	tls /etc/caddy/certs/origin.pem /etc/caddy/certs/origin.key
-	reverse_proxy app:5000
+
+	# BOUNDED WAITS. Without them Caddy holds every request to an app that has
+	# stopped answering, for as long as the client stays connected: on 3 Oct
+	# 2026 a load test saturated the app and Caddy kept stalled requests for 30
+	# to 45 seconds each until its memory ran out and the kernel killed it. A
+	# dial that cannot connect in 3s will not, and no route here legitimately
+	# takes 30s to send its headers. The app sheds load itself too (see
+	# backend/src/middleware/loadShed.ts); this is the proxy's half.
+	reverse_proxy app:5000 {
+		transport http {
+			dial_timeout 3s
+			response_header_timeout 30s
+		}
+	}
 
 	encode gzip zstd
 
@@ -49,9 +62,17 @@
 
 	# Access logs stay in the container's stdout, which means `docker compose
 	# logs caddy`. There is no log shipping configured — see DEPLOYMENT.md.
+	#
+	# The load-test key is a secret and Caddy only redacts Authorization and
+	# cookies on its own, so every logged request carried it in plain text.
 	log {
 		output stdout
-		format console
+		format filter {
+			wrap console
+			fields {
+				request>headers>X-Loadtest-Key delete
+			}
+		}
 	}
 }
 

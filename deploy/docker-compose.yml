@@ -146,7 +146,16 @@ services:
       WWW_DOMAIN: ${WWW_DOMAIN:-:8081}
       # Where `www` sends people. A FULL URL — see the Caddyfile.
       CANONICAL_URL: ${CANONICAL_URL:-https://${APP_DOMAIN}}
-    mem_limit: 128m
+      # Go collects harder as the heap nears this, well before the cgroup
+      # limit below. Without it Go's GC paces against nothing it can see, and
+      # the first sign of pressure is the kernel's OOM kill.
+      GOMEMLIMIT: 200MiB
+    # 256m, up from 128m. On 3 Oct 2026 a load test drove the app past what it
+    # could serve; Caddy buffered the stalled requests, hit 128m and was
+    # OOM-killed, and the site was down for two minutes. The app now sheds load
+    # and the Caddyfile bounds how long a request may wait, so this is headroom
+    # rather than the fix.
+    mem_limit: 256m
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       # The Cloudflare Origin certificate and its key. Read-only, and NOT in
