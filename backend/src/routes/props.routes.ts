@@ -1,9 +1,10 @@
 import { Router } from "express";
 import { db } from "../db/db";
-import { eq, and, inArray, isNotNull } from "drizzle-orm";
+import { eq, and, inArray } from "drizzle-orm";
 import { props, games } from "../db/schema";
 import { requireAuth, requireCron } from "../middleware/auth";
 import { invalidateGameMarkets } from "../services/weekBoard";
+import { hitRates } from "../services/hitRates";
 
 const router = Router();
 
@@ -22,31 +23,11 @@ router.post("/", requireAuth, requireCron, async (req: any, res: any, next: any)
   }
 });
 
-router.get("/hit-rates", requireAuth, async (req: any, res: any, next: any) => {
+// See services/hitRates.ts: counted in SQL and cached, where this used to pull
+// every graded prop in the table on each bet-page load.
+router.get("/hit-rates", requireAuth, async (_req: any, res: any, next: any) => {
   try {
-    const resolvedProps = await db.select({
-      playerId: props.playerId,
-      statType: props.statType,
-      line: props.line,
-      result: props.result,
-    }).from(props).where(isNotNull(props.result));
-
-    const counts: Record<string, { over: number; under: number }> = {};
-    for (const p of resolvedProps) {
-      const key = `${p.playerId}:${p.statType}`;
-      if (!counts[key]) counts[key] = { over: 0, under: 0 };
-      if (p.result! > p.line) counts[key].over++;
-      else if (p.result! < p.line) counts[key].under++;
-    }
-
-    const result: Record<string, { overPct: number; sampleSize: number }> = {};
-    for (const [key, c] of Object.entries(counts)) {
-      const total = c.over + c.under;
-      if (total === 0) continue;
-      result[key] = { overPct: Math.round((c.over / total) * 100), sampleSize: total };
-    }
-
-    res.json(result);
+    res.json(await hitRates());
   } catch (err: any) {
     next(err); return;
   }
