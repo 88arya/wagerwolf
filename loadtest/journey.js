@@ -71,7 +71,13 @@ export const options = {
     },
   },
   thresholds: {
-    http_req_failed: ["rate<0.01"],
+    // ABORT_FAIL_RATE ends the run on its own once that share of requests has
+    // failed, after a minute's grace. Under overload the API sheds load with
+    // 503s, so this is the point past which a staircase stops telling you
+    // anything new. Cumulative over the run, so it trips late, not early.
+    http_req_failed: __ENV.ABORT_FAIL_RATE
+      ? [{ threshold: `rate<${__ENV.ABORT_FAIL_RATE}`, abortOnFail: true, delayAbortEval: "1m" }]
+      : ["rate<0.01"],
     "http_req_duration{page:bet}": ["p(95)<1500"],
     "http_req_duration{page:home}": ["p(95)<500"],
   },
