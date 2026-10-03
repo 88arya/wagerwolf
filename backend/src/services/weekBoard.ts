@@ -51,18 +51,28 @@ const gameGen = new Map<string, number>();
 let globalGen = 0;
 
 const genOf = (gameId: string) => `${globalGen}:${gameGen.get(gameId) ?? 0}`;
+
+/**
+ * Bumped by every invalidation, of one game or all. Anything built on top of
+ * these markets (services/boardResponse.ts) keys on it, so an odds write
+ * reaches the serialized board without that layer needing its own hooks.
+ */
+let version = 0;
+export const marketsVersion = () => version;
 const EMPTY: GameMarkets = { props: [], gameLines: [] };
 
 /** Drop one game's cached markets. Call AFTER the write it follows. */
 export function invalidateGameMarkets(gameId: string): void {
   gameGen.set(gameId, (gameGen.get(gameId) ?? 0) + 1);
   entries.delete(gameId);
+  version++;
 }
 
 /** Drop everything — for bulk writes that span games or weeks. */
 export function invalidateAllMarkets(): void {
   globalGen++;
   entries.clear();
+  version++;
 }
 
 async function load(gameIds: string[]): Promise<Map<string, GameMarkets>> {

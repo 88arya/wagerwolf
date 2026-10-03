@@ -8,6 +8,7 @@ import { cachedPublicBoard } from "../services/publicMarkets";
 import { attachBetCounts, betCountsForWeek } from "../services/betCounts";
 import { currentWeekSteps } from "../services/currentWeek";
 import { marketsForGames, invalidateAllMarkets } from "../services/weekBoard";
+import { cachedResponse, sendBuilt } from "../services/boardResponse";
 import { resolveWeekById, UnscoredGamesError } from "../services/resolveWeek";
 import { distributeWeeklyAllowances } from "../services/distributeAllowances";
 
@@ -173,35 +174,39 @@ router.get("/", requireAuth, async (req: any, res: any, next: any) => {
           max: league.startWeek + league.regularSeasonWeeks + league.playoffWeeks - 1,
         };
       }
+      // Which week, read per request: it is the only part that depends on the
+      // league (its range). Never `publicBoard`, the landing page's 25 kB
+      // sample, which nothing here reads.
       let week: any = null;
       for (const step of currentWeekSteps(now, range)) {
-        // The projection stays INLINE. Hoisted to a const it widens to
-        // `orderBy: SQL<unknown>[]`, which no `with` overload accepts — the
-        // same contextual-typing trap the `withGames` note above describes for
-        // `as const`. Inline, the literal is typed by the parameter it fills.
-        //
-        // Games only, and fresh: scores and status move every minute. The
-        // markets hang off them from services/weekBoard.ts, which is what
-        // keeps a board load from re-reading 1.4 MB out of Postgres. Never
-        // `publicBoard`, the landing page's 25 kB sample, which nothing here
-        // reads.
-        week = await db.query.weeks.findFirst({
-          ...step,
-          columns: { publicBoard: false },
-          with: { games: { orderBy: [asc(games.gameDate), asc(games.id)] } },
-        });
+        week = await db.query.weeks.findFirst({ ...step, columns: { publicBoard: false } });
         if (week) break;
       }
-      if (week && withMarkets) {
-        const markets = await marketsForGames(week.games.map((g: any) => g.id));
-        for (const g of week.games) {
-          const m = markets.get(g.id);
-          g.props = m?.props ?? [];
-          g.gameLines = m?.gameLines ?? [];
+      if (!week) { res.json([]); return; }
+
+      // Everything under the week is the same for every caller, so it is built
+      // once and served as prebuilt gzip bytes (services/boardResponse.ts).
+      // Games are read fresh at each build, since scores and status move every
+      // minute; the markets come from services/weekBoard.ts, which is what
+      // keeps a board load from re-reading 1.4 MB out of Postgres.
+      const built = await cachedResponse(`week:${week.id}:${withMarkets ? "full" : "lite"}`, async () => {
+        const gameRows: any[] = await db.query.games.findMany({
+          where: eq(games.weekId, week.id),
+          orderBy: [asc(games.gameDate), asc(games.id)],
+        });
+        const full: any = { ...week, games: gameRows };
+        if (withMarkets) {
+          const markets = await marketsForGames(gameRows.map((g) => g.id));
+          for (const g of gameRows) {
+            const m = markets.get(g.id);
+            g.props = m?.props ?? [];
+            g.gameLines = m?.gameLines ?? [];
+          }
         }
-      }
-      if (week) await attachBetCounts(week);
-      res.json(week ? [week] : []);
+        await attachBetCounts(full);
+        return [full];
+      });
+      sendBuilt(req, res, built);
       return;
     }
 
