@@ -26,6 +26,7 @@ import supportRoutes from "./routes/support.routes";
 import { runStartupSeed } from "./services/startupSeed";
 import { startScheduler, stopScheduler } from "./services/scheduler";
 import { globalLimiter } from "./middleware/rateLimit";
+import { loadShed } from "./middleware/loadShed";
 import { errorHandler, notFoundHandler } from "./middleware/errorHandler";
 import { dbPool } from "./db/db";
 import { redisConnection, rateLimitRedis } from "./queue/connection";
@@ -67,6 +68,9 @@ app.use(express.json());
 // frequently) can never be throttled or fail a deploy.
 app.use("/health", healthRoutes);
 
+// Before the limiter: a request refused for load should cost nothing more.
+// See middleware/loadShed.ts.
+app.use(loadShed);
 app.use(globalLimiter);
 
 app.use("/users", userRoutes);
