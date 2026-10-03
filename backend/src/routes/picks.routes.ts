@@ -2,6 +2,7 @@ import { Router } from "express";
 import { db } from "../db/db";
 import { eq, and } from "drizzle-orm";
 import { picks, leagues, props } from "../db/schema";
+import { WEEK_WITHOUT_BOARD } from "../db/weekColumns";
 import { requireAuth } from "../middleware/auth";
 import { betLimiter } from "../middleware/rateLimit";
 import { fmtMoney } from "../lib/payout";
@@ -28,7 +29,7 @@ router.post("/", requireAuth, betLimiter, async (req: any, res: any, next: any) 
 
     const prop = await db.query.props.findFirst({
       where: eq(props.id, propId),
-      with: { game: { with: { week: true } } },
+      with: { game: { with: { week: WEEK_WITHOUT_BOARD } } },
     }) as any;
 
     if (!prop) { res.status(404).json({ error: "Prop not found" }); return; }
@@ -103,7 +104,7 @@ router.get("/", requireAuth, async (req: any, res: any, next: any) => {
 
     const rows = await db.query.picks.findMany({
       where: whereClause,
-      with: { prop: { with: { player: true, game: { with: { week: true } } } } },
+      with: { prop: { with: { player: true, game: { with: { week: WEEK_WITHOUT_BOARD } } } } },
       orderBy: (picks, { desc }) => [desc(picks.createdAt)],
     });
 

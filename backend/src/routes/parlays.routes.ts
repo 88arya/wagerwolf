@@ -2,6 +2,7 @@ import { Router } from "express";
 import { db } from "../db/db";
 import { eq, and } from "drizzle-orm";
 import { leagues, memberships, props, gameLines, parlays, parlayLegs } from "../db/schema";
+import { WEEK_WITHOUT_BOARD } from "../db/weekColumns";
 import { requireAuth } from "../middleware/auth";
 import { betLimiter } from "../middleware/rateLimit";
 import { calcParlayOdds, calcParlayPayout, fmtMoney } from "../lib/payout";
@@ -124,7 +125,7 @@ router.post("/", requireAuth, betLimiter, async (req: any, res: any, next: any) 
 
         const prop = await db.query.props.findFirst({
           where: eq(props.id, leg.propId),
-          with: { game: { with: { week: true } } },
+          with: { game: { with: { week: WEEK_WITHOUT_BOARD } } },
         }) as any;
         if (!prop) { res.status(404).json({ error: `Prop ${leg.propId} not found` }); return; }
         if (prop.game.status === "CANCELLED") { res.status(400).json({ error: "Cannot include bets on cancelled games in parlay" }); return; }
@@ -148,7 +149,7 @@ router.post("/", requireAuth, betLimiter, async (req: any, res: any, next: any) 
       } else if (leg.gameLineId) {
         const gameLine = await db.query.gameLines.findFirst({
           where: eq(gameLines.id, leg.gameLineId),
-          with: { game: { with: { week: true } } },
+          with: { game: { with: { week: WEEK_WITHOUT_BOARD } } },
         }) as any;
         if (!gameLine) { res.status(404).json({ error: `GameLine ${leg.gameLineId} not found` }); return; }
         if (gameLine.game.status === "CANCELLED") { res.status(400).json({ error: "Cannot include bets on cancelled games in parlay" }); return; }
@@ -271,7 +272,7 @@ router.post("/round-robin", requireAuth, betLimiter, async (req: any, res: any, 
         if (!leg.direction) { res.status(400).json({ error: "Prop legs require a direction" }); return; }
         const prop = await db.query.props.findFirst({
           where: eq(props.id, leg.propId),
-          with: { game: { with: { week: true } } },
+          with: { game: { with: { week: WEEK_WITHOUT_BOARD } } },
         }) as any;
         if (!prop) { res.status(404).json({ error: `Prop ${leg.propId} not found` }); return; }
         if (prop.game.status === "CANCELLED") { res.status(400).json({ error: "Cannot include cancelled game" }); return; }
@@ -286,7 +287,7 @@ router.post("/round-robin", requireAuth, betLimiter, async (req: any, res: any, 
       } else if (leg.gameLineId) {
         const gameLine = await db.query.gameLines.findFirst({
           where: eq(gameLines.id, leg.gameLineId),
-          with: { game: { with: { week: true } } },
+          with: { game: { with: { week: WEEK_WITHOUT_BOARD } } },
         }) as any;
         if (!gameLine) { res.status(404).json({ error: `GameLine ${leg.gameLineId} not found` }); return; }
         if (gameLine.game.status === "CANCELLED") { res.status(400).json({ error: "Cannot include cancelled game" }); return; }
@@ -419,8 +420,8 @@ router.get("/", requireAuth, async (req: any, res: any, next: any) => {
       with: {
         legs: {
           with: {
-            prop: { with: { player: true, game: { with: { week: true } } } },
-            gameLine: { with: { game: { with: { week: true } } } },
+            prop: { with: { player: true, game: { with: { week: WEEK_WITHOUT_BOARD } } } },
+            gameLine: { with: { game: { with: { week: WEEK_WITHOUT_BOARD } } } },
           },
         },
       },

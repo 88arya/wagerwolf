@@ -2,6 +2,7 @@ import { Router } from "express";
 import { db } from "../db/db";
 import { eq, and } from "drizzle-orm";
 import { gamePicks, gameLines, leagues } from "../db/schema";
+import { WEEK_WITHOUT_BOARD } from "../db/weekColumns";
 import { requireAuth } from "../middleware/auth";
 import { betLimiter } from "../middleware/rateLimit";
 import { fmtMoney } from "../lib/payout";
@@ -41,7 +42,7 @@ router.post("/", requireAuth, betLimiter, async (req: any, res: any, next: any) 
 
     const gameLine = await db.query.gameLines.findFirst({
       where: eq(gameLines.id, gameLineId),
-      with: { game: { with: { week: true } } },
+      with: { game: { with: { week: WEEK_WITHOUT_BOARD } } },
     }) as any;
 
     if (!gameLine) { res.status(404).json({ error: "Game line not found" }); return; }
@@ -131,7 +132,7 @@ router.get("/", requireAuth, async (req: any, res: any, next: any) => {
 
     const rows = await db.query.gamePicks.findMany({
       where: whereClause,
-      with: { gameLine: { with: { game: { with: { week: true } } } } },
+      with: { gameLine: { with: { game: { with: { week: WEEK_WITHOUT_BOARD } } } } },
       orderBy: (gamePicks, { desc }) => [desc(gamePicks.createdAt)],
     });
 
