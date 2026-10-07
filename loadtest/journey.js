@@ -10,7 +10,7 @@
  *   home       /leagues/:id, week (no markets), leaderboard, picks, gamepicks,
  *              parlays, then matchups for that week's number
  *   bet        /leagues/:id (LobbyGate), week WITH markets (the 1.86 MB board),
- *              picks, gamepicks, then /props/hit-rates
+ *              picks, gamepicks
  *   my bets    /leagues/:id, week (no markets), picks, gamepicks, parlays
  *
  * READ ONLY. No bet is placed and nothing is written, so it is safe to point
@@ -133,9 +133,7 @@ export default function () {
       get(`/picks?leagueId=${L}`, "bet", "picks"),
       get(`/gamepicks?leagueId=${L}`, "bet", "gamepicks"),
     ]);
-    const hr = http.get(`${BASE}/props/hit-rates`,
-      { headers, tags: { page: "bet", name: "props/hit-rates" }, responseType: "none" });
-    check([...rs, hr], { "bet 200": (r) => r.every((x) => x.status === 200) });
+    check(rs, { "bet 200": (r) => r.every((x) => x.status === 200) });
   });
   // Reading a board of 16 games takes a while.
   think(20, 60);
