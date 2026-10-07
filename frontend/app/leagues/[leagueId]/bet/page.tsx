@@ -190,14 +190,13 @@ function TeamSide({ team, record }: { team: string; record: string | null | unde
 }
 
 
-function PropPlayerRow({ prop, slipLegs, submittedPropIds, pendingPropDirs, weekLocked, onBet, hitRate }: {
+function PropPlayerRow({ prop, slipLegs, submittedPropIds, pendingPropDirs, weekLocked, onBet }: {
   prop: any;
   slipLegs: any[];
   submittedPropIds: Set<string>;
   pendingPropDirs: Map<string, string>;
   weekLocked: boolean;
   onBet: (prop: any, direction: "OVER" | "UNDER", blockLine: number) => void;
-  hitRate?: { overPct: number; sampleSize: number };
 }) {
   const placed = submittedPropIds.has(prop.id);
   const pendingDir = pendingPropDirs.get(prop.id);
@@ -249,14 +248,6 @@ function PropPlayerRow({ prop, slipLegs, submittedPropIds, pendingPropDirs, week
           <div style={{ fontWeight: 400, fontSize: "0.8rem", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", lineHeight: 1.25 }}>
             {prop.player?.name}
             {placed && <span style={{ marginLeft: 5, fontSize: "0.6rem", color: "var(--win)", fontWeight: 700 }}>✓</span>}
-            {hitRate && hitRate.sampleSize >= 3 && (
-              <span style={{
-                marginLeft: 6, fontSize: "0.58rem", fontWeight: 700,
-                color: hitRate.overPct >= 55 ? "var(--win)" : hitRate.overPct <= 45 ? "var(--loss)" : "var(--text-3)",
-              }}>
-                O {hitRate.overPct}%
-              </span>
-            )}
           </div>
           {prop.player?.position && (
             <div style={{ fontSize: "0.68rem", color: "var(--text-3)", lineHeight: 1.25, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
@@ -341,7 +332,6 @@ export default function BetPage({ params }: PageProps<"/leagues/[leagueId]/bet">
   const [slipLegs, setSlipLegs] = useState<any[]>([]);
   const [altSpreadIdx, setAltSpreadIdx] = useState(0);
   const [altTotalIdx, setAltTotalIdx] = useState(0);
-  const [hitRates, setHitRates] = useState<Record<string, { overPct: number; sampleSize: number }>>({});
   const [collapsedMarkets, setCollapsedMarkets] = useState<Set<string>>(new Set());
 
   // Track devicePixelRatio so the game-card box gap can be snapped to a whole
@@ -425,11 +415,6 @@ export default function BetPage({ params }: PageProps<"/leagues/[leagueId]/bet">
           weekGamesRef = weekGames;
           setGames(weekGames);
           await loadSubmitted(leagueId, weekGames);
-
-          try {
-            const hr = await api("/props/hit-rates");
-            setHitRates(hr ?? {});
-          } catch {}
 
           const gid = searchParams.get("gameId");
           if (gid) {
@@ -574,7 +559,6 @@ export default function BetPage({ params }: PageProps<"/leagues/[leagueId]/bet">
                   pendingPropDirs={pendingPropDirs}
                   weekLocked={weekLocked}
                   onBet={toggleBlockInSlip}
-                  hitRate={hitRates[`${prop.player?.id}:${prop.statType}`]}
                 />
               ))}
             </div>

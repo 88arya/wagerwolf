@@ -4,7 +4,6 @@ import { eq, and, inArray } from "drizzle-orm";
 import { props, games } from "../db/schema";
 import { requireAuth, requireCron } from "../middleware/auth";
 import { invalidateGameMarkets } from "../services/weekBoard";
-import { hitRates } from "../services/hitRates";
 
 const router = Router();
 
@@ -18,16 +17,6 @@ router.post("/", requireAuth, requireCron, async (req: any, res: any, next: any)
     const [prop] = await db.insert(props).values({ gameId, playerId, statType, line: Number(line) }).returning();
     invalidateGameMarkets(gameId);
     res.status(201).json(prop);
-  } catch (err: any) {
-    next(err); return;
-  }
-});
-
-// See services/hitRates.ts: counted in SQL and cached, where this used to pull
-// every graded prop in the table on each bet-page load.
-router.get("/hit-rates", requireAuth, async (_req: any, res: any, next: any) => {
-  try {
-    res.json(await hitRates());
   } catch (err: any) {
     next(err); return;
   }
