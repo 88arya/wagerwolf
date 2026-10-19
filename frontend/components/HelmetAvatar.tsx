@@ -29,10 +29,6 @@ export const HELMET_COLORS = [
   // (white is reserved for the ghost user)
 ];
 
-// `initials` stays in Props because every caller passes it, but nothing draws
-// it — the helmet is pure artwork with no text. Left accepted rather than
-// removed from the type so the ten call sites do not all need editing for a
-// prop that costs nothing to ignore.
 export default function HelmetAvatar({ color, size = 36 }: Props) {
   return (
     <svg width={size} height={size} viewBox="0 0 64 64" style={{ display: "block", filter: "drop-shadow(0 1px 3px rgba(0,0,0,0.22))", flexShrink: 0, transform: "scaleX(-1)" }}>

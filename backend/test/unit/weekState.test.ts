@@ -13,8 +13,6 @@ describe("allGamesFinal", () => {
     expect(allGamesFinal([g("FINAL"), g("LIVE")])).toBe(false);
   });
 
-  // ESPN's POSTPONED arrives as CANCELLED, and resolving refunds it, so a
-  // cancelled game leaves the week to its deadline rather than rolling early.
   it("does not roll over a week holding a CANCELLED game", () => {
     expect(allGamesFinal([g("FINAL"), g("CANCELLED")])).toBe(false);
   });

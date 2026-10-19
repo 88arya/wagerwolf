@@ -1,44 +1,5 @@
 import type { Metadata } from "next";
 
-// NOT LEGALLY REVIEWED. Plain-language terms written to match how the app
-// actually behaves. Have them read by a lawyer before the site is promoted.
-//
-// HOUSE RULES FOR THIS COPY:
-//   no em dashes
-//   no "not X but Y" or "X rather than Y" antithesis as a rhetorical move
-//   plain declaratives, one idea per sentence
-//
-// SEQUENCING. The order follows the structure free-to-play operators converge
-// on, which runs the reader forward through their own use of the service and
-// only then reaches enforcement: acceptance, eligibility, account, currency,
-// conduct, the data the game depends on, ownership, availability, disclaimers,
-// liability, ending the agreement, governing law, amendments, contact.
-// Restrictions come before remedies, and remedies before jurisdiction.
-//
-// FACTS VERIFIED against the backend on 18 Sept 2026:
-//   age              MIN_AGE = 18 (services/age.ts); recorded as
-//                    User.ageConfirmedAt, a timestamp of the answer
-//   sign-in          Google only; users.password is written for the synthetic
-//                    ghost user alone, never for a person
-//   odds             services/sportsGameOdds.ts, a third-party feed
-//   settlement       services/grading.ts is the only grading authority
-//   deactivate       POST /users/me/deactivate: soft, reversible, releases
-//                    seats, KEEPS bets
-//   deletion         DELETE /users/me: deletes memberships, picks, gamepicks,
-//                    parlays, parlay legs, chat messages, then the User row.
-//                    Other players' matchup rows survive. Neither route has a
-//                    UI, so both are described as support requests.
-//
-// GOVERNING LAW IS ONTARIO, set 18 Sept 2026. See the note on GOVERNING_LAW for
-// why the clause carries the federal half as well, and section 15 for why the
-// jurisdiction is NON-exclusive and is followed by a consumer-law carve-out:
-// an exclusive-forum clause is widely unenforceable against a consumer who has
-// a statutory right to sue where they live, and claiming otherwise in a
-// document this one also uses to carry the age gate is not worth the sentence.
-//
-// SECTIONS 11, 12 AND 15 ARE THE ONES TO HAVE READ. They are where plain
-// language and enforceability diverge most.
-
 export const metadata: Metadata = {
   title: "Wagerwolf Terms of Service",
   description: "The agreement between you and Wagerwolf: eligibility, fake currency, fair play, and how the service is run.",
@@ -46,19 +7,6 @@ export const metadata: Metadata = {
 
 const UPDATED = "September 2026";
 
-/**
- * ONTARIO PLUS THE FEDERAL LAYER, and both halves are load bearing.
- *
- * Canada is federal, so contract law and the courts are provincial and a clause
- * naming "Canada" alone identifies no forum. The trailing "and the federal laws
- * of Canada applicable therein" is the standard second half, and it is what
- * picks up the federal statutes that do apply, PIPEDA among them, which is the
- * privacy law the Privacy Policy sits under.
- *
- * Set on 18 Sept 2026. This rendered as "[jurisdiction not yet set]" until
- * then, deliberately visible: a clause naming the wrong forum is worse than a
- * gap that flags itself.
- */
 const GOVERNING_LAW =
   "the Province of Ontario and the federal laws of Canada applicable therein";
 

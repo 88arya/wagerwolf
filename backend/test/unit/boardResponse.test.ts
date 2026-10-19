@@ -1,5 +1,6 @@
 import { gunzipSync } from "zlib";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { Request } from "express";
 
 vi.mock("../../src/db/db", () => ({ db: {}, dbPool: { waitingCount: 0 } }));
 
@@ -40,8 +41,6 @@ describe("cachedResponse", () => {
     expect(make).toHaveBeenCalledTimes(1);
   });
 
-  // The whole point of keying on the markets version: an odds write must not
-  // wait out the TTL.
   it("rebuilds as soon as any market is invalidated", async () => {
     const make = vi.fn(async () => [make.mock.calls.length]);
     await cachedResponse("k", make);
@@ -118,13 +117,13 @@ describe("loadShed", () => {
     const next = vi.fn();
 
     dbPool.waitingCount = 49;
-    loadShed({}, fakeRes(), next);
+    loadShed({} as Request, fakeRes(), next);
     expect(next).toHaveBeenCalledTimes(1);
 
     dbPool.waitingCount = 50;
     const res = fakeRes();
     res.json = (b: unknown) => { res.body = b; };
-    loadShed({}, res, next);
+    loadShed({} as Request, res, next);
     expect(next).toHaveBeenCalledTimes(1);
     expect(res.statusCode).toBe(503);
     expect(res.headers["retry-after"]).toBe("2");

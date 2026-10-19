@@ -6,16 +6,17 @@ import { api } from "@/lib/api";
 import { fmtMoney } from "@/lib/money";
 import { ACCENT } from "@/lib/constants";
 import HelmetAvatar from "@/components/HelmetAvatar";
+import type { Matchup, Standing } from "@/lib/types";
 
 export default function SchedulePage({ params }: PageProps<"/leagues/[leagueId]/schedule">) {
   const router = useRouter();
   const [userId, setUserId] = useState("");
-  const [members, setMembers] = useState<any[]>([]);
-  const [matchups, setMatchups] = useState<any[]>([]);
+  const [members, setMembers] = useState<Standing[]>([]);
+  const [matchups, setMatchups] = useState<Matchup[]>([]);
   const [currentWeekNumber, setCurrentWeekNumber] = useState<number | null>(null);
   const [loaded, setLoaded] = useState(false);
 
-  const byUserId: Record<string, any> = {};
+  const byUserId: Record<string, Standing> = {};
   members.forEach((m) => { byUserId[m.userId] = m; });
 
   useEffect(() => {
@@ -46,7 +47,7 @@ export default function SchedulePage({ params }: PageProps<"/leagues/[leagueId]/
     return `${m.wins}-${m.losses}${m.ties > 0 ? `-${m.ties}` : ""}`;
   }
 
-  const byWeek = new Map<number, any[]>();
+  const byWeek = new Map<number, Matchup[]>();
   for (const mu of matchups) {
     if (!byWeek.has(mu.weekNumber)) byWeek.set(mu.weekNumber, []);
     byWeek.get(mu.weekNumber)!.push(mu);
@@ -100,7 +101,7 @@ export default function SchedulePage({ params }: PageProps<"/leagues/[leagueId]/
           </div>
         ) : (
           weekEntries.map(([wk, wkMatchups]) => {
-            const isPlayoffWeek = wkMatchups.some((m: any) => m.isPlayoff);
+            const isPlayoffWeek = wkMatchups.some((m) => m.isPlayoff);
             const isCurrent = wk === currentWeekNumber;
             return (
               <div key={wk} style={{ marginBottom: 22 }}>
@@ -120,9 +121,9 @@ export default function SchedulePage({ params }: PageProps<"/leagues/[leagueId]/
                   )}
                 </div>
                 <div className="card" style={{ padding: 0, overflow: "hidden" }}>
-                  {wkMatchups.map((mu: any, idx: number) => {
-                    const isGhostHome = mu.isGhostMatchup && mu.homeUser?.email === "ghost@system.internal";
-                    const isGhostAway = mu.isGhostMatchup && mu.awayUser?.email === "ghost@system.internal";
+                  {wkMatchups.map((mu, idx) => {
+                    const isGhostHome = mu.isGhostMatchup && mu.homeUser?.displayName === "Ghost";
+                    const isGhostAway = mu.isGhostMatchup && mu.awayUser?.displayName === "Ghost";
                     const homeName = isGhostHome ? "Ghost" : (mu.homeUser?.displayName ?? "TBD");
                     const awayName = isGhostAway ? "Ghost" : (mu.awayUser?.displayName ?? "TBD");
                     const resolved = !!mu.winnerId || mu.isTie;

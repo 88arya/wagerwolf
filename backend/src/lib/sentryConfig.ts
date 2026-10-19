@@ -1,7 +1,3 @@
-/**
- * The decisions behind instrument.ts, kept free of side effects so they can be
- * tested. instrument.ts is the only caller; it imports this and then acts.
- */
 import type { ErrorEvent } from "@sentry/node";
 
 /** A DSN as pasted into a secret, which often carries a trailing newline. */
@@ -10,13 +6,7 @@ export function parseDsn(raw: string | undefined): string | undefined {
   return dsn ? dsn : undefined;
 }
 
-/**
- * `SENTRY_TRACES_SAMPLE_RATE` as a number Sentry accepts, or undefined for
- * "tracing off". Anything unusable turns tracing OFF rather than guessing: a
- * typo that silently traced every request would cost quota and memory with
- * nothing in the logs to say why. Above 1 is clamped, since "2" can only have
- * meant "everything".
- */
+// Invalid values disable tracing rather than guess.
 export function parseSampleRate(raw: string | undefined): number | undefined {
   if (raw === undefined || raw.trim() === "") return undefined;
   const n = Number(raw);
@@ -26,26 +16,13 @@ export function parseSampleRate(raw: string | undefined): number | undefined {
 
 const SECRET_HEADERS = /^(authorization|cookie|x-loadtest-key|x-cron-secret)$/i;
 
-/**
- * Drizzle's DrizzleQueryError message is `Failed query: <sql>\nparams: <values>`,
- * and the values are whatever the route bound: an email, a display name, a
- * support message. The SQL is what makes the error debuggable and is kept; the
- * values are not needed to read a stack trace and are dropped.
- */
+// Drizzle error messages include bound params (emails etc.); keep the SQL, drop those.
 const PARAMS = /\nparams: [\s\S]*$/;
 export function scrubQueryParams(text: string): string {
   return text.replace(PARAMS, "\nparams: [scrubbed]");
 }
 
-/**
- * Everything removed before an event leaves the box:
- *
- *   - request bodies, which carry support messages and email addresses
- *   - cookies and the secret-bearing headers, matched case-insensitively
- *     because Node lowercases headers but nothing guarantees a caller did
- *   - the user's IP, which the SDK attaches even with default PII off (measured)
- *   - bound SQL parameters, from the exception values and the message
- */
+// Strips bodies, cookies, secret headers, IP and SQL params before sending.
 export function scrubEvent(event: ErrorEvent): ErrorEvent {
   if (event.user) delete event.user.ip_address;
 
@@ -66,17 +43,7 @@ export function scrubEvent(event: ErrorEvent): ErrorEvent {
   return event;
 }
 
-/**
- * The process's last words. Returns the handler instrument.ts registers for
- * both `uncaughtException` and `unhandledRejection`.
- *
- * Registering a listener stops Node exiting on its own, so the handler must
- * exit itself, and the exit is in a `finally`: if reporting throws, or the flush
- * rejects, the process still dies. Without that, a failure inside the reporting
- * would leave a process in an unknown state serving traffic forever, which is
- * the one outcome this exists to prevent. A second failure while the first is
- * flushing is logged and nothing more, so it cannot start a second shutdown.
- */
+// Exit is in finally so the process dies even if reporting fails.
 export function makeFatalHandler(deps: {
   capture: (err: unknown, kind: string) => void;
   flush: () => Promise<unknown>;

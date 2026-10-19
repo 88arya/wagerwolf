@@ -1,25 +1,3 @@
-/**
- * Safety stop for a k6 run against production.
- *
- * On 3 Oct 2026 an unguarded ramp pushed the box past failure: Caddy was
- * OOM-killed and the site was down for two minutes. This watches the server
- * while a run is going and stops k6 before that can happen again.
- *
- * It streams samples from the box over SSH (container memory and CPU, the DB
- * pool), polls the public /health from outside, and stops k6 through its REST
- * API (k6 must be started with `--address localhost:6565`) when:
- *
- *   - Caddy's memory passes CADDY_MAX_MIB (default 190, of a 256m limit)
- *   - the app's memory passes APP_MAX_MIB (default 560, of a 640m limit)
- *   - /health fails 3 times in a row
- *
- * A REST stop lets k6 write its summary. If k6 is still running 20s later it
- * is killed outright. Every sample is written to WATCH_LOG.
- *
- *   node loadtest/watchdog.mjs
- *
- * Env: SSH_KEY, SSH_HOST (ubuntu@<ip>), WATCH_LOG, HEALTH_URL.
- */
 import { spawn, execSync } from "node:child_process";
 import { appendFileSync } from "node:fs";
 

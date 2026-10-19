@@ -1,20 +1,16 @@
 "use client";
 
-import React from "react";
 import { fmtMoney } from "@/lib/money";
 import { BetHeader, BetRows, gameLineSubtitle, gameLineTitle, titleCase, type BetRow } from "./BetRows";
-
-// A placed bet (prop pick, game pick, or parlay) rendered in the bet slip's
-// visual language: count badge + label + total odds, then the same grouped leg
-// rows with the left rail, then a footer with stake / result. Used by My Bets
-// and History so a settled bet reads the same as it did in the slip.
+import { calcProfit } from "@/lib/odds";
+import type { GamePick, Parlay, Pick } from "@/lib/types";
 
 export type BetKind = "pick" | "gamepick" | "parlay";
 
-function calcProfit(stake: number, odds: number): number {
-  if (odds > 0) return Math.round((stake * odds) / 100);
-  return Math.round((stake * 100) / Math.abs(odds));
-}
+export type PlacedBet =
+  | { kind: "pick"; data: Pick }
+  | { kind: "gamepick"; data: GamePick }
+  | { kind: "parlay"; data: Parlay };
 
 function gameStarted(gameDate?: string): boolean {
   if (!gameDate) return true;
@@ -26,8 +22,6 @@ function outcomeColor(outcome: string, cashedOut?: boolean): string {
   if (outcome === "LOSS") return "var(--loss)";
   if (outcome === "PENDING") return "var(--pending)";
   if (outcome === "VOID" && cashedOut) return "var(--pending)";
-  // PUSH and an uncashed VOID are both stake-returned, no P&L — deliberately
-  // neutral rather than borrowing the win or loss colour.
   return "var(--text-3)";
 }
 
@@ -42,11 +36,6 @@ function OutcomeBadge({ outcome, cashedOut }: { outcome: string; cashedOut?: boo
   return <span className="badge">{label}</span>;
 }
 
-/**
- * Per-leg status marker. Sits in the rail gutter where the slip puts its remove
- * button, and carries a surface-coloured ring so it breaks the rail line the
- * same way that button does.
- */
 function OutcomeDot({ outcome }: { outcome?: string }) {
   if (!outcome) return null;
   return (
@@ -103,8 +92,9 @@ interface Normalized {
   firstGameDate?: string;
 }
 
-function normalize(kind: BetKind, data: any): Normalized {
-  if (kind === "pick") {
+function normalize(bet: PlacedBet): Normalized {
+  if (bet.kind === "pick") {
+    const data = bet.data;
     const odds = data.odds ?? -110;
     const stake = Number(data.stake);
     const game = data.prop?.game;
@@ -132,7 +122,8 @@ function normalize(kind: BetKind, data: any): Normalized {
     };
   }
 
-  if (kind === "gamepick") {
+  if (bet.kind === "gamepick") {
+    const data = bet.data;
     const odds = data.odds;
     const stake = Number(data.stake);
     const game = data.gameLine?.game;
@@ -166,6 +157,7 @@ function normalize(kind: BetKind, data: any): Normalized {
     };
   }
 
+  const data = bet.data;
   const stake = Number(data.stake);
   const payout = Number(data.payout);
   const legs = data.legs ?? [];
@@ -180,7 +172,7 @@ function normalize(kind: BetKind, data: any): Normalized {
     toWin: payout - stake,
     // Matches the pre-existing cash-out rule: gated on the first leg's game.
     firstGameDate: (legs[0]?.prop?.game ?? legs[0]?.gameLine?.game)?.gameDate,
-    rows: legs.map((leg: any, i: number) => {
+    rows: legs.map((leg, i) => {
       const game = leg.prop?.game ?? leg.gameLine?.game;
       return {
         key: `${data.id}-${i}`,
@@ -194,7 +186,7 @@ function normalize(kind: BetKind, data: any): Normalized {
               label: leg.gameLine?.label,
             }),
         subtitle: leg.prop
-          ? propSubtitle(leg.direction, leg.altLine ?? leg.prop.line, leg.prop.statType)
+          ? propSubtitle(leg.direction ?? undefined, leg.altLine ?? leg.prop.line, leg.prop.statType)
           : gameLineSubtitle(leg.gameLine?.market),
         odds: leg.odds,
         gameId: game?.id,
@@ -207,15 +199,13 @@ function normalize(kind: BetKind, data: any): Normalized {
   };
 }
 
-export default function PlacedBetCard({
-  kind, data, cashingOut, onCashOut,
-}: {
-  kind: BetKind;
-  data: any;
+export default function PlacedBetCard({ bet: placed, cashingOut, onCashOut }: {
+  bet: PlacedBet;
   cashingOut?: string | null;
   onCashOut?: (kind: BetKind, id: string) => void;
 }) {
-  const bet = normalize(kind, data);
+  const { kind, data } = placed;
+  const bet = normalize(placed);
   const canCashout = data.outcome === "PENDING" && !data.cashedOut && !gameStarted(bet.firstGameDate);
 
   return (
@@ -262,8 +252,6 @@ export default function PlacedBetCard({
         </div>
       </div>
 
-      {/* A refund with no explanation reads as a bug. Say why the stake came
-          back — the player never took the field, or every leg pushed. */}
       {data.voidReason && !data.cashedOut && (
         <div style={{
           padding: "8px 14px", borderTop: "1px solid var(--border)",

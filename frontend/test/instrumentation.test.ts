@@ -1,8 +1,3 @@
-/**
- * instrumentation.ts and instrumentation-client.ts read the DSN when the module
- * loads, the way Next inlines it at build time. So each case sets the env, then
- * imports a fresh copy of the module.
- */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const nextjs = vi.hoisted(() => {

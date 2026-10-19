@@ -1,23 +1,5 @@
-/**
- * SportsGameOdds — the odds feed. Replaces SharpAPI entirely.
- *
- * Why the switch: SharpAPI's DK+FD tier carried 2 of our 23 StatTypes and
- * posted prop alternates as milestone strings ("Cooper Kupp 4+ Receptions")
- * with only one side priced. SGO carries 22 of 23, ships alternates as
- * structured over/under pairs, and identifies players by a stable `playerID`
- * rather than a name — which is what removes name-matching from this codebase.
- *
- * BILLING SHAPE (this drives the whole polling design)
- *
- * Requests are unlimited; the quota is 2500 *entities* per month, where one
- * entity is one event returned. So `limit=16` costs 16 no matter how many
- * markets come back, and `includeAltLines=true` is free — measured, not
- * assumed. A whole week's slate is therefore one request costing 16.
- *
- * That is why services/oddsPoller.ts exists: what we spend is a function of how
- * many games we refresh and how often, and nothing else.
- */
-
+// SportsGameOdds client. The quota is 2500 entities (events returned) a month;
+// requests themselves are free, and so are alt lines.
 const BASE = "https://api.sportsgameodds.com/v2";
 
 function key(): string {
@@ -26,8 +8,6 @@ function key(): string {
   return k;
 }
 
-// SGO teamID -> the abbreviation our tables use (ESPN's).
-// `teams.home.names.short` is not usable: it gives "LA" for the Rams.
 const TEAM_ABBR: Record<string, string> = {
   ARIZONA_CARDINALS_NFL: "ARI", ATLANTA_FALCONS_NFL: "ATL", BALTIMORE_RAVENS_NFL: "BAL",
   BUFFALO_BILLS_NFL: "BUF", CAROLINA_PANTHERS_NFL: "CAR", CHICAGO_BEARS_NFL: "CHI",
@@ -42,17 +22,7 @@ const TEAM_ABBR: Record<string, string> = {
   TENNESSEE_TITANS_NFL: "TEN", WASHINGTON_COMMANDERS_NFL: "WSH",
 };
 
-/**
- * Abbreviation → full team name, e.g. "LAR" → "Los Angeles Rams".
- *
- * Derived from TEAM_ABBR's own keys rather than typed out again: the SGO ids
- * ARE the full names in shouty snake case, so inverting the map and tidying the
- * key cannot drift from it.
- *
- * ESPN's player search labels each hit with exactly this string in `subtitle`,
- * which is what lets `searchEspnPlayerId` tell two players with the same name
- * apart. `.split("_").join(" ")` rather than `replaceAll` — ES2020 target.
- */
+// "LAR" -> "Los Angeles Rams", derived from TEAM_ABBR's keys.
 export const TEAM_FULL_NAME: Record<string, string> = Object.fromEntries(
   Object.entries(TEAM_ABBR).map(([sgoId, abbr]) => [
     abbr,
@@ -64,35 +34,8 @@ export const TEAM_FULL_NAME: Record<string, string> = Object.fromEntries(
   ]),
 );
 
-/**
- * SGO statID -> our StatType. The feed covers 22 of our 23; RECEIVING_TARGETS
- * has no SGO market and is the only one that can never populate. We ingest 21
- * of those 22 — `touchdowns` is mapped nowhere by choice, for the reasons at
- * the bottom of this table.
- *
- * Cached here on purpose: the /markets endpoint that lists these bills like any
- * other call (one pull cost 35 entities), so it must never run at runtime.
- *
- * WHAT WE LEAVE ON THE TABLE, surveyed from one /markets pull (342 rows, 173
- * distinct market groups) on 21 Sept 2026. Filtering happens at INGEST, not
- * display: a market absent from this map is never written to the database, so
- * enabling one later means re-syncing that week rather than flipping a toggle.
- *
- *   · 111 of the 173 are quarter/half variants of a full-game market. `Prop`
- *     and `GameLine` both assume a full game and have no period column, so
- *     these are structurally unreachable. It is the single biggest unlock
- *     available, and it is a schema change rather than a mapping one.
- *   · The rest are stats with no home in our 23-value enum (combo yardage like
- *     passing+rushing, first/last touchdown scorer, fantasy score, turnovers),
- *     or team totals and game-level aggregates no table models.
- *
- * FIELD_GOAL_LONGEST is mapped below but the feed carries it only as a
- * game-level total, never per player, so in practice it cannot populate either.
- *
- * Mapped is not the same as priced. A market here can still be blank all week
- * because no book opened it — measured against week 1, DEFENSIVE_INTERCEPTIONS
- * landed 17 props while SACKS landed none at all.
- */
+// SGO statID -> our StatType. Hardcoded because the /markets endpoint is billed.
+// Quarter/half markets are skipped: Prop and GameLine assume a full game.
 const STAT_MAP: Record<string, string> = {
   passing_yards: "PASSING_YARDS",
   passing_touchdowns: "PASSING_TOUCHDOWNS",
@@ -115,75 +58,18 @@ const STAT_MAP: Record<string, string> = {
   fieldGoals_longestMade: "FIELD_GOAL_LONGEST",
   kicking_totalPoints: "KICKING_POINTS",
   extraPoints_kicksMade: "EXTRA_POINTS_MADE",
-  // touchdowns: "TOUCHDOWNS" — REMOVED, deliberately. The feed does carry a
-  // real player-touchdowns market (statID `touchdowns`, mostly `-yn-` anytime
-  // scorer at 0.5 plus the odd `-ou-` 2+), so this is a product decision, not a
-  // data one. Two reasons it went:
-  //
-  //   · The book posts no ladder for anytime TD, so the bet page fabricated one
-  //     — synthetic lines AND synthetic prices — which is the exact thing fake
-  //     data was ripped out of this codebase for.
-  //   · It was the only market that introduced players the feed says nothing
-  //     else about: no position, no jersey, no way to resolve a headshot. All
-  //     18 such rows in the database existed solely because of it.
-  //
-  // Nothing needs purging by hand. `applyEvent` retires markets the feed stops
-  // returning: rows with no bets on them are deleted, rows with bets are
-  // flagged `available: false` and still settle. The StatType stays in the enum
-  // so already-settled bets keep resolving.
 };
 
-/**
- * Which book to quote, in order of preference.
- *
- * FanDuel then DraftKings — the two the board has always used — then the rest
- * SGO carries. The tail matters: markets exist on an event long before every
- * book opens them, and defensive/kicking props in particular tend to be posted
- * by someone other than FD/DK first. Stopping at two meant those markets came
- * back with an empty `byBookmaker` and were silently skipped, so the Defensive
- * and Kicking tabs could never appear.
- *
- * Reading further down the list costs nothing — billing is per event, not per
- * book — and one price per market is picked, never mixed within a market.
- */
+// First book that quoted a market wins; one book per market, never mixed.
 const BOOK_PRIORITY = [
   "fanduel", "draftkings", "betmgm", "caesars", "espnbet",
   "williamhill", "unibet", "bovada", "pointsbet",
 ];
 
-/**
- * The last resort when `byBookmaker` is empty: SGO's own consensus price,
- * carried on the odd itself as `bookOdds` / `bookOverUnder` / `bookSpread`.
- *
- * Widening BOOK_PRIORITY was the previous answer to "the market is there but we
- * skipped it", and it does not reach this case. Outside the first few games of
- * a week SGO populates `byBookmaker` for the three core game lines and leaves
- * it **completely empty on every player prop** — no book at all, not a book we
- * were not asking for. Week 1 measured at 35 of DEN@KC's 54 player markets in
- * exactly that state, and 11 of 16 games with zero props for that reason alone,
- * while the event carried a live `bookOdds` and `bookOverUnder` for each one.
- *
- * `bookOdds` is the aggregated *book* price — the vigged number the market is
- * actually offering — so it belongs on the board. `fairOdds` sitting beside it
- * is SGO's de-vigged estimate, a price no book quotes, and is deliberately
- * never read: a made-up number is what fake data was ripped out of this
- * codebase for, and de-vigged odds would silently pay better than any real one.
- *
- * Ranked below every named book because those carry a real deeplink, per-book
- * `altLines`, and a price a user could genuinely take. Consensus carries no
- * ladder, so a market sourced this way shows its main line and no alternates —
- * which is honest: there are none to offer.
- */
+// Fallback to SGO's aggregated book price when no named book quoted the market,
+// which is common for props. Never fairOdds, which no book actually offers.
 const CONSENSUS_BOOK = "__consensus";
 
-/**
- * One book's quote on one market, or the consensus stand-in.
- *
- * Every read of `byBookmaker[book]` goes through here so the fallback cannot
- * apply in one place and not another — picking consensus for the over and a
- * real book for the under would mix two different markets' prices inside one
- * bet.
- */
 function quoteOf(odd: any, book: string): any | undefined {
   if (book !== CONSENSUS_BOOK) return odd?.byBookmaker?.[book];
   if (!odd || odd.bookOddsAvailable === false || num(odd.bookOdds) == null) return undefined;
@@ -206,7 +92,7 @@ export interface SGOProp {
   line: number;
   odds: number;
   ladder: AltRung[];
-  oddID: string;         // the OVER side — what settlement reads `score` from
+  oddID: string;         // the OVER side - what settlement reads `score` from
 }
 
 export interface SGOLine {
@@ -237,10 +123,6 @@ function num(v: unknown): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-/**
- * First book in priority order that actually quoted this market, falling back
- * to SGO's consensus price when none of them did. See CONSENSUS_BOOK.
- */
 function pickBook(odd: any): { book: string; q: any } | null {
   const bb = odd?.byBookmaker ?? {};
   for (const b of BOOK_PRIORITY) {
@@ -250,10 +132,6 @@ function pickBook(odd: any): { book: string; q: any } | null {
   return consensus ? { book: CONSENSUS_BOOK, q: consensus } : null;
 }
 
-/**
- * Every line a book quoted for one side, as `line -> american odds`.
- * `field` is "overUnder" for totals/props and "spread" for spreads.
- */
 function rungsOf(odd: any, book: string, field: "overUnder" | "spread"): Map<number, number> {
   const out = new Map<number, number>();
   const q = quoteOf(odd, book);
@@ -274,8 +152,6 @@ function impliedProb(american: number): number {
   return american > 0 ? 100 / (american + 100) : -american / (-american + 100);
 }
 
-// Floored at -5000: the far end of a long ladder implies a ~99% shot, and the
-// exact price for that is digits of noise nobody bets.
 const MAX_FAVOURITE_ODDS = -5000;
 
 function fromImpliedProb(p: number): number {
@@ -284,20 +160,8 @@ function fromImpliedProb(p: number): number {
   return odds < MAX_FAVOURITE_ODDS ? MAX_FAVOURITE_ODDS : odds;
 }
 
-/**
- * Pair the two sides of a market into a ladder.
- *
- * Game lines carry `altLines` on both sides, so their rungs pair up directly.
- * **Player props do not** — FanDuel posts alternates only on the OVER side, and
- * the UNDER oddID carries just its main price. Requiring both sides therefore
- * collapsed every prop ladder to a single rung, which the `>= 2` guard then
- * discarded entirely: 136 props, zero ladders.
- *
- * So where the book prices only one side, the other is derived by holding the
- * book's own overround — measured at the main line, where both sides do exist —
- * constant across the ladder. That reproduces the real main-line price exactly
- * and stays inside the book's own pricing everywhere else.
- */
+// Props often have alt lines on the over side only; the missing side is derived
+// by holding the book's main-line overround constant.
 function buildLadder(overOdd: any, underOdd: any, book: string, field: "overUnder" | "spread"): AltRung[] {
   const overs = rungsOf(overOdd, book, field);
   const unders = rungsOf(underOdd, book, field);
@@ -346,7 +210,7 @@ function buildGameLines(odds: Record<string, any>, home: string, away: string): 
     });
   }
 
-  // Spread — both sides from the same book so the pair mirrors
+  // Spread - both sides from the same book so the pair mirrors
   const spHomeId = "points-home-game-sp-home", spAwayId = "points-away-game-sp-away";
   const spBook = pickBook(get(spHomeId));
   if (spBook) {
@@ -364,8 +228,6 @@ function buildGameLines(odds: Record<string, any>, home: string, away: string): 
     }
   }
 
-  // Game total — statEntityID "all". "points-away-game-ou-over" is that team's
-  // team-total, a different market; writing it here would mislabel it.
   const ouOverId = "points-all-game-ou-over", ouUnderId = "points-all-game-ou-under";
   const ouBook = pickBook(get(ouOverId));
   if (ouBook) {
@@ -396,8 +258,6 @@ function buildProps(odds: Record<string, any>, players: Record<string, any>, hom
     const statType = STAT_MAP[statID];
     if (!statType) continue;
 
-    // "over" for over/under markets; "yes" for anytime-style yes/no markets,
-    // which are the same bet as Over 0.5.
     const isOU = betTypeID === "ou" && sideID === "over";
     const isYN = betTypeID === "yn" && sideID === "yes";
     if (!isOU && !isYN) continue;
@@ -407,8 +267,6 @@ function buildProps(odds: Record<string, any>, players: Record<string, any>, hom
     const team = TEAM_ABBR[player.teamID ?? ""];
     if (team !== home && team !== away) continue;
 
-    // One prop per player+stat. An over/under market is richer than a yes/no
-    // one (it carries a ladder), so it wins when the book posts both.
     const dedupe = `${statEntityID}:${statType}`;
     if (seen.has(dedupe)) continue;
 
@@ -440,7 +298,7 @@ function buildProps(odds: Record<string, any>, players: Record<string, any>, hom
       statType,
       line,
       odds: odds_,
-      // A single rung is just the main line restated — no alternates to offer.
+      // A single rung is just the main line restated - no alternates to offer.
       ladder: ladder.length >= 2 ? ladder : [],
       oddID: id,
     });
@@ -475,30 +333,7 @@ export function normalizeEvent(ev: any): SGOEvent | null {
   };
 }
 
-/**
- * THE OTHER LIMIT. The quota everything else in this file is designed around is
- * 2500 *entities* a month; this is the second one — **10 requests a minute** —
- * and it is unrelated. A call can be cheap in entities and still breach it.
- *
- * IT WAS BEING BREACHED. `resolveWeek` and `settleGame` each call
- * fetchEventsByID with ONE eventID inside a per-game loop, so a Tuesday resolve
- * fired ~16 requests back to back with nothing pacing them. Cost in entities is
- * identical either way — one entity per event returned — so the spend guard
- * never noticed, and the failure would have been a 429 in the middle of
- * settlement rather than anything the budget maths would predict.
- *
- * A ROLLING WINDOW RATHER THAN A FIXED DELAY, so the common case pays nothing.
- * The poller's own tick is one or two requests and never waits; only a burst
- * reaches the limit, and then it waits exactly long enough for the oldest of
- * the last ten to fall out of the window.
- *
- * 8, not 10: the ceiling is the number that gets you a 429, so sitting on it
- * means one retry or one clock skew is a failure. Two in hand costs a resolve
- * about 15 seconds.
- *
- * Every outbound call goes through this — `request` and `fetchUsage` both — so
- * a new call site is paced without having to remember.
- */
+// SGO also caps requests at 10/min. Rolling window, kept under the limit.
 const MAX_REQ_PER_MIN = 8;
 const recentRequests: number[] = [];
 
@@ -526,11 +361,7 @@ async function request(path: string): Promise<any[]> {
   return body.data ?? [];
 }
 
-/**
- * Fetch specific events by ID. Costs one entity per event returned, so callers
- * must decide *which* games are worth refreshing before calling — see
- * services/oddsPoller.ts.
- */
+// One entity per event returned, so callers choose which games are worth it.
 export async function fetchEventsByID(eventIDs: string[]): Promise<SGOEvent[]> {
   if (eventIDs.length === 0) return [];
   const out: SGOEvent[] = [];
@@ -548,7 +379,6 @@ export async function fetchEventsByID(eventIDs: string[]): Promise<SGOEvent[]> {
   return out;
 }
 
-/** Fetch a date range — used to discover a week's events and their eventIDs. */
 export async function fetchEventsByDate(startsAfter: Date, startsBefore: Date, limit: number): Promise<SGOEvent[]> {
   const p = new URLSearchParams({
     leagueID: "NFL",

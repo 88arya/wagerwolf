@@ -43,8 +43,6 @@ async function main() {
       console.log(`  Skipped (${existingCount} games already exist)`);
     }
 
-    // No invented fallback: a week ESPN has not published yet stays empty until
-    // it does. Odds come separately, from scripts/seedRealProps.ts.
     const [{ value: gameCount }] = await db.select({ value: count() }).from(games).where(eq(games.weekId, week.id));
     if (gameCount === 0) console.log(`  No ESPN schedule yet — left empty`);
   }

@@ -2,39 +2,11 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { api } from "@/lib/api";
+import { api, apiError } from "@/lib/api";
 import { toCents } from "@/lib/money";
 import HelmetAvatar, { HELMET_COLORS } from "@/components/HelmetAvatar";
-import QuickJoin from "@/components/QuickJoin";
+import QuickJoin, { type JoinResult } from "@/components/QuickJoin";
 import { LEAGUE_LEVELS } from "@/lib/geo";
-
-/**
- * The three ways into a league — assignment, invite code, create — as one
- * self-contained set of sheets that any control can mount.
- *
- * WHY THIS EXISTS. All three used to live inside components/LeaguesRail, and
- * lib/leagueActions was the channel that let the sidebar reach them: it
- * recorded which action you asked for, sent you to /home, and let the rail
- * pick it up on arrival. That indirection is gone, and so is the file.
- *
- * The argument for it was that the rail already owned these forms and shared
- * one membership list with them, so the sidebar could not own them without a
- * second copy. That was true while the rail was mounted. It stopped being true
- * when the rail came off /home: there is no other copy to conflict with, and —
- * more to the point — only the rail's LIST and its My Leagues table ever read
- * that membership state. These three sheets never read it. They only write,
- * and a write needs a callback, not shared state.
- *
- * So the control and the thing it controls are the same component now. That is
- * the same correction this codebase already made for LeagueProfileModal, which
- * LeagueNav mounts for exactly this reason — see CLAUDE.md -> League profile
- * editor. It also means these work from EVERY route rather than only from
- * /home, which the round trip could never manage.
- *
- * ON SUCCESS it dispatches LEAGUES_CHANGED rather than calling into anyone.
- * Whoever is showing a membership list can listen; nobody has to. Mirrors the
- * `league-profile-updated` event the profile modal already fires.
- */
 
 export type LeagueAction = "public" | "private" | "create";
 
@@ -89,8 +61,6 @@ export default function LeagueActions({
   const [form, setForm] = useState({
     name: "", weeklyAllowance: "300", maxPlayers: "10", isPublic: false,
     maxPublicPlayers: "0", maxBetsPerWeek: "", maxStakePerBet: "", startWeek: "1",
-    // Beginner or pro. The only thing matchmaking will never compromise on,
-    // and now the only thing a league is categorised by.
     skillLevel: "BEGINNER",
   });
   const [joinCode, setJoinCode] = useState("");
@@ -102,21 +72,14 @@ export default function LeagueActions({
   } | null>(null);
   const [profileSaving, setProfileSaving] = useState(false);
 
-  // A fresh suggestion per opening of the create sheet, so reopening it does
-  // not stare back with the name you just declined.
   useEffect(() => {
     if (action === "create") setForm(f => ({ ...f, name: randomLeagueName() }));
   }, [action]);
 
-  // Clear last time's outcome when a sheet opens. Without this, reopening
-  // "Join with a code" still shows the notice from the previous redemption.
   useEffect(() => {
     if (action) { setError(""); setJoinError(""); setJoinSuccess(""); }
   }, [action]);
 
-  // Esc closes, matching every other sheet on the site. The profile sheet is
-  // deliberately excluded — it is the one step you should have to answer or
-  // skip explicitly, since it is shown exactly once.
   useEffect(() => {
     if (!action) return;
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
@@ -129,10 +92,6 @@ export default function LeagueActions({
   }
 
   /** Both API error shapes: a JSON body with `error`, or a bare message. */
-  function readError(err: any): string {
-    try { return JSON.parse(err.message).error; } catch { return err.message; }
-  }
-
   async function createLeague(e: React.FormEvent) {
     e.preventDefault();
     setError("");
@@ -153,25 +112,16 @@ export default function LeagueActions({
       });
       const membership = await api(`/leagues/${league.id}/join`, { method: "POST", body: JSON.stringify({}) });
       changed();
-      // Close the create sheet before opening the profile one. They are two
-      // separate scrims, so leaving this open stacked one dimmed sheet on top
-      // of another.
       onClose();
       setProfileSetup({ leagueId: league.id, displayName: membership.displayName, abbreviation: membership.abbreviation, helmetColor: membership.helmetColor, isPending: false });
-    } catch (err: any) {
-      setError(readError(err));
+    } catch (err) {
+      setError(apiError(err));
     }
   }
 
-  // Joining is assignment, not selection: the QuickJoin sheet asks for a size
-  // and a level and the server seats you. This is what happens once it reports
-  // back.
-  function handleJoined(membership: any) {
+  function handleJoined(membership: JoinResult) {
     setJoinError("");
     const name = membership?.league?.name ?? "the league";
-    // Quick Join reports what it could not honour. A silent compromise is how
-    // someone ends up in an 8-team league having asked for 12 and never finds
-    // out why.
     const week = membership?.startWeek ? ` Starts NFL week ${membership.startWeek}.` : "";
     if (membership?.created) {
       setJoinSuccess(`Nothing open matched, so we started "${name}" with you as commissioner.${week} Share the invite code to fill it.`);
@@ -191,8 +141,8 @@ export default function LeagueActions({
       setJoinCode("");
       changed();
       setJoinSuccess("Request sent — waiting for commissioner approval.");
-    } catch (err: any) {
-      setJoinError(readError(err));
+    } catch (err) {
+      setJoinError(apiError(err));
     }
   }
 
@@ -214,8 +164,8 @@ export default function LeagueActions({
       } else {
         router.push(`/leagues/${leagueId}/members`);
       }
-    } catch (err: any) {
-      alert(readError(err));
+    } catch (err) {
+      alert(apiError(err));
     } finally {
       setProfileSaving(false);
     }
@@ -225,11 +175,6 @@ export default function LeagueActions({
     <>
       <QuickJoin open={action === "public"} onClose={onClose} onJoined={handleJoined} />
 
-      {/* ── Invite code ────────────────────────────────────────────────
-          This was an inline form inside the rail, revealed under the three
-          buttons. As a sheet it can be opened from anywhere, which is the
-          whole point of the move — and it is one field, so it stays narrow
-          rather than borrowing the create sheet's width. */}
       {action === "private" && (
         <div className="mx-scrim" onMouseDown={e => { if (e.target === e.currentTarget) onClose(); }}>
           <div className="mx-sheet" role="dialog" aria-modal="true" aria-label="Join with an invite code" style={{ maxWidth: 380 }}>
@@ -269,11 +214,6 @@ export default function LeagueActions({
         </div>
       )}
 
-      {/* ── Create League ──────────────────────────────────────────────
-          Built on `.mx-sheet` in the same hairline vocabulary as the rest of
-          the chrome. The section that is genuinely new is "Level" — before it,
-          a public league took literally anyone, which is the whole reason the
-          finder could not offer a useful filter. */}
       {action === "create" && (
         <div className="mx-scrim" onMouseDown={e => { if (e.target === e.currentTarget) onClose(); }}>
           <div className="mx-sheet" role="dialog" aria-modal="true" aria-label="Create league" style={{ maxWidth: 480 }}>
@@ -334,12 +274,6 @@ export default function LeagueActions({
                 </div>
               )}
 
-              {/* ── Level ────────────────────────────────────────────────
-                  All that is left of a "who can join" section that also
-                  carried five skill tiers, a numeric experience range, a
-                  country/region scope, a directory-listing toggle and a
-                  description. Those existed to filter a browsable league list;
-                  players are assigned now, so this is the only axis left. */}
               <div style={{ paddingTop: 4, borderTop: "1px solid var(--border)" }}>
                 <div className="mx-section-title" style={{ marginTop: 14, marginBottom: 10 }}>Level</div>
                 <div className="rg-2" style={{ display: "grid", gap: 8 }}>
@@ -352,8 +286,6 @@ export default function LeagueActions({
                         onClick={() => setForm({ ...form, skillLevel: l.value })}
                         aria-pressed={on}
                         style={{
-                          // whiteSpace normal overrides the global `button`
-                          // nowrap; minWidth 0 stops the grid track blowing out.
                           textAlign: "left", whiteSpace: "normal", minWidth: 0,
                           padding: "12px 13px", borderRadius: "var(--radius-sm)",
                           border: `1px solid ${on ? "var(--accent)" : "var(--border-2)"}`,
@@ -376,7 +308,6 @@ export default function LeagueActions({
                 </div>
               </div>
 
-              {/* ── Season & stakes ──────────────────────────────────── */}
               <div style={{ paddingTop: 4, borderTop: "1px solid var(--border)" }}>
                 <div className="mx-section-title" style={{ marginTop: 14, marginBottom: 10 }}>Season &amp; stakes</div>
 
@@ -422,12 +353,6 @@ export default function LeagueActions({
         </div>
       )}
 
-      {/* ── Quick Join outcome ─────────────────────────────────────────
-          QuickJoin closes itself on success, so its result has no sheet left
-          to live in. It is the one message here that has to outlive its own
-          surface — a join that quietly widened your size preference is
-          precisely what someone needs to be told, and the rail's inline
-          notice used to be where it landed. */}
       {!action && !profileSetup && joinSuccess && (
         <div className="mx-scrim" onMouseDown={e => { if (e.target === e.currentTarget) setJoinSuccess(""); }}>
           <div className="mx-sheet" role="dialog" aria-modal="true" aria-label="Joined" style={{ maxWidth: 380 }}>
@@ -445,9 +370,6 @@ export default function LeagueActions({
         </div>
       )}
 
-      {/* Profile setup — shown once, straight after a league is created or a
-          join request goes in. Same sheet vocabulary as LeagueProfileModal,
-          which is what edits these three fields from then on. */}
       {profileSetup && (
         <div className="mx-scrim">
           <div className="mx-sheet" role="dialog" aria-modal="true" aria-label="League profile setup">

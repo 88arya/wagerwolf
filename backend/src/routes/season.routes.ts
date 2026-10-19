@@ -4,7 +4,7 @@ import { PUBLIC_USER } from "../db/publicUser";
 import { requireLeagueMember } from "../services/leagueAccess";
 import { eq, and, asc, or, inArray, gte, lte } from "drizzle-orm";
 import {
-  leagues, memberships, weeks, matchups, users,
+  leagues, memberships, weeks, matchups,
   games, props, picks, gameLines, gamePicks, parlays,
 } from "../db/schema";
 import { requireAuth } from "../middleware/auth";
@@ -13,7 +13,6 @@ import { startLeagueSeason } from "../services/startSeason";
 import { calcProfit, toDecimal } from "../lib/payout";
 import { MAX_NFL_WEEK } from "../services/nflSeason";
 import { nextStartWeek } from "../services/matchmaking";
-
 
 async function ensureOpenPublicLeague(creatorId: string) {
   const open = await db.query.leagues.findFirst({
@@ -26,14 +25,6 @@ async function ensureOpenPublicLeague(creatorId: string) {
   const playoffWeeks = Math.ceil(Math.log2(playoffSize));
   const maxPlayers = 10;
 
-  // Shared with quick-join and POST /leagues — see services/matchmaking.
-  //
-  // Two things went with the old version: an unordered `findFirst` on
-  // `resolved = false` (so "first" was whatever Postgres returned), and a
-  // `=== 1 ? 2 : n` special case that existed to avoid opening a league in a
-  // week already under way. The date filter in `selectableStartWeeks` covers
-  // that properly now — week 1 stops being offered once it kicks off, rather
-  // than being skipped by name.
   const startWeek = await nextStartWeek();
   const regularSeasonWeeks = Math.max(1, MAX_NFL_WEEK - startWeek - playoffWeeks + 1);
 
@@ -60,7 +51,7 @@ async function ensureOpenPublicLeague(creatorId: string) {
 
 const router = Router();
 
-router.post("/:leagueId/season/start", requireAuth, async (req: any, res: any, next: any) => {
+router.post("/:leagueId/season/start", requireAuth, async (req, res, next) => {
   try {
     const { leagueId } = req.params;
 
@@ -74,16 +65,7 @@ router.post("/:leagueId/season/start", requireAuth, async (req: any, res: any, n
 
     const result = await startLeagueSeason(leagueId);
 
-    // TOPPING THE POOL UP IS A SIDE EFFECT, AND MUST NOT FAIL THE START.
-    //
-    // `startLeagueSeason` has already committed above: matchups are scheduled,
-    // `seasonStarted` is true and the first allowance is paid. A throw from
-    // here reached the route's catch and answered 500, so the commissioner was
-    // told their season had failed to start when in fact it had — and pressing
-    // Start again would then 400 with "Season already started".
-    //
-    // `nextStartWeek` now throws when the schedule is exhausted rather than
-    // silently returning a past week, which is what made this reachable.
+    // The season has already started; failing here mustn't fail the request.
     if (league.isPublic) {
       try {
         await ensureOpenPublicLeague(league.creatorId);
@@ -93,20 +75,18 @@ router.post("/:leagueId/season/start", requireAuth, async (req: any, res: any, n
     }
 
     res.json(result);
-  } catch (err: any) {
-    if (err.message === "Need at least 2 members to start") {
+  } catch (err) {
+    if (err instanceof Error && err.message === "Need at least 2 members to start") {
       res.status(400).json({ error: err.message }); return;
     }
     next(err); return;
   }
 });
 
-router.get("/:leagueId/matchups", requireAuth, async (req: any, res: any, next: any) => {
+router.get("/:leagueId/matchups", requireAuth, async (req, res, next) => {
   try {
     const { leagueId } = req.params;
     const { weekNumber } = req.query;
-    // The schedule says who is playing whom, with per-league identity attached.
-    // Members only.
     if (!(await requireLeagueMember(req, res, leagueId))) return;
 
     const whereClause = weekNumber
@@ -128,10 +108,6 @@ router.get("/:leagueId/matchups", requireAuth, async (req: any, res: any, next: 
       }),
     ]);
 
-    // Per-league identity + balance live on Membership, not User. The strip's
-    // matchups mode renders a helmet, an abbreviation and a balance per side,
-    // so carry them through here rather than making the client join two lists.
-    // Ghost opponents have no Membership row, hence the null-safe fallbacks.
     const memberMap: Record<string, any> = {};
     for (const m of membershipRows as any[]) {
       memberMap[m.userId] = {
@@ -161,7 +137,7 @@ router.get("/:leagueId/matchups", requireAuth, async (req: any, res: any, next: 
     }));
 
     res.json(augmented);
-  } catch (err: any) {
+  } catch (err) {
     next(err); return;
   }
 });
@@ -215,10 +191,9 @@ function serializeParlay(p: any, reveal: boolean) {
   };
 }
 
-// Current user's matchup for a week: opponent identity, available balance, and
-// projected total (available balance + expected value of pending bets). The
-// opponent's still-pending bets are masked so the user can't copy them before lock.
-router.get("/:leagueId/matchup", requireAuth, async (req: any, res: any, next: any) => {
+// Projected total = balance + EV of pending bets. Opponent's pending bets are
+// masked until they settle.
+router.get("/:leagueId/matchup", requireAuth, async (req, res, next) => {
   try {
     const { leagueId } = req.params;
     const userId = req.userId;
@@ -232,7 +207,6 @@ router.get("/:leagueId/matchup", requireAuth, async (req: any, res: any, next: a
     if (weekNumberQ) {
       week = await db.query.weeks.findFirst({ where: eq(weeks.number, Number(weekNumberQ)) });
     } else {
-      const now = new Date();
       const maxWeek = league.startWeek + league.regularSeasonWeeks + league.playoffWeeks - 1;
       week = await db.query.weeks.findFirst({
         where: and(eq(weeks.resolved, false), gte(weeks.number, league.startWeek), lte(weeks.number, maxWeek)),
@@ -255,7 +229,6 @@ router.get("/:leagueId/matchup", requireAuth, async (req: any, res: any, next: a
     const opponentId = isBye ? null : (matchup.homeUserId === userId ? matchup.awayUserId : matchup.homeUserId);
     const relevantIds = isBye ? [userId] : [userId, opponentId as string];
 
-    // Ghost user (odd member count filler) has no Membership row — fall back to the User row on the matchup
     const userRowByUid: Record<string, any> = {};
     if (matchup.homeUser) userRowByUid[matchup.homeUserId] = matchup.homeUser;
     if (matchup.awayUser) userRowByUid[matchup.awayUserId] = matchup.awayUser;
@@ -372,7 +345,7 @@ router.get("/:leagueId/matchup", requireAuth, async (req: any, res: any, next: a
       me: buildSide(userId, myBets, true),
       opponent: isBye ? null : buildSide(opponentId as string, oppBets, false),
     });
-  } catch (err: any) {
+  } catch (err) {
     next(err); return;
   }
 });

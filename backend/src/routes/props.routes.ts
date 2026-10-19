@@ -7,7 +7,7 @@ import { invalidateGameMarkets } from "../services/weekBoard";
 
 const router = Router();
 
-router.post("/", requireAuth, requireCron, async (req: any, res: any, next: any) => {
+router.post("/", requireAuth, requireCron, async (req, res, next) => {
   try {
     const { gameId, playerId, statType, line } = req.body;
     if (!gameId || !playerId || !statType || line == null) {
@@ -17,12 +17,12 @@ router.post("/", requireAuth, requireCron, async (req: any, res: any, next: any)
     const [prop] = await db.insert(props).values({ gameId, playerId, statType, line: Number(line) }).returning();
     invalidateGameMarkets(gameId);
     res.status(201).json(prop);
-  } catch (err: any) {
+  } catch (err) {
     next(err); return;
   }
 });
 
-router.get("/", requireAuth, async (req: any, res: any, next: any) => {
+router.get("/", requireAuth, async (req, res, next) => {
   try {
     const { weekId } = req.query;
     if (weekId) {
@@ -40,7 +40,7 @@ router.get("/", requireAuth, async (req: any, res: any, next: any) => {
       });
       res.json(rows);
     }
-  } catch (err: any) {
+  } catch (err) {
     next(err); return;
   }
 });

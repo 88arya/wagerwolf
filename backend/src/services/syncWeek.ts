@@ -73,13 +73,8 @@ export async function syncScores(weekId: string): Promise<{ updated: number }> {
         awayScore: g.awayScore,
         statusDetail: g.statusDetail,
         indoor: g.indoor,
-        // Weather only appears inside 10 days of kickoff, so this minute-by-minute
-        // sync is what actually fills it in. Only written when ESPN has a value —
-        // otherwise a far-out game would keep nulling a forecast we already had,
-        // and ESPN drops weather again once the game is FINAL.
+        // Only overwrite when ESPN has a value; it drops weather after the game.
         ...(g.weather != null ? { weather: g.weather, weatherTemp: g.weatherTemp } : {}),
-        // Same guard as weather: only overwrite when ESPN actually has a
-        // record, so a null response can't wipe one we already stored.
         ...(g.homeRecord != null ? { homeRecord: g.homeRecord } : {}),
         ...(g.awayRecord != null ? { awayRecord: g.awayRecord } : {}),
       })
@@ -99,14 +94,6 @@ const POSITION_HINT: Record<string, string> = {
   FIELD_GOALS_MADE: "K", FIELD_GOAL_LONGEST: "K", KICKING_POINTS: "K", EXTRA_POINTS_MADE: "K",
 };
 
-/**
- * Find (or create) the Player a SportsGameOdds prop belongs to.
- *
- * SGO gives a stable `playerID` and the player's `teamID`, so this is an id
- * lookup, not the name-and-roster search the SharpAPI path needed. Name
- * matching survives only as a one-time bridge, so a player we already created
- * from ESPN gains an sgoId instead of being duplicated.
- */
 async function resolveSGOPlayer(p: SGOProp, positionHint?: string): Promise<{ id: string } | null> {
   const bySgo = await db.query.players.findFirst({ where: eq(players.sgoId, p.sgoPlayerId) });
   if (bySgo) {
@@ -124,8 +111,6 @@ async function resolveSGOPlayer(p: SGOProp, positionHint?: string): Promise<{ id
     return byName;
   }
 
-  // Position is a hint only — the bet page groups by stat type. The lazy image
-  // route fills espnId and the headshot on first render.
   const [created] = await db.insert(players)
     .values({
       name: p.playerName, team: p.team,
@@ -140,31 +125,18 @@ async function resolveSGOPlayer(p: SGOProp, positionHint?: string): Promise<{ id
   })) ?? null;
 }
 
-/**
- * Write one event's lines and props onto a Game we already hold.
- *
- * A sync *replaces* the game's board rather than adding to it. The upsert-only
- * version accreted: once a market was written it lived forever, so a prop the
- * book pulled — an injury scratch, a suspended line — stayed bettable at a
- * stale price no sportsbook was still offering.
- *
- * Anything the feed no longer returns is therefore retired. Rows nothing is
- * riding on are deleted outright; rows with bets on them are kept but flagged
- * `available: false`, because deleting a market someone holds a wager on would
- * strand the wager with nothing to settle against.
- */
+// Replaces the game's board. Markets the feed stopped returning are deleted, or
+// marked unavailable if someone has a bet on them.
 export async function applyEvent(
   ev: SGOEvent,
   game: { id: string; gameDate: Date },
 ): Promise<{ lines: number; props: number; retired: number }> {
-  // Never move a price on a game that has kicked off — bets are locked there.
+  // Never move a price on a game that has kicked off - bets are locked there.
   if (new Date(game.gameDate) <= new Date()) return { lines: 0, props: 0, retired: 0 };
   try {
     return await writeEvent(ev, game);
   } finally {
-    // The bet board caches markets per game (services/weekBoard.ts); this is
-    // the write it has to hear about. In a finally, because a write that fails
-    // partway has still changed the rows.
+    // In finally: a partial write still changed rows.
     invalidateGameMarkets(game.id);
   }
 }
@@ -173,7 +145,6 @@ async function writeEvent(
   ev: SGOEvent,
   game: { id: string; gameDate: Date },
 ): Promise<{ lines: number; props: number; retired: number }> {
-
   const liveMarkets = new Set<string>();
   let lineCount = 0;
   for (const l of ev.lines) {
@@ -187,24 +158,8 @@ async function writeEvent(
     lineCount++;
   }
 
-  // Work out each player's position from *all* their markets before writing any
-  // of them. Taken per-prop, whoever happened to be written first decided it —
-  // and "touchdowns" implies no position at all, so anyone whose anytime-TD
-  // market landed first was filed as FLEX.
-  // Ranked, not first-wins. Array order decided this before, so a quarterback
-  // whose rushing-yards prop happened to come before his passing props was
-  // created as an RB — and nothing downstream corrected it, because the lazy
-  // ESPN backfill only overwrote the literal "FLEX".
-  //
-  // The ranking is by how much the market actually tells you. Only a QB throws,
-  // and only a K kicks, so those two are near-certain; the defensive markets are
-  // close behind. Rushing and receiving are the ambiguous pair — a back catches
-  // and a receiver takes handoffs — so they rank last and lose to anything else
-  // the same player appears in.
-  //
-  // This narrows the window rather than closing it. GET /players/:id/image
-  // replaces whatever landed here with ESPN's own answer on first render; this
-  // just makes the placeholder right more often in the meantime.
+  // Guess position from all of a player's markets, most telling first. ESPN
+  // corrects it later when the player image is resolved.
   const HINT_RANK: Record<string, number> = { QB: 0, K: 1, DE: 2, LB: 2, CB: 2, RB: 3, WR: 3 };
   const hintByPlayer = new Map<string, string>();
   for (const p of ev.props) {
@@ -247,12 +202,7 @@ async function writeEvent(
   return { lines: lineCount, props: propCount, retired };
 }
 
-/**
- * Retire everything on this game the feed stopped returning.
- *
- * Only ever called with a non-empty live set — an event that came back with no
- * markets at all (a transient upstream blank) must not wipe the board.
- */
+// Never called with an empty live set, so a blank response can't wipe the board.
 async function retireMissingMarkets(
   gameId: string,
   liveMarkets: Set<string>,
@@ -301,13 +251,6 @@ async function retireMissingMarkets(
   return retired;
 }
 
-/**
- * Match a week's games to SGO events by date range and write their odds.
- *
- * Costs one entity per event returned. Used to discover eventIDs for a new
- * week; routine refreshes go through syncOddsForGames, which spends only on the
- * games actually due.
- */
 export async function syncOdds(weekId: string): Promise<{ games: number; lines: number; props: number }> {
   const week = await db.query.weeks.findFirst({ where: eq(weeks.id, weekId) });
   if (!week) throw new Error("Week not found");
@@ -332,17 +275,6 @@ export async function syncOdds(weekId: string): Promise<{ games: number; lines: 
 
   console.log(`[sync] Odds for week ${week.number}: ${gamesSynced} games, ${lines} lines, ${propsWritten} props`);
 
-  // IDENTITY IS RESOLVED HERE, not when someone looks at the player.
-  //
-  // The sync is what CREATES players, so it is the only place that knows a new
-  // one has arrived. Before this, `espnId` was written solely by
-  // `GET /players/:id/image` — a signed-in, view-time request — so the landing
-  // page's prop cards could never appear on a fresh deployment, because the
-  // marquee's whole audience is people who have not signed in.
-  //
-  // Awaited rather than fired and forgotten: a caller that reports "1072 props
-  // written" should not return while a third of them are still ineligible to be
-  // displayed. It is bounded and never throws — see backfillPlayerIdentities.
   const ids = await backfillPlayerIdentities();
   if (ids.scanned) {
     console.log(`[sync] Player identities: ${ids.resolved}/${ids.scanned} resolved` +
@@ -371,17 +303,6 @@ export async function syncOddsForGames(
     propsWritten += r.props;
   }
 
-  // IDENTITY IS RESOLVED HERE, not when someone looks at the player.
-  //
-  // The sync is what CREATES players, so it is the only place that knows a new
-  // one has arrived. Before this, `espnId` was written solely by
-  // `GET /players/:id/image` — a signed-in, view-time request — so the landing
-  // page's prop cards could never appear on a fresh deployment, because the
-  // marquee's whole audience is people who have not signed in.
-  //
-  // Awaited rather than fired and forgotten: a caller that reports "1072 props
-  // written" should not return while a third of them are still ineligible to be
-  // displayed. It is bounded and never throws — see backfillPlayerIdentities.
   const ids = await backfillPlayerIdentities();
   if (ids.scanned) {
     console.log(`[sync] Player identities: ${ids.resolved}/${ids.scanned} resolved` +

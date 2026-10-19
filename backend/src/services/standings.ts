@@ -1,8 +1,4 @@
-// Single source of truth for league standings: every ranking in the app
-// (my-leagues table, leaderboard, member profile, playoff seeding) must use
-// this tally + comparator so records and ranks never disagree between views.
-// Ghost matchups count — the real member plays the league's mean weekly
-// winnings and can genuinely win or lose (see resolveWeek.ts).
+// Every ranking in the app uses this tally and comparator so views agree.
 
 export type StandingRecord = { wins: number; losses: number; ties: number; balance: number };
 
@@ -20,8 +16,6 @@ export function tallyRecords(
   const records: Record<string, StandingRecord> = {};
   for (const m of members) records[m.userId] = { wins: 0, losses: 0, ties: 0, balance: m.balance };
   for (const mu of resolvedMatchups) {
-    // Playoff byes are stored as self-matchups with winnerId set; counting one
-    // would credit the member with a win AND a loss. Byes are not contests.
     if (mu.homeUserId === mu.awayUserId) continue;
     if (mu.isTie) {
       if (records[mu.homeUserId]) records[mu.homeUserId].ties++;

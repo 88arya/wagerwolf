@@ -1,13 +1,4 @@
-# Tag -> production.
-#
-# The gate is that a tag has to be cut by hand — this never fires on a push.
-# A second gate (a required reviewer on the `production` Environment) is not
-# available: protection rules are paid on private repos. See the `backend` job.
-#
-# This workflow does NOT migrate the database. `drizzle-kit push --force`
-# auto-approves data-loss statements and this project has no migration history
-# to roll back to, so schema changes go through db-push.yml — knowingly, and
-# separately from shipping code.
+# Deploys production when a v* tag is pushed (or manually).
 name: Deploy · production
 
 on:
@@ -40,11 +31,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      # `version: latest` is load bearing. GitHub retired the v1 Actions Cache
-      # API, and the BuildKit that setup-buildx pins by default still speaks it —
-      # so `cache-to: type=gha` fails the export with a bare `not_found` AFTER
-      # the image has already built and pushed. A caching problem presenting as
-      # a build failure, at the very last step.
+      # version: latest - the default BuildKit still uses the retired GHA cache API.
       - uses: docker/setup-buildx-action@v3
         with:
           version: latest
@@ -72,17 +59,7 @@ jobs:
           cache-from: type=gha,scope=backend
           cache-to: type=gha,mode=max,scope=backend,ignore-error=true
 
-      # THE FRONTEND IS BUILT PER ENVIRONMENT, not built once and promoted.
-      # NEXT_PUBLIC_* are string-substituted into the client bundle by the
-      # compiler, so they cannot be injected at run time — the image IS the
-      # configuration. That is why they are build args here and why there is no
-      # NEXT_PUBLIC_* in docker-compose.yml.
-      #
-      # They come from Variables rather than Secrets: both are public by
-      # definition, they end up in JavaScript every visitor downloads.
-      #
-      # Separate cache scopes, or the two builds evict each other's layers and
-      # every deploy is a cold build of both.
+      # Frontend is built per environment: NEXT_PUBLIC_* values are compiled in.
       - name: Build and push frontend
         uses: docker/build-push-action@v6
         with:
@@ -97,19 +74,7 @@ jobs:
           cache-from: type=gha,scope=frontend
           cache-to: type=gha,mode=max,scope=frontend,ignore-error=true
 
-      # GHCR KEEPS EVERY IMAGE FOREVER OTHERWISE, and this is a PRIVATE repo, so
-      # the free allowance is 500MB. The runtime image is ~180MB on node:22-alpine,
-      # which means the third deploy starts costing money and it never stops
-      # climbing. `deploy.sh` prunes on the instance, not in the registry — that
-      # is a different thing and does not help here.
-      #
-      # Keeps 5, which is enough to roll back several deploys deep; images are
-      # tagged by commit SHA and `latest` is never used, so "the last 5 pushed"
-      # is the same as "the last 5 deployable".
-      #
-      # continue-on-error because a failed cleanup must never fail a deploy that
-      # has already succeeded — the cost of not pruning is pennies, the cost of
-      # a false red on a shipped release is confusion.
+      # GHCR keeps every image and the private-repo allowance is 500MB.
       - name: Prune old images from GHCR
         continue-on-error: true
         uses: actions/delete-package-versions@v5
@@ -132,19 +97,10 @@ jobs:
     name: Deploy backend (EC2)
     needs: image
     runs-on: ubuntu-latest
-    # `packages: read` IS REQUIRED and its absence is not obvious. The job-level
-    # default is the workflow's `contents: read`, and GHCR will happily accept a
-    # `docker login` with a token that cannot pull — authorisation is checked at
-    # PULL time, not at login. So the log reads "Login Succeeded" and then
-    # "denied", which looks like bad credentials and is actually a missing scope.
+    # packages: read is needed to pull from GHCR.
     permissions:
       contents: read
       packages: read
-    # A required reviewer here would add an approval prompt, but Environment
-    # protection rules are a PAID feature on private repos — unavailable on Free,
-    # so the setting is not even rendered. The gate is the trigger instead: this
-    # workflow fires on a `v*` tag or a manual dispatch, never on a push, so a
-    # deploy is already a deliberate act rather than a consequence of merging.
     environment: production
     steps:
       - uses: actions/checkout@v7
@@ -156,14 +112,8 @@ jobs:
           WEB_IMAGE: ${{ needs.image.outputs.web_image }}
           APP_DOMAIN: ${{ vars.APP_DOMAIN }}
           WWW_DOMAIN: ${{ vars.WWW_DOMAIN }}
-          # Its OWN secret, deliberately not folded into BACKEND_ENV. That one
-          # holds the whole env file and cannot be read back, so adding a line
-          # to it means retyping every other line blind — one typo away from a
-          # broken deploy. A separate secret is add-only and delete-only, and
-          # deleting it is how the bypass gets turned off again.
+          # Separate secret so it can be added or removed without rewriting BACKEND_ENV.
           LOADTEST_KEY: ${{ secrets.LOADTEST_KEY }}
-          # Monitoring, separate secrets for the same reason. Both are off
-          # while unset; see backend/.env.example.
           SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
           HEALTHCHECKS_PING_KEY: ${{ secrets.HEALTHCHECKS_PING_KEY }}
         run: |
@@ -175,9 +125,7 @@ jobs:
             echo "APP_DOMAIN=$APP_DOMAIN"
             echo "WWW_DOMAIN=$WWW_DOMAIN"
             echo "CANONICAL_URL=${{ vars.SITE_URL }}"
-            # Only when set. An absent secret must leave the variable absent
-            # rather than empty-but-present, so the bypass is off by default and
-            # removing the secret genuinely removes it.
+            # Only write it when set, so the bypass is absent by default.
             if [ -n "$LOADTEST_KEY" ]; then echo "LOADTEST_KEY=$LOADTEST_KEY"; fi
             if [ -n "$SENTRY_DSN" ]; then echo "SENTRY_DSN=$SENTRY_DSN"; fi
             if [ -n "$HEALTHCHECKS_PING_KEY" ]; then echo "HEALTHCHECKS_PING_KEY=$HEALTHCHECKS_PING_KEY"; fi
@@ -207,8 +155,7 @@ jobs:
             echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
             cd /opt/wagerwolf
             chmod +x deploy.sh
-            # RUN_MIGRATIONS=0 — see the header. deploy.sh rolls back to the
-            # previously-running image if the new one never reports healthy.
+            # deploy.sh rolls back if the new image never reports healthy.
             APP_IMAGE="${{ needs.image.outputs.image }}" \
             WEB_IMAGE="${{ needs.image.outputs.web_image }}" \
             RUN_MIGRATIONS=0 bash deploy.sh
@@ -233,9 +180,7 @@ jobs:
     runs-on: ubuntu-latest
     environment: production
     steps:
-      # The one unauthenticated read in the app. If this answers, Postgres is
-      # reachable and the week data is real — more than /health proves, since
-      # /health deliberately touches nothing.
+      # Unauthenticated and hits Postgres, unlike /health.
       - name: Public week endpoint answers
         run: |
           code=$(curl -s -o /dev/null -w '%{http_code}' "$BACKEND_URL/weeks/public/current")
@@ -244,9 +189,6 @@ jobs:
         env:
           BACKEND_URL: ${{ vars.BACKEND_URL }}
 
-      # THE SITE ITSELF, which used to be Vercel's job to prove. Same box and
-      # same Caddy as the API now, so a deploy that brings the API up and leaves
-      # the site down is a state that can exist and has to be checked.
       - name: Site answers over HTTPS
         run: |
           for i in $(seq 1 12); do
@@ -259,9 +201,7 @@ jobs:
         env:
           SITE_URL: ${{ vars.SITE_URL }}
 
-      # Standalone builds ship `.next/static` and `public` as separate COPY
-      # steps; miss either and the site serves HTML with no CSS and no images,
-      # which returns 200 and looks fine to a health check. Assert a real asset.
+      # Standalone builds copy static assets separately; make sure they're served.
       - name: Static assets are served
         run: |
           code=$(curl -s -o /dev/null -w '%{http_code}' "$SITE_URL/logo.svg")
@@ -272,8 +212,7 @@ jobs:
 
       - name: CORS is restricted
         run: |
-          # FRONTEND_URL unset means cors() reflects any origin. Catch that here
-          # rather than in a report from someone else.
+          # FRONTEND_URL unset would reflect any origin.
           hdr=$(curl -s -I -H "Origin: https://not-the-frontend.invalid" \
             "$BACKEND_URL/health" | grep -i "access-control-allow-origin" || true)
           if echo "$hdr" | grep -qi "not-the-frontend.invalid"; then
@@ -284,14 +223,7 @@ jobs:
         env:
           BACKEND_URL: ${{ vars.BACKEND_URL }}
 
-      # Redis is not published to the host by docker-compose.yml, and it runs
-      # with no auth precisely because nothing off the compose network can reach
-      # it. If it answers from the internet, that assumption is false and the
-      # job queue is world-writable.
-      #
-      # 5432 is checked too even though Postgres is Supabase: nothing should be
-      # listening on it here, and a stray port mapping is exactly the kind of
-      # thing this catches.
+      # Redis and Postgres ports must not be reachable from the internet.
       - name: Datastores are not publicly exposed
         run: |
           for port in 6379 5432; do

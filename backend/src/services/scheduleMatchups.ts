@@ -23,7 +23,7 @@ export function getNearestTuesdayNoon(from: Date): Date {
   const day = d.getDay(); // 0=Sun, 1=Mon, 2=Tue
   let daysUntil = (2 - day + 7) % 7;
   if (daysUntil === 0) {
-    // Today is Tuesday — check if noon has passed
+    // Today is Tuesday - check if noon has passed
     const noon = new Date(d);
     noon.setHours(12, 0, 0, 0);
     if (d >= noon) daysUntil = 7;
@@ -42,8 +42,8 @@ export async function scheduleMatchups(leagueId: string): Promise<void> {
 
   if (!league || league.seasonStarted) return;
 
-  const activeMembers = (league.memberships as any[]).filter((m: any) => m.status === "ACTIVE");
-  let userIds: string[] = activeMembers.map((m: any) => m.userId);
+  const activeMembers = (league.memberships as any[]).filter((m) => m.status === "ACTIVE");
+  let userIds: string[] = activeMembers.map((m) => m.userId);
 
   if (userIds.length < 2) {
     await db.delete(matchups).where(

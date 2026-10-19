@@ -1,6 +1,6 @@
 import { db } from "../db/db";
-import { eq, and } from "drizzle-orm";
-import { leagues, matchups, memberships } from "../db/schema";
+import { eq } from "drizzle-orm";
+import { leagues, matchups } from "../db/schema";
 import { tallyRecords, compareStandings } from "./standings";
 
 export async function triggerPostWeekActions(resolvedWeekNumber: number): Promise<void> {

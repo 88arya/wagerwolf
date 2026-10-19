@@ -1,14 +1,13 @@
 import { Router } from "express";
 import { db } from "../db/db";
 import { isLeagueMember } from "../services/leagueAccess";
-import { eq, and, inArray, count, sql } from "drizzle-orm";
-import { leagues, memberships, users, weeks, parlays, parlayLegs, gamePicks, picks, matchups } from "../db/schema";
+import { eq, inArray, count } from "drizzle-orm";
+import { leagues, memberships, weeks, parlays, parlayLegs, gamePicks, picks, matchups } from "../db/schema";
 import { requireAuth } from "../middleware/auth";
 import { getNearestTuesdayNoon } from "../services/scheduleMatchups";
 import { coerceLevel } from "../services/leagueLevel";
 import { MAX_NFL_WEEK } from "../services/nflSeason";
 import { nextStartWeek } from "../services/matchmaking";
-
 
 const router = Router();
 
@@ -20,7 +19,7 @@ function nextSmallestPowerOf2(n: number): number {
   return Math.pow(2, Math.floor(Math.log2(n - 1)));
 }
 
-router.post("/", requireAuth, async (req: any, res: any, next: any) => {
+router.post("/", requireAuth, async (req, res, next) => {
   try {
     const {
       name, weeklyAllowance, maxPlayers, isPublic, maxPublicPlayers,
@@ -53,10 +52,6 @@ router.post("/", requireAuth, async (req: any, res: any, next: any) => {
         res.status(400).json({ error: `Start week must be between 1 and ${MAX_NFL_WEEK}` }); return;
       }
     } else {
-      // services/matchmaking's `nextStartWeek`, shared with quick-join and the
-      // public-league autocreator. This was its own `findFirst` on
-      // `resolved = false` with NO orderBy — so "first unresolved week" meant
-      // whichever row Postgres happened to return — falling back to week 1.
       sw = await nextStartWeek();
     }
 
@@ -95,14 +90,12 @@ router.post("/", requireAuth, async (req: any, res: any, next: any) => {
     }).returning();
 
     res.status(201).json(league);
-  } catch (err: any) {
+  } catch (err) {
     next(err); return;
   }
 });
 
-// Commissioner updates settings (only before season starts)
-// Accepts any playoff size ≥ 2 (non-power-of-2 handled by bye bracket system)
-router.patch("/:id", requireAuth, async (req: any, res: any, next: any) => {
+router.patch("/:id", requireAuth, async (req, res, next) => {
   try {
     const [league] = await db.select().from(leagues).where(eq(leagues.id, req.params.id)).limit(1);
     if (!league) { res.status(404).json({ error: "League not found" }); return; }
@@ -173,12 +166,12 @@ router.patch("/:id", requireAuth, async (req: any, res: any, next: any) => {
     const [updated] = await db.update(leagues).set(updateData).where(eq(leagues.id, req.params.id)).returning();
 
     res.json(updated);
-  } catch (err: any) {
+  } catch (err) {
     next(err); return;
   }
 });
 
-router.patch("/:id/limits", requireAuth, async (req: any, res: any, next: any) => {
+router.patch("/:id/limits", requireAuth, async (req, res, next) => {
   try {
     const [league] = await db.select().from(leagues).where(eq(leagues.id, req.params.id)).limit(1);
     if (!league) { res.status(404).json({ error: "League not found" }); return; }
@@ -197,42 +190,37 @@ router.patch("/:id/limits", requireAuth, async (req: any, res: any, next: any) =
 
     const [updated] = await db.update(leagues).set(updateData).where(eq(leagues.id, req.params.id)).returning();
     res.json(updated);
-  } catch (err: any) {
+  } catch (err) {
     next(err); return;
   }
 });
 
-router.get("/by-code/:code", requireAuth, async (req: any, res: any, next: any) => {
+router.get("/by-code/:code", requireAuth, async (req, res, next) => {
   try {
     const [league] = await db.select().from(leagues)
       .where(eq(leagues.inviteCode, req.params.code.toUpperCase()))
       .limit(1);
     if (!league) { res.status(404).json({ error: "Invalid invite code" }); return; }
     res.json(league);
-  } catch (err: any) {
+  } catch (err) {
     next(err); return;
   }
 });
 
-router.get("/:id", requireAuth, async (req: any, res: any, next: any) => {
+router.get("/:id", requireAuth, async (req, res, next) => {
   try {
     const [league] = await db.select().from(leagues).where(eq(leagues.id, req.params.id)).limit(1);
     if (!league) { res.status(404).json({ error: "League not found" }); return; }
 
-    // The row is returned wholesale, and one of its columns is the invite code
-    // — the single credential that lets somebody into a private league. Any
-    // signed-in caller can reach this route (LobbyGate and the nav both fetch
-    // it for leagues the viewer may not have joined), so the code is handed
-    // only to people already inside. Members share it; strangers cannot read
-    // it off a league id they guessed or were shown.
+    // Only members get the invite code.
     const member = await isLeagueMember(req.params.id, req.userId);
     res.json(member ? league : { ...league, inviteCode: undefined });
-  } catch (err: any) {
+  } catch (err) {
     next(err); return;
   }
 });
 
-router.delete("/:id", requireAuth, async (req: any, res: any, next: any) => {
+router.delete("/:id", requireAuth, async (req, res, next) => {
   try {
     const [league] = await db.select().from(leagues).where(eq(leagues.id, req.params.id)).limit(1);
     if (!league) { res.status(404).json({ error: "League not found" }); return; }
@@ -264,7 +252,7 @@ router.delete("/:id", requireAuth, async (req: any, res: any, next: any) => {
     await db.delete(leagues).where(eq(leagues.id, req.params.id));
 
     res.json({ message: "League deleted" });
-  } catch (err: any) {
+  } catch (err) {
     next(err); return;
   }
 });

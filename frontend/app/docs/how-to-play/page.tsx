@@ -1,58 +1,5 @@
 import type { Metadata } from "next";
 
-// The walkthrough, read once before your first bet. How It Works is the
-// reference beside it and answers "why did my bet settle like that".
-//
-// HOUSE RULES FOR THIS COPY:
-//   no em dashes
-//   no "not X but Y" or "X rather than Y" antithesis as a rhetorical move
-//   plain declaratives, one idea per sentence
-//
-// SEQUENCING is the player's own order of operations, and every step is
-// something they do or receive: join, get the allowance, pick a game, bet a
-// prop, bet the game, build a parlay, watch it lock, collect, win the matchup,
-// reach the playoffs. Nothing here explains a rule the player cannot act on;
-// those live in How It Works.
-//
-// A SERVER COMPONENT. It was "use client" for a Back button that DocsShell's
-// topbar now carries, and being a server component is what lets it export
-// metadata.
-//
-// FACTS VERIFIED against the backend on 18 Sept 2026:
-//   allowance     30000 cents, so $300, on leagues matchmaking creates
-//                 (services/matchmaking.ts createLeagueFor)
-//   league size   default 10, must be even, accepted range 2 to 20. Enforced in
-//                 BOTH creation paths (leagues.routes.ts rejects an odd
-//                 maxPlayers; matchmaking.ts coerces to 10).
-//
-//                 SIZE IS CAPACITY AND IS ALWAYS EVEN. The ghost opponent in
-//                 step 9 triggers on an odd count of ACTUAL MEMBERS
-//                 (scheduleMatchups.ts, userIds.length % 2), which is what a
-//                 league that starts before it fills produces. The two are not
-//                 in conflict, and step 1 says "size" while step 9 says
-//                 "members" so a reader does not think they are.
-//   invite code   6 characters, letters AND digits
-//                 (Math.random().toString(36).substring(2, 8).toUpperCase())
-//   parlay maths  two legs at -110 is 1.909^2 = 3.645 decimal, so about +264
-//   parlay legs   League.maxParlayLegs defaults to 10
-//   prop tabs     Game Lines, Passing, Rushing, Receiving, Defensive, Kicking,
-//                 Other. Each tab appears only when that week has props for it
-//                 (app/leagues/[leagueId]/bet/page.tsx)
-//   locking       game.gameDate <= now, enforced server side
-//   resolve       hourly cron; a week's endDate is its last kickoff plus 18
-//                 hours, which lands Tuesday evening UTC for a Monday night
-//                 finish (services/scheduler.ts, services/espnApi.ts)
-//   matchup       decided on ENDING BALANCE, and a tie is possible
-//                 (services/resolveWeek.ts sets isTie when they are equal)
-//   cashout       NOT a priced cashout. POST /picks/:id/cashout refunds the
-//                 FULL STAKE and voids the bet, and refuses once
-//                 game.gameDate has passed. An earlier draft of step 7 said
-//                 "at its current price", which described a feature that does
-//                 not exist.
-//
-// THE TIE WAS MISSING from every previous version of this document, and so was
-// the ghost opponent an odd numbered league produces. Both are in step 9 now.
-
 export const metadata: Metadata = {
   title: "Wagerwolf How to Play",
   description: "How to play Wagerwolf, from joining a league to winning a weekly matchup.",
@@ -213,9 +160,6 @@ export default function HowToPlayPage() {
       </div>
 
       <p style={{ marginTop: 8, fontSize: "0.95rem", lineHeight: 1.7, color: "var(--text-2)" }}>
-        {/* THE ONLY ROUTE TO How It Works from inside this document. The rail's
-            Play section lists both, so this is a convenience and no longer the
-            sole path. It sits once, at the end. */}
         For the rules underneath the game, covering how bets are graded, when a
         stake comes back and where the odds come from, read{" "}
         <a href="/docs/how-it-works">How It Works</a>.

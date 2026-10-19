@@ -32,7 +32,7 @@ export default function PlayerAvatar({ playerId, espnId, imageUrl: initialUrl, n
     if (!imageUrl && !failed && playerId && !fetched.current) {
       fetched.current = true;
       api(`/players/${playerId}/image`)
-        .then((d: any) => { if (d?.imageUrl) setImageUrl(d.imageUrl); })
+        .then((d: { imageUrl?: string | null }) => { if (d?.imageUrl) setImageUrl(d.imageUrl); })
         .catch(() => {});
     }
   }, [imageUrl, failed, playerId]);

@@ -1,12 +1,3 @@
-/**
- * Pull real odds from SportsGameOdds and report what landed.
- *
- * Each event returned costs one entity against the monthly quota, so this is
- * deliberately scoped: pass a week and only that week is fetched.
- *
- *   npx tsx scripts/seedRealProps.ts --week=1
- *   npx tsx scripts/seedRealProps.ts            # every unresolved week (expensive)
- */
 import { syncOdds, syncOddsAllWeeks } from "../src/services/syncWeek";
 import { fetchUsage } from "../src/services/sportsGameOdds";
 import { db } from "../src/db/db";

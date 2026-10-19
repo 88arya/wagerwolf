@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { Router, type Request } from "express";
 import { db } from "../db/db";
 import { eq, and } from "drizzle-orm";
 import { leagues, memberships, props, gameLines, parlays, parlayLegs } from "../db/schema";
@@ -51,11 +51,6 @@ function toConflictLeg(leg: ResolvedLeg): ConflictLeg {
       };
 }
 
-// Opposing-side / redundant-leg detection lives in services/betConflicts.ts so
-// the line values and the favoured side are actually taken into account. See
-// that file for the model.
-
-
 function calcGameLineAltOdds(baseOdds: number, baseLine: number, altLine: number, market: string): number {
   const steps = (altLine - baseLine) / 0.5;
   const favSteps = market === "TOTAL_OVER" ? -steps : steps;
@@ -69,8 +64,7 @@ interface LegInput {
   altLine?: number;
 }
 
-
-router.post("/", requireAuth, betLimiter, async (req: any, res: any, next: any) => {
+router.post("/", requireAuth, betLimiter, async (req, res, next) => {
   try {
     const { leagueId, stake, legs } = req.body as {
       leagueId: string;
@@ -193,8 +187,6 @@ router.post("/", requireAuth, betLimiter, async (req: any, res: any, next: any) 
     const totalOdds = calcParlayOdds(resolvedLegs.map((l) => l.odds));
     const payout = calcParlayPayout(Number(stake), totalOdds);
 
-    // The balance and weekly-count checks run under a lock on the member, so
-    // concurrent bets see each other. See services/betLedger.ts.
     const parlay = await db.transaction(async (tx) => {
       const locked = await lockMembership(tx, userId, leagueId);
       if (locked.balance < Number(stake)) throw new HttpError(400, "Insufficient balance");
@@ -229,12 +221,12 @@ router.post("/", requireAuth, betLimiter, async (req: any, res: any, next: any) 
     });
 
     res.status(201).json(parlay);
-  } catch (err: any) {
+  } catch (err) {
     next(err); return;
   }
 });
 
-router.post("/round-robin", requireAuth, betLimiter, async (req: any, res: any, next: any) => {
+router.post("/round-robin", requireAuth, betLimiter, async (req, res, next) => {
   try {
     const { leagueId, legs, size, stakePerParlay } = req.body as {
       leagueId: string; legs: LegInput[]; size: number; stakePerParlay: number;
@@ -306,11 +298,9 @@ router.post("/round-robin", requireAuth, betLimiter, async (req: any, res: any, 
     }
 
     const combos = getCombinations(resolved, size);
+    // Conflicts are checked per combo; clashing legs may never share one.
     const totalStake = Number(stakePerParlay) * combos.length;
 
-    // Validate each combo for internal conflicts. Checked per combo rather than
-    // over the whole set: two legs that clash may never land in the same combo,
-    // and only the combos that actually pair them are unplaceable.
     for (const combo of combos) {
       const conflict = findFirstConflict(combo.map(toConflictLeg));
       if (conflict) {
@@ -356,13 +346,13 @@ router.post("/round-robin", requireAuth, betLimiter, async (req: any, res: any, 
     });
 
     res.status(201).json({ parlays: createdParlays, combos: createdParlays.length, totalStake });
-  } catch (err: any) {
+  } catch (err) {
     next(err); return;
   }
 });
 
-// Cashout a pending parlay before all games have started — full stake refund
-router.post("/:id/cashout", requireAuth, betLimiter, async (req: any, res: any, next: any) => {
+// Cashout a pending parlay before all games have started - full stake refund
+router.post("/:id/cashout", requireAuth, betLimiter, async (req: Request<{ id: string }>, res, next) => {
   try {
     const parlay = await db.query.parlays.findFirst({
       where: eq(parlays.id, req.params.id),
@@ -390,8 +380,6 @@ router.post("/:id/cashout", requireAuth, betLimiter, async (req: any, res: any, 
       }
     }
 
-    // The checks above are a fast path; this conditional UPDATE is the guard,
-    // so two concurrent cashouts refund the stake once. See picks.routes.ts.
     await db.transaction(async (tx) => {
       const claimed = await tx
         .update(parlays)
@@ -404,12 +392,12 @@ router.post("/:id/cashout", requireAuth, betLimiter, async (req: any, res: any, 
     });
 
     res.json({ message: "Cashed out", refunded: parlay.stake });
-  } catch (err: any) {
+  } catch (err) {
     next(err); return;
   }
 });
 
-router.get("/", requireAuth, async (req: any, res: any, next: any) => {
+router.get("/", requireAuth, async (req, res, next) => {
   try {
     const { leagueId } = req.query;
 
@@ -429,7 +417,7 @@ router.get("/", requireAuth, async (req: any, res: any, next: any) => {
     });
 
     res.json(rows);
-  } catch (err: any) {
+  } catch (err) {
     next(err); return;
   }
 });

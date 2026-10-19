@@ -2,44 +2,10 @@ import { asc, inArray } from "drizzle-orm";
 import { db } from "../db/db";
 import { props, gameLines } from "../db/schema";
 
-/**
- * The bet board's markets, cached per game in this process.
- *
- * WHY THIS EXISTS. `GET /weeks?current=true` carries every prop (with its alt
- * ladder and an embedded player row) and every game line for the week: 1,460
- * props and 3,458 lines on week 4, 1.86 MB of JSON. It was rebuilt from
- * Postgres on every request, and measured on 3 Oct 2026 each rebuild pulled
- * ~1.42 MB from Supabase. Supabase's free tier caps egress at 5 GB a month, so
- * the board alone capped the whole product at roughly 3,500 page loads a month.
- *
- * The markets change only when something writes them — the odds poller, the
- * settlement pass, a manual resolve — and all of those run in this process, so
- * they invalidate here instead of every reader re-reading. Game rows (score,
- * status) are NOT cached: they move every minute during play, and the route
- * reads them fresh, which is 16 small rows.
- *
- * PER GAME, not per week, because the poller refreshes one game at a time. A
- * whole-week key would re-read all 1.4 MB every time any one game's prices
- * moved; per game it re-reads ~90 KB.
- *
- * GENERATIONS stop a race that a plain delete would leave open. A rebuild that
- * started before a write and finished after it would otherwise store the
- * pre-write markets with a fresh timestamp. Each rebuild records the generation
- * it started under and stores only if nothing invalidated the game meanwhile.
- * The response still uses what it read, which is exactly as fresh as an
- * uncached read would have been.
- *
- * SINGLE PROCESS. Invalidation is in memory, which is correct while the
- * scheduler's worker and the API share one process on one box. A second API
- * replica would need this moved to Redis, the same caveat as homePulse and
- * betCounts.
- *
- * THE TTL IS A BACKSTOP, not the mechanism. It covers writers that cannot reach
- * this module: scripts run as their own process, and the image route's lazy
- * player backfill (a player's position on the board can trail it by up to the
- * TTL; the avatar itself reads that route directly). Six hours keeps the
- * backstop's own cost to ~170 MB a month at constant traffic.
- */
+// Per-game in-memory cache of props and lines for the bet board. The payload is
+// large and only changes when the poller or settlement writes, and those run in
+// this process and invalidate here. Generations stop a rebuild that started
+// before a write from storing stale data. Needs Redis with a second replica.
 
 export type GameMarkets = { props: any[]; gameLines: any[] };
 
@@ -52,11 +18,6 @@ let globalGen = 0;
 
 const genOf = (gameId: string) => `${globalGen}:${gameGen.get(gameId) ?? 0}`;
 
-/**
- * Bumped by every invalidation, of one game or all. Anything built on top of
- * these markets (services/boardResponse.ts) keys on it, so an odds write
- * reaches the serialized board without that layer needing its own hooks.
- */
 let version = 0;
 export const marketsVersion = () => version;
 const EMPTY: GameMarkets = { props: [], gameLines: [] };
@@ -68,7 +29,7 @@ export function invalidateGameMarkets(gameId: string): void {
   version++;
 }
 
-/** Drop everything — for bulk writes that span games or weeks. */
+/** Drop everything - for bulk writes that span games or weeks. */
 export function invalidateAllMarkets(): void {
   globalGen++;
   entries.clear();
@@ -76,17 +37,7 @@ export function invalidateAllMarkets(): void {
 }
 
 async function load(gameIds: string[]): Promise<Map<string, GameMarkets>> {
-  // The same projection the route used to nest: every prop with its player,
-  // every line. No `available` filter, deliberately unchanged — My Bets and the
-  // bet page's submitted ticks look bets up by these ids, and a bet on a pulled
-  // market has to keep resolving.
-  //
-  // ORDERED, which the nested query never was. The bet page lays its market
-  // cards out in the order stat types first appear, so the unordered read
-  // showed Passing as Completions, Yards, Touchdowns on one game and Yards,
-  // Touchdowns, Attempts on the next. `statType` is a Postgres enum, which
-  // sorts by declaration order: Yards, Touchdowns, Completions, Attempts, as
-  // schema.ts lists them. Players within a market are ranked client side.
+  // No `available` filter: bets on pulled markets still need to resolve.
   const [propRows, lineRows] = await Promise.all([
     db.query.props.findMany({
       where: inArray(props.gameId, gameIds),
@@ -109,14 +60,7 @@ function sweep(now: number): void {
   for (const [id, e] of entries) if (now - e.at > TTL_MS) entries.delete(id);
 }
 
-/**
- * Markets for each game, from cache where possible. Missing games are read in
- * ONE query, and concurrent callers share it: a burst of board loads after an
- * invalidation costs one read, not one per request.
- *
- * The returned arrays are shared between responses. Callers must not mutate
- * them.
- */
+// Misses are read in one shared query. Returned arrays are shared; don't mutate.
 export async function marketsForGames(gameIds: string[]): Promise<Map<string, GameMarkets>> {
   const now = Date.now();
   sweep(now);
@@ -146,8 +90,6 @@ export async function marketsForGames(gameIds: string[]): Promise<Map<string, Ga
     for (const id of toFetch) inflight.set(id, p);
   }
 
-  // Captured synchronously, before any await, so `finally` cannot remove an
-  // entry out from under us.
   const waits = missing.map((id) => [id, inflight.get(id)!] as const);
   await Promise.all(waits.map(async ([id, p]) => {
     out.set(id, (await p).get(id) ?? EMPTY);

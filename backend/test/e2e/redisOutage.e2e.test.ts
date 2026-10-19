@@ -1,14 +1,3 @@
-/**
- * A Redis outage must degrade the API, not take it down.
- *
- * The backend reaches Redis through a TCP proxy this test controls, so Redis can
- * be "taken down" and "brought back" mid-run without touching the real one.
- * Before the fix, every route behind a rate limiter hung with no response while
- * /health went on answering 200.
- *
- * Same requirements as monitoring.e2e.test.ts: the build, and Redis on 6379.
- * Uses logical database 14 so it can run beside that file.
- */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import net from "node:net";
 import IORedis from "ioredis";

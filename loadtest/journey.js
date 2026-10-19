@@ -1,37 +1,3 @@
-/**
- * A signed-in Wagerwolf session, as k6 virtual users.
- *
- * Each iteration is one person: the shell boots, they land on their league,
- * open the bet board, read it, then check My Bets, with think time between
- * pages. The requests per page are the ones the frontend actually makes,
- * read off the components on 3 Oct 2026:
- *
- *   shell      /users/me, /memberships, /weeks/public/current (sidebar games)
- *   home       /leagues/:id, week (no markets), leaderboard, picks, gamepicks,
- *              parlays, then matchups for that week's number
- *   bet        /leagues/:id (LobbyGate), week WITH markets (the 1.86 MB board),
- *              picks, gamepicks
- *   my bets    /leagues/:id, week (no markets), picks, gamepicks, parlays
- *
- * READ ONLY. No bet is placed and nothing is written, so it is safe to point
- * at production. Every user is the same account: the token is minted for one
- * real member, since sign-in is Google only and there is no way to create
- * accounts in bulk. Reads are per-request work regardless of who asks, so this
- * measures the server, but nothing here exercises per-user data volume.
- *
- * Run (PowerShell or bash):
- *
- *   k6 run -e TOKEN=<jwt> -e LEAGUE=<leagueId> -e KEY=<LOADTEST_KEY> \
- *          -e PEAK=1000 loadtest/journey.js
- *
- * Or a staircase, to find where it bends: STAGES is duration:target pairs,
- *
- *   -e STAGES=2m:500,3m:500,2m:1000,3m:1000,30s:0
- *
- * KEY is the x-loadtest-key that lifts the 300/min per-IP limiter for this
- * client; without it every user shares one IP's budget and the run measures
- * 429s. BASE defaults to production.
- */
 import http from "k6/http";
 import { check, group, sleep } from "k6";
 
@@ -59,8 +25,6 @@ const headers = {
 };
 
 export const options = {
-  // Bodies are fetched (so transfer and decompression are real) but not kept,
-  // except where a later request needs a value out of one.
   discardResponseBodies: true,
   scenarios: {
     users: {
@@ -71,10 +35,6 @@ export const options = {
     },
   },
   thresholds: {
-    // ABORT_FAIL_RATE ends the run on its own once that share of requests has
-    // failed, after a minute's grace. Under overload the API sheds load with
-    // 503s, so this is the point past which a staircase stops telling you
-    // anything new. Cumulative over the run, so it trips late, not early.
     http_req_failed: __ENV.ABORT_FAIL_RATE
       ? [{ threshold: `rate<${__ENV.ABORT_FAIL_RATE}`, abortOnFail: true, delayAbortEval: "1m" }]
       : ["rate<0.01"],

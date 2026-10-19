@@ -1,39 +1,5 @@
 import type { Metadata } from "next";
 
-// NOT LEGALLY REVIEWED. Plain-language policy written to describe what the app
-// actually stores. Have it read by a lawyer before the site is promoted.
-//
-// HOUSE RULES FOR THIS COPY:
-//   no em dashes
-//   no "not X but Y" or "X rather than Y" antithesis as a rhetorical move
-//   plain declaratives, one idea per sentence
-//
-// SEQUENCING. Scope, then what is held, then what is never held, then why,
-// then who sees it, then how long, then the rights over it, then security,
-// children, transfers, amendments, contact. The reader's first question is
-// "what do you have about me", so the inventory comes before the purposes.
-//
-// THE COLLECTION LIST IS THE User TABLE. Checked against
-// backend/src/db/schema.ts on 18 Sept 2026. The columns are: email, password,
-// googleId, name, displayName, firstName, lastName, timeZone,
-// defaultAbbreviation, defaultHelmetColor, deactivatedAt, ageConfirmedAt,
-// createdAt. `password` is written only for the synthetic ghost user that fills
-// an odd numbered league, never for a person, which is why it is described here
-// as a column no human account uses.
-//
-// IF A COLUMN IS ADDED TO User, ADD IT HERE.
-//
-// TWO THINGS CORRECTED ON 18 Sept 2026, both verified in the backend:
-//
-//  - Bet visibility was described as "once those bets have locked". That is the
-//    AFTER_KICKOFF default only. League.feedVisibility also takes
-//    AFTER_RESOLVE, under which a commissioner keeps bets hidden until the week
-//    settles, so the policy now states that the timing is a league setting.
-//  - Export and deletion were described as things we would "action" on request.
-//    Both are now real endpoints: GET /users/me/export and DELETE /users/me.
-//    NEITHER HAS A UI, so they are still described as support requests. Wire a
-//    control to them and this section should say so instead.
-
 export const metadata: Metadata = {
   title: "Wagerwolf Privacy Policy",
   description: "What Wagerwolf stores about you, why it stores it, who can see it, and how to have it exported or deleted.",

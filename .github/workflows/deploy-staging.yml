@@ -1,31 +1,10 @@
-# Staging deploy — MANUAL ONLY.
-#
-# WHY THERE IS NO PUSH TRIGGER. There is no permanent staging instance. One box
-# runs one stack (Caddy binds 80/443), so staging means a second EC2 instance and
-# roughly double the burn against a fixed credit balance — and before the app has
-# users, the production box IS the staging box: deploy to it, break it, redeploy,
-# with an audience of nobody.
-#
-# So this workflow stays written, tested and free. When you do want a staging
-# environment — a risky migration, or the day real accounts make "test in prod"
-# indefensible — `terraform apply` a second instance, fill in the `staging`
-# GitHub Environment, and dispatch this. Nothing here needs to change.
-#
-# Leaving a `push:` trigger here with no staging secrets configured would simply
-# paint every master push red. Master pushes run ci.yml and nothing else.
-#
-# CI -> build image -> ship it to the box -> deploy frontend.
-#
-# The image is built ONCE here and pinned by commit SHA. Nothing rebuilds it on
-# the server, so the artifact that passed CI is bit-for-bit the artifact that
-# runs — which a "git pull and build on the host" deploy cannot promise.
+# Staging deploy, manual only. There is no permanent staging instance.
 name: Deploy · staging
 
 on:
   workflow_dispatch:
 
-# Never cancel a deploy in flight. A half-finished `docker compose up` is worse
-# than a queued run; later dispatches wait.
+# Never cancel a deploy in flight.
 concurrency:
   group: deploy-staging
   cancel-in-progress: false
@@ -59,8 +38,7 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # GHCR rejects uppercase in a repository path, and github.repository_owner
-      # is used verbatim — so lowercase it rather than assume.
+      # GHCR rejects uppercase repository paths.
       - name: Compute image reference
         id: meta
         run: |
@@ -73,8 +51,6 @@ jobs:
           context: backend
           push: true
           tags: ${{ steps.meta.outputs.image }}
-          # Layer cache in GitHub's cache backend. Without it every deploy
-          # reinstalls node_modules from scratch, roughly doubling the job.
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -82,11 +58,7 @@ jobs:
     name: Deploy backend (EC2)
     needs: image
     runs-on: ubuntu-latest
-    # `packages: read` IS REQUIRED and its absence is not obvious. The job-level
-    # default is the workflow's `contents: read`, and GHCR will happily accept a
-    # `docker login` with a token that cannot pull — authorisation is checked at
-    # PULL time, not at login. So the log reads "Login Succeeded" and then
-    # "denied", which looks like bad credentials and is actually a missing scope.
+    # packages: read is needed to pull from GHCR.
     permissions:
       contents: read
       packages: read
@@ -94,18 +66,13 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      # BACKEND_ENV is the entire .env file as one secret, scoped to this
-      # GitHub Environment. One secret rather than a dozen: adding a variable
-      # then costs an edit in one place instead of an edit here plus a new
-      # secret, and the two drifting apart is the failure this avoids.
+      # BACKEND_ENV holds the whole .env file as one secret.
       - name: Materialise .env
         env:
           BACKEND_ENV: ${{ secrets.BACKEND_ENV }}
           IMAGE: ${{ needs.image.outputs.image }}
         run: |
           printf '%s\n' "$BACKEND_ENV" > deploy/.env
-          # Appended rather than stored, so /health reports the commit actually
-          # serving without anyone maintaining it by hand.
           {
             echo "GIT_COMMIT_SHA=${GITHUB_SHA::7}"
             echo "APP_IMAGE=$IMAGE"
@@ -113,10 +80,7 @@ jobs:
           chmod 600 deploy/.env
           echo "Wrote $(wc -l < deploy/.env) lines"
 
-      # The compose file, Caddyfile and deploy script travel WITH the deploy,
-      # from this commit. Fetching them from the default branch at run time
-      # means a rollback to an older image can still pick up today's compose
-      # file — a combination that was never tested anywhere.
+      # Ship the compose file, Caddyfile and deploy script from this commit.
       - name: Copy deploy files to the instance
         uses: appleboy/scp-action@v1
         with:
@@ -134,8 +98,6 @@ jobs:
           host: ${{ secrets.EC2_HOST }}
           username: ubuntu
           key: ${{ secrets.SSH_PRIVATE_KEY }}
-          # 10 min: an image pull on a burstable instance plus a cold boot that
-          # also runs runStartupSeed().
           command_timeout: 10m
           envs: APP_IMAGE
           script: |
@@ -143,15 +105,12 @@ jobs:
             echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
             cd /opt/wagerwolf
             chmod +x deploy.sh
-            # Staging migrates on every deploy; production does not. See
-            # db-push.yml for why.
+            # Staging migrates on every deploy; production uses db-push.yml.
             APP_IMAGE="${{ needs.image.outputs.image }}" RUN_MIGRATIONS=1 bash deploy.sh
         env:
           APP_IMAGE: ${{ needs.image.outputs.image }}
 
-      # deploy.sh already proved the container is healthy from inside the box.
-      # This proves it from outside — i.e. that the security group, Caddy and
-      # DNS all agree — which is a different failure entirely.
+      # Checks security group, Caddy and DNS from outside the box.
       - name: Verify from the public internet
         run: |
           for i in $(seq 1 12); do
@@ -166,19 +125,3 @@ jobs:
         env:
           BACKEND_URL: ${{ vars.BACKEND_URL }}
 
-  # THE FRONTEND JOB IS GONE, and deliberately so.
-  #
-  # It deployed to Vercel. Production stopped doing that on 10 Sept 2026 — the
-  # site is now a container in the same docker compose stack as the API, built
-  # per environment because NEXT_PUBLIC_* are compiled into the bundle. The
-  # `backend` job above already brings the whole stack up, so a staging deploy
-  # gets the site for free once WEB_IMAGE and APP_DOMAIN are set the way
-  # deploy-production.yml sets them.
-  #
-  # Left as a note rather than rewritten: no staging box exists, so this would
-  # be untested code for a hypothetical environment. Mirror the production
-  # workflow's `image` and `backend` jobs on the day one does — the diff is the
-  # frontend build-args and WEB_IMAGE, nothing structural.
-  #
-  # Nothing in this repo depends on VERCEL_TOKEN / VERCEL_ORG_ID /
-  # VERCEL_PROJECT_ID any more; those secrets can be deleted.

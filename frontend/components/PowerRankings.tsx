@@ -1,25 +1,5 @@
 "use client";
 
-/**
- * Your leagues, read at either end of the week.
- *
- * TWO CARDS FROM ONE LIST, and they bookend the page:
- *
- * - `rankings` — where you stand and the move the last resolve caused. A green
- *   rise, a red fall, a grey rule for no change. Opens the column.
- * - `todo` — the leagues with allowance still sitting unbet. Balance resets
- *   every week, so anything unstaked at kickoff is simply gone; this says so
- *   before it happens. Closes the column.
- *
- * PRESENTATIONAL. HomeBoard does the fetching and hands the same rows to both,
- * because they are the same rows — mounting two self-fetching copies would run
- * /home/leagues twice per visit to render one list at two ends of a page.
- *
- * Ranks come from the server, computed by services/standings.ts — the same
- * tally and comparator the league's own leaderboard uses. Nothing is ranked on
- * this side.
- */
-
 import Link from "next/link";
 import { fmtMoney } from "@/lib/money";
 
@@ -42,14 +22,6 @@ const ORDINAL = (n: number) => {
   return `${n}${["th", "st", "nd", "rd"][n % 10] ?? "th"}`;
 };
 
-/**
- * The movement mark: a rise, a fall, or a rule.
- *
- * Colour is doing the work here, so the SHAPE has to carry it too — an up and a
- * down chevron differ by more than their fill, and the no-change case is a flat
- * rule rather than a grey chevron. Someone who cannot separate the red from the
- * green still reads three different marks.
- */
 function Move({ change, ranked }: { change: number; ranked: boolean }) {
   if (!ranked || change === 0) {
     return (
@@ -82,9 +54,6 @@ export default function PowerRankings({
   mode: "rankings" | "todo";
   error: boolean;
 }) {
-  // On `todo` the card is a to-do list, so a league with nothing left to stake
-  // has nothing to say and drops out. On `rankings` every league is a result
-  // and they all stay.
   const shown = mode === "todo" ? (rows ?? []).filter((r) => r.balance > 0) : (rows ?? []);
 
   return (

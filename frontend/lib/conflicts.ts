@@ -1,25 +1,5 @@
-// Conflict detection for bet slip legs.
-//
-// Replaces the market-string tables this used to rely on (OPPOSITE_MARKET /
-// CONFLICT_MARKETS / CROSS_CONFLICTS), which compared market *names* and were
-// therefore blind to two things: the line value (so ALT_ markets slipped
-// through, and legitimate bands like Over 40 + Under 48 got blocked) and which
-// side was actually favoured (so "A moneyline + B +3" was rejected even though
-// A winning by 1 wins both legs).
-//
-// Model: every leg becomes an inclusive bound on one random variable. Two legs
-// on the same variable are compared by intersecting their bounds:
-//
-//   empty intersection      → CONTRADICTION  (they can never both win)
-//   one range inside other  → NESTED         (compound odds on a single event)
-//   partial overlap         → no conflict    (a legitimate band)
-//
-// Moneyline is just a spread at 0, so the cross-market cases fall out with the
-// correct sign instead of needing a hand-maintained table.
-//
-// Only *logical* conflicts are detected. Correlated-but-possible combinations
-// (a QB's passing TDs and his team's moneyline) are deliberately allowed —
-// that's a pricing question, not a conflict.
+// Client copy of backend/src/services/betConflicts.ts, for flagging legs in
+// the slip. The backend copy is the one that blocks.
 
 export type ConflictKind = "CONTRADICTION" | "NESTED";
 
@@ -46,10 +26,6 @@ interface Bound {
 
 const EPS = 1e-9;
 
-// Every stat here is whole-numbered except sacks, which are credited in halves.
-// Granularity matters: on an integer stat "Over 2" and "Over 2.5" are the same
-// event (3 or more), so they must canonicalise to the same bound or the pair
-// reads as a legitimate band instead of a duplicate.
 function granularity(statType?: string): number {
   return statType === "SACKS" ? 0.5 : 1;
 }
@@ -68,11 +44,6 @@ function nextBelow(n: number, g: number): number {
   return (Math.abs(q - c) < EPS ? c - 1 : Math.floor(q + EPS)) * g;
 }
 
-/**
- * Same-player stats where the left value can never exceed the right. Used to
- * carry a bound from one variable to the other so cross-stat impossibilities
- * (over 60 longest reception + under 50 receiving yards) are caught.
- */
 const STAT_AT_MOST: Array<[string, string]> = [
   ["PASSING_LONGEST", "PASSING_YARDS"],
   ["RUSHING_LONGEST", "RUSHING_YARDS"],
@@ -91,8 +62,6 @@ function atMost(a?: string, b?: string): boolean {
 }
 
 function propVariable(leg: ConflictLeg): string {
-  // Prefer player+stat so two different prop rows for the same market still
-  // land on one variable; fall back to the prop id when the stat is unknown.
   if (leg.statType) return `stat:${leg.playerId ?? leg.id}:${leg.statType}`;
   return `prop:${leg.id}`;
 }
@@ -158,9 +127,6 @@ export function conflictBetween(a: ConflictLeg, b: ConflictLeg): ConflictKind | 
     return null;
   }
 
-  // Different variables: only a declared same-player constraint can make the
-  // pair impossible. A single "x ≤ y" can't produce nesting, so contradiction
-  // is the only verdict available here.
   if (a.type !== "prop" || b.type !== "prop") return null;
   if ((a.playerId ?? a.id) !== (b.playerId ?? b.id)) return null;
 

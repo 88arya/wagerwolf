@@ -1,7 +1,3 @@
-// All money in this app is stored and sent over the API as an integer number of CENTS.
-// Format for display and parse user input through these helpers — never divide/round inline.
-
-/** Format integer cents as a number with 2 decimals + separators, no sign or $: 123450 -> "1,234.50". */
 export function fmtAmount(cents: number | null | undefined): string {
   const abs = Math.abs(Math.round(Number(cents ?? 0)));
   return (abs / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -14,12 +10,6 @@ export function fmtMoney(cents: number | null | undefined, opts?: { sign?: boole
   return `${sign}$${fmtAmount(c)}`;
 }
 
-/**
- * Whole dollars, no cents: 123450 -> "$1,235". For stat cards and headline
- * figures, where ".00" on every number is noise and two significant cents never
- * change the reading. NEVER for a balance, a stake or anything a user reconciles
- * against their own money — those are exact, and fmtMoney is the one for them.
- */
 export function fmtDollars(cents: number | null | undefined): string {
   const c = Math.round(Number(cents ?? 0));
   const sign = c < 0 ? "-" : "";

@@ -1,7 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-// The module under test reads through `db.query`; nothing else of the db is
-// touched, so a two-method stand-in is the whole database.
 const reads: string[][] = [];
 let gate: Promise<void> | null = null;
 let propsByGame: Record<string, number> = {};
@@ -87,8 +85,6 @@ describe("marketsForGames", () => {
     expect(loads()).toBe(2);
   });
 
-  // The race the generations exist for: a read that started before a write
-  // and finished after it must not be cached as current.
   it("does not cache a read that a write overtook", async () => {
     let open!: () => void;
     gate = new Promise((r) => { open = r; });

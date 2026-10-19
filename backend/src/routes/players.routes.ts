@@ -8,7 +8,7 @@ import { resolvePlayerIdentity } from "../services/playerIdentity";
 
 const router = Router();
 
-router.post("/", requireAuth, requireCron, async (req: any, res: any, next: any) => {
+router.post("/", requireAuth, requireCron, async (req, res, next) => {
   try {
     const { name, team, position } = req.body;
     if (!name || !team || !position) {
@@ -17,34 +17,21 @@ router.post("/", requireAuth, requireCron, async (req: any, res: any, next: any)
     }
     const [player] = await db.insert(players).values({ name, team, position }).returning();
     res.status(201).json(player);
-  } catch (err: any) {
+  } catch (err) {
     next(err); return;
   }
 });
 
-router.get("/", requireAuth, async (req: any, res: any, next: any) => {
+router.get("/", requireAuth, async (_req, res, next) => {
   try {
     const rows = await db.select().from(players).orderBy(asc(players.name));
     res.json(rows);
-  } catch (err: any) {
+  } catch (err) {
     next(err); return;
   }
 });
 
-/**
- * The lazy path, and now only the SECOND chance.
- *
- * Identity is resolved when a player arrives from the odds sync — see
- * services/playerIdentity, which this delegates to so the two cannot drift.
- * This route remains because the sweep is best-effort: ESPN's search is a name
- * match and misses people, so a player it could not resolve still gets one more
- * attempt the first time someone actually looks at them.
- *
- * It used to be the ONLY place `espnId` was ever written, which meant the
- * landing page could never show a prop card on a fresh deployment. See the
- * header of services/playerIdentity for why that was backwards.
- */
-router.get("/:id/image", requireAuth, async (req: any, res: any, next: any) => {
+router.get("/:id/image", requireAuth, async (req, res, next) => {
   try {
     const [player] = await db.select().from(players).where(eq(players.id, req.params.id)).limit(1);
     if (!player) { res.status(404).json({ error: "Not found" }); return; }
@@ -57,7 +44,7 @@ router.get("/:id/image", requireAuth, async (req: any, res: any, next: any) => {
       jersey: identity.jersey,
       position: identity.position,
     });
-  } catch (err: any) {
+  } catch (err) {
     next(err); return;
   }
 });

@@ -6,16 +6,17 @@ import { api } from "@/lib/api";
 import { fmtMoney } from "@/lib/money";
 import { ACCENT } from "@/lib/constants";
 import HelmetAvatar from "@/components/HelmetAvatar";
+import type { Matchup, Standing } from "@/lib/types";
 
 export default function ScoreboardPage({ params }: PageProps<"/leagues/[leagueId]/scoreboard">) {
   const router = useRouter();
   const [userId, setUserId] = useState("");
-  const [members, setMembers] = useState<any[]>([]);
-  const [weekMatchups, setWeekMatchups] = useState<any[]>([]);
+  const [members, setMembers] = useState<Standing[]>([]);
+  const [weekMatchups, setWeekMatchups] = useState<Matchup[]>([]);
   const [weekNumber, setWeekNumber] = useState<number | null>(null);
   const [loaded, setLoaded] = useState(false);
 
-  const byUserId: Record<string, any> = {};
+  const byUserId: Record<string, Standing> = {};
   members.forEach((m) => { byUserId[m.userId] = m; });
 
   useEffect(() => {
@@ -92,9 +93,9 @@ export default function ScoreboardPage({ params }: PageProps<"/leagues/[leagueId
           <div style={{ padding: "24px 0", color: "var(--text-3)", fontSize: "0.8rem" }}>No matchups yet</div>
         ) : (
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 320px), 1fr))", gap: 12 }}>
-            {weekMatchups.map((matchup: any) => {
-              const isGhostHome = matchup.isGhostMatchup && matchup.homeUser?.email === "ghost@system.internal";
-              const isGhostAway = matchup.isGhostMatchup && matchup.awayUser?.email === "ghost@system.internal";
+            {weekMatchups.map((matchup) => {
+              const isGhostHome = matchup.isGhostMatchup && matchup.homeUser?.displayName === "Ghost";
+              const isGhostAway = matchup.isGhostMatchup && matchup.awayUser?.displayName === "Ghost";
               const homeName = isGhostHome ? "Ghost" : (matchup.homeUser?.displayName ?? "—");
               const awayName = isGhostAway ? "Ghost" : (matchup.awayUser?.displayName ?? "—");
               const resolved = !!matchup.winnerId || matchup.isTie;

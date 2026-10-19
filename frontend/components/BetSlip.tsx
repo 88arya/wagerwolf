@@ -1,10 +1,11 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { api } from "@/lib/api";
+import { api, apiError } from "@/lib/api";
 import { fmtMoney, fmtAmount, toCents } from "@/lib/money";
 import { BetHeader, BetRows, gameLineSubtitle, gameLineTitle, titleCase, type BetRow } from "./BetRows";
 import { findConflicts, type ConflictLeg } from "@/lib/conflicts";
+import { toDecimal } from "@/lib/odds";
 
 export interface SlipLeg {
   type: "prop" | "gameline";
@@ -18,7 +19,7 @@ export interface SlipLeg {
   altLine?: number;
   gameId?: string;
   gameDate?: string;
-  // Icon data — player image for props, team logo(s) for game lines
+  // Icon data - player image for props, team logo(s) for game lines
   playerId?: string;
   espnId?: string;
   imageUrl?: string;
@@ -37,8 +38,6 @@ export function getBetSlip(): SlipLeg[] {
 
 export function addToSlip(leg: SlipLeg): boolean {
   const legs = getBetSlip();
-  // Conflicting selections are allowed to coexist here — the slip flags them in
-  // amber and blocks the parlay rather than silently dropping one.
   if (legs.some((l) => l.id === leg.id && l.direction === leg.direction && l.altLine === leg.altLine)) return false;
   localStorage.setItem(SLIP_KEY, JSON.stringify([...legs, leg]));
   window.dispatchEvent(new Event("betslip-update"));
@@ -54,11 +53,6 @@ export function removeFromSlip(id: string, direction?: string, altLine?: number)
 export function clearSlip(): void {
   localStorage.setItem(SLIP_KEY, "[]");
   window.dispatchEvent(new Event("betslip-update"));
-}
-
-function toDecimal(american: number): number {
-  if (american > 0) return american / 100 + 1;
-  return 100 / Math.abs(american) + 1;
 }
 
 function parlayOdds(legs: number[]): number {
@@ -77,7 +71,6 @@ function legKey(leg: SlipLeg): string {
   return `${leg.id}:${leg.direction ?? ""}`;
 }
 
-// The alt line originally selected on the bet page (if any) — legs are no longer editable in the slip
 function legAltLine(leg: SlipLeg): number | undefined {
   return leg.altLine != null && leg.altLine !== leg.line ? leg.altLine : undefined;
 }
@@ -136,21 +129,12 @@ function MinusCircleIcon() {
   );
 }
 
-// The most the slip will inset from the scroller's right edge. It reads the
-// page's padding-right for this, which is the rail on `.page-wide` — but is a
-// centring gutter on `.page`, where it can be hundreds of pixels. See the note
-// at the measurement.
 const RAIL_MAX = 24;
 
-// The shared content rail (--rail in globals.css) — the slip's right edge lines
-// up with the nav's right-hand contents. The slip is position: fixed, so the
-// `100%` inside the token resolves against the viewport, same as for the nav.
 const NAV_GUTTER = "var(--rail)";
-// Nav (44) + sub-nav (40) + .page's 16px top padding, used only until the real
-// offset is measured.
 const CONTENT_TOP_FALLBACK = 100;
 
-/** Removes a leg from the slip — sits in the rail gutter of each leg row. */
+/** Removes a leg from the slip - sits in the rail gutter of each leg row. */
 function RemoveBtn({ onRemove }: { onRemove: () => void }) {
   return (
     <button
@@ -212,39 +196,8 @@ export default function BetSlip({ leagueId }: { leagueId: string }) {
     return () => window.removeEventListener("betslip-update", refresh);
   }, [refresh]);
 
-  // Anchor the slip to the top of the page's *content* box, so its first card
-  // starts on the same line as the first card in the page column. Measured
-  // rather than hardcoded: the games strip above the nav is conditional and the
-  // sub-nav only renders for some routes, so the stack height varies per page.
-  //
-  // The padding has to be read off the element rather than assumed — .page pads
-  // 16px and .page-wide pads 20px (globals.css), so a fixed offset here would
-  // align on one kind of route and miss on the other. Deliberately not rounded:
-  // the nav stack can land on a fractional y, and rounding reintroduces the
-  // few-tenths gap this is meant to close.
-  //
-  // Measured off the sticky chrome's BOTTOM, not off .page itself. This slip is
-  // position: fixed, so it needs a viewport-relative y — and .page's rect top
-  // slides up as the user scrolls, so reading it would peg the slip to wherever
-  // the page happened to be scrolled at the moment of the last measure.
-  //
-  // It used to read .app-scroll's top, which was the right number while the
-  // chrome sat outside the scroller: the scroller began under the nav stack.
-  // The chrome is inside now and .app-scroll starts at the top of the viewport,
-  // so that reading would tuck the slip up behind the utility bar. The chrome
-  // is sticky at top: 0, so its bottom edge is where content actually begins
-  // and is the number this wants. .page still supplies the padding, since that
-  // is what separates the scrollport from the first card.
+  // Measured, since the chrome above varies by route.
   const [contentTop, setContentTop] = useState(CONTENT_TOP_FALLBACK);
-  // How far the slip's right edge sits from the WINDOW's right edge.
-  //
-  // It used to be a flat `right: var(--rail)`, which was correct while the
-  // scroller was the window: --rail's `100%` resolved against the viewport and
-  // the slip landed on the page's content rail. In the signed-in shell the
-  // scroller is `.app-card`, which is inset by the sidebar on the left and its
-  // own margin on the right — so a viewport-relative rail puts the slip a
-  // sidebar's width off the rail it is supposed to be on. `position: fixed`
-  // cannot inherit that, hence measuring it.
   const [contentRight, setContentRight] = useState<number | null>(null);
   useEffect(() => {
     // .app-card is the shell's scroller, .app-scroll the classic layout's.
@@ -255,46 +208,13 @@ export default function BetSlip({ leagueId }: { leagueId: string }) {
       const cs = getComputedStyle(page);
       const padTop = parseFloat(cs.paddingTop) || 0;
       const box = scroller.getBoundingClientRect();
-      // WHERE THE PAGE COLUMN BEGINS INSIDE THE SCROLLER, as a constant: the
-      // rect difference is how far down the column currently sits, and adding
-      // the scroll back cancels the part of that which is just scroll position.
-      //
-      // It read the chrome's bottom before, or the scroller's top where there
-      // is no chrome. That second branch is the shell — and it is wrong there,
-      // because the card is not empty above the page: LeagueNav (44px) and the
-      // sub-nav (40px) are inside it. So the slip was pinned to the card's own
-      // top edge, 26px, and sat across the nav's league switcher and profile
-      // icon at 1412-1702 x 11-55. Measured, not assumed, because the sub-nav
-      // only renders on some routes.
-      //
-      // One formula for both layouts now, so `.app-chrome` is not consulted at
-      // all: in the classic layout the chrome IS the scroller's first child, so
-      // this resolves to exactly the chrome height it used to read.
+      // Page column's offset inside the scroller, independent of scroll position.
       const contentStart = page.getBoundingClientRect().top - box.top + scroller.scrollTop;
       setContentTop(box.top + contentStart + padTop);
-      // THE SLIP SITS IN THE GUTTER TO THE RIGHT OF THE COLUMN, NOT INSIDE IT.
-      //
-      // This read the page's own padding-right and added it, on the reasoning
-      // that the padding IS --rail resolved against the scroller, so reading it
-      // back beats re-deriving the token. True for `.page-wide`, whose padding
-      // is exactly the rail — and badly wrong for `.page`, which is a 612px
-      // column CENTRED by padding. At a 1968px window that padding is 545px a
-      // side, so the slip's right edge was pinned to the column's right edge and
-      // the 368px slip landed on top of the board: measured at 1046–1414 against
-      // a column of 786–1397. The whole width of it, over the odds.
-      //
-      // Capped at RAIL_MAX so a centring padding cannot drag the slip inward.
-      // `.page-wide`'s rail is smaller than the cap and still comes through
-      // untouched, so the classic layout is unchanged.
       const padRight = parseFloat(cs.paddingRight) || 0;
       setContentRight(window.innerWidth - box.right + Math.min(padRight, RAIL_MAX));
     };
     measure();
-    // The page for its padding changing with the viewport and for its own
-    // position moving when the nav above it reflows, and the scroller because
-    // the card's box moves with the sidebar. The chrome used to be observed
-    // too; it is no longer read, and observing .page covers it — anything that
-    // changes the chrome's height moves the page with it.
     const ro = new ResizeObserver(measure);
     ro.observe(page);
     ro.observe(scroller);
@@ -306,9 +226,7 @@ export default function BetSlip({ leagueId }: { leagueId: string }) {
     ? "Bet Slip"
     : rrMode ? "Round Robin" : legs.length === 1 ? "Straight" : `${legs.length}-Leg Parlay`;
 
-  // Conflicting legs stay in the slip and are flagged rather than removed, so
-  // the key has to include the alt line — two lines on one prop are distinct
-  // selections here even though they share an id and direction.
+  // Conflicting legs are flagged, not removed, so the key includes the alt line.
   const conflictLegs: ConflictLeg[] = legs.map((leg) => ({
     key: `${legKey(leg)}:${leg.altLine ?? ""}`,
     type: leg.type,
@@ -323,8 +241,6 @@ export default function BetSlip({ leagueId }: { leagueId: string }) {
   }));
   const { keys: conflictKeys } = findConflicts(conflictLegs);
   const hasConflict = conflictKeys.size > 0;
-  // A single leg can't conflict with anything, so only multi-leg bets are held
-  // back. The CTA just dims — the amber banner already says why.
   const conflictBlocked = hasConflict && legs.length > 1;
 
   const rows: BetRow[] = legs.map((leg) => ({
@@ -375,8 +291,8 @@ export default function BetSlip({ leagueId }: { leagueId: string }) {
       clearSlip();
       window.dispatchEvent(new Event("bet-placed"));
       setTimeout(() => setMsg(""), 4000);
-    } catch (err: any) {
-      try { setError(JSON.parse(err.message).error); } catch { setError(err.message); }
+    } catch (err) {
+      setError(apiError(err));
     } finally {
       setSubmitting(false);
     }
@@ -410,8 +326,8 @@ export default function BetSlip({ leagueId }: { leagueId: string }) {
       clearSlip();
       window.dispatchEvent(new Event("bet-placed"));
       setTimeout(() => setMsg(""), 4000);
-    } catch (err: any) {
-      try { setError(JSON.parse(err.message).error); } catch { setError(err.message); }
+    } catch (err) {
+      setError(apiError(err));
     } finally {
       setSubmitting(false);
     }
@@ -451,8 +367,8 @@ export default function BetSlip({ leagueId }: { leagueId: string }) {
       clearSlip();
       window.dispatchEvent(new Event("bet-placed"));
       setTimeout(() => setMsg(""), 5000);
-    } catch (err: any) {
-      try { setError(JSON.parse(err.message).error); } catch { setError(err.message); }
+    } catch (err) {
+      setError(apiError(err));
     } finally {
       setSubmitting(false);
     }
@@ -463,9 +379,6 @@ export default function BetSlip({ leagueId }: { leagueId: string }) {
       position: "fixed",
       top: contentTop,
       bottom: 12,
-      // NAV_GUTTER only until the measurement lands — see contentRight. It is
-      // right in the classic layout and a sidebar's width out in the shell, so
-      // it is a first-frame fallback rather than the value.
       right: contentRight ?? NAV_GUTTER,
       width: 368,
       maxWidth: `calc(100vw - ${NAV_GUTTER} - 12px)`,
@@ -476,7 +389,6 @@ export default function BetSlip({ leagueId }: { leagueId: string }) {
       alignItems: "stretch",
       gap: 10,
     }}>
-      {/* Success toast */}
       {msg && (
         <div style={{
           margin: "0 12px 8px",
@@ -497,7 +409,6 @@ export default function BetSlip({ leagueId }: { leagueId: string }) {
         </div>
       )}
 
-      {/* Part 1 — header + legs, anchored under the nav */}
       <div style={{
           pointerEvents: "auto",
           background: "var(--surface)",
@@ -546,9 +457,6 @@ export default function BetSlip({ leagueId }: { leagueId: string }) {
             </div>
           )}
 
-          {/* Legs grouped by game, earliest → latest kickoff */}
-          {/* flex-basis auto (not 0) so the list sizes to its content and only
-              shrinks — and therefore only scrolls — once space runs out */}
           <div style={{ flex: "0 1 auto", overflowY: "auto", minHeight: 0, WebkitOverflowScrolling: "touch" } as React.CSSProperties}>
             {legs.length === 0 && (
               <div style={{
@@ -565,7 +473,6 @@ export default function BetSlip({ leagueId }: { leagueId: string }) {
           </div>
       </div>
 
-      {/* Part 2 — wager controls, pinned to the bottom of the screen */}
       {legs.length >= 1 && (
             <div style={{
               marginTop: "auto",
@@ -575,7 +482,6 @@ export default function BetSlip({ leagueId }: { leagueId: string }) {
               borderRadius: "var(--radius)",
               flexShrink: 0,
             }}>
-              {/* Remove all selections */}
               <button
                 onClick={() => { clearSlip(); setError(""); }}
                 style={{
@@ -597,7 +503,6 @@ export default function BetSlip({ leagueId }: { leagueId: string }) {
                 Remove all selections
               </button>
 
-              {/* Round robin controls */}
               {legs.length >= 3 && (
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
                   <button
@@ -639,7 +544,6 @@ export default function BetSlip({ leagueId }: { leagueId: string }) {
 
               {!rrMode ? (
                 <div style={{ display: "flex", gap: 8 }}>
-                  {/* TO WAGER */}
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <label style={FIELD_LABEL}>Wager</label>
                     <div style={{ position: "relative" }}>
@@ -655,7 +559,6 @@ export default function BetSlip({ leagueId }: { leagueId: string }) {
                       />
                     </div>
                   </div>
-                  {/* TO WIN — prefilled from wager, earnings only (excludes stake) */}
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <label style={FIELD_LABEL}>To Win</label>
                     <div style={{ position: "relative" }}>

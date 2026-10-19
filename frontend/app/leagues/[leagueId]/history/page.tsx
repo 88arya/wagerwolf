@@ -2,33 +2,31 @@
 
 import { use, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { api } from "@/lib/api";
+import { api, apiError } from "@/lib/api";
 import { getCached, readCached, setCached } from "@/lib/pageCache";
 import { fmtMoney } from "@/lib/money";
 import PlacedBetCard, { type BetKind } from "@/components/PlacedBetCard";
+import { calcProfit } from "@/lib/odds";
+import type { GamePick, League, Parlay, Pick } from "@/lib/types";
 
-function calcProfit(stake: number, odds: number): number {
-  if (odds > 0) return Math.round((stake * odds) / 100);
-  return Math.round((stake * 100) / Math.abs(odds));
-}
+type HistoryBet =
+  | { kind: "pick"; data: Pick; week: number | null }
+  | { kind: "gamepick"; data: GamePick; week: number | null }
+  | { kind: "parlay"; data: Parlay; week: number | null };
 
-type Cached = { picks: any[]; gamePicks: any[]; parlays: any[]; league: any };
+type Cached = { picks: Pick[]; gamePicks: GamePick[]; parlays: Parlay[]; league: League | null };
 
 /** League-scoped: the sidebar switches leagues without unmounting this page. */
 const cacheKey = (leagueId: string) => `history:${leagueId}`;
 
 export default function HistoryPage({ params }: PageProps<"/leagues/[leagueId]/history">) {
   const router = useRouter();
-  // `use`, not an await inside the effect — see the note in the My Bets page.
-  // The cache key needs the league id, and an id that arrives after the first
-  // paint makes that paint the empty state, which is the LOADING… frame this is
-  // removing.
   const { leagueId } = use(params);
   const cached = getCached<Cached>(cacheKey(leagueId));
 
-  const [picks, setPicks] = useState<any[]>(cached?.picks ?? []);
-  const [gamePicks, setGamePicks] = useState<any[]>(cached?.gamePicks ?? []);
-  const [parlays, setParlays] = useState<any[]>(cached?.parlays ?? []);
+  const [picks, setPicks] = useState<Pick[]>(cached?.picks ?? []);
+  const [gamePicks, setGamePicks] = useState<GamePick[]>(cached?.gamePicks ?? []);
+  const [parlays, setParlays] = useState<Parlay[]>(cached?.parlays ?? []);
   // Never true on a revisit: the refetch happens behind the last answer.
   const [loading, setLoading] = useState(!cached);
   const [cashingOut, setCashingOut] = useState<string | null>(null);
@@ -44,9 +42,6 @@ export default function HistoryPage({ params }: PageProps<"/leagues/[leagueId]/h
       setPicks(picksData);
       setGamePicks(gamePicksData);
       setParlays(parlaysData);
-      // Written inside `load` rather than at the call site, because this is
-      // also the post-cashout refresh — so the stored copy cannot go stale
-      // behind a cashout. See lib/pageCache.
       setCached<Cached>(cacheKey(lId), {
         picks: picksData, gamePicks: gamePicksData, parlays: parlaysData, league: leagueData,
       });
@@ -58,9 +53,6 @@ export default function HistoryPage({ params }: PageProps<"/leagues/[leagueId]/h
   useEffect(() => {
     async function init() {
       if (!localStorage.getItem("token")) { router.push("/"); return; }
-      // After a reload memory is empty but sessionStorage is not: repaint the
-      // last answer while the boot gate still has the shell hidden, and do not
-      // hold the gate for a refresh of it. See lib/pageCache.
       const warm = cached ? undefined : readCached<Cached>(cacheKey(leagueId));
       if (warm) {
         setPicks(warm.picks);
@@ -80,14 +72,14 @@ export default function HistoryPage({ params }: PageProps<"/leagues/[leagueId]/h
       const res = await api(endpoint, { method: "POST" });
       alert(`Cashed out — ${fmtMoney(res.refunded)} refunded to your balance`);
       await load(leagueId);
-    } catch (err: any) {
-      try { alert(JSON.parse(err.message).error); } catch { alert(err.message); }
+    } catch (err) {
+      alert(apiError(err));
     } finally {
       setCashingOut(null);
     }
   }
 
-  function weekNet(items: any[]) {
+  function weekNet(items: HistoryBet[]) {
     return items.reduce((sum, b) => {
       const odds = b.kind === "parlay" ? b.data.totalOdds : (b.data.odds ?? -110);
       if (b.data.outcome === "WIN") {
@@ -98,7 +90,7 @@ export default function HistoryPage({ params }: PageProps<"/leagues/[leagueId]/h
     }, 0);
   }
 
-  const allBets = [
+  const allBets: HistoryBet[] = [
     ...picks.map((p) => ({ kind: "pick" as const, data: p, week: p.prop?.game?.week?.number ?? null })),
     ...gamePicks.map((g) => ({ kind: "gamepick" as const, data: g, week: g.gameLine?.game?.week?.number ?? null })),
     ...parlays.map((p) => ({
@@ -156,7 +148,7 @@ export default function HistoryPage({ params }: PageProps<"/leagues/[leagueId]/h
                 <WeekHeader wk={wk} net={weekNet(wkBets)} />
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 320px), 1fr))", gap: 8, alignItems: "start" }}>
                   {wkBets.map((b) => (
-                    <PlacedBetCard key={b.data.id} kind={b.kind} data={b.data} cashingOut={cashingOut} onCashOut={cashOut} />
+                    <PlacedBetCard key={b.data.id} bet={b} cashingOut={cashingOut} onCashOut={cashOut} />
                   ))}
                 </div>
               </div>
@@ -166,7 +158,7 @@ export default function HistoryPage({ params }: PageProps<"/leagues/[leagueId]/h
               <div style={{ marginBottom: 20 }}>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 320px), 1fr))", gap: 8, alignItems: "start" }}>
                   {noWeek.map((b) => (
-                    <PlacedBetCard key={b.data.id} kind={b.kind} data={b.data} cashingOut={cashingOut} onCashOut={cashOut} />
+                    <PlacedBetCard key={b.data.id} bet={b} cashingOut={cashingOut} onCashOut={cashOut} />
                   ))}
                 </div>
               </div>

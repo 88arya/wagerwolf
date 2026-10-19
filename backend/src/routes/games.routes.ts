@@ -1,12 +1,12 @@
 import { Router } from "express";
 import { db } from "../db/db";
 import { eq, inArray, and } from "drizzle-orm";
-import { games, picks, gameLines, gamePicks, parlayLegs, parlays, memberships } from "../db/schema";
+import { games, picks, gamePicks, parlayLegs, parlays, memberships } from "../db/schema";
 import { requireAuth, requireCron } from "../middleware/auth";
 
 const router = Router();
 
-router.post("/", requireAuth, requireCron, async (req: any, res: any, next: any) => {
+router.post("/", requireAuth, requireCron, async (req, res, next) => {
   try {
     const { weekId, homeTeam, awayTeam, gameDate } = req.body;
     if (!weekId || !homeTeam || !awayTeam || !gameDate) {
@@ -15,13 +15,13 @@ router.post("/", requireAuth, requireCron, async (req: any, res: any, next: any)
     }
     const [game] = await db.insert(games).values({ weekId, homeTeam, awayTeam, gameDate: new Date(gameDate) }).returning();
     res.status(201).json(game);
-  } catch (err: any) {
+  } catch (err) {
     next(err); return;
   }
 });
 
-// Cancel a game — voids all pending bets and refunds stakes
-router.post("/:id/cancel", requireAuth, requireCron, async (req: any, res: any, next: any) => {
+// Cancel a game - voids all pending bets and refunds stakes
+router.post("/:id/cancel", requireAuth, requireCron, async (req, res, next) => {
   try {
     const game = await db.query.games.findFirst({
       where: eq(games.id, req.params.id),
@@ -109,7 +109,7 @@ router.post("/:id/cancel", requireAuth, requireCron, async (req: any, res: any, 
       gamePicksVoided: pendingGamePicks.length,
       parlaysVoided: affectedParlayIds.size,
     });
-  } catch (err: any) {
+  } catch (err) {
     next(err); return;
   }
 });

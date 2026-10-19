@@ -1,28 +1,5 @@
-/**
- * WHEN TO ASK SGO FOR A GAME'S PROP RESULTS, and when to stop waiting.
- *
- * ESPN flips a game to FINAL within a minute of the whistle; SGO finishes
- * grading its markets some time after that. Grading used to fetch once at
- * FINAL and stamp the game settled whatever came back, so a feed that had not
- * caught up yet left props ungraded, and `voidUngradedProps` then refunded
- * every one of them as "Player did not play": winners lost their payout,
- * losers got their stake back, and nothing ever asked again.
- *
- * Now a fetch only counts when the event says `finalized`. Until then the game
- * is retried, on a backoff, because each fetch bills one entity and the score
- * sync calls in every minute. Typical lag costs one to three fetches; a feed
- * that never finalizes costs at most one per step below before the deadline.
- *
- * THE DEADLINE, 12 hours after kickoff, is when an unfinalized answer is taken
- * as it is. A game is over well inside that, so whatever values the event
- * carries are final in fact if not in flag, and without an end the bets on a
- * feed that never finalizes would stay pending for good. The week's own
- * deadline (`endDate`, last kickoff + 18h) is always later, so every game has
- * passed this one by the time the week is forced closed.
- *
- * Attempts live in process memory. A restart forgets them and retries at once,
- * which costs one fetch and is the right thing anyway.
- */
+// SGO finalizes grading a while after the game ends. Retry with backoff until
+// it does; after 12h from kickoff, take whatever values it has.
 export const GRADE_DEADLINE_MS = 12 * 60 * 60 * 1000;
 
 const BACKOFF_MINUTES = [15, 15, 30, 60, 120, 240];

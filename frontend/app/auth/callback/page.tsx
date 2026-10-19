@@ -11,44 +11,17 @@ import { callbackUrl, takeStoredState } from "@/lib/googleAuth";
 import BarePageHeader from "@/components/BarePageHeader";
 import LoadingBar from "@/components/LoadingBar";
 
-/**
- * Where Google sends the browser back to after a full-tab sign-in.
- *
- * It is the second half of what used to happen inside a popup callback: read
- * the code, hand it to the backend, store the token, go to /home. The first
- * half is lib/googleAuth.
- *
- * NOTHING HERE IS A DESTINATION. Nobody navigates to this page; they arrive on
- * it mid-flight and leave within a round trip. So it renders a line of status
- * rather than a screen, and every failure ends in a way back to /signup — being
- * stranded on a blank callback with a code in the URL is the worst outcome this
- * page can produce.
- *
- * READS window.location, NOT useSearchParams. The hook opts a page into dynamic
- * rendering and wants a Suspense boundary around it; this only ever runs in the
- * browser, one time, inside an effect that already exists.
- *
- * THE URL IS SCRUBBED as soon as it is read. An authorization code is
- * single-use and short-lived, but leaving one in the address bar means it is in
- * history, in any screenshot, and in whatever the next page sends as a
- * referrer. replaceState also means a refresh lands on a bare /auth/callback
- * that says so, rather than silently retrying a spent code.
- */
+// Google redirects here with ?code. Verify state, exchange the code, store the token.
 export default function GoogleCallbackPage() {
   const router = useRouter();
   const [error, setError] = useState("");
-  // Effects run twice in development's strict mode, and an authorization code
-  // is single-use: the second exchange would fail and replace a successful
-  // sign-in with an error. This is the guard for that, not an optimisation.
+  // Strict mode runs effects twice and the code is single-use.
   const ran = useRef(false);
 
   useEffect(() => {
     if (ran.current) return;
     ran.current = true;
 
-    // Fetch /home's code while the exchange is in flight, which is otherwise
-    // dead time. Without it the replace below starts the route load only once
-    // the token is back, and the two waits run end to end.
     router.prefetch("/home");
 
     const params = new URLSearchParams(window.location.search);
@@ -59,8 +32,6 @@ export default function GoogleCallbackPage() {
     // Scrub before anything can fail, so no path leaves the code on screen.
     window.history.replaceState({}, "", window.location.pathname);
 
-    // The person pressed Cancel, or Google refused. `access_denied` is a
-    // choice, not a fault, so it does not get an error voice.
     if (denied) {
       setError(denied === "access_denied"
         ? "Sign-in was cancelled."
@@ -70,32 +41,20 @@ export default function GoogleCallbackPage() {
 
     const expected = takeStoredState();
     if (!code || !state || !expected || state !== expected) {
-      // Deliberately one message for four different causes. A mismatched state
-      // is either a stale tab or a forged link, and telling the two apart out
-      // loud only helps whoever sent the link.
+      // Same message for every failure; don't tell a forged link apart from a stale tab.
       setError("That sign-in link is no longer valid. Please start again.");
       return;
     }
 
     api("/users/auth/google", {
       method: "POST",
-      // `redirectUri` is new to this flow: Google checks the exchange against
-      // the URI the code was issued to, so the backend cannot assume the
-      // popup's "postmessage" any more. It validates this against FRONTEND_URL.
-      //
-      // `ageConfirmed` is hardcoded true exactly as it was on the sign-up
-      // screen — the 18+ requirement lives in /terms, which Continue binds the
-      // user to. See the note in components/AuthScreen.
       body: JSON.stringify({ code, redirectUri: callbackUrl(), ageConfirmed: true }),
     })
-      .then((res: any) => {
+      .then((res: { token: string; userId: string; displayName?: string }) => {
         setToken(res.token);
         localStorage.setItem("userId", res.userId);
         localStorage.setItem("displayName", res.displayName ?? "");
-        // replace, not push: this page must not be a back-button destination —
-        // returning to it would re-run an exchange whose code is spent.
-        // A new session loads the shell from nothing, so it gets the one-reveal
-        // first load even in a tab where the gate already opened once.
+        // replace, not push: going back here would retry a spent code.
         resetBoot();
         clearPageCache();
         router.replace("/home");
@@ -106,10 +65,6 @@ export default function GoogleCallbackPage() {
       });
   }, [router]);
 
-  // While working: the bar and nothing else, in the same full-screen box and
-  // the same spot the shell's first-load bar uses, so the handover to /home is
-  // one continuous bar rather than a second one appearing higher up. No header
-  // for the same reason: the shell's bar has none. See components/LoadingBar.
   if (!error) return <LoadingBar label="Signing you in" />;
 
   return (

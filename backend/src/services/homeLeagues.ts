@@ -4,34 +4,8 @@ import { memberships, matchups, leagues, games } from "../db/schema";
 import { tallyRecords, compareStandings } from "./standings";
 import { currentWeek } from "./currentWeek";
 
-/**
- * One row per league the signed-in user plays in, for the Power rankings card
- * on /home.
- *
- * Two facts per league, one for each of the card's tabs:
- *
- * - **Last week** — where they rank now and where they ranked before the most
- *   recent resolved week, so the card can show the move.
- * - **This week** — what is left of their allowance and how many wagers they
- *   have standing, so the card can say which leagues still want betting.
- *
- * RANKS COME FROM services/standings.ts, NOT FROM A SECOND SORT HERE.
- * `tallyRecords` + `compareStandings` are the single source of truth for every
- * ranking in the app — leaderboard, member profile, playoff seeding — and that
- * file's header says so. A private comparator here would rank the same league
- * differently on /home than on its own leaderboard, which is the kind of
- * disagreement nobody reports as a bug because each screen looks right alone.
- *
- * The previous-week rank is computed the same way the leaderboard computes its
- * `prevRank`: tally again with the latest resolved week's matchups removed.
- * That is what "rank change" means here — the move the last resolve caused, not
- * a stored history. Nothing records standings over time, so this is derived on
- * read, and it is the only definition available without a new table.
- *
- * LOBBY LEAGUES ARE EXCLUDED. A league that has not started has no matchups and
- * no allowance, so both tabs would be reporting on nothing: everyone ties at
- * rank 1 and nobody can bet. It is left out rather than shown as a flat row.
- */
+// Power rankings card on /home. Ranks come from standings.ts so they match the
+// league leaderboard. Lobby leagues are skipped.
 
 export type LeagueRow = {
   leagueId: string;
@@ -57,10 +31,6 @@ export async function homeLeaguesFor(userId: string): Promise<LeagueRow[]> {
   const leagueIds = mine.map((m) => m.leagueId);
   if (leagueIds.length === 0) return [];
 
-  // Every ACTIVE membership in those leagues, and every settled matchup — the
-  // two inputs tallyRecords wants. Fetched across all of the user's leagues at
-  // once rather than per league, so this stays three queries whether they play
-  // in one league or ten.
   const [leagueRows, memberRows, matchupRows] = await Promise.all([
     db.select({ id: leagues.id, name: leagues.name, seasonStarted: leagues.seasonStarted })
       .from(leagues)
@@ -118,8 +88,6 @@ export async function homeLeaguesFor(userId: string): Promise<LeagueRow[]> {
     const rank = rankOf(played)[userId];
     if (rank == null) continue;
 
-    // Roll the standings back one week by dropping the latest resolved week's
-    // matchups — the same derivation the league leaderboard uses for prevRank.
     const weekNumbers = played.map((m) => m.weekNumber);
     const latest = weekNumbers.length ? Math.max(...weekNumbers) : null;
     const ranked = latest !== null;
@@ -141,28 +109,12 @@ export async function homeLeaguesFor(userId: string): Promise<LeagueRow[]> {
     });
   }
 
-  // Biggest riser first, then by rank. A card whose whole subject is movement
-  // should lead with the league that moved.
   return out.sort((a, b) => b.change - a.change || a.rank - b.rank);
 }
 
-/**
- * How many wagers this user has standing on the current week, per league.
- *
- * Scoped by the week the GAME belongs to rather than by when the bet was
- * placed: a bet's `createdAt` says when someone opened the app, not which slate
- * it is riding on. Cashed-out wagers are excluded, the same as everywhere else
- * — the stake came back, so nothing is standing.
- *
- * A parlay counts once however many legs it has, matching betCounts.ts.
- */
 async function standingBetsThisWeek(userId: string, leagueIds: string[]): Promise<Map<string, number>> {
   const counts = new Map<string, number>();
 
-  // THE SHARED LADDER (services/currentWeek), not "the first unresolved week".
-  // `Week.resolved` is a job-completion flag, not a clock: when the resolve is
-  // late, that definition names a slate already played, and this card would
-  // count last week's standing wagers as this week's.
   const week = await currentWeek();
   if (!week) return counts;
 

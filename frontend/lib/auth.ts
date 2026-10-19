@@ -3,23 +3,6 @@
 import { useEffect, useState } from "react";
 import { clearPageCache } from "./pageCache";
 
-/**
- * Whether anyone is signed in, as reactive state.
- *
- * The token lives in localStorage, which is not reactive. That was fine while
- * every consumer read it once on mount — but the chrome (TopBar, AppChrome) is
- * mounted once in the root layout and survives every navigation, so signing in
- * or out changed localStorage and left the bar showing the previous state until
- * a hard reload. "My Account" after signing out, "Get Started" after signing in.
- *
- * Fixed by making the writes go through here and announcing them:
- *
- *  - `setToken` / `signOut` are the only supported ways to change it
- *  - both fire AUTH_EVENT, which every `useAuthed()` picks up in the same tab
- *  - `storage` covers other tabs, which fire it natively and never for the tab
- *    that made the change — hence needing both
- */
-
 export const TOKEN_KEY = "token";
 
 /** Same-tab announcement. `storage` does not fire in the tab that wrote. */
@@ -35,17 +18,8 @@ export function setToken(token: string, userId?: string) {
   announce();
 }
 
-/**
- * Clears everything, not just the token.
- *
- * The rest of what the app keeps in localStorage is per-account too — the
- * remembered strip league, the cached display name — and leaving it behind
- * meant the next person to sign in on this device briefly saw the last one's
- * league in the games strip.
- */
+// Clears all per-account storage, not just the token.
 export function signOut() {
-  // Before the localStorage wipe: page-cache keys are prefixed with the userId
-  // stored there, and sessionStorage outlives this call otherwise.
   clearPageCache();
   localStorage.clear();
   announce();
@@ -55,14 +29,7 @@ export function hasToken(): boolean {
   return typeof window !== "undefined" && Boolean(localStorage.getItem(TOKEN_KEY));
 }
 
-/**
- * `null` until checked on the client, then boolean.
- *
- * Never resolved during the initial render on purpose: reading localStorage in
- * a `useState` initialiser runs during SSR, where there is no localStorage, and
- * mismatches on hydration. Consumers render nothing for that one frame rather
- * than guessing — see the comment on TopBar's right-hand control.
- */
+// null until checked on the client, so SSR and hydration agree.
 export function useAuthed(): boolean | null {
   const [authed, setAuthed] = useState<boolean | null>(null);
 

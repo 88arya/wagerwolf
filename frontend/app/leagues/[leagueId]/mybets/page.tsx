@@ -2,55 +2,44 @@
 
 import { use, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { api } from "@/lib/api";
+import { api, apiError } from "@/lib/api";
 import { getCached, readCached, setCached } from "@/lib/pageCache";
 import { fmtMoney } from "@/lib/money";
 import PlacedBetCard, { type BetKind } from "@/components/PlacedBetCard";
+import type { Game, GamePick, Parlay, Pick, Week } from "@/lib/types";
 
-type Cached = { week: any; picks: any[]; gamePicks: any[]; parlays: any[] };
+type Cached = { week: Week | null; picks: Pick[]; gamePicks: GamePick[]; parlays: Parlay[] };
 
 /** League-scoped: the sidebar switches leagues without unmounting this page. */
 const cacheKey = (leagueId: string) => `mybets:${leagueId}`;
 
 export default function MyBetsPage({ params }: PageProps<"/leagues/[leagueId]/mybets">) {
   const router = useRouter();
-  // `use`, not an await inside the effect. The cache key needs the league id,
-  // and an id that only arrives after the first paint means the first paint is
-  // always the empty state — the LOADING… frame this is trying to remove. `use`
-  // unwraps the promise during render, so the seeds below are the FIRST thing
-  // rendered rather than a correction to it. Documented pattern for reading
-  // params in a client component.
   const { leagueId } = use(params);
   const cached = getCached<Cached>(cacheKey(leagueId));
 
-  const [week, setWeek] = useState<any>(cached?.week ?? null);
-  const [picks, setPicks] = useState<any[]>(cached?.picks ?? []);
-  const [gamePicks, setGamePicks] = useState<any[]>(cached?.gamePicks ?? []);
-  const [parlays, setParlays] = useState<any[]>(cached?.parlays ?? []);
-  // Never true on a revisit: there is already something real to show, so the
-  // refetch happens behind the last answer instead of behind a spinner.
+  const [week, setWeek] = useState<Week | null>(cached?.week ?? null);
+  const [picks, setPicks] = useState<Pick[]>(cached?.picks ?? []);
+  const [gamePicks, setGamePicks] = useState<GamePick[]>(cached?.gamePicks ?? []);
+  const [parlays, setParlays] = useState<Parlay[]>(cached?.parlays ?? []);
   const [loading, setLoading] = useState(!cached);
   const [cashingOut, setCashingOut] = useState<string | null>(null);
 
-  async function load(lid: string, currentWeek: any, gate = true) {
-    // Matched by the game's week, which every bet already carries
-    // (prop → game, gameLine → game). It used to collect the ids of every prop
-    // and line on the board, which meant downloading the whole 1.86 MB board
-    // to answer "is this bet from this week".
+  async function load(lid: string, currentWeek: Week | null, gate = true) {
     const weekId = currentWeek?.id;
-    const inWeek = (game: any) => weekId != null && game?.weekId === weekId;
+    const inWeek = (game?: Game) => weekId != null && game?.weekId === weekId;
 
     const [picksData, gamePicksData, parlaysData] = await Promise.all([
-      api(`/picks?leagueId=${lid}`, undefined, { gate }),
-      api(`/gamepicks?leagueId=${lid}`, undefined, { gate }),
-      api(`/parlays?leagueId=${lid}`, undefined, { gate }),
+      api<Pick[]>(`/picks?leagueId=${lid}`, undefined, { gate }),
+      api<GamePick[]>(`/gamepicks?leagueId=${lid}`, undefined, { gate }),
+      api<Parlay[]>(`/parlays?leagueId=${lid}`, undefined, { gate }),
     ]);
 
-    const nextPicks = picksData.filter((p: any) => inWeek(p.prop?.game));
-    const nextGamePicks = gamePicksData.filter((p: any) => inWeek(p.gameLine?.game));
+    const nextPicks = picksData.filter((p) => inWeek(p.prop?.game));
+    const nextGamePicks = gamePicksData.filter((p) => inWeek(p.gameLine?.game));
     // parlays: include if any leg is in this week
-    const nextParlays = parlaysData.filter((p: any) =>
-      p.legs?.some((l: any) =>
+    const nextParlays = parlaysData.filter((p) =>
+      p.legs?.some((l) =>
         inWeek(l.prop?.game) || inWeek(l.gameLine?.game)
       )
     );
@@ -59,9 +48,6 @@ export default function MyBetsPage({ params }: PageProps<"/leagues/[leagueId]/my
     setGamePicks(nextGamePicks);
     setParlays(nextParlays);
 
-    // Written here rather than at the call site because `load` is also the
-    // post-cashout refresh — so the stored copy cannot go stale behind a
-    // cashout the way it would if only the initial fetch saved it.
     setCached<Cached>(cacheKey(lid), {
       week: currentWeek, picks: nextPicks, gamePicks: nextGamePicks, parlays: nextParlays,
     });
@@ -72,9 +58,6 @@ export default function MyBetsPage({ params }: PageProps<"/leagues/[leagueId]/my
       if (!localStorage.getItem("token")) { router.push("/"); return; }
       const lid = leagueId;
 
-      // After a reload memory is empty but sessionStorage is not: repaint the
-      // last answer while the boot gate still has the shell hidden, and do not
-      // hold the gate for a refresh of it. See lib/pageCache.
       const warm = cached ? undefined : readCached<Cached>(cacheKey(lid));
       if (warm) {
         setWeek(warm.week);
@@ -105,8 +88,8 @@ export default function MyBetsPage({ params }: PageProps<"/leagues/[leagueId]/my
       const res = await api(endpoint, { method: "POST" });
       alert(`Cashed out — ${fmtMoney(res.refunded)} refunded`);
       if (week) await load(leagueId, week);
-    } catch (err: any) {
-      try { alert(JSON.parse(err.message).error); } catch { alert(err.message); }
+    } catch (err) {
+      alert(apiError(err));
     } finally {
       setCashingOut(null);
     }
@@ -150,13 +133,11 @@ export default function MyBetsPage({ params }: PageProps<"/leagues/[leagueId]/my
 
         {!loading && week && totalBets > 0 && (
           <>
-            {/* All bets, most recent first */}
             <div style={grid}>
-              {allBets.map(({ kind, data }) => (
+              {allBets.map((bet) => (
                 <PlacedBetCard
-                  key={data.id}
-                  kind={kind}
-                  data={data}
+                  key={bet.data.id}
+                  bet={bet}
                   cashingOut={cashingOut}
                   onCashOut={cashOut}
                 />

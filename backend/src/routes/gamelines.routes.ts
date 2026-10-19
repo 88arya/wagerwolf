@@ -6,7 +6,7 @@ import { requireAuth } from "../middleware/auth";
 
 const router = Router();
 
-router.get("/", requireAuth, async (req: any, res: any, next: any) => {
+router.get("/", requireAuth, async (req, res, next) => {
   try {
     const { gameId } = req.query;
     if (!gameId) { res.status(400).json({ error: "gameId is required" }); return; }
@@ -17,7 +17,7 @@ router.get("/", requireAuth, async (req: any, res: any, next: any) => {
     });
 
     res.json(lines);
-  } catch (err: any) {
+  } catch (err) {
     next(err); return;
   }
 });

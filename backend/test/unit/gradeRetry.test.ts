@@ -20,8 +20,6 @@ describe("backoffMs", () => {
       .toEqual([15, 15, 30, 60, 120, 240, 240, 240]);
   });
 
-  // The cost ceiling: a feed that never finalizes is fetched at most this many
-  // times before the deadline takes over, where one fetch is one billed entity.
   it("caps a never-finalizing game at 7 fetches inside the deadline", () => {
     const a = new GradeAttempts();
     let fetches = 0;

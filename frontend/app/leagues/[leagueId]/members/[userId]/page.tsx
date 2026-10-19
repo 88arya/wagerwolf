@@ -6,8 +6,8 @@ import { ACCENT } from "@/lib/constants";
 import { api } from "@/lib/api";
 import { fmtMoney } from "@/lib/money";
 import HelmetAvatar from "@/components/HelmetAvatar";
+import { fmtOdds } from "@/lib/odds";
 
-function fmtOdds(n: number) { return n > 0 ? `+${n}` : `${n}`; }
 function fmtStatType(s: string) { return s.split("_").map((w: string) => w[0] + w.slice(1).toLowerCase()).join(" "); }
 
 function CardHeader({ children }: { children: React.ReactNode }) {
@@ -18,10 +18,46 @@ function CardHeader({ children }: { children: React.ReactNode }) {
   );
 }
 
+// GET /leagues/:id/members/:userId/stats
+interface StatTypeResult { statType: string; profit: number }
+
+interface MemberStats {
+  displayName: string;
+  helmetColor: string;
+  abbreviation: string;
+  balance: number;
+  rank: number;
+  wins: number;
+  losses: number;
+  ties: number;
+  wonPicks: number;
+  lostPicks: number;
+  totalStaked: number;
+  totalProfit: number;
+  roi: number;
+  streak: number;
+  avgWeeklyWinnings: number;
+  bestStatType: StatTypeResult | null;
+  worstStatType: StatTypeResult | null;
+  statTypeHitRates: (StatTypeResult & { won: number; total: number; hitRate: number })[];
+  recentPicks: {
+    id: string;
+    playerName: string;
+    statType: string;
+    direction: "OVER" | "UNDER";
+    line: number;
+    altLine: number | null;
+    stake: number;
+    odds: number;
+    outcome: string;
+    createdAt: string;
+  }[];
+}
+
 export default function MemberProfilePage({ params }: PageProps<"/leagues/[leagueId]/members/[userId]">) {
   const router = useRouter();
   const [userId, setUserId] = useState("");
-  const [stats, setStats] = useState<any>(null);
+  const [stats, setStats] = useState<MemberStats | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -30,7 +66,7 @@ export default function MemberProfilePage({ params }: PageProps<"/leagues/[leagu
       const { leagueId: lid, userId: uid } = await params;
       setUserId(uid);
       try {
-        const data = await api(`/leagues/${lid}/members/${uid}/stats`);
+        const data = await api<MemberStats>(`/leagues/${lid}/members/${uid}/stats`);
         setStats(data);
       } catch {
         router.push(`/leagues/${lid}`);
@@ -58,7 +94,6 @@ export default function MemberProfilePage({ params }: PageProps<"/leagues/[leagu
   return (
     <div className="page-wide" style={{ display: "flex", flexDirection: "column", alignItems: "center", paddingTop: "5vh" }}>
 
-      {/* Header row: identity */}
       <div style={{ width: "100%", maxWidth: 860, marginBottom: 16, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
           <HelmetAvatar color={stats.helmetColor ?? ACCENT} initials={stats.abbreviation || stats.displayName.slice(0, 2).toUpperCase()} size={40} />
@@ -84,7 +119,6 @@ export default function MemberProfilePage({ params }: PageProps<"/leagues/[leagu
 
       <div style={{ width: "100%", maxWidth: 860 }}>
 
-        {/* Stat strip */}
         <div className="rg-6" style={{ display: "grid", gap: 8, marginBottom: 16 }}>
           {[
             { label: "Balance", value: fmtMoney(stats.balance), color: "var(--text)" },
@@ -103,7 +137,6 @@ export default function MemberProfilePage({ params }: PageProps<"/leagues/[leagu
 
         <div className="rg-2" style={{ display: "grid", gap: 12, alignItems: "start" }}>
 
-          {/* Left: hit rates */}
           <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
             {(stats.bestStatType || stats.worstStatType) && (
               <div className="card" style={{ padding: 0, overflow: "hidden" }}>
@@ -139,7 +172,7 @@ export default function MemberProfilePage({ params }: PageProps<"/leagues/[leagu
               <div className="card" style={{ padding: 0, overflow: "hidden" }}>
                 <CardHeader>Hit Rates by Category</CardHeader>
                 <div style={{ padding: 14 }}>
-                  {stats.statTypeHitRates.map((s: any, idx: number) => {
+                  {stats.statTypeHitRates.map((s, idx) => {
                     const hitColor = s.hitRate >= 55 ? "var(--win)" : s.hitRate <= 40 ? "var(--loss)" : "var(--text-2)";
                     return (
                       <div key={s.statType} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: idx < stats.statTypeHitRates.length - 1 ? 10 : 0 }}>
@@ -163,12 +196,11 @@ export default function MemberProfilePage({ params }: PageProps<"/leagues/[leagu
             )}
           </div>
 
-          {/* Right: recent picks */}
           <div>
             <div className="card" style={{ padding: 0, overflow: "hidden" }}>
               <CardHeader>Recent Picks</CardHeader>
               {stats.recentPicks?.length > 0 ? (
-                stats.recentPicks.map((pick: any, idx: number) => {
+                stats.recentPicks.map((pick, idx) => {
                   const outcomeColor = pick.outcome === "WIN" ? "var(--win)" : pick.outcome === "LOSS" ? "var(--loss)" : "var(--text-3)";
                   const line = pick.altLine ?? pick.line;
                   return (

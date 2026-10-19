@@ -2,44 +2,28 @@
 
 import React from "react";
 import { getTeamFullName } from "@/lib/teamLogos";
+import { fmtOdds } from "@/lib/odds";
 
-// Shared row rendering for the bet slip (BetSlip.tsx) and for placed bets
-// (PlacedBetCard.tsx — My Bets / History). Both surfaces must look identical,
-// so the geometry, grouping, and row markup live here rather than being
-// duplicated per page.
-
-/* ─────────────── formatting ─────────────── */
-
-export function fmtOdds(american: number): string {
-  return american > 0 ? `+${american}` : `${american}`;
-}
+/*  formatting */
 
 export function titleCase(s: string): string {
   return s.split("_").map((w) => w.charAt(0) + w.slice(1).toLowerCase()).join(" ");
 }
 
-/** Signed spread: -3.5 → "-3.5", 3.5 → "+3.5". */
+/** Signed spread: -3.5 -> "-3.5", 3.5 -> "+3.5". */
 function fmtSigned(line: number): string {
   return line > 0 ? `+${line}` : `${line}`;
 }
 
 export interface GameLineRef {
   market?: string;
-  /** The line actually taken — alt line if the bet was on one, else the main line. */
+  /** The line actually taken - alt line if the bet was on one, else the main line. */
   line?: number | null;
   homeTeam?: string;
   awayTeam?: string;
   /** Server-side label, used only when the market can't be recognised. */
   label?: string;
 }
-
-// Game lines name the side in the title and the market in the subtitle:
-//   Moneyline  → "Los Angeles Rams"      / "MONEYLINE"
-//   Spread     → "Los Angeles Rams -3.5" / "SPREAD"
-//   Total      → "Over 44.5"             / "TOTAL MATCH POINTS"
-// Matching on substrings so the ALT_ variants (ALT_SPREAD_HOME_-7,
-// ALT_TOTAL_OVER_45) fall out for free. The matchup is deliberately left off
-// the subtitle — the game group header above the row already carries it.
 
 export function gameLineTitle(ref: GameLineRef): string {
   const { market } = ref;
@@ -75,7 +59,7 @@ export function fmtKickoff(iso?: string): string {
   return d.toLocaleString(undefined, { weekday: "short", hour: "numeric", minute: "2-digit" });
 }
 
-/* ─────────────── grouping ─────────────── */
+/*  grouping */
 
 export interface RowGame {
   gameId?: string;
@@ -99,8 +83,6 @@ export interface LegGroup<T extends RowGame> extends RowGame {
   legs: T[];
 }
 
-// Group legs by game and order earliest → latest kickoff, matching the game
-// cards: asc(gameDate), asc(gameId). Stable sort preserves add order within a game.
 export function groupLegs<T extends RowGame>(legs: T[]): LegGroup<T>[] {
   const ordered = legs
     .map((leg, i) => ({ leg, i }))
@@ -127,20 +109,12 @@ export function groupLegs<T extends RowGame>(legs: T[]): LegGroup<T>[] {
   return groups;
 }
 
-/* ─────────────── left rail ─────────────── */
+/*  left rail */
 
-// The row owns the line so it spans the row's full height (padding included)
-// and stays continuous from one row to the next.
 export const RAIL_PAD = 8;
 export const RAIL_W = 22;
 export const RAIL_X = RAIL_PAD + RAIL_W / 2;
 
-/**
- * The continuous vertical line. Overhangs 1px to cover the row's bottom border.
- * The final row must not overhang: there's no next row's border left to bridge,
- * and the bleed past a scroll container's content box counts as sub-pixel
- * overflow, which shows a scrollbar even when the rows fit with room to spare.
- */
 export function RailLine({ last }: { last?: boolean }) {
   return (
     <div style={{
@@ -165,7 +139,7 @@ export function RailCell({ children }: { children?: React.ReactNode }) {
   );
 }
 
-/* ─────────────── header ─────────────── */
+/*  header */
 
 /** Count badge + bet label on the left, total odds on the right. */
 export function BetHeader({ count, label, odds }: { count: number; label: string; odds?: number | null }) {
@@ -176,8 +150,6 @@ export function BetHeader({ count, label, odds }: { count: number; label: string
       justifyContent: "space-between",
       padding: "14px 16px 12px",
       background: "var(--surface)",
-      // Top corners must track the parent card's radius (PlacedBetCard / BetSlip)
-      // or the header squares off inside a rounded container.
       borderRadius: "var(--radius) var(--radius) 0 0",
       flexShrink: 0,
       borderBottom: "1px solid var(--border)",
@@ -221,7 +193,7 @@ export function BetHeader({ count, label, odds }: { count: number; label: string
   );
 }
 
-/* ─────────────── rows ─────────────── */
+/*  rows */
 
 /** Game group headers + leg rows, sharing one continuous left rail. */
 export function BetRows({ rows }: { rows: BetRow[] }) {

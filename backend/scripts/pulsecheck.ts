@@ -1,15 +1,3 @@
-/**
- * Asserts the /home/pulse ledger against a hand-built week, inside a
- * transaction that always rolls back.
- *
- * The volume half is easy to eyeball against real data. The ledger half is not:
- * its attribution rules (a winning parlay pays every entity on it in full; a
- * losing one charges only the entities whose own leg missed) have no way to
- * show themselves wrong on a screen — a number is simply a bit off and nobody
- * knows. So they get a fixture with a known answer.
- *
- * Run: npx tsx scripts/pulsecheck.ts
- */
 import { sql } from "drizzle-orm";
 import { db } from "../src/db/db";
 import { weeks, games, players, props, gameLines, picks, parlays, parlayLegs } from "../src/db/schema";
@@ -17,8 +5,6 @@ import { ledgerForWeek, homePulse } from "../src/services/homePulse";
 
 const id = (s: string) => `pulsecheck-${s}`;
 
-// Week 999 never collides with a real NFL week, and the whole transaction is
-// rolled back regardless.
 const WEEK = 999;
 
 type Expect = { key: string; bets: number; wagered: number; profit: number; lost: number };
@@ -65,8 +51,6 @@ async function main() {
 
       const bet = { userId: id("u"), leagueId: id("l") };
 
-      // 1. Single on P1, +100, WIN  -> P1 profit 1000
-      // 2. Single on P2, -200, LOSS -> P2 lost 500
       await tx.insert(picks).values([
         { id: id("pick1"), ...bet, propId: id("pr1"), direction: "OVER", stake: 1000, odds: 100, outcome: "WIN" },
         { id: id("pick2"), ...bet, propId: id("pr2"), direction: "UNDER", stake: 500, odds: -200, outcome: "LOSS" },
@@ -77,7 +61,7 @@ async function main() {
         { id: id("parA"), ...bet, stake: 200, totalOdds: 300, payout: 800, outcome: "WIN" },
         // B: LOST on P2's leg. P1's leg hit, so P1 is charged nothing.
         { id: id("parB"), ...bet, stake: 300, totalOdds: 250, payout: 1050, outcome: "LOSS" },
-        // C: LOST, both legs on P1 — one hit, one missed. Charged once, not twice.
+        // C: LOST, both legs on P1 - one hit, one missed. Charged once, not twice.
         { id: id("parC"), ...bet, stake: 400, totalOdds: 200, payout: 1200, outcome: "LOSS" },
       ]);
       await tx.insert(parlayLegs).values([
@@ -91,10 +75,6 @@ async function main() {
 
       const led = await ledgerForWeek(tx, id("week"), 5);
 
-      // P1: profit 1000 (single) + 600 (parlay A) = 1600.
-      //     lost 400 (parlay C only, counted once).
-      //     4 tickets, 1000+200+300+400 = 1900 staked.
-      // P2: lost 500 (single) + 300 (parlay B) = 800 across 2 tickets.
       const results = [
         check("players by profit", led.playersProfit, [
           { key: id("p1"), bets: 4, wagered: 1900, profit: 1600, lost: 400 },
@@ -112,16 +92,13 @@ async function main() {
       passed = results.filter(Boolean).length;
       failed = results.length - passed;
 
-      // Always roll back — this fixture must never reach a real database.
+      // Always roll back - this fixture must never reach a real database.
       throw new Error("__rollback__");
     });
   } catch (err: any) {
     if (err?.message !== "__rollback__") throw err;
   }
 
-  // Single flight: two callers arriving together must share one query, not race
-  // two. The cache holds the in-flight promise, so both await the same object —
-  // with a value cache they would each build their own and these would differ.
   const [a, b] = await Promise.all([homePulse(5), homePulse(5)]);
   const sameFlight = a === b;
   console.log(`${sameFlight ? "PASS" : "FAIL"}  concurrent callers share one query`);

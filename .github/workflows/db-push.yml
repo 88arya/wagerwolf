@@ -1,20 +1,5 @@
-# Schema changes, run by hand.
-#
-# Separate from the deploy workflows on purpose. This project uses
-# `drizzle-kit push` rather than generated migrations, so there is no migration
-# history and nothing to roll back to — the only undo is restoring a dump. That
-# is not something to trigger on a git push.
-#
-# Staging migrates automatically as part of its deploy. This workflow exists for
-# production, and for re-running staging out of band.
-#
-# WHY THIS RUNS ON THE BOX RATHER THAN THE RUNNER. Postgres is Supabase now, so
-# a GitHub runner could reach it directly and this workflow could be three lines
-# shorter. It is not, because that would mean storing DATABASE_URL as a second
-# secret alongside the copy already inside BACKEND_ENV — and two copies of a
-# connection string drift. Running on the instance reuses the .env the app is
-# actually using, so "the schema I migrated" and "the database the app talks to"
-# cannot disagree.
+# Manual schema push (drizzle-kit push). Takes a dump first, since there are
+# no migrations to roll back.
 name: Database · push schema
 
 on:
@@ -48,11 +33,7 @@ jobs:
     runs-on: ubuntu-latest
     environment: ${{ inputs.environment }}
     steps:
-      # Cheap guard against picking production from the dropdown by accident.
-      # THIS IS THE ONLY GATE on this workflow — Environment protection rules
-      # (required reviewers) are a paid feature on private repos, so there is no
-      # approval prompt behind it. Typing the target back is what stands between
-      # a misclick and drizzle-kit running against production.
+      # Type the environment name to confirm.
       - name: Confirm target
         run: |
           if [ "$CONFIRM" != "$TARGET" ]; then
@@ -79,19 +60,12 @@ jobs:
             stamp=$(date -u +%Y%m%dT%H%M%SZ)
             file="backups/pre-migrate-$stamp.sql.gz"
 
-            # pg_dump comes from a throwaway postgres image rather than being
-            # installed on the host: nothing to keep patched, and the client
-            # version is pinned here instead of drifting with the distro. A
-            # newer client against Supabase's older server is supported; the
-            # reverse is not, which is why this is not `postgres:15`.
             docker run --rm postgres:18-alpine \
               pg_dump "$DATABASE_URL" --clean --if-exists \
               | gzip > "$file"
 
             size=$(stat -c%s "$file")
             echo "Dumped $file ($size bytes)"
-            # A gzip of a failed dump is still a few hundred bytes, so "the file
-            # exists" proves nothing.
             [ "$size" -ge 1024 ] || { echo "Dump implausibly small — aborting" >&2; exit 1; }
             gzip -t "$file"
 
@@ -99,8 +73,7 @@ jobs:
               aws s3 cp "$file" "s3://$BACKUP_BUCKET/$(basename "$file")"
             fi
 
-            # Keep the last 10 locally; S3 lifecycle is the real retention. A
-            # full root volume takes the app down with it.
+            # Keep the last 10 locally.
             ls -1t backups/*.sql.gz | tail -n +11 | xargs -r rm --
           envs: BACKUP_BUCKET
         env:
@@ -116,15 +89,11 @@ jobs:
           script: |
             set -euo pipefail
             cd /opt/wagerwolf
-            # Without --force, drizzle-kit refuses rather than proceeds when it
-            # judges a change destructive. That refusal is the feature: if it
-            # fires on a change you actually intend, re-run with force ticked
-            # having read what it wanted to do.
+            # Without --force, drizzle-kit refuses changes it considers destructive.
             FORCE=""
             if [ "${{ inputs.force }}" = "true" ]; then
               FORCE="--force"
               echo "::warning::Running with --force — data-loss statements are auto-approved"
             fi
-            # Run inside the deployed image so the schema applied is the schema
-            # that image was built from.
+            # Run inside the deployed image so the schema matches the running code.
             docker compose run --rm --no-deps -T app npx drizzle-kit push $FORCE

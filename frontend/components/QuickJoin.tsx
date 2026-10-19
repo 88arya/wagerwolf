@@ -1,28 +1,21 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { api } from "@/lib/api";
+import { api, apiError } from "@/lib/api";
 import { LEAGUE_LEVELS } from "@/lib/geo";
-
-/**
- * Join a public league.
- *
- * You state a size, a level and a start week and get assigned — there is no
- * list of open leagues to look through. That is how ESPN, Yahoo and Sleeper all do it, and
- * the reason is that a season-long league with the same ten people is not a
- * product you comparison-shop: leagues differ by name, size and stake, and what
- * decides whether you enjoy it is whether the league *fills and starts*.
- * Assignment sends everyone to the league closest to starting, which is what
- * makes leagues fill instead of stranding half-empty lobbies.
- *
- * This replaced a browsable directory with search, five skill tiers, and
- * country/region filters. If a list ever comes back, it needs a reason that
- * survives that argument.
- */
 
 const SIZES = [4, 6, 8, 10, 12];
 
 type StartWeek = { number: number; startDate: string };
+
+// POST /memberships/quick-join: the new membership plus how the match went.
+export interface JoinResult {
+  leagueId: string;
+  league?: { name: string };
+  startWeek?: number;
+  created?: boolean;
+  relaxedSize?: boolean;
+}
 
 function CloseIcon() {
   return (
@@ -48,7 +41,7 @@ export default function QuickJoin({
   open: boolean;
   onClose: () => void;
   /** Receives the membership plus whether the size preference had to give. */
-  onJoined: (membership: any) => void;
+  onJoined: (membership: JoinResult) => void;
 }) {
   const [size, setSize] = useState<number | null>(null);
   const [level, setLevel] = useState("BEGINNER");
@@ -58,17 +51,13 @@ export default function QuickJoin({
   const [joining, setJoining] = useState(false);
   const [error, setError] = useState("");
 
-  // Start weeks come from the server, not a 1..17 range: a week that has
-  // already resolved is not a start week, and the set shrinks as the season
-  // runs. Refetched on every open so a sheet left closed over a Tuesday
-  // resolve does not offer a week that has since been played.
   useEffect(() => {
     if (!open) return;
     let cancelled = false;
     setLoadingOptions(true);
     setError("");
-    api("/memberships/join-options")
-      .then((d: any) => {
+    api<{ startWeeks?: StartWeek[]; defaultStartWeek?: number | null }>("/memberships/join-options")
+      .then((d) => {
         if (cancelled) return;
         setWeeks(d.startWeeks ?? []);
         setStartWeek(d.defaultStartWeek ?? null);
@@ -89,13 +78,13 @@ export default function QuickJoin({
     setJoining(true);
     setError("");
     try {
-      const membership = await api("/memberships/quick-join", {
+      const membership = await api<JoinResult>("/memberships/quick-join", {
         method: "POST",
         body: JSON.stringify({ maxPlayers: size, level, startWeek }),
       });
       onJoined(membership);
-    } catch (err: any) {
-      try { setError(JSON.parse(err.message).error); } catch { setError("Couldn't find you a league."); }
+    } catch (err) {
+      setError(apiError(err, "Couldn't find you a league."));
       setJoining(false);
     }
   }
@@ -167,8 +156,6 @@ export default function QuickJoin({
 
           <div>
             <span className="mx-label">Experience level</span>
-            {/* Two cards rather than chips: this is the one choice that is never
-                compromised on, so it gets the weight and the explanation. */}
             <div className="rg-2" style={{ display: "grid", gap: 8 }}>
               {LEAGUE_LEVELS.map(l => {
                 const on = level === l.value;
@@ -180,12 +167,6 @@ export default function QuickJoin({
                     aria-pressed={on}
                     style={{
                       textAlign: "left",
-                      // Two overrides needed to make this card wrap. The global
-                      // `button` rule sets `white-space: nowrap`, correct for a
-                      // pill and wrong for a card with a sentence in it; and
-                      // grid items default to `min-width: auto`, which lets the
-                      // content push the card past its 1fr track and out of the
-                      // sheet. Without both, the second card runs off the edge.
                       whiteSpace: "normal",
                       minWidth: 0,
                       padding: "12px 13px",

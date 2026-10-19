@@ -2,10 +2,12 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { api } from "@/lib/api";
+import { api, apiError } from "@/lib/api";
 import { fmtMoney } from "@/lib/money";
 import HelmetAvatar, { HELMET_COLORS } from "@/components/HelmetAvatar";
 import { ACCENT } from "@/lib/constants";
+import { Card, InviteCodeCard, JoinRequestsCard } from "../_shared/LeagueCards";
+import type { League, PendingMember, Standing } from "@/lib/types";
 
 const TH = { fontSize: "0.65rem", fontWeight: 500, color: "var(--text-3)", padding: "10px 12px 8px", borderBottom: "1px solid var(--border-2)", whiteSpace: "nowrap" as const, overflow: "hidden" as const, textAlign: "left" as const, background: "transparent" };
 const TD = { fontSize: "0.78rem", fontWeight: 400, color: "var(--text)", padding: "10px 12px", borderTop: "1px solid var(--border)", fontVariantNumeric: "tabular-nums" as const, whiteSpace: "nowrap" as const, overflow: "hidden" as const };
@@ -14,12 +16,11 @@ export default function MembersPage({ params }: PageProps<"/leagues/[leagueId]/m
   const router = useRouter();
   const [leagueId, setLeagueId] = useState("");
   const [userId, setUserId] = useState("");
-  const [league, setLeague] = useState<any>(null);
-  const [members, setMembers] = useState<any[]>([]);
-  const [pending, setPending] = useState<any[]>([]);
+  const [league, setLeague] = useState<League | null>(null);
+  const [members, setMembers] = useState<Standing[]>([]);
+  const [pending, setPending] = useState<PendingMember[]>([]);
   const [starting, setStarting] = useState(false);
   const [startError, setStartError] = useState("");
-  const [copied, setCopied] = useState(false);
 
   const [profile, setProfile] = useState({ displayName: "", abbreviation: "", helmetColor: "" });
   const [saving, setSaving] = useState(false);
@@ -35,13 +36,13 @@ export default function MembersPage({ params }: PageProps<"/leagues/[leagueId]/m
       setLeagueId(lid);
 
       const [lg, board] = await Promise.all([
-        api(`/leagues/${lid}`),
-        api(`/leagues/${lid}/leaderboard`),
+        api<League>(`/leagues/${lid}`),
+        api<Standing[]>(`/leagues/${lid}/leaderboard`),
       ]);
       setLeague(lg);
       setMembers(board ?? []);
 
-      const me = (board ?? []).find((m: any) => m.userId === id);
+      const me = (board ?? []).find((m) => m.userId === id);
       if (me) {
         setProfile({ displayName: me.displayName ?? "", abbreviation: me.abbreviation ?? "", helmetColor: me.helmetColor ?? ACCENT });
       }
@@ -53,20 +54,24 @@ export default function MembersPage({ params }: PageProps<"/leagues/[leagueId]/m
     load();
   }, []);
 
+  function patchProfile() {
+    const patch = (path: string, body: object) =>
+      api(`/leagues/${leagueId}/${path}`, { method: "PATCH", body: JSON.stringify(body) });
+    return Promise.all([
+      patch("my-display-name", { displayName: profile.displayName.trim() }),
+      patch("my-abbreviation", { abbreviation: profile.abbreviation.trim() }),
+      patch("my-helmet", { helmetColor: profile.helmetColor }),
+    ]);
+  }
+
   async function startLeague() {
     setStartError(""); setStarting(true);
     try {
-      if (myMember) {
-        await Promise.all([
-          api(`/leagues/${leagueId}/my-display-name`, { method: "PATCH", body: JSON.stringify({ displayName: profile.displayName.trim() }) }),
-          api(`/leagues/${leagueId}/my-abbreviation`, { method: "PATCH", body: JSON.stringify({ abbreviation: profile.abbreviation.trim() }) }),
-          api(`/leagues/${leagueId}/my-helmet`, { method: "PATCH", body: JSON.stringify({ helmetColor: profile.helmetColor }) }),
-        ]);
-      }
+      if (myMember) await patchProfile();
       await api(`/leagues/${leagueId}/season/start`, { method: "POST", body: JSON.stringify({}) });
       router.push(`/leagues/${leagueId}`);
-    } catch (err: any) {
-      try { setStartError(JSON.parse(err.message).error); } catch { setStartError(err.message); }
+    } catch (err) {
+      setStartError(apiError(err));
       setStarting(false);
     }
   }
@@ -76,8 +81,8 @@ export default function MembersPage({ params }: PageProps<"/leagues/[leagueId]/m
       await api(`/leagues/${leagueId}/members/${memberId}/accept`, { method: "POST", body: JSON.stringify({}) });
       setPending(prev => prev.filter(m => m.userId !== memberId));
       setMembers(await api(`/leagues/${leagueId}/leaderboard`));
-    } catch (err: any) {
-      try { alert(JSON.parse(err.message).error); } catch { alert(err.message); }
+    } catch (err) {
+      alert(apiError(err));
     }
   }
 
@@ -85,8 +90,8 @@ export default function MembersPage({ params }: PageProps<"/leagues/[leagueId]/m
     try {
       await api(`/leagues/${leagueId}/members/${memberId}`, { method: "DELETE" });
       setPending(prev => prev.filter(m => m.userId !== memberId));
-    } catch (err: any) {
-      try { alert(JSON.parse(err.message).error); } catch { alert(err.message); }
+    } catch (err) {
+      alert(apiError(err));
     }
   }
 
@@ -95,24 +100,14 @@ export default function MembersPage({ params }: PageProps<"/leagues/[leagueId]/m
     if (!profile.displayName.trim()) { setSaveError("Display name is required."); setSaving(false); return; }
     if (!profile.abbreviation.trim()) { setSaveError("Abbreviation is required."); setSaving(false); return; }
     try {
-      await Promise.all([
-        api(`/leagues/${leagueId}/my-display-name`, { method: "PATCH", body: JSON.stringify({ displayName: profile.displayName.trim() }) }),
-        api(`/leagues/${leagueId}/my-abbreviation`, { method: "PATCH", body: JSON.stringify({ abbreviation: profile.abbreviation.trim() }) }),
-        api(`/leagues/${leagueId}/my-helmet`, { method: "PATCH", body: JSON.stringify({ helmetColor: profile.helmetColor }) }),
-      ]);
+      await patchProfile();
       setMembers(await api(`/leagues/${leagueId}/leaderboard`));
       window.dispatchEvent(new CustomEvent("league-profile-updated"));
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
-    } catch (err: any) {
-      try { setSaveError(JSON.parse(err.message).error); } catch { setSaveError(err.message); }
+    } catch (err) {
+      setSaveError(apiError(err));
     } finally { setSaving(false); }
-  }
-
-  function copyCode() {
-    navigator.clipboard.writeText(league.inviteCode);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
   }
 
   if (!league) return <div className="loading">Loading…</div>;
@@ -140,54 +135,13 @@ export default function MembersPage({ params }: PageProps<"/leagues/[leagueId]/m
         {!league.seasonStarted && (
           <div className="rg-2" style={{ display: "grid", gap: 12, marginBottom: 20, alignItems: "start" }}>
 
-            {/* Left column: invite + start */}
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-              <div className="card" style={{ padding: 0, overflow: "hidden" }}>
-                <div style={{ padding: "8px 14px", borderBottom: "1px solid var(--border)" }}>
-                  <span style={{ fontSize: "0.58rem", fontWeight: 800, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--text)" }}>Invite Code</span>
-                </div>
-                <div style={{ padding: "14px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-                  <span className="invite-code" style={{ fontSize: "1.5rem" }}>{league.inviteCode}</span>
-                  <button type="button" onClick={copyCode}
-                    style={{ padding: "5px 12px", borderRadius: "var(--radius-sm)", fontSize: "0.78rem", fontWeight: 700, background: "none", border: "1px solid var(--border-2)", cursor: "pointer", color: "var(--text-2)", boxShadow: "none" }}
-                    onMouseEnter={e => { e.currentTarget.style.borderColor = "var(--text-3)"; e.currentTarget.style.color = "var(--text)"; }}
-                    onMouseLeave={e => { e.currentTarget.style.borderColor = "var(--border-2)"; e.currentTarget.style.color = "var(--text-2)"; }}>
-                    {copied ? "✓ Copied" : "Copy"}
-                  </button>
-                </div>
-              </div>
+              <InviteCodeCard code={league.inviteCode} />
 
-              {/* Join requests */}
               {isCreator && pending.length > 0 && (
-                <div className="card" style={{ padding: 0, overflow: "hidden" }}>
-                  <div style={{ padding: "8px 14px", borderBottom: "1px solid var(--border)" }}>
-                    <span style={{ fontSize: "0.58rem", fontWeight: 800, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--text)" }}>
-                      Join Requests ({pending.length})
-                    </span>
-                  </div>
-                  {pending.map((m: any, idx: number) => (
-                    <div key={m.userId} style={{
-                      display: "flex", alignItems: "center", justifyContent: "space-between",
-                      padding: "10px 14px",
-                      borderBottom: idx < pending.length - 1 ? "1px solid var(--border)" : "none",
-                    }}>
-                      <span style={{ fontWeight: 500, fontSize: "0.8rem" }}>{m.user?.displayName ?? m.displayName}</span>
-                      <div style={{ display: "flex", gap: 6 }}>
-                        <button type="button" onClick={() => acceptMember(m.userId)}
-                          style={{ padding: "4px 10px", borderRadius: "var(--radius-sm)", fontSize: "0.72rem", fontWeight: 700, background: "none", border: "1px solid var(--win-border)", color: "var(--win)", cursor: "pointer", boxShadow: "none" }}>
-                          Accept
-                        </button>
-                        <button type="button" onClick={() => rejectMember(m.userId)}
-                          style={{ padding: "4px 10px", borderRadius: "var(--radius-sm)", fontSize: "0.72rem", fontWeight: 700, background: "none", border: "1px solid var(--loss-border)", color: "var(--loss)", cursor: "pointer", boxShadow: "none" }}>
-                          Reject
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
+                <JoinRequestsCard requests={pending} onAccept={acceptMember} onReject={rejectMember} />
               )}
 
-              {/* Start / waiting */}
               {isCreator ? (
                 <div className="card" style={{ padding: 14 }}>
                   <div style={{ fontSize: "0.75rem", color: "var(--text-2)", marginBottom: 10 }}>
@@ -213,12 +167,8 @@ export default function MembersPage({ params }: PageProps<"/leagues/[leagueId]/m
               )}
             </div>
 
-            {/* Right column: profile editor */}
             {myMember && (
-              <div className="card" style={{ padding: 0, overflow: "hidden" }}>
-                <div style={{ padding: "8px 14px", borderBottom: "1px solid var(--border)" }}>
-                  <span style={{ fontSize: "0.58rem", fontWeight: 800, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--text)" }}>Your Profile</span>
-                </div>
+              <Card title="Your Profile">
                 <div style={{ padding: 14 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 14 }}>
                     <HelmetAvatar color={profile.helmetColor || ACCENT} initials={(profile.abbreviation || "??")} size={40} />
@@ -278,12 +228,11 @@ export default function MembersPage({ params }: PageProps<"/leagues/[leagueId]/m
                     </button>
                   </div>
                 </div>
-              </div>
+              </Card>
             )}
           </div>
         )}
 
-        {/* Members table */}
         {!league.seasonStarted && <div style={sectionLabel}>MEMBERS</div>}
         {members.length === 0 ? (
           <div style={{ padding: "24px 0", color: "var(--text-3)", fontSize: "0.8rem" }}>No members yet</div>
@@ -308,7 +257,7 @@ export default function MembersPage({ params }: PageProps<"/leagues/[leagueId]/m
               </tr>
             </thead>
             <tbody>
-              {members.map((m: any) => {
+              {members.map((m) => {
                 const isMe = m.userId === userId;
                 const clickable = !!league.seasonStarted;
                 return (

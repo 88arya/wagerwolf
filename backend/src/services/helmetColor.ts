@@ -30,14 +30,7 @@ const HELMET_COLORS = [
 /** The palette, for callers that need to validate a colour against it. */
 export const HELMET_COLOR_LIST: readonly string[] = HELMET_COLORS;
 
-/**
- * A colour for a new membership, unique within the league where possible.
- *
- * `preferred` is the user's default from My Account. It is honoured only if
- * nobody in this league already has it — uniqueness wins, because two identical
- * helmets in one league is a bug the user cannot fix, whereas a default that
- * quietly lost is a mild disappointment. Falls through to the old random pick.
- */
+// Uses the preferred colour only if it's free in this league.
 export async function pickHelmetColor(leagueId: string, preferred?: string | null): Promise<string> {
   try {
     const taken = await db.query.memberships.findMany({

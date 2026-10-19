@@ -1,29 +1,11 @@
 import { db } from "../db/db";
-import { eq, and, lt } from "drizzle-orm";
-import { weeks, games, props, memberships, matchups } from "../db/schema";
+import { eq, lt } from "drizzle-orm";
+import { weeks, games, memberships, matchups } from "../db/schema";
 import { triggerPostWeekActions } from "./autoPlayoffs";
 import { settleFinalGame, voidBetsOnUnplayedGame } from "./settleGame";
 import { fetchEventsByID } from "./sportsGameOdds";
 
-/**
- * Close out a week.
- *
- * Grading itself lives in settleGame.ts and is *not* duplicated here any more.
- * It used to be: this file and settleGame.ts each carried their own copy of the
- * ESPN stat-field table and their own win/loss comparison, and they had already
- * drifted — only one of them had the player-name fix. Now this function makes
- * sure every game has a final score, hands each to settleFinalGame, and does
- * the week-level work that only it can do.
- */
-
-/**
- * Thrown when a week cannot be closed because a game has no final score.
- *
- * A TYPE RATHER THAN A STRING MATCH, because the one caller that can do
- * something about it is the manual resolve route, and what it needs is the
- * LIST — it exists to be handed those scores. Matching on message text would
- * tie an operator-facing 409 to the wording of an error message.
- */
+// Carries the unscored games so the manual resolve route can ask for them.
 export class UnscoredGamesError extends Error {
   constructor(message: string, readonly games: { id: string; label: string }[]) {
     super(message);
@@ -37,15 +19,7 @@ async function finalizeScores(weekGames: any[]): Promise<void> {
   for (const game of weekGames) {
     if (game.status === "FINAL" && game.homeScore != null && game.awayScore != null) continue;
 
-    // CANCELLED IS TERMINAL HERE. Nothing below checks the status before
-    // writing `status: "FINAL"`, so a feed that answers for a cancelled game —
-    // and ESPN will, for anything it has a row for — silently promoted it back
-    // to FINAL and graded every bet on it against that score. A game the league
-    // was told was cancelled would settle as though it had been played.
-    //
-    // Un-cancelling a game is a data correction, not something a resolve should
-    // decide on its own. `resolveWeekById` refunds these instead; see
-    // `voidBetsOnUnplayedGame`.
+    // Never promote a cancelled game back to FINAL; it gets refunded instead.
     if (game.status === "CANCELLED") continue;
 
     let homeScore: number | null = null;
@@ -76,26 +50,13 @@ async function finalizeScores(weekGames: any[]): Promise<void> {
     }
 
     if (homeScore == null || awayScore == null) {
-      // THE STORED SCORE IS ONLY A RESULT IF THE GAME WAS PLAYED.
-      //
-      // `syncESPNGames` writes a score onto every game it syncs, SCHEDULED ones
-      // included — ESPN reports "0" before kickoff and `parseScore` keeps zeros
-      // deliberately, because a real shutout is also 0. So an unplayed row sits
-      // at 0-0, and that is a PLACEHOLDER, not a scoreless tie.
-      //
-      // Without the status check this branch promoted those rows to FINAL the
-      // moment ESPN and SGO were both unreachable, and `settleFinalGame` then
-      // graded every line on the game against 0-0: totals under, spreads by a
-      // tie, moneylines off a fabricated result. Real money, invented input.
-      //
-      // The comment below always claimed it would "leave it pending rather than
-      // guess". For a SCHEDULED game the fallback WAS the guess.
+      // ESPN reports 0-0 before kickoff, so a stored score only counts once the game started.
       const played = game.status !== "SCHEDULED" && game.status !== "CANCELLED";
       if (played && game.homeScore != null && game.awayScore != null) {
         homeScore = game.homeScore;
         awayScore = game.awayScore;
       } else {
-        continue;   // genuinely unknown — leave it pending rather than guess
+        continue;   // genuinely unknown - leave it pending rather than guess
       }
     }
 
@@ -108,13 +69,7 @@ async function finalizeScores(weekGames: any[]): Promise<void> {
   }
 }
 
-/*
- * `early` is the scheduler's rollover, which only calls in once every bet on
- * the week has settled. Every other caller is closing the week for good (the
- * deadline, or a human through the manual routes), so settlement is told it is
- * at the deadline and stops waiting on SGO: past this point a bet left pending
- * would stay pending forever.
- */
+// `early` is the rollover. Any other caller is final, so settlement stops waiting on SGO.
 export async function resolveWeekById(weekId: string, opts: { early?: boolean } = {}): Promise<{
   propsMatched: number; propsUnmatched: number;
   gamesSettled: number; gamesUnsettled: number;
@@ -133,11 +88,7 @@ export async function resolveWeekById(weekId: string, opts: { early?: boolean } 
 
   let gamesSettled = 0, gamesUnsettled = 0;
   for (const game of weekGames) {
-    // A CANCELLED GAME IS SETTLED BY REFUNDING IT, not by being skipped.
-    // `settleFinalGame` returns on any status but FINAL, so these used to fall
-    // through to the `gamesUnsettled` counter and their bets stayed PENDING for
-    // good — on a week that then marked itself resolved. The stake was already
-    // taken at placement, so skipping is not neutral.
+    // Refund bets on cancelled games rather than leaving them pending.
     if (game.status === "CANCELLED") {
       try {
         await voidBetsOnUnplayedGame(game.id, CANCELLED_REASON);
@@ -165,36 +116,13 @@ export async function resolveWeekById(weekId: string, opts: { early?: boolean } 
   const propsMatched = weekProps.filter((p) => p.result != null).length;
   const propsUnmatched = weekProps.length - propsMatched;
 
-  // A WEEK IS NOT CLOSED OVER A GAME WE COULD NOT SCORE.
-  //
-  // `finalizeScores` deliberately leaves a game pending when neither ESPN nor
-  // SGO answers and the stored score is a pre-kickoff placeholder — the
-  // `played` check in that function. But closing the week anyway finished the
-  // job the other way: `resolved = true` is set unconditionally below, every bet on
-  // that game stays PENDING forever, and `resolveWeekById` then refuses to run
-  // again ("Week already resolved"). The refusal to invent a score only helps
-  // if the week stays open long enough to get a real one.
-  //
-  // So: throw, and let the hourly pass try again next hour. It is safe to
-  // re-enter — every settlement path in settleGame.ts filters on
-  // `outcome = 'PENDING'` and every line skips an already-graded row, so the
-  // games that DID settle on this attempt are not re-credited on the next.
-  //
-  // CANCELLED does not block. There is no score coming for a game that was
-  // never played, so waiting for one would stall the week forever.
-  //
-  // THE TRADE, STATED PLAINLY: a game that is permanently unscoreable now
-  // stalls the week, and a stalled week blocks its matchups, its standings and
-  // — by the predecessor gate in scheduler.ts — every league's allowance after
-  // it. That is the deliberate direction. A stall is loud (see
-  // `warnOnStuckWeeks`, hourly after 24h) and reversible by hand via
-  // `POST /weeks/:id/resolve`, which takes raw results for exactly this case.
-  // Auto-refunding real bets because a data feed was down is neither.
+  // Don't close a week over a game with no score; throw and retry next tick.
+  // Re-entry is safe because settlement only touches PENDING bets.
   const unscored = weekGames.filter(
     (g) => g.status !== "FINAL" && g.status !== "CANCELLED"
   );
   if (unscored.length > 0) {
-    const listed = unscored.map((g: any) => ({ id: g.id, label: `${g.awayTeam}@${g.homeTeam}` }));
+    const listed = unscored.map((g) => ({ id: g.id, label: `${g.awayTeam}@${g.homeTeam}` }));
     throw new UnscoredGamesError(
       `Week ${week.number} has ${unscored.length} game(s) with no final score ` +
       `(${listed.map((g) => g.label).join(", ")}) — leaving the week open so the ` +
@@ -214,8 +142,6 @@ export async function resolveWeekById(weekId: string, opts: { early?: boolean } 
     .set({ resolved: true, locked: true })
     .where(eq(weeks.id, weekId));
 
-  // Resolve matchups using ending balance — the balance already includes the
-  // week's untouched allowance, so it IS each member's score for the week
   const pendingMatchups = await db.query.matchups.findMany({
     where: (m, { and, eq, isNull }) =>
       and(eq(m.weekNumber, week.number), isNull(m.winnerId), eq(m.isTie, false)),

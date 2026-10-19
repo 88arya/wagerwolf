@@ -2,29 +2,70 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { api } from "@/lib/api";
+import { api, apiError } from "@/lib/api";
 import { ACCENT } from "@/lib/constants";
 import { fmtMoney, toCents, toDollars } from "@/lib/money";
 import HelmetAvatar from "@/components/HelmetAvatar";
 import { MAX_NFL_WEEK } from "@/lib/constants";
+import { Card, InviteCodeCard, JoinRequestsCard, outlineButton } from "../_shared/LeagueCards";
+import type { League, Matchup, PendingMember, Standing } from "@/lib/types";
 
-
-function CardHeader({ children }: { children: React.ReactNode }) {
+// Label/value rows shown to members who can't edit.
+function ReadOnlyRows({ rows }: { rows: [string, React.ReactNode][] }) {
   return (
-    <div style={{ padding: "8px 14px", borderBottom: "1px solid var(--border)" }}>
-      <span style={{ fontSize: "0.58rem", fontWeight: 800, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--text)" }}>{children}</span>
+    <div style={{ padding: "4px 0" }}>
+      {rows.map(([label, value], idx) => (
+        <div key={label} style={{
+          display: "flex", alignItems: "center", justifyContent: "space-between",
+          padding: "9px 14px",
+          borderBottom: idx < rows.length - 1 ? "1px solid var(--border)" : "none",
+        }}>
+          <span style={{ fontSize: "0.78rem", color: "var(--text-2)" }}>{label}</span>
+          <span style={{ fontSize: "0.78rem", fontWeight: 600, color: "var(--text)", fontVariantNumeric: "tabular-nums" }}>{value}</span>
+        </div>
+      ))}
     </div>
   );
 }
 
+function Toggle<T>({ options, value, onChange }: {
+  options: readonly { value: T; label: string }[];
+  value: T;
+  onChange: (value: T) => void;
+}) {
+  return (
+    <div style={{ display: "flex", gap: 6, marginTop: 4 }}>
+      {options.map((o) => {
+        const active = o.value === value;
+        return (
+          <button key={o.label} type="button" onClick={() => onChange(o.value)} style={{
+            flex: 1, padding: "7px 10px", borderRadius: "var(--radius-sm)", fontSize: "0.78rem",
+            fontWeight: active ? 700 : 500,
+            background: active ? "var(--accent)" : "var(--surface-2)",
+            color: active ? "#FFFFFF" : "var(--text-2)",
+            border: active ? "1.5px solid var(--accent)" : "1.5px solid var(--border-2)",
+            transition: "all 0.12s",
+          }}>
+            {o.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+const wideDangerButton: React.CSSProperties = { ...outlineButton("loss"), width: "100%", padding: "8px", fontSize: "0.78rem" };
+const stepperButton: React.CSSProperties = { width: 36, height: 36, padding: 0, fontSize: "1.1rem", fontWeight: 800, flexShrink: 0 };
+const submitButton: React.CSSProperties = { padding: "9px", fontSize: "0.82rem", fontWeight: 700 };
+const subtle: React.CSSProperties = { fontSize: "0.62rem", color: "var(--text-3)", fontWeight: 400, marginLeft: 6 };
+
 export default function LeagueSettingsPage({ params }: PageProps<"/leagues/[leagueId]/settings">) {
   const router = useRouter();
   const [leagueId, setLeagueId] = useState("");
-  const [league, setLeague] = useState<any>(null);
-  const [members, setMembers] = useState<any[]>([]);
-  const [pendingMembers, setPendingMembers] = useState<any[]>([]);
+  const [league, setLeague] = useState<League | null>(null);
+  const [members, setMembers] = useState<Standing[]>([]);
+  const [pendingMembers, setPendingMembers] = useState<PendingMember[]>([]);
   const [userId, setUserId] = useState("");
-  const [copied, setCopied] = useState(false);
 
   const [settingsForm, setSettingsForm] = useState({
     name: "", weeklyAllowance: "",
@@ -38,7 +79,7 @@ export default function LeagueSettingsPage({ params }: PageProps<"/leagues/[leag
   const [limitsError, setLimitsError] = useState("");
   const [limitsSaved, setLimitsSaved] = useState(false);
 
-  const [playoffMatchups, setPlayoffMatchups] = useState<any[]>([]);
+  const [playoffMatchups, setPlayoffMatchups] = useState<Matchup[]>([]);
 
   useEffect(() => {
     async function load() {
@@ -68,11 +109,11 @@ export default function LeagueSettingsPage({ params }: PageProps<"/leagues/[leag
 
       try {
         const [board, allMatchups] = await Promise.all([
-          api(`/leagues/${lid}/leaderboard`),
-          api(`/leagues/${lid}/matchups`),
+          api<Standing[]>(`/leagues/${lid}/leaderboard`),
+          api<Matchup[]>(`/leagues/${lid}/matchups`),
         ]);
         setMembers(board);
-        setPlayoffMatchups(allMatchups.filter((m: any) => m.isPlayoff));
+        setPlayoffMatchups(allMatchups.filter((m) => m.isPlayoff));
         if (leagueData.creatorId === uid) {
           const pending = await api(`/leagues/${lid}/pending`);
           setPendingMembers(pending);
@@ -82,19 +123,13 @@ export default function LeagueSettingsPage({ params }: PageProps<"/leagues/[leag
     load();
   }, []);
 
-  function copyCode() {
-    navigator.clipboard.writeText(league.inviteCode);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  }
-
   async function removeMember(memberId: string) {
     if (!confirm("Remove this member?")) return;
     try {
       await api(`/leagues/${leagueId}/members/${memberId}`, { method: "DELETE" });
       setMembers((prev) => prev.filter((m) => m.userId !== memberId));
-    } catch (err: any) {
-      try { alert(JSON.parse(err.message).error); } catch { alert(err.message); }
+    } catch (err) {
+      alert(apiError(err));
     }
   }
 
@@ -104,8 +139,8 @@ export default function LeagueSettingsPage({ params }: PageProps<"/leagues/[leag
       setPendingMembers((prev) => prev.filter((m) => m.userId !== memberId));
       const board = await api(`/leagues/${leagueId}/leaderboard`);
       setMembers(board);
-    } catch (err: any) {
-      try { alert(JSON.parse(err.message).error); } catch { alert(err.message); }
+    } catch (err) {
+      alert(apiError(err));
     }
   }
 
@@ -113,8 +148,8 @@ export default function LeagueSettingsPage({ params }: PageProps<"/leagues/[leag
     try {
       await api(`/leagues/${leagueId}/members/${memberId}`, { method: "DELETE" });
       setPendingMembers((prev) => prev.filter((m) => m.userId !== memberId));
-    } catch (err: any) {
-      try { alert(JSON.parse(err.message).error); } catch { alert(err.message); }
+    } catch (err) {
+      alert(apiError(err));
     }
   }
 
@@ -123,8 +158,8 @@ export default function LeagueSettingsPage({ params }: PageProps<"/leagues/[leag
     try {
       await api(`/leagues/${leagueId}`, { method: "DELETE" });
       router.push("/home");
-    } catch (err: any) {
-      try { alert(JSON.parse(err.message).error); } catch { alert(err.message); }
+    } catch (err) {
+      alert(apiError(err));
     }
   }
 
@@ -146,8 +181,8 @@ export default function LeagueSettingsPage({ params }: PageProps<"/leagues/[leag
       });
       setLeague(updated); setSettingsSaved(true);
       setTimeout(() => setSettingsSaved(false), 2500);
-    } catch (err: any) {
-      try { setSettingsError(JSON.parse(err.message).error); } catch { setSettingsError(err.message); }
+    } catch (err) {
+      setSettingsError(apiError(err));
     }
   }
 
@@ -166,8 +201,8 @@ export default function LeagueSettingsPage({ params }: PageProps<"/leagues/[leag
       });
       setLeague(updated); setLimitsSaved(true);
       setTimeout(() => setLimitsSaved(false), 2500);
-    } catch (err: any) {
-      try { setLimitsError(JSON.parse(err.message).error); } catch { setLimitsError(err.message); }
+    } catch (err) {
+      setLimitsError(apiError(err));
     }
   }
 
@@ -176,8 +211,8 @@ export default function LeagueSettingsPage({ params }: PageProps<"/leagues/[leag
     try {
       await api(`/leagues/${leagueId}/leave`, { method: "POST", body: JSON.stringify({}) });
       router.push("/home");
-    } catch (err: any) {
-      try { alert(JSON.parse(err.message).error); } catch { alert(err.message); }
+    } catch (err) {
+      alert(apiError(err));
     }
   }
 
@@ -193,15 +228,6 @@ export default function LeagueSettingsPage({ params }: PageProps<"/leagues/[leag
   const maxPlayers = league.maxPlayers ?? 10;
   const maxPlayoffRound = playoffMatchups.length > 0 ? Math.max(...playoffMatchups.map((m) => m.playoffRound ?? 1)) : 0;
 
-  const toggleBtn = (active: boolean) => ({
-    flex: 1, padding: "7px 10px", borderRadius: "var(--radius-sm)", fontSize: "0.78rem",
-    fontWeight: active ? 700 : 500,
-    background: active ? "var(--accent)" : "var(--surface-2)",
-    color: active ? "#FFFFFF" : "var(--text-2)",
-    border: active ? "1.5px solid var(--accent)" : "1.5px solid var(--border-2)",
-    transition: "all 0.12s",
-  });
-
   return (
     <div className="page-wide" style={{ display: "flex", flexDirection: "column", alignItems: "center", paddingTop: "5vh" }}>
 
@@ -212,12 +238,9 @@ export default function LeagueSettingsPage({ params }: PageProps<"/leagues/[leag
 
       <div className="rg-2" style={{ width: "100%", maxWidth: 860, display: "grid", gap: 12, alignItems: "start" }}>
 
-        {/* ── Left column ── */}
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
 
-          {/* Season Structure */}
-          <div className="card" style={{ padding: 0, overflow: "hidden" }}>
-            <CardHeader>Season Structure</CardHeader>
+          <Card title="Season Structure">
             {isCreator && !league.seasonStarted ? (
               <form onSubmit={saveSettings} style={{ display: "flex", flexDirection: "column", gap: 12, padding: 14 }}>
                 <div>
@@ -228,24 +251,21 @@ export default function LeagueSettingsPage({ params }: PageProps<"/leagues/[leag
                   <div className="label">Weekly Allowance ($)</div>
                   <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                     <button type="button" onClick={() => setSettingsForm({ ...settingsForm, weeklyAllowance: String(Math.max(25, Number(settingsForm.weeklyAllowance) - 25)) })}
-                      style={{ width: 36, height: 36, padding: 0, fontSize: "1.1rem", fontWeight: 800, flexShrink: 0 }}>−</button>
+                      style={stepperButton}>−</button>
                     <input type="text" inputMode="numeric" value={settingsForm.weeklyAllowance}
                       onChange={(e) => setSettingsForm({ ...settingsForm, weeklyAllowance: e.target.value.replace(/[^0-9]/g, "") })}
                       style={{ textAlign: "center", fontWeight: 800, fontSize: "1rem", fontVariantNumeric: "tabular-nums" }} required />
                     <button type="button" onClick={() => setSettingsForm({ ...settingsForm, weeklyAllowance: String(Number(settingsForm.weeklyAllowance) + 25) })}
-                      style={{ width: 36, height: 36, padding: 0, fontSize: "1.1rem", fontWeight: 800, flexShrink: 0 }}>+</button>
+                      style={stepperButton}>+</button>
                   </div>
                 </div>
                 <div>
                   <div className="label">Visibility</div>
-                  <div style={{ display: "flex", gap: 6, marginTop: 4 }}>
-                    {([{ value: false, label: "Invite Only" }, { value: true, label: "Public" }] as const).map(({ value, label }) => (
-                      <button key={label} type="button" onClick={() => setSettingsForm({ ...settingsForm, isPublic: value })}
-                        style={toggleBtn(settingsForm.isPublic === value)}>
-                        {label}
-                      </button>
-                    ))}
-                  </div>
+                  <Toggle
+                    options={[{ value: false, label: "Invite Only" }, { value: true, label: "Public" }]}
+                    value={settingsForm.isPublic}
+                    onChange={(isPublic) => setSettingsForm({ ...settingsForm, isPublic })}
+                  />
                 </div>
                 {!settingsForm.isPublic && (
                   <div>
@@ -278,36 +298,23 @@ export default function LeagueSettingsPage({ params }: PageProps<"/leagues/[leag
                     : `Ends NFL week ${endWeek} · ${pw} playoff week${pw !== 1 ? "s" : ""}`}
                 </div>
                 {settingsError && <p className="error">{settingsError}</p>}
-                <button type="submit" style={{ padding: "9px", fontSize: "0.82rem", fontWeight: 700 }}>
+                <button type="submit" style={submitButton}>
                   {settingsSaved ? "✓ Saved" : "Save Season Settings"}
                 </button>
               </form>
             ) : (
-              <div style={{ padding: "4px 0" }}>
-                {[
-                  ["Start Week", league.startWeek],
-                  ["Regular Season Weeks", league.regularSeasonWeeks],
-                  ["Playoff Teams", league.playoffSize],
-                  ["Weekly Allowance", fmtMoney(league.weeklyAllowance)],
-                  ["Max Players", league.maxPlayers],
-                  ["Visibility", league.isPublic ? "Public" : "Invite Only"],
-                ].map(([label, val], idx, arr) => (
-                  <div key={label as string} style={{
-                    display: "flex", alignItems: "center", justifyContent: "space-between",
-                    padding: "9px 14px",
-                    borderBottom: idx < arr.length - 1 ? "1px solid var(--border)" : "none",
-                  }}>
-                    <span style={{ fontSize: "0.78rem", color: "var(--text-2)" }}>{label}</span>
-                    <span style={{ fontSize: "0.78rem", fontWeight: 600, color: "var(--text)", fontVariantNumeric: "tabular-nums" }}>{val}</span>
-                  </div>
-                ))}
-              </div>
+              <ReadOnlyRows rows={[
+                ["Start Week", league.startWeek],
+                ["Regular Season Weeks", league.regularSeasonWeeks],
+                ["Playoff Teams", league.playoffSize],
+                ["Weekly Allowance", fmtMoney(league.weeklyAllowance)],
+                ["Max Players", league.maxPlayers],
+                ["Visibility", league.isPublic ? "Public" : "Invite Only"],
+              ]} />
             )}
-          </div>
+          </Card>
 
-          {/* Betting Rules */}
-          <div className="card" style={{ padding: 0, overflow: "hidden" }}>
-            <CardHeader>Betting Rules</CardHeader>
+          <Card title="Betting Rules">
             {isCreator ? (
               <form onSubmit={saveLimits} style={{ display: "flex", flexDirection: "column", gap: 12, padding: 14 }}>
                 <div className="rg-2" style={{ display: "grid", gap: 8 }}>
@@ -329,68 +336,38 @@ export default function LeagueSettingsPage({ params }: PageProps<"/leagues/[leag
                 </div>
                 <div>
                   <div className="label">Bet Feed Visibility</div>
-                  <div style={{ display: "flex", gap: 6, marginTop: 4 }}>
-                    {[
+                  <Toggle
+                    options={[
                       { value: "AFTER_KICKOFF", label: "After kickoff" },
                       { value: "AFTER_RESOLVE", label: "After week resolves" },
-                    ].map(({ value, label }) => (
-                      <button key={value} type="button"
-                        onClick={() => setLimitsForm({ ...limitsForm, feedVisibility: value })}
-                        style={toggleBtn(limitsForm.feedVisibility === value)}>
-                        {label}
-                      </button>
-                    ))}
-                  </div>
+                    ]}
+                    value={limitsForm.feedVisibility}
+                    onChange={(feedVisibility) => setLimitsForm({ ...limitsForm, feedVisibility })}
+                  />
                 </div>
                 <div style={{ fontSize: "0.68rem", color: "var(--text-3)" }}>Leave blank for no limit. Changes apply immediately.</div>
                 {limitsError && <p className="error">{limitsError}</p>}
-                <button type="submit" style={{ padding: "9px", fontSize: "0.82rem", fontWeight: 700 }}>
+                <button type="submit" style={submitButton}>
                   {limitsSaved ? "✓ Saved" : "Save Betting Rules"}
                 </button>
               </form>
             ) : (
-              <div style={{ padding: "4px 0" }}>
-                {[
-                  ["Max Stake / Bet", league.maxStakePerBet != null ? fmtMoney(league.maxStakePerBet) : "No limit"],
-                  ["Max Bets / Week", league.maxBetsPerWeek != null ? league.maxBetsPerWeek : "No limit"],
-                  ["Max Parlay Legs", league.maxParlayLegs != null ? league.maxParlayLegs : "No limit"],
-                  ["Feed Visibility", league.feedVisibility === "AFTER_RESOLVE" ? "After week resolves" : "After kickoff"],
-                ].map(([label, val], idx, arr) => (
-                  <div key={label as string} style={{
-                    display: "flex", alignItems: "center", justifyContent: "space-between",
-                    padding: "9px 14px",
-                    borderBottom: idx < arr.length - 1 ? "1px solid var(--border)" : "none",
-                  }}>
-                    <span style={{ fontSize: "0.78rem", color: "var(--text-2)" }}>{label}</span>
-                    <span style={{ fontSize: "0.78rem", fontWeight: 600, color: "var(--text)", fontVariantNumeric: "tabular-nums" }}>{val}</span>
-                  </div>
-                ))}
-              </div>
+              <ReadOnlyRows rows={[
+                ["Max Stake / Bet", league.maxStakePerBet != null ? fmtMoney(league.maxStakePerBet) : "No limit"],
+                ["Max Bets / Week", league.maxBetsPerWeek ?? "No limit"],
+                ["Max Parlay Legs", league.maxParlayLegs ?? "No limit"],
+                ["Feed Visibility", league.feedVisibility === "AFTER_RESOLVE" ? "After week resolves" : "After kickoff"],
+              ]} />
             )}
-          </div>
+          </Card>
         </div>
 
-        {/* ── Right column ── */}
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
 
-          {/* Invite Code */}
-          <div className="card" style={{ padding: 0, overflow: "hidden" }}>
-            <CardHeader>Invite Code</CardHeader>
-            <div style={{ padding: 14, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-              <span className="invite-code" style={{ fontSize: "1.5rem" }}>{league.inviteCode}</span>
-              <button type="button" onClick={copyCode}
-                style={{ padding: "5px 12px", borderRadius: "var(--radius-sm)", fontSize: "0.78rem", fontWeight: 700, background: "none", border: "1px solid var(--border-2)", cursor: "pointer", color: "var(--text-2)", boxShadow: "none" }}
-                onMouseEnter={e => { e.currentTarget.style.borderColor = "var(--text-3)"; e.currentTarget.style.color = "var(--text)"; }}
-                onMouseLeave={e => { e.currentTarget.style.borderColor = "var(--border-2)"; e.currentTarget.style.color = "var(--text-2)"; }}>
-                {copied ? "✓ Copied" : "Copy"}
-              </button>
-            </div>
-          </div>
+          <InviteCodeCard code={league.inviteCode} />
 
-          {/* Season status */}
           {isCreator && league.seasonStarted && (
-            <div className="card" style={{ padding: 0, overflow: "hidden" }}>
-              <CardHeader>Season</CardHeader>
+            <Card title="Season">
               <div style={{ padding: 14 }}>
                 {league.seasonEnded ? (
                   <span className="badge badge-blue">Season Complete</span>
@@ -410,42 +387,15 @@ export default function LeagueSettingsPage({ params }: PageProps<"/leagues/[leag
                   </div>
                 )}
               </div>
-            </div>
+            </Card>
           )}
 
-          {/* Join Requests */}
           {isCreator && pendingMembers.length > 0 && (
-            <div className="card" style={{ padding: 0, overflow: "hidden" }}>
-              <CardHeader>Join Requests ({pendingMembers.length})</CardHeader>
-              {pendingMembers.map((m: any, idx: number) => (
-                <div key={m.userId} style={{
-                  display: "flex", alignItems: "center", justifyContent: "space-between",
-                  padding: "10px 14px",
-                  borderBottom: idx < pendingMembers.length - 1 ? "1px solid var(--border)" : "none",
-                }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 9, minWidth: 0 }}>
-                    <HelmetAvatar color={m.helmetColor ?? ACCENT} initials={m.user.displayName.slice(0, 2).toUpperCase()} size={26} />
-                    <span style={{ fontWeight: 500, fontSize: "0.8rem", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.user.displayName}</span>
-                  </div>
-                  <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
-                    <button type="button" onClick={() => acceptMember(m.userId)}
-                      style={{ padding: "4px 10px", borderRadius: "var(--radius-sm)", fontSize: "0.72rem", fontWeight: 700, background: "none", border: "1px solid var(--win-border)", color: "var(--win)", cursor: "pointer", boxShadow: "none" }}>
-                      Accept
-                    </button>
-                    <button type="button" onClick={() => rejectMember(m.userId)}
-                      style={{ padding: "4px 10px", borderRadius: "var(--radius-sm)", fontSize: "0.72rem", fontWeight: 700, background: "none", border: "1px solid var(--loss-border)", color: "var(--loss)", cursor: "pointer", boxShadow: "none" }}>
-                      Reject
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
+            <JoinRequestsCard requests={pendingMembers} onAccept={acceptMember} onReject={rejectMember} />
           )}
 
-          {/* Members */}
-          <div className="card" style={{ padding: 0, overflow: "hidden" }}>
-            <CardHeader>Members ({members.length})</CardHeader>
-            {members.map((m: any, idx: number) => (
+          <Card title={`Members (${members.length})`}>
+            {members.map((m, idx) => (
               <div key={m.userId} style={{
                 display: "flex", alignItems: "center", justifyContent: "space-between",
                 padding: "9px 14px",
@@ -455,13 +405,13 @@ export default function LeagueSettingsPage({ params }: PageProps<"/leagues/[leag
                   <HelmetAvatar color={m.helmetColor ?? ACCENT} initials={(m.abbreviation || m.displayName).slice(0, 2)} size={26} />
                   <span style={{ fontWeight: m.userId === userId ? 700 : 400, fontSize: "0.8rem", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                     {m.displayName}
-                    {m.userId === league.creatorId && <span style={{ fontSize: "0.62rem", color: "var(--text-3)", fontWeight: 400, marginLeft: 6 }}>commissioner</span>}
-                    {m.userId === userId && <span style={{ fontSize: "0.62rem", color: "var(--text-3)", fontWeight: 400, marginLeft: 6 }}>you</span>}
+                    {m.userId === league.creatorId && <span style={subtle}>commissioner</span>}
+                    {m.userId === userId && <span style={subtle}>you</span>}
                   </span>
                 </div>
                 {isCreator && m.userId !== userId && !league.seasonStarted && (
                   <button type="button" onClick={() => removeMember(m.userId)}
-                    style={{ padding: "3px 9px", borderRadius: "var(--radius-sm)", fontSize: "0.7rem", fontWeight: 700, background: "none", border: "1px solid var(--loss-border)", color: "var(--loss)", cursor: "pointer", boxShadow: "none", flexShrink: 0 }}>
+                    style={{ ...outlineButton("loss"), padding: "3px 9px", fontSize: "0.7rem", flexShrink: 0 }}>
                     Remove
                   </button>
                 )}
@@ -470,9 +420,8 @@ export default function LeagueSettingsPage({ params }: PageProps<"/leagues/[leag
             {members.length === 0 && (
               <div style={{ padding: "16px 14px", color: "var(--text-3)", fontSize: "0.78rem" }}>No members yet</div>
             )}
-          </div>
+          </Card>
 
-          {/* Danger zone */}
           {isCreator && !league.seasonStarted && (
             <div className="card" style={{ padding: 14 }}>
               {league.autoStartAt && (
@@ -483,8 +432,7 @@ export default function LeagueSettingsPage({ params }: PageProps<"/leagues/[leag
                   {new Date(league.autoStartAt).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}
                 </div>
               )}
-              <button type="button" onClick={deleteLeague}
-                style={{ width: "100%", padding: "8px", borderRadius: "var(--radius-sm)", fontSize: "0.78rem", fontWeight: 700, background: "none", border: "1px solid var(--loss-border)", color: "var(--loss)", cursor: "pointer", boxShadow: "none" }}>
+              <button type="button" onClick={deleteLeague} style={wideDangerButton}>
                 Delete League
               </button>
             </div>
@@ -492,8 +440,7 @@ export default function LeagueSettingsPage({ params }: PageProps<"/leagues/[leag
 
           {!isCreator && !league.seasonStarted && (
             <div className="card" style={{ padding: 14 }}>
-              <button type="button" onClick={leaveLeague}
-                style={{ width: "100%", padding: "8px", borderRadius: "var(--radius-sm)", fontSize: "0.78rem", fontWeight: 700, background: "none", border: "1px solid var(--loss-border)", color: "var(--loss)", cursor: "pointer", boxShadow: "none" }}>
+              <button type="button" onClick={leaveLeague} style={wideDangerButton}>
                 Leave League
               </button>
             </div>

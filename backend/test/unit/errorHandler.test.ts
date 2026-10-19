@@ -135,8 +135,6 @@ describe("unexpected errors", () => {
   });
 
   it("an error after the response started is handed to Express, not answered twice", async () => {
-    // Express's final handler destroys the socket, so the client sees an abort
-    // instead of a second, contradictory response.
     const err = await request(
       app((_req, res, next) => {
         res.status(200).write("partial");

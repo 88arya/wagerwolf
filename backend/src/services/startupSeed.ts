@@ -6,17 +6,6 @@ import { scheduleMatchups } from "./scheduleMatchups";
 import { pickHelmetColor } from "./helmetColor";
 import { reportError } from "../lib/monitoring";
 
-/**
- * Boot-time repair. Runs on every start and is idempotent.
- *
- * It used to also generate fake props and fake games, which is gone: the board
- * carries only what a sportsbook actually posted. A week with no ESPN schedule
- * yet simply has no games, and a game with no odds simply has no odds — both
- * are honest states, and neither is repaired by inventing numbers.
- *
- * Odds arrive from the SharpAPI sync (Wed/Fri cron, or scripts/seedRealProps.ts
- * by hand); schedules arrive from ESPN below.
- */
 async function doRunStartupSeed() {
   const now = new Date();
   const base = new Date(now);
@@ -24,7 +13,7 @@ async function doRunStartupSeed() {
 
   const unresolvedWeeks = await db.select().from(weeks).where(eq(weeks.resolved, false));
 
-  // No weeks at all — stand one up and let ESPN fill in the schedule.
+  // No weeks at all - stand one up and let ESPN fill in the schedule.
   if (unresolvedWeeks.length === 0) {
     const end = new Date(base);
     end.setDate(end.getDate() + 6);
@@ -66,9 +55,9 @@ async function doRunStartupSeed() {
   });
 
   for (const league of unstartedLeagues) {
-    const activeMembers = (league.memberships as any[]).filter((m: any) => m.status === "ACTIVE");
+    const activeMembers = (league.memberships as any[]).filter((m) => m.status === "ACTIVE");
     const regularMatchups = (league.matchups as any[]).filter(
-      (m: any) => !m.isPlayoff && !m.isConsolation
+      (m) => !m.isPlayoff && !m.isConsolation
     );
     if (activeMembers.length >= 2 && regularMatchups.length === 0) {
       await scheduleMatchups(league.id);
@@ -103,7 +92,7 @@ async function doRunStartupSeed() {
   });
 
   for (const league of leaguesToStart) {
-    const activeMembers = (league.memberships as any[]).filter((m: any) => m.status === "ACTIVE");
+    const activeMembers = (league.memberships as any[]).filter((m) => m.status === "ACTIVE");
     if (activeMembers.length >= 2) {
       await scheduleMatchups(league.id);
       await db.update(leagues).set({ seasonStarted: true }).where(eq(leagues.id, league.id));
@@ -117,15 +106,14 @@ export async function runStartupSeed() {
     try {
       await doRunStartupSeed();
       return;
-    } catch (err: any) {
-      const errStr = String(err?.message ?? "") + String(err?.cause?.message ?? "") + String(err?.cause?.code ?? "") + String(err?.code ?? "");
+    } catch (err) {
+      const e = err as { message?: string; code?: string; cause?: { message?: string; code?: string } };
+      const errStr = [e?.message, e?.cause?.message, e?.cause?.code, e?.code].map((x) => x ?? "").join("");
       const isConnErr = errStr.includes("terminated") || errStr.includes("ECONNREFUSED");
       if (attempt < 3 && isConnErr) {
         console.log(`[seed] Attempt ${attempt} failed (connection), retrying in 3s...`);
         await new Promise((r) => setTimeout(r, 3000));
       } else {
-        // Reported, because this swallows the error so a boot can still serve,
-        // and a repair that never runs is otherwise invisible.
         reportError("[seed] Startup seed failed:", err, { job: "startup-seed" });
         return;
       }

@@ -3,10 +3,8 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
+import type { Week } from "@/lib/types";
 
-// The three promo mechanics. There's no offers model or endpoint yet, so each
-// kind renders its own empty state — swap the placeholder footer for offer
-// rows once there's something to read.
 const SPECIAL_KINDS = [
   { key: "PROFIT_BOOST", label: "Profit Boosts", blurb: "A multiplier on the profit of a winning bet. Your stake pays out as normal." },
   { key: "BET_REFUND",   label: "Bet Refunds",   blurb: "Lose by a set margin and the stake comes back to your balance." },
@@ -15,7 +13,7 @@ const SPECIAL_KINDS = [
 
 export default function SpecialsPage({ params }: PageProps<"/leagues/[leagueId]/specials">) {
   const router = useRouter();
-  const [week, setWeek] = useState<any>(null);
+  const [week, setWeek] = useState<Week | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -33,8 +31,6 @@ export default function SpecialsPage({ params }: PageProps<"/leagues/[leagueId]/
     init();
   }, []);
 
-  // 260px min fits all three kinds on one row at the 860px content width,
-  // then falls back to 2-up / 1-up on narrower screens.
   const grid = { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 260px), 1fr))", gap: 8, alignItems: "start" } as const;
 
   return (

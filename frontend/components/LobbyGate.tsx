@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { api } from "@/lib/api";
+import type { League } from "@/lib/types";
 
 export default function LobbyGate({ leagueId, children }: { leagueId: string; children: React.ReactNode }) {
   const [visible, setVisible] = useState(false);
@@ -31,7 +32,7 @@ export default function LobbyGate({ leagueId, children }: { leagueId: string; ch
     }
 
     api(`/leagues/${leagueId}`)
-      .then((league: any) => {
+      .then((league: League) => {
         if (league.seasonStarted) startedRef.current = true;
         evaluate(!!league.seasonStarted);
       })

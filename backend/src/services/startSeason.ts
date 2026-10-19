@@ -28,10 +28,10 @@ export async function startLeagueSeason(leagueId: string): Promise<{ weeks: numb
   if (!league) throw new Error("League not found");
   if (league.seasonStarted) throw new Error("Season already started");
 
-  const members = (league.memberships as any[]).filter((m: any) => m.status === "ACTIVE");
+  const members = (league.memberships as any[]).filter((m) => m.status === "ACTIVE");
   if (members.length < 1) throw new Error("Need at least 1 member to start");
 
-  let userIds: string[] = members.map((m: any) => m.userId);
+  let userIds: string[] = members.map((m) => m.userId);
   let hasGhost = false;
   let ghostUserId: string | null = null;
 
@@ -67,17 +67,10 @@ export async function startLeagueSeason(leagueId: string): Promise<{ weeks: numb
 
   await db.update(leagues).set({ seasonStarted: true, hasGhost }).where(eq(leagues.id, leagueId));
 
-  // SCOPED TO THIS LEAGUE, and it writes no stamp on the week.
-  //
-  // It used to call the unscoped form and then stamp `allowanceDistributed`
-  // globally, which did two wrong things at once: it reset the balances of
-  // every OTHER league playing that week — mid-week, wiping live bets — and the
-  // stamp then made the scheduler skip that week's real distribution, so those
-  // same leagues never got paid. One commissioner pressing Start could empty a
-  // week for everybody. See services/distributeAllowances.
+  // Scoped to this league and no week stamp, so other leagues are untouched.
   try {
     await distributeWeeklyAllowances(league.startWeek, leagueId);
-  } catch { /* week may not exist yet — the scheduler's catch-up pass handles it */ }
+  } catch { /* week may not exist yet - the scheduler's catch-up pass handles it */ }
 
   console.log(`[season] League ${leagueId} started — ${totalRounds} weeks scheduled`);
   return { weeks: totalRounds };

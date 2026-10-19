@@ -13,24 +13,9 @@ const router = Router();
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MAX_BODY = 4000;
 
-/**
- * POST /support — a message from the contact form.
- *
- * UNAUTHENTICATED BY DESIGN. The form appears on the marketing footer and
- * inside /docs, and both serve signed-out visitors; gating it would leave those
- * people with no way to reach us at all, which is the opposite of the point.
- * The sender supplies their own email, which is why one flow covers both.
- *
- * `optionalAuth` fills in req.userId when a token happens to be present, so a
- * message from a signed-in user is tied to their account without them having to
- * say who they are — and without a signed-out sender being turned away.
- *
- * THE ROW IS WRITTEN BEFORE THE SEND, and the send is not allowed to fail the
- * request. A provider outage would otherwise return a 500 that reads as "your
- * message vanished" while the message is in fact safely stored. The response
- * says which of the two happened, so the client can be honest about it.
- */
-router.post("/", supportLimiter, optionalAuth, async (req: any, res: any, next: any) => {
+// Unauthenticated so signed-out visitors can reach support. The row is saved
+// before sending, and a failed send doesn't fail the request.
+router.post("/", supportLimiter, optionalAuth, async (req, res, next) => {
   try {
     const email = String(req.body?.email ?? "").trim();
     const body = String(req.body?.message ?? "").trim();
@@ -64,7 +49,7 @@ router.post("/", supportLimiter, optionalAuth, async (req: any, res: any, next: 
     }
 
     res.status(201).json({ delivered });
-  } catch (err: any) {
+  } catch (err) {
     next(err);
     return;
   }

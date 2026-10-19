@@ -1,19 +1,3 @@
-/**
- * End to end for the Next server's error reporting: builds the real production
- * bundle, runs it as the container does (`.next/standalone/server.js`), makes a
- * server render throw, and checks what reaches a stand-in for Sentry.
- *
- *   npm run test:e2e
- *
- * It needs a route that throws, and there is none, so it writes one for the
- * duration of the run and removes it in a `finally`. The route is gitignored, so
- * a copy left by a killed run cannot be committed, and it only throws while
- * SENTRY_E2E_PROBE=1 is set in the SERVER'S environment; anywhere else it is a
- * 404. It overwrites `.next`, like any build.
- *
- * Browser-side reporting is not covered here: that needs a browser. See
- * test/instrumentation.test.ts for the client init.
- */
 import { spawn } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import http from "node:http";
@@ -163,8 +147,6 @@ export default function Probe() {
 } finally {
   if (server && server.exitCode === null) server.kill();
   rmSync(PROBE_DIR, { recursive: true, force: true });
-  // The build generated route types naming the probe, and `tsc` fails on them
-  // once it is gone. Regenerating them leaves the tree as a normal build would.
   await run("npx", ["next", "typegen"], { cwd: ROOT, stdio: "ignore" }).catch(() =>
     console.log("  note: `npx next typegen` failed; run it before `tsc`")
   );

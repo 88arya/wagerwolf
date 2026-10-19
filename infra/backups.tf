@@ -1,21 +1,11 @@
-# Off-instance backups.
-#
-# A dump sitting on the instance's own disk protects against "I dropped a
-# table". It does nothing about the instance dying, which is the failure a
-# single-box deployment actually has. So the dumps go to S3, and the instance
-# gets an IAM role that can write there — no AWS keys in GitHub secrets, no keys
-# on the box, nothing to rotate.
-#
-# Cost is negligible: a few MB per night, lifecycled to 90 days. S3 is billed
-# per GB-month and this will not reach one GB.
+# S3 bucket for database dumps, and an instance role that can write to it.
 
 resource "random_id" "bucket_suffix" {
   byte_length = 4
 }
 
 resource "aws_s3_bucket" "backups" {
-  # S3 bucket names are globally unique across every AWS account, so a plain
-  # "wagerwolf-backups" would very likely already be taken.
+  # Bucket names are global.
   bucket = "${var.project}-backups-${random_id.bucket_suffix.hex}"
 
   tags = {
@@ -42,8 +32,6 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "backups" {
   }
 }
 
-# Versioning plus a delete marker is what makes ransomware or a bad script
-# survivable — an object overwritten in place is not a backup.
 resource "aws_s3_bucket_versioning" "backups" {
   bucket = aws_s3_bucket.backups.id
 
@@ -73,9 +61,7 @@ resource "aws_s3_bucket_lifecycle_configuration" "backups" {
   depends_on = [aws_s3_bucket_versioning.backups]
 }
 
-# The instance assumes this role, so `aws s3 cp` on the box needs no credentials
-# at all. Scoped to this one bucket, and to put/list only — a compromised
-# instance must not be able to delete the backups that would recover from it.
+# Put/list only, so a compromised instance can't delete backups.
 resource "aws_iam_role" "instance" {
   name = "${var.project}-instance"
 

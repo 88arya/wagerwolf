@@ -2,7 +2,7 @@ import { trackBoot } from "./bootGate";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL;
 
-async function request(path: string, options?: RequestInit) {
+async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
 
   const res = await fetch(`${BASE}${path}`, {
@@ -17,16 +17,21 @@ async function request(path: string, options?: RequestInit) {
   return res.json();
 }
 
-/**
- * Every request is visible to the shell's boot gate until it opens, so the
- * first paint can wait for the first data. See lib/bootGate.
- *
- * `gate: false` is for a request whose answer is already on screen from
- * lib/pageCache: the gate has nothing to wait for, and holding the shell behind
- * the bar for a refresh of data the person can already see would be the wait
- * the cache exists to remove.
- */
-export function api(path: string, options?: RequestInit, { gate = true }: { gate?: boolean } = {}) {
-  const req = request(path, options);
+// Requests are tracked by the boot gate until it opens. Pass gate: false when
+// the data is already on screen from the page cache.
+// T defaults to any so untyped call sites keep working; pass a type where the shape matters.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function api<T = any>(path: string, options?: RequestInit, { gate = true }: { gate?: boolean } = {}): Promise<T> {
+  const req = request<T>(path, options);
   return gate ? trackBoot(req) : req;
+}
+
+// Error responses are JSON like { error: "..." }; otherwise use the fallback or raw text.
+export function apiError(err: unknown, fallback?: string): string {
+  const message = err instanceof Error ? err.message : String(err);
+  try {
+    const parsed = JSON.parse(message).error;
+    if (parsed) return parsed;
+  } catch {}
+  return fallback ?? message;
 }

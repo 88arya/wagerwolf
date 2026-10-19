@@ -1,5 +1,3 @@
-// FIRST, before express or anything that reaches pg: Sentry instruments modules
-// as they load. See instrument.ts.
 import "./instrument";
 import * as Sentry from "@sentry/node";
 import express from "express";
@@ -33,8 +31,6 @@ import { redisConnection, rateLimitRedis } from "./queue/connection";
 
 dotenv.config();
 
-// Fail fast on boot rather than surfacing confusing errors on the first request
-// that happens to need one of these.
 const REQUIRED_ENV = ["DATABASE_URL", "JWT_SECRET", "REDIS_URL"];
 const missingEnv = REQUIRED_ENV.filter((key) => !process.env[key]);
 if (missingEnv.length > 0) {
@@ -42,34 +38,20 @@ if (missingEnv.length > 0) {
   process.exit(1);
 }
 if (process.env.NODE_ENV === "production" && !process.env.CRON_SECRET) {
-  // Not fatal: the app is fully usable without it, and refusing to boot would
-  // take the whole site down over a feature nothing user-facing depends on.
-  // requireCron fails closed in production, so the routes answer 503 rather
-  // than running — this warning says the scheduler's manual overrides are
-  // unavailable, not that they are exposed.
   console.error("CRON_SECRET is not set — cron-protected routes (/espn/resolve, /weeks/:id/resolve, etc.) will refuse every request with a 503.");
 }
 
 const app = express();
 
-// Railway/Render sit in front of the app behind one reverse proxy hop — this
-// makes req.ip resolve to the real client IP (from X-Forwarded-For) instead
-// of the proxy's own address, which is required for per-IP rate limiting to
-// work at all (without it, every request looks like it comes from one IP).
+// One proxy hop (Caddy), so req.ip is the real client for rate limiting.
 app.set("trust proxy", 1);
 
-// FRONTEND_URL restricts CORS to the deployed frontend in production. Unset in
-// dev, so cors() falls back to reflecting any origin (matches localhost usage).
 const allowedOrigins = process.env.FRONTEND_URL?.split(",").map((o) => o.trim());
 app.use(cors(allowedOrigins ? { origin: allowedOrigins } : undefined));
 app.use(express.json());
 
-// Mounted before the rate limiter so platform health checks (which poll
-// frequently) can never be throttled or fail a deploy.
 app.use("/health", healthRoutes);
 
-// Before the limiter: a request refused for load should cost nothing more.
-// See middleware/loadShed.ts.
 app.use(loadShed);
 app.use(globalLimiter);
 
@@ -91,13 +73,11 @@ app.use("/parlays", parlayRoutes);
 app.use("/home", homeRoutes);
 app.use("/support", supportRoutes);
 
-app.get("/", (req, res) => {
+app.get("/", (_req, res) => {
   res.json({ status: "Wagerwolf backend running" });
 });
 
-// Last two, and the order matters: the 404 claims anything no router did, and
-// the error handler must be registered after every route or Express will not
-// route errors to it. See middleware/errorHandler.ts.
+// Must be last.
 app.use(notFoundHandler);
 app.use(errorHandler);
 
@@ -109,8 +89,6 @@ const server = app.listen(PORT, async () => {
   await startScheduler();
 });
 
-// Docker waits 10s between SIGTERM and SIGKILL. Everything below has to fit
-// inside that, so the whole sequence is capped a little under it.
 const SHUTDOWN_DEADLINE_MS = 8_000;
 let shuttingDown = false;
 
@@ -123,10 +101,7 @@ async function shutdown() {
     process.exit(1);
   }, SHUTDOWN_DEADLINE_MS).unref();
 
-  // Stop accepting, let in-flight requests finish, and drop idle keep-alive
-  // sockets, which would otherwise hold `close` open until they time out. It
-  // used to call `server.close()` without waiting and exit straight after, so
-  // every deploy cut off whatever requests were mid-flight.
+  // Drain in-flight requests and close idle keep-alive sockets.
   await new Promise<void>((resolve) => {
     server.close(() => resolve());
     server.closeIdleConnections();
@@ -137,8 +112,6 @@ async function shutdown() {
     redisConnection.quit(),
     rateLimitRedis.quit(),
   ]);
-  // A deploy is a SIGTERM, and an error reported in the second before it would
-  // otherwise leave with the process. Bounded, like the crash path's flush.
   await Sentry.close(2000);
   process.exit(0);
 }

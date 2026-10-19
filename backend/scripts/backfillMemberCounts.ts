@@ -2,21 +2,6 @@ import "dotenv/config";
 import { sql } from "drizzle-orm";
 import { db } from "../src/db/db";
 
-/**
- * One-time backfill for League.activeMemberCount / activePublicFillCount.
- *
- * Every league that existed before those columns did has them sitting at the
- * column default of 0, which reads as "completely empty" — so a full league
- * would happily accept members and discovery would rank it as the emptiest
- * thing available. Nothing may read the counters until this has run.
- *
- * Idempotent, and safe to re-run any time a count is suspected of drifting:
- * it recomputes from the Membership rows rather than adjusting by a delta.
- * Same logic as recountSeats() in services/leagueSeats.ts, done set-wise in
- * one statement instead of per league.
- *
- *   npx tsx scripts/backfillMemberCounts.ts
- */
 async function main() {
   const before = await db.execute(sql`
     SELECT count(*)::int AS mismatched

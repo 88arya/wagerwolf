@@ -6,13 +6,48 @@ import { ACCENT } from "@/lib/constants";
 import { api } from "@/lib/api";
 import { fmtMoney } from "@/lib/money";
 import HelmetAvatar from "@/components/HelmetAvatar";
+import { calcProfit, fmtOdds } from "@/lib/odds";
 
-function calcProfit(stake: number, odds: number): number {
-  if (odds > 0) return Math.round((stake * odds) / 100);
-  return Math.round((stake * 100) / Math.abs(odds));
+// GET /leagues/:id/matchup. The opponent's pending bets come back hidden.
+interface MatchupBet {
+  id: string;
+  type: "pick" | "gamepick" | "parlay";
+  hidden?: boolean;
+  legCount?: number;
+  outcome: string;
+  cashedOut?: boolean;
+  stake: number;
+  odds: number;
+  playerName?: string;
+  direction?: string;
+  line?: number;
+  statType?: string;
+  label?: string;
+  game?: { homeTeam: string; awayTeam: string };
+  payout?: number;
+  totalOdds?: number;
+  legs?: { label: string; outcome: string }[];
 }
 
-function fmtOdds(n: number) { return n > 0 ? `+${n}` : `${n}`; }
+interface MatchupSide {
+  displayName: string;
+  helmetColor: string;
+  balance: number;
+  projected: number;
+  wins: number;
+  losses: number;
+  ties: number;
+  bets: MatchupBet[];
+}
+
+interface MatchupDetail {
+  hasMatchup: boolean;
+  isBye?: boolean;
+  weekNumber?: number;
+  weeklyAllowance: number;
+  me?: MatchupSide;
+  opponent?: MatchupSide;
+}
 
 function OutcomeBadge({ outcome, cashedOut }: { outcome: string; cashedOut?: boolean }) {
   const label = outcome === "VOID" && cashedOut ? "CASHED" : outcome;
@@ -32,7 +67,7 @@ function LockIcon() {
   );
 }
 
-function BetCard({ bet }: { bet: any }) {
+function BetCard({ bet }: { bet: MatchupBet }) {
   if (bet.hidden) {
     return (
       <div className="card" style={{ padding: "11px 14px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -109,10 +144,10 @@ function BetCard({ bet }: { bet: any }) {
         </div>
       </div>
       <div style={{ fontSize: "0.68rem", color: "var(--text-3)", marginBottom: 6, fontVariantNumeric: "tabular-nums" }}>
-        {fmtOdds(bet.totalOdds)} · stake {fmtMoney(bet.stake)}
+        {fmtOdds(bet.totalOdds ?? 0)} · stake {fmtMoney(bet.stake)}
       </div>
       <div style={{ borderTop: "1px solid var(--border)", paddingTop: 6 }}>
-        {bet.legs?.map((leg: any, i: number) => (
+        {bet.legs?.map((leg, i) => (
           <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "4px 0" }}>
             <div style={{ fontSize: "0.72rem", color: "var(--text-2)", flex: 1, minWidth: 0, paddingRight: 8, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
               {leg.label}
@@ -138,7 +173,7 @@ function Stat({ label, value, color, align }: { label: string; value: string; co
   );
 }
 
-function BalanceBreakdown({ side, weeklyAllowance, balanceEdge, align }: { side: any; weeklyAllowance: number; balanceEdge: number; align: "left" | "right" }) {
+function BalanceBreakdown({ side, weeklyAllowance, balanceEdge, align }: { side: MatchupSide; weeklyAllowance: number; balanceEdge: number; align: "left" | "right" }) {
   const netThisWeek = side.balance - weeklyAllowance;
   const vsOpponent = balanceEdge;
   const stats = [
@@ -148,23 +183,13 @@ function BalanceBreakdown({ side, weeklyAllowance, balanceEdge, align }: { side:
     <Stat key="vsopp" label="vs Opponent" value={fmtMoney(vsOpponent, { sign: true })} color={vsOpponent >= 0 ? "var(--win)" : "var(--loss)"} align={align} />,
   ];
   return (
-    // The right side swaps its pairs so the two breakdowns MIRROR about the
-    // centre of the card: read outward-in, both sides run available, weekly /
-    // net, vs-opponent, so each row holds the same two stats on both sides.
-    //
-    // That symmetry depends on there being two columns. Once .rg-2 collapses to
-    // one on a phone the swap stops mirroring anything and simply puts the
-    // rows out of order — "Available Balance" on the left sitting opposite
-    // "Weekly Allowance" on the right, which in a side-by-side comparison is
-    // actively misleading. .h2h-mirror undoes the swap at exactly the width
-    // where the second column goes away.
     <div className={align === "right" ? "rg-2 h2h-mirror" : "rg-2"} style={{ display: "grid", gap: "10px 18px" }}>
       {align === "right" ? [stats[1], stats[0], stats[3], stats[2]] : stats}
     </div>
   );
 }
 
-function TeamHeader({ side, align }: { side: any; align: "left" | "right" }) {
+function TeamHeader({ side, align }: { side: MatchupSide; align: "left" | "right" }) {
   return (
     <div style={{
       display: "flex", alignItems: "center", gap: 12,
@@ -186,7 +211,7 @@ function TeamHeader({ side, align }: { side: any; align: "left" | "right" }) {
 
 export default function MatchupPage({ params }: PageProps<"/leagues/[leagueId]/matchup">) {
   const router = useRouter();
-  const [data, setData] = useState<any>(null);
+  const [data, setData] = useState<MatchupDetail | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -194,7 +219,7 @@ export default function MatchupPage({ params }: PageProps<"/leagues/[leagueId]/m
       if (!localStorage.getItem("token")) { router.push("/"); return; }
       const { leagueId: lid } = await params;
       try {
-        const res = await api(`/leagues/${lid}/matchup`);
+        const res = await api<MatchupDetail>(`/leagues/${lid}/matchup`);
         setData(res);
       } catch {} finally {
         setLoading(false);
@@ -240,21 +265,12 @@ export default function MatchupPage({ params }: PageProps<"/leagues/[leagueId]/m
 
       {!loading && data?.hasMatchup && !data.isBye && me && opponent && (
         <>
-          {/* Matchup header */}
           <div className="card" style={{ padding: 0, overflow: "hidden", marginBottom: 20 }}>
             <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)", padding: "18px 24px" }}>
               <TeamHeader side={me} align="left" />
               <TeamHeader side={opponent} align="right" />
             </div>
             <div style={{ borderTop: "1px solid var(--border)" }} />
-            {/* me | projected | opponent.
-                The middle track is `auto`, so it takes its CONTENT width — two
-                1.9rem money figures plus a VS, about 250px. On a phone that
-                leaves ~65px for each breakdown either side, and their labels
-                ("AVAILABLE BALANCE", "WEEKLY ALLOWANCE") both overflow their
-                track and print underneath the big numbers. .h2h-grid moves the
-                projected pair onto its own full-width row below 760px and puts
-                the two breakdowns side by side under it. */}
             <div className="h2h-grid" style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto minmax(0, 1fr)", alignItems: "center", padding: "16px 24px", gap: 12 }}>
               <BalanceBreakdown side={me} weeklyAllowance={data.weeklyAllowance} balanceEdge={me.balance - opponent.balance} align="left" />
 
@@ -286,7 +302,6 @@ export default function MatchupPage({ params }: PageProps<"/leagues/[leagueId]/m
             </div>
           </div>
 
-          {/* Two-column bet lists */}
           <div className="rg-2" style={{ display: "grid", gap: 20, alignItems: "start" }}>
             {([["me", me, "Your Bets"], ["opp", opponent, "Opponent's Bets"]] as const).map(([key, side, title]) => (
               <div key={key}>
@@ -298,7 +313,7 @@ export default function MatchupPage({ params }: PageProps<"/leagues/[leagueId]/m
                   {side.bets.length === 0 && (
                     <div style={{ padding: "16px 2px", color: "var(--text-3)", fontSize: "0.78rem" }}>No bets here</div>
                   )}
-                  {side.bets.map((bet: any) => (
+                  {side.bets.map((bet) => (
                     <BetCard key={bet.id} bet={bet} />
                   ))}
                 </div>

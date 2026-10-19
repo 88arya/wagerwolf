@@ -1,54 +1,5 @@
 import type { Metadata } from "next";
 
-// The rules reference, as distinct from How to Play's walkthrough. Every claim
-// here describes behaviour already decided in code, so this document is
-// transcription and never policy invention. The sources are named so the two
-// cannot drift silently:
-//
-//   grading            backend/src/services/grading.ts
-//   voids              backend/src/services/settleGame.ts   (DNP_REASON), gradeRetry.ts
-//   cashout            POST /picks/:id/cashout and the gamepicks/parlays twins
-//   parlays            grading.ts settleParlay()
-//   allowances         backend/src/services/distributeAllowances.ts
-//   locking            game.gameDate <= now, enforced server side
-//   joining            backend/src/services/matchmaking.ts, leagueLevel.ts
-//   odds               backend/src/services/sportsGameOdds.ts, oddsPoller.ts
-//   matchups           backend/src/services/resolveWeek.ts
-//   season lifecycle   backend/src/services/autoPlayoffs.ts, scheduler.ts
-//   week close         scheduler.ts resolvePastWeeks (the rollover)
-//   limits             League.maxStakePerBet / maxBetsPerWeek / maxParlayLegs
-//
-// IF YOU CHANGE ONE OF THOSE, CHANGE THIS. A settlement rule the player was
-// told and the app does not follow is worse than one nobody wrote down.
-//
-// HOUSE RULES FOR THIS COPY:
-//   no em dashes
-//   no "not X but Y" or "X rather than Y" antithesis as a rhetorical move
-//   plain declaratives, one idea per sentence
-//
-// SEQUENCING. The money first, because every other rule is about what happens
-// to it: stake taken, the four outcomes, then the two outcomes readers dispute
-// (push, void), then parlays, then cashout, then the clock, then the weekly
-// reset, then limits, then where odds come from, then matchmaking, then the
-// season, then what to do about a mistake. Each section answers one question a
-// player would actually ask.
-//
-// FOUR CORRECTIONS MADE ON 18 Sept 2026, all verified against the code:
-//
-//  - The odds refresh tiers were stated as "a game two weeks out moves about
-//    once a day, and one inside six hours is checked hourly". The hourly tier
-//    is INSIDE THREE HOURS (services/oddsPoller.ts TIERS: 3h/60min,
-//    24h/180min, 72h/480min, beyond/1440min). Fixed, and the middle tiers are
-//    now stated too.
-//  - The board being PREGAME ONLY was never documented. Polling stops at
-//    kickoff by design, so there are no live in-game odds at all.
-//  - Cashout was not documented here. It refunds the full stake and is refused
-//    once the game has started. It is not a priced cashout.
-//  - Matchups were described as "whoever makes more money". The comparison is
-//    ENDING BALANCE, ties are recorded (Matchup.isTie), and an odd numbered
-//    league produces a ghost opponent scoring the league mean. All three are
-//    in "How a weekly matchup is decided" now.
-
 export const metadata: Metadata = {
   title: "Wagerwolf How It Works",
   description: "How Wagerwolf grades bets, refunds stakes, prices odds, decides matchups and matches leagues.",

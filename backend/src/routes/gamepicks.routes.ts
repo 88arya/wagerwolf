@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { Router, type Request } from "express";
 import { db } from "../db/db";
 import { eq, and } from "drizzle-orm";
 import { gamePicks, gameLines, leagues } from "../db/schema";
@@ -26,7 +26,7 @@ function calcGameLineAltOdds(baseOdds: number, baseLine: number, altLine: number
   return Math.max(-500, Math.min(500, baseOdds - Math.round(favSteps * 15)));
 }
 
-router.post("/", requireAuth, betLimiter, async (req: any, res: any, next: any) => {
+router.post("/", requireAuth, betLimiter, async (req, res, next) => {
   try {
     const { leagueId, gameLineId, stake, altLine } = req.body;
     const userId = req.userId;
@@ -60,8 +60,6 @@ router.post("/", requireAuth, betLimiter, async (req: any, res: any, next: any) 
       res.status(400).json({ error: "Cannot rotate line on moneylines" }); return;
     }
 
-    // One transaction, holding a lock on the member, so concurrent bets see
-    // each other's debits and counts. See services/betLedger.ts.
     const gamePick = await db.transaction(async (tx) => {
       const membership = await lockMembership(tx, userId, leagueId);
       if (membership.balance < Number(stake)) throw new HttpError(400, "Insufficient balance");
@@ -117,12 +115,12 @@ router.post("/", requireAuth, betLimiter, async (req: any, res: any, next: any) 
     });
 
     res.status(201).json(gamePick);
-  } catch (err: any) {
+  } catch (err) {
     next(err); return;
   }
 });
 
-router.get("/", requireAuth, async (req: any, res: any, next: any) => {
+router.get("/", requireAuth, async (req, res, next) => {
   try {
     const { leagueId } = req.query;
 
@@ -137,13 +135,13 @@ router.get("/", requireAuth, async (req: any, res: any, next: any) => {
     });
 
     res.json(rows);
-  } catch (err: any) {
+  } catch (err) {
     next(err); return;
   }
 });
 
-// Cashout a pending game pick before kickoff — full stake refund
-router.post("/:id/cashout", requireAuth, betLimiter, async (req: any, res: any, next: any) => {
+// Cashout a pending game pick before kickoff - full stake refund
+router.post("/:id/cashout", requireAuth, betLimiter, async (req: Request<{ id: string }>, res, next) => {
   try {
     const gp = await db.query.gamePicks.findFirst({
       where: eq(gamePicks.id, req.params.id),
@@ -158,8 +156,6 @@ router.post("/:id/cashout", requireAuth, betLimiter, async (req: any, res: any, 
       res.status(400).json({ error: "Cannot cash out after game has started" }); return;
     }
 
-    // The checks above are a fast path; this conditional UPDATE is the guard,
-    // so two concurrent cashouts refund the stake once. See picks.routes.ts.
     await db.transaction(async (tx) => {
       const claimed = await tx.update(gamePicks)
         .set({ outcome: "VOID", cashedOut: true })
@@ -171,7 +167,7 @@ router.post("/:id/cashout", requireAuth, betLimiter, async (req: any, res: any, 
     });
 
     res.json({ message: "Cashed out", refunded: gp.stake });
-  } catch (err: any) {
+  } catch (err) {
     next(err); return;
   }
 });

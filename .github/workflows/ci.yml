@@ -1,11 +1,4 @@
-# Build gate for both projects.
-#
-# Runs on every PR and every push to master. Master pushes no longer deploy
-# anywhere — staging is dispatch-only and production is cut from a tag — so this
-# is the only thing a master push does, and there is no double-run to avoid.
-#
-# The deploy workflows still call this via `workflow_call` before they ship, so
-# a release is always gated on the same jobs.
+# Build, typecheck, test and lint both projects on every PR and master push.
 name: CI
 
 on:
@@ -14,15 +7,7 @@ on:
     branches: [master]
   workflow_call:
 
-# A superseded PR or master run is worth nothing — cancel it.
-#
-# github.workflow is the CALLER's name when this runs via workflow_call, so a
-# deploy's CI sits in its own group and can never be cancelled by an ordinary
-# master push. Production deploys are keyed by tag ref besides, so two releases
-# cannot collide either.
-#
-# workflow_dispatch is excluded: a manually dispatched staging deploy is a
-# deliberate act and should not be killed by someone pushing to master.
+# Cancel superseded runs. Called workflows get their own group.
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'push' }}
@@ -50,28 +35,18 @@ jobs:
         working-directory: backend
         run: npm ci
 
-      # `npm run build` is `tsc --noCheck` — the same command the Docker
-      # image build runs. It emits without typechecking, which is deliberate: drizzle-orm
-      # under node16 moduleResolution reports ~66 dual-package type errors that
-      # are cosmetic. See the typecheck job below for what that costs us.
+      # tsc --noCheck, same as the Docker build. Typechecking is the separate job below.
       - name: Build
         working-directory: backend
         run: npm run build
 
-      # The build script cannot fail on a type error, so assert the artifact the
-      # `start` script actually runs was produced. Without this, a build that
-      # emitted nothing would still be a green check.
       - name: Assert entrypoint emitted
         run: test -f backend/dist/index.js
 
   backend-typecheck:
     name: Backend typecheck
     runs-on: ubuntu-latest
-    # BLOCKING as of the go-live pass. The 5 findings this was advisory for are
-    # fixed: 2 in middleware/rateLimit.ts (an ioredis spread and an optional
-    # req.ip) and 3 in routes/weeks.routes.ts (an `as const` that froze a
-    # relational-query config into readonly tuples). `tsc -p tsconfig.ci.json`
-    # is clean, so a failure here is now a real regression.
+    # tsconfig.ci.json uses bundler resolution, which avoids drizzle's dual-package type noise.
     steps:
       - uses: actions/checkout@v7
 
@@ -89,8 +64,7 @@ jobs:
         working-directory: backend
         run: npx tsc -p tsconfig.ci.json
 
-      # test/unit only: no database, no Redis, no network. test/e2e needs Redis
-      # and runs locally (`npm run test:e2e`).
+      # Unit tests only; e2e needs Redis and runs locally.
       - name: Unit tests
         working-directory: backend
         run: npm test
@@ -111,18 +85,7 @@ jobs:
         working-directory: frontend
         run: npm ci
 
-      # BUILD BEFORE TYPECHECK — the order is load bearing, do not swap it.
-      #
-      # tsconfig.json includes `.next/types/**/*.ts`, where Next generates the
-      # global `PageProps` type that every dynamic route signature uses. On a
-      # clean checkout that directory does not exist yet, so `tsc --noEmit`
-      # alone reports 16 "Cannot find name 'PageProps'" errors — which look like
-      # real type errors and are purely an artefact of running before typegen.
-      #
-      # NEXT_PUBLIC_API_URL is inlined at build time, so the build needs *a*
-      # value. This one is unreachable on purpose: nothing in CI should reach a
-      # real backend, and a placeholder that resolved could hide a page fetching
-      # at build time.
+      # Build first: it generates .next/types, which the typecheck needs.
       - name: Build
         working-directory: frontend
         run: npm run build
@@ -130,13 +93,10 @@ jobs:
           NEXT_PUBLIC_API_URL: https://ci.invalid
           NEXT_PUBLIC_GOOGLE_CLIENT_ID: ci-placeholder.apps.googleusercontent.com
 
-      # Clean today (0 errors) and blocking, unlike the backend's. Runs after
-      # the build so the generated types above are present.
       - name: Typecheck
         working-directory: frontend
         run: npx tsc --noEmit
 
-      # `npm run test:e2e` builds with a throwing probe route and stays local.
       - name: Unit tests
         working-directory: frontend
         run: npm test
@@ -144,20 +104,6 @@ jobs:
   frontend-lint:
     name: Frontend lint
     runs-on: ubuntu-latest
-    # BLOCKING as of the go-live pass, and green: 259 errors -> 0.
-    #
-    # Getting there was two halves, and the second matters more than the first.
-    # Rules that flag this codebase's deliberate style were downgraded to
-    # warnings with the reasoning written next to each in eslint.config.mjs —
-    # `no-explicit-any` (227 of the 259, and the house style at an untyped API
-    # boundary) and `exhaustive-deps` (whose narrow lists are load-bearing; see
-    # CLAUDE.md "Strip continuity"). Everything left was then actually fixed:
-    # dead state, two components defined during render, a hand-rolled ref
-    # object, and a clock read in a render body.
-    #
-    # 264 warnings remain and are reported, not gated. Do not add
-    # continue-on-error back — the point of this check is that it is green, so
-    # red means something happened.
     steps:
       - uses: actions/checkout@v7
 

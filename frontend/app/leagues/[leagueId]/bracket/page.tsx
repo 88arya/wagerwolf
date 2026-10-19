@@ -6,6 +6,7 @@ import { api } from "@/lib/api";
 import { fmtMoney } from "@/lib/money";
 import { ACCENT } from "@/lib/constants";
 import HelmetAvatar from "@/components/HelmetAvatar";
+import type { League, Matchup, Standing } from "@/lib/types";
 
 function roundLabel(ri: number, totalRounds: number): string {
   if (ri === totalRounds - 1) return "Championship";
@@ -16,12 +17,12 @@ function roundLabel(ri: number, totalRounds: number): string {
 export default function BracketPage({ params }: PageProps<"/leagues/[leagueId]/bracket">) {
   const router = useRouter();
   const [userId, setUserId] = useState("");
-  const [league, setLeague] = useState<any>(null);
-  const [matchups, setMatchups] = useState<any[]>([]);
-  const [members, setMembers] = useState<any[]>([]);
+  const [league, setLeague] = useState<League | null>(null);
+  const [matchups, setMatchups] = useState<Matchup[]>([]);
+  const [members, setMembers] = useState<Standing[]>([]);
   const [loaded, setLoaded] = useState(false);
 
-  const byUserId: Record<string, any> = {};
+  const byUserId: Record<string, Standing> = {};
   members.forEach((m) => { byUserId[m.userId] = m; });
 
   useEffect(() => {
@@ -44,9 +45,9 @@ export default function BracketPage({ params }: PageProps<"/leagues/[leagueId]/b
 
   if (!loaded) return <div className="loading">Loading…</div>;
 
-  const playoff = matchups.filter((m: any) => m.isPlayoff && !m.isConsolation);
+  const playoff = matchups.filter((m) => m.isPlayoff && !m.isConsolation);
 
-  const roundMap: Record<number, any[]> = {};
+  const roundMap: Record<number, Matchup[]> = {};
   for (const m of playoff) {
     const r = m.playoffRound ?? 1;
     if (!roundMap[r]) roundMap[r] = [];
@@ -133,7 +134,7 @@ export default function BracketPage({ params }: PageProps<"/leagues/[leagueId]/b
                   {roundLabel(ri, rounds.length)}
                 </div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 14, flex: 1, justifyContent: "space-around" }}>
-                  {(roundMatchups.length > 0 ? roundMatchups : [null]).map((mu: any, i: number) => {
+                  {(roundMatchups.length > 0 ? roundMatchups : [null]).map((mu, i) => {
                     if (!mu) return (
                       <div key={i} className="card" style={{ padding: 0, overflow: "hidden", opacity: 0.5 }}>
                         <Slot />

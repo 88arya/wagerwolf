@@ -1,8 +1,3 @@
-/**
- * A stand-in for both outside services the monitoring talks to, on one local
- * port: Sentry's envelope endpoint and healthchecks.io's ping endpoint. Tests
- * point SENTRY_DSN and HEALTHCHECKS_PING_URL at it and read back what arrived.
- */
 import http from "node:http";
 import zlib from "node:zlib";
 import type { AddressInfo } from "node:net";
@@ -45,8 +40,6 @@ export async function startSink() {
       if (/^\/api\/\d+\/envelope\/?$/.test(url.pathname)) {
         let body = Buffer.concat(chunks);
         if (req.headers["content-encoding"] === "gzip") body = zlib.gunzipSync(body);
-        // An envelope is newline-delimited JSON: a header, then item header and
-        // item payload pairs. Events are the payloads with a level.
         for (const line of body.toString("utf8").split("\n")) {
           try {
             const j = JSON.parse(line);
@@ -94,10 +87,6 @@ export const BACKEND = path.resolve(__dirname, "../..");
 
 /** Every environment variable a spawned backend sees, starting from nothing. */
 export function backendEnv(over: Record<string, string>) {
-  // Only what a process needs to run, so a developer's own SENTRY_DSN or
-  // HEALTHCHECKS key can never leak into a test. `.env` still loads for
-  // anything not set here (dotenv never overrides), so the ones that matter
-  // are set explicitly, blank where they must be off.
   const keep = ["PATH", "Path", "SystemRoot", "TEMP", "TMP", "HOME", "USERPROFILE", "APPDATA", "LOCALAPPDATA"];
   const base: Record<string, string> = {};
   for (const k of keep) if (process.env[k]) base[k] = process.env[k]!;

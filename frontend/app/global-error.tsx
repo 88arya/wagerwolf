@@ -1,16 +1,5 @@
 "use client";
 
-/**
- * The last-resort boundary: it catches errors thrown by the ROOT LAYOUT itself,
- * which `error.tsx` cannot — that one renders inside the layout that failed.
- *
- * Because the layout is what broke, this component has to supply its own
- * `<html>` and `<body>`. That is a Next requirement and the reason this file
- * looks unlike every other page here: none of the fonts, tokens or chrome are
- * available, so the styling is inline and minimal on purpose. It should be
- * plain — a page that tries to look designed while the design system is the
- * thing that failed will look broken instead.
- */
 import { useEffect } from "react";
 import * as Sentry from "@sentry/browser";
 
@@ -21,8 +10,6 @@ export default function GlobalError({
   error: Error & { digest?: string };
   reset: () => void;
 }) {
-  // Handed over by hand for the same reason as in error.tsx: a boundary
-  // swallows what it catches.
   useEffect(() => {
     Sentry.captureException(error);
   }, [error]);

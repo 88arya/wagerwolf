@@ -1,18 +1,3 @@
-/**
- * End to end: the BUILT backend (dist/, as the container runs it) booted as a
- * child process, with Sentry and healthchecks.io replaced by a local sink.
- *
- * The database is deliberately unreachable. That is the failure worth rehearsing
- * — Supabase is across the internet from the box — and it makes every route and
- * every job that touches Postgres fail without needing a fixture. Nothing here
- * can spend SportsGameOdds quota, send mail or touch a real database.
- *
- * NEEDS REDIS on 127.0.0.1:6379 (the dev `fanmark-redis` container). It uses
- * logical database 15, which it empties before and after, so dev data in
- * database 0 is never touched.
- *
- *   npm run test:e2e
- */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import net from "node:net";
 import IORedis from "ioredis";
@@ -79,8 +64,6 @@ beforeAll(async () => {
       HEALTHCHECKS_PING_URL: sink.pingUrl,
     })
   );
-  // The startup seed retries a refused connection twice, 3s apart, before
-  // giving up, and the scheduler starts after it.
   await waitFor(() => server.output().includes("worker started"), "the scheduler to start", 45_000);
 
   queue = new Queue("cron-jobs", { connection: new IORedis(REDIS_URL, { maxRetriesPerRequest: null }) });
@@ -186,9 +169,6 @@ describe("scheduler", () => {
       return ev.length ? ev : undefined;
     }, "a score-sync event");
     expect(events[0].tags).toMatchObject({ job: "score-sync", step: "job" });
-    // The StepsFailed summary is logged, not sent a second time. A scheduled
-    // firing in the same window could add its own event, so count this job's
-    // summary rather than all events.
     expect(events.some((e) => eventText(e).includes("step(s) failed"))).toBe(false);
   });
 
@@ -210,8 +190,6 @@ describe("scheduler", () => {
   });
 
   it("finished jobs are trimmed instead of kept forever", async () => {
-    // A job with no handler completes immediately, which makes it the cheapest
-    // way to finish 250 jobs.
     await queue.addBulk(Array.from({ length: 250 }, () => ({ name: "e2e-no-handler", data: {} })));
     await waitFor(async () => ((await queue.getWaitingCount()) === 0 ? true : undefined), "the queue to drain", 30_000);
     await new Promise((r) => setTimeout(r, 500));

@@ -1,14 +1,5 @@
-# One EC2 instance running the whole backend via docker compose.
-#
-# WHY NOT RDS + ELASTICACHE + ALB. That shape is the AWS default and costs
-# roughly $45/month for this workload — ALB ~$16, RDS db.t4g.micro ~$15,
-# ElastiCache ~$12 — before the compute. Against a $100 credit balance that is
-# two months. The same containers on one instance are ~$18/month all in, which
-# is five to six months, and nothing about this app needs a managed Postgres
-# failover it will never exercise.
-#
-# The trade is explicit: you own backups, patching and the single point of
-# failure. See .github/DEPLOYMENT.md.
+# One EC2 instance running the whole stack with docker compose.
+# RDS + ElastiCache + an ALB would be ~$45/month before compute.
 
 terraform {
   required_version = ">= 1.10"
@@ -30,8 +21,7 @@ provider "aws" {
   region = var.region
 }
 
-# Canonical's official Ubuntu 24.04 LTS. Looked up rather than hardcoded — AMI
-# ids are per-region, so a pinned one breaks the moment you change var.region.
+# Looked up rather than hardcoded; AMI ids differ per region.
 data "aws_ami" "ubuntu" {
   most_recent = true
   owners      = ["099720109477"] # Canonical
@@ -47,18 +37,12 @@ data "aws_ami" "ubuntu" {
   }
 }
 
-# The default VPC is enough here: one public instance, no private subnets, and
-# therefore no NAT gateway — which at ~$32/month would cost more than everything
-# else combined and is the most common way an AWS bill surprises someone.
+# Default VPC: one public instance, so no NAT gateway.
 data "aws_vpc" "default" {
   default = true
 }
 
-# Cloudflare's published edge ranges, from https://www.cloudflare.com/ips-v4
-# and /ips-v6, checked 28 Sept 2026. Pinned rather than fetched at plan time so
-# a plan never changes because a URL answered differently. They change rarely;
-# re-check both lists and apply when Cloudflare announces a new range, or
-# requests from that range will be refused at the security group.
+# Cloudflare's published IP ranges. Pinned; re-check occasionally.
 locals {
   cloudflare_ipv4 = [
     "173.245.48.0/20",
@@ -98,10 +82,7 @@ resource "aws_security_group" "app" {
   description = "Wagerwolf backend: SSH, HTTP, HTTPS"
   vpc_id      = data.aws_vpc.default.id
 
-  # GitHub-hosted runners have no stable egress IP, so SSH cannot be locked to a
-  # narrow CIDR while the deploy runs over SSH. Password auth is disabled on the
-  # Ubuntu AMI, so this is key-only. To close it: AWS SSM Session Manager (no
-  # inbound port at all) or a self-hosted runner. Neither is required to launch.
+  # SSH stays open because GitHub runners have no fixed IP. Key-only.
   ingress {
     description = "SSH"
     from_port   = 22
@@ -110,13 +91,7 @@ resource "aws_security_group" "app" {
     cidr_blocks = var.ssh_allowed_cidrs
   }
 
-  # 80 AND 443 ADMIT CLOUDFLARE ONLY. The origin serves a Cloudflare Origin CA
-  # certificate (see deploy/Caddyfile), which no browser trusts, so every
-  # legitimate request already arrives through Cloudflare. Open to 0.0.0.0/0,
-  # anyone who found the instance IP could skip Cloudflare's WAF, DDoS
-  # protection and rate limiting and talk to Caddy directly. The old note here
-  # kept 80 open for Let's Encrypt's HTTP-01 challenge; there is no ACME any
-  # more, so nothing outside Cloudflare needs either port.
+  # 80/443 only from Cloudflare, so the WAF can't be bypassed via the IP.
   ingress {
     description      = "HTTP from Cloudflare"
     from_port        = 80
@@ -161,8 +136,6 @@ resource "aws_instance" "app" {
     volume_size = var.disk_gb
     volume_type = "gp3"
     encrypted   = true
-    # gp3 bills capacity and IOPS separately and includes 3000 IOPS free, far
-    # more than Postgres needs here. Do not "upgrade" this to io2.
   }
 
   user_data = <<-BOOTSTRAP
@@ -208,17 +181,10 @@ resource "aws_instance" "app" {
     dpkg-reconfigure -f noninteractive unattended-upgrades
   BOOTSTRAP
 
-  # Forces a replacement when user_data changes. Without it, a bootstrap edit
-  # silently applies to nothing — user_data runs once, at first boot.
+  # user_data only runs at first boot, so changes need a new instance.
   user_data_replace_on_change = true
 
-  # THE AMI IS PINNED TO WHATEVER THE INSTANCE WAS LAUNCHED WITH. The lookup
-  # above takes Canonical's most recent build, so without this every new Ubuntu
-  # release turns the next `terraform apply` into a REPLACEMENT of the production
-  # box, taking /opt/wagerwolf, the .env, the origin certificates and Redis's
-  # data with it. Found 28 Sept 2026 on the first apply after launch, and applied
-  # around with -target. Security patches arrive through unattended-upgrades;
-  # moving to a new AMI is a deliberate rebuild, not a side effect of a plan.
+  # Ignore AMI updates; otherwise a new Ubuntu build would replace the instance.
   lifecycle {
     ignore_changes = [ami]
   }
@@ -229,12 +195,7 @@ resource "aws_instance" "app" {
   }
 }
 
-# A static IP, so stopping the instance to conserve credits does not change the
-# address in DNS or in the EC2_HOST secret.
-#
-# COSTS MONEY WHEN IDLE: AWS bills every public IPv4 at ~$3.60/month, and an
-# Elastic IP not attached to a *running* instance is billed on top. Stopping the
-# instance for a month still costs a few dollars.
+# Static IP, so DNS survives a stop/start. Billed when not attached to a running instance.
 resource "aws_eip" "app" {
   instance = aws_instance.app.id
   domain   = "vpc"

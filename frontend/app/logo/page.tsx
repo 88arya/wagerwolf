@@ -1,22 +1,3 @@
-// Logo and wordmark preview — not linked from anywhere in the app.
-//
-// The job of this page is CHOOSING A FACE for the wordmark. It renders the mark
-// on its own first, then the wordmark as it currently ships, then every
-// candidate in app/wordmarkFonts.ts stacked one under another so they can be
-// compared directly rather than one at a time from memory.
-//
-// The stack only ever grows. A face that lost is still the reason the next one
-// was tried, and the comparison is worth nothing if the losers are deleted —
-// add to WORDMARK_FONTS, never replace.
-//
-// Every candidate is shown twice: large, where letterforms are legible, and at
-// 20px on the dark utility bar, which is where the wordmark actually lives.
-// The small one is the one that matters — every problem this lockup has had
-// showed up at the small end, not the large one.
-//
-// Deliberately outside the (user) route group, and in AppChrome's NO_CHROME
-// list, so there is no nav, no games strip and no auth gate — and no second
-// wordmark in a bar above the specimens.
 import Logo from "@/components/Logo";
 import LogoWordmark from "@/components/LogoWordmark";
 import { getAllTeams } from "@/lib/teamLogos";
@@ -24,33 +5,16 @@ import { WORDMARK_FONTS } from "../wordmarkFonts";
 
 const LADDER = [64, 48, 32, 28, 20];
 
-// A pangram — every letter of the alphabet — so one line exercises the whole
-// lowercase and the capital T. Shown at two sizes because a display face can
-// look fine set large and fall apart at running-text size, which is exactly the
-// failure a wordmark face hides until it is used somewhere else.
 const PANGRAM = "The quick brown fox jumps over the lazy dog.";
 const PANGRAM_SIZES = [26, 15];
 
-// Digits and signs matter more here than they would for most wordmarks: the
-// app is wall-to-wall American odds, so a face that draws a weak + or an
-// ambiguous - is a real problem, not a detail. Second line is the shape those
-// actually take on a card.
 const NUMERALS = "0123456789 + -";
 
-// All 32, from the same source the app uses, so this sheet cannot fall out of
-// step with what the strip actually renders.
 const TEAM_ABBRS = getAllTeams().map(t => t.abbr.toUpperCase()).sort();
 
-// GamesStrip's TEAM_ABBR, reproduced: 12px, weight 400, upright and 0.04em tracking. Matching it exactly is the point — anything else
-// is not the comparison you want against the face already doing this job.
 const STRIP_SIZE = 12;
 const STRIP_SLANT = "normal";
 
-// 700, which the live strip cannot do. Fugaz One ships exactly one cut, so its
-// 400 was never a choice — asking for anything heavier would have had the
-// browser fake a bold on top of an already-heavy display face. A candidate with
-// real weights is not stuck there, so the sheet shows the weight worth judging
-// rather than the one the incumbent is stranded on.
 const STRIP_ABBR_WEIGHT = 700;
 const ODDS_SAMPLE = "+162  -194  +330  -420  +1200  -110";
 
@@ -141,8 +105,6 @@ function Specimen({
         {note}
       </p>
 
-      {/* A limitation of the face itself, not a note about it — kept visually
-          distinct so it is not mistaken for taste. */}
       {warn && (
         <p
           style={{
@@ -159,9 +121,6 @@ function Specimen({
         </p>
       )}
 
-      {/* All three arrangements, same face, same size — so the choice of
-          face and the choice of arrangement can be judged in one pass instead
-          of two. */}
       <div style={{ display: "flex", gap: 24, flexWrap: "wrap", alignItems: "flex-start", marginBottom: 26 }}>
         {ARRANGEMENTS.map(a => (
           <div key={a.id} style={{ display: "flex", flexDirection: "column", gap: 10 }}>
@@ -179,14 +138,6 @@ function Specimen({
         ))}
       </div>
 
-      {/* At size, on the bar it actually ships in. `bare` draws head and name in
-          currentColor, which is what TopBar does on this same fill. Takes the
-          component's default arrangement — the app's real one — rather than a
-          named layout, so this row always shows what the bar actually renders.
-
-          `align` and `markScale` fall back to center / off for any candidate
-          that does not state them: the component's defaults are Arca Majora's
-          cap height and baseline, which mean nothing for another face. */}
       <div
         style={{
           background: "var(--bar-bg)",
@@ -212,10 +163,6 @@ function Specimen({
         utility bar — {BAR_LOCKUP_H}px lockup in a {BAR_H}px bar
       </div>
 
-      {/* The face doing ordinary work. Drawn at the candidate's own weight and
-          case, so this is the same treatment the lockup gets — not a neutral
-          sample. For Lemon Milk that is the point: the sentence comes out in
-          capitals, which is what having no lowercase actually costs. */}
       <div style={{ marginTop: 26 }}>
         <div className="eyebrow" style={{ color: "var(--text-3)", marginBottom: 10 }}>
           in a sentence
@@ -252,9 +199,6 @@ function Specimen({
               fontSize: i === 0 ? 26 : 20,
               lineHeight: 1.35,
               color: "var(--text)",
-              // Tabular, as the app sets numerals everywhere — it is the only
-              // way to see whether a face's digits are the same width, which is
-              // what stops a column of odds from shifting as scores update.
               fontVariantNumeric: "tabular-nums",
             }}
           >
@@ -312,7 +256,6 @@ export default function LogoPreviewPage() {
           add to the list, never replace, so the comparison keeps its history.
         </p>
 
-        {/* ── The mark alone ── */}
         <Section
           title="Mark — no wordmark"
           subtitle="components/Logo.tsx. Independent of whatever the name is set in."
@@ -333,7 +276,6 @@ export default function LogoPreviewPage() {
           </div>
         </Section>
 
-        {/* ── The wordmark as it ships ── */}
         <Section
           title="Wordmark — as it ships"
           subtitle="components/LogoWordmark.tsx, drawn exactly as the app draws it: no font override, so this is the real thing rather than a specimen."
@@ -377,7 +319,6 @@ export default function LogoPreviewPage() {
           </div>
         </Section>
 
-        {/* ── The comparison this page exists for ── */}
         <Section
           title={`Wordmark — face candidates (${WORDMARK_FONTS.length})`}
           subtitle="Same lockup, same size, one face each. Two constants in LogoWordmark — WORDMARK_FONT_RATIO and OPTICAL_SHIFT_EM — are measured against Inter Tight and do not follow a swap, so a candidate may sit slightly high, low or large through no fault of its own. Judge letterforms, weight and width here; re-measure those two before adopting anything."

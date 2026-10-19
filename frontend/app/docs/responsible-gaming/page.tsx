@@ -1,41 +1,5 @@
 import type { Metadata } from "next";
 
-// NOT LEGALLY REVIEWED, and the helplines below are US and UK only. Shipping
-// anywhere else needs a local number; the closing note is a signpost and not
-// coverage.
-//
-// HOUSE RULES FOR THIS COPY:
-//   no em dashes
-//   no "not X but Y" or "X rather than Y" antithesis as a rhetorical move
-//   plain declaratives, one idea per sentence
-//
-// SEQUENCING follows the responsible social gameplay policies free-to-play
-// operators publish: the no-real-money statement first, then why the page
-// exists at all, then the tools the reader has, then self-assessment, then help,
-// then the age line. Help comes after self-assessment on purpose, because
-// somebody who has just recognised themselves in a list is the reader most
-// likely to act on a number.
-//
-// WHAT THIS PAGE MAY NOT CLAIM. Wagerwolf has no deposit limits, no session
-// timers, no self-exclusion period and no activity reminders, because it has no
-// money and no purchases. Real operators list those tools here. Do not copy
-// that section in; the honest equivalents are the three habits under "Staying
-// in control", plus deactivation, which is real (POST /users/me/deactivate).
-//
-// HELPLINES VERIFIED against the operators on 18 Sept 2026:
-//   US  National Problem Gambling Helpline (NCPG), 24/7. Voice 1-800-522-4700,
-//       TEXT IS A DIFFERENT SHORTCODE, 800GAM, and this copy said "call or
-//       text 1-800-522-4700" before the check. Chat ncpgambling.org/chat.
-//   UK  National Gambling Helpline (GamCare), 24/7, 0808 8020 133. GamCare's
-//       onward treatment referrals cover England, Scotland and Wales.
-// Re-verify before launch. A helpline number that has moved is the one error on
-// this page that could matter to somebody.
-//
-// FACTS VERIFIED against the backend on 18 Sept 2026: the weekly reset is
-// services/distributeAllowances.ts, which overwrites balance with the league's
-// weeklyAllowance, so a wiped-out week genuinely costs the next week nothing.
-// MIN_AGE = 18 (services/age.ts).
-
 export const metadata: Metadata = {
   title: "Wagerwolf Responsible Gaming",
   description: "Wagerwolf uses fake money and pays out nothing. If gambling is a problem for you, here is where to get help.",

@@ -7,12 +7,13 @@ import { ACCENT } from "@/lib/constants";
 import { api } from "@/lib/api";
 import { fmtMoney } from "@/lib/money";
 import HelmetAvatar from "@/components/HelmetAvatar";
+import type { League, Standing } from "@/lib/types";
 
 export default function LeaderboardPage({ params }: PageProps<"/leagues/[leagueId]/leaderboard">) {
   const router = useRouter();
   const [leagueId, setLeagueId] = useState("");
-  const [entries, setEntries] = useState<any[]>([]);
-  const [league, setLeague] = useState<any>(null);
+  const [entries, setEntries] = useState<Standing[]>([]);
+  const [league, setLeague] = useState<League | null>(null);
   const [myUserId, setMyUserId] = useState("");
   const [weekProfits, setWeekProfits] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
@@ -75,7 +76,6 @@ export default function LeaderboardPage({ params }: PageProps<"/leagues/[leagueI
 
         {!loading && entries.length > 0 && (
           <div className="card" style={{ padding: 0, overflow: "hidden" }}>
-            {/* Header */}
             <div style={{
               display: "grid",
               gridTemplateColumns: hasWeekProfits ? "30px 1fr 64px 68px 78px" : "30px 1fr 72px 84px",
@@ -93,7 +93,7 @@ export default function LeaderboardPage({ params }: PageProps<"/leagues/[leagueI
               ))}
             </div>
 
-            {entries.map((entry: any, i: number) => {
+            {entries.map((entry, i) => {
               const rank = i + 1;
               const isMe = entry.userId === myUserId;
               const rankColor = rank === 1 ? "var(--gold)" : rank === 2 ? "var(--silver)" : rank === 3 ? "var(--bronze)" : "var(--text-3)";
@@ -117,7 +117,6 @@ export default function LeaderboardPage({ params }: PageProps<"/leagues/[leagueI
                     cursor: "pointer",
                     transition: "background 0.1s",
                   }}>
-                    {/* Rank */}
                     <div style={{ textAlign: "center" }}>
                       {rank <= 3 ? (
                         <span style={{ fontSize: "0.95rem" }}>{RANK_MEDALS[rank - 1]}</span>
@@ -126,7 +125,6 @@ export default function LeaderboardPage({ params }: PageProps<"/leagues/[leagueI
                       )}
                     </div>
 
-                    {/* Player */}
                     <div style={{ display: "flex", alignItems: "center", gap: 9, minWidth: 0 }}>
                       <HelmetAvatar color={entry.helmetColor ?? ACCENT} initials={initials} size={32} />
                       <div style={{ minWidth: 0 }}>
@@ -145,7 +143,6 @@ export default function LeaderboardPage({ params }: PageProps<"/leagues/[leagueI
                       </div>
                     </div>
 
-                    {/* W-L-T */}
                     <div style={{ textAlign: "center", fontSize: "0.78rem", fontWeight: 600 }}>
                       <span style={{ color: "var(--win)" }}>{entry.wins}</span>
                       <span style={{ color: "var(--text-3)" }}>–</span>
@@ -153,7 +150,6 @@ export default function LeaderboardPage({ params }: PageProps<"/leagues/[leagueI
                       <span style={{ color: "var(--text-3)" }}>–{entry.ties}</span>
                     </div>
 
-                    {/* Weekly P&L */}
                     {hasWeekProfits && (
                       <div style={{ textAlign: "center", fontWeight: 700, fontSize: "0.8rem", fontVariantNumeric: "tabular-nums" }}>
                         {wkProfit == null
@@ -165,7 +161,6 @@ export default function LeaderboardPage({ params }: PageProps<"/leagues/[leagueI
                       </div>
                     )}
 
-                    {/* Balance */}
                     <div style={{ textAlign: "right", fontWeight: 800, fontSize: "0.88rem", fontVariantNumeric: "tabular-nums", color: "var(--text)" }}>
                       {fmtMoney(entry.balance)}
                     </div>

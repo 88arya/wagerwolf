@@ -1,24 +1,10 @@
-import { and, asc, eq, gte, lte } from "drizzle-orm";
+import { and, eq, gte, lte } from "drizzle-orm";
 import { db } from "../db/db";
-import { leagues, memberships, users, weeks } from "../db/schema";
+import { memberships, users, weeks } from "../db/schema";
 import { resolveLeagueIdentity } from "./leagueIdentity";
 import { scheduleMatchups } from "./scheduleMatchups";
 import { claimSeat, releaseSeat } from "./leagueSeats";
 import { isUniqueViolation } from "../db/pgErrors";
-
-/**
- * Seat a user in a league, atomically.
- *
- * The one place an ACTIVE membership is created. It exists because "join a
- * league" is two writes that must not come apart — take the seat, then create
- * the membership — and every join path used to open-code both, with a plain
- * capacity SELECT in front that raced.
- *
- * Order matters: **claim the seat first**. Claiming and then failing to insert
- * leaks one seat until the next recount, which is recoverable. Inserting and
- * then failing to claim would have already put an extra member in a full
- * league, which is not — the round-robin scheduler assumes the roster fits.
- */
 
 export type JoinOutcome =
   | { ok: true; membership: typeof memberships.$inferSelect }
@@ -32,6 +18,8 @@ type JoinableLeague = {
   playoffWeeks: number;
 };
 
+// The only place an ACTIVE membership is created. Claim the seat before
+// inserting: a leaked seat can be recounted, an over-full league can't.
 export async function joinLeague(
   userId: string,
   league: JoinableLeague,
@@ -43,10 +31,6 @@ export async function joinLeague(
   if (!seat.ok) return { ok: false, reason: seat.reason };
 
   try {
-    // Balance is only funded if a week this league actually plays is already
-    // live; joining before kickoff starts you at zero and the allowance run
-    // tops you up. Read after the seat is secured — it is not part of the race
-    // and doing it first would widen the window for nothing.
     const maxWeek = league.startWeek + league.regularSeasonWeeks + league.playoffWeeks - 1;
     const [activeWeek, user] = await Promise.all([
       db.query.weeks.findFirst({
@@ -55,10 +39,6 @@ export async function joinLeague(
       }),
       db.query.users.findFirst({ where: eq(users.id, userId) }),
     ]);
-    // Per-league identity, seeded from the account defaults where they exist
-    // and derived where they do not. resolveLeagueIdentity always returns all
-    // three — onboarding's second step is skippable, so arriving here with no
-    // defaults at all is an ordinary case, not an edge one.
     const identity = await resolveLeagueIdentity(league.id, user);
 
     const [membership] = await db.insert(memberships).values({
@@ -72,28 +52,15 @@ export async function joinLeague(
 
     await scheduleMatchups(league.id);
     return { ok: true, membership };
-  } catch (err: any) {
-    // Give the seat back before rethrowing — otherwise a duplicate join or a
-    // transient failure permanently shrinks the league by one.
+  } catch (err) {
     await releaseSeat(league.id, { isPublicFill });
-    // The Membership (userId, leagueId) unique index. Two things had to be
-    // true for this branch to work: the index has to exist (it did not until
-    // now, so a double join silently created two rows), and the code has to be
-    // read through Drizzle's error wrapper — see db/pgErrors.
+    // Unique (userId, leagueId).
     if (isUniqueViolation(err)) return { ok: false, reason: "DUPLICATE" };
     throw err;
   }
 }
 
-/**
- * Promote a PENDING request to ACTIVE — the commissioner-approval path.
- *
- * A queued request holds no seat (that is the point of a queue), so approval
- * has to claim one, and can therefore fail: a league that filled while a
- * request sat in the queue cannot accept it. The membership row already
- * exists, so this updates rather than inserts, and hands the seat back if the
- * row has since vanished.
- */
+// Pending requests hold no seat, so approval has to claim one and can fail.
 export async function approvePendingMembership(
   userId: string,
   league: JoinableLeague
@@ -110,10 +77,6 @@ export async function approvePendingMembership(
       }),
       db.query.users.findFirst({ where: eq(users.id, userId) }),
     ]);
-    // Re-resolved at approval rather than reused from the PENDING row: the
-    // colour has to be re-checked because another member may have taken it
-    // while the request sat in the queue, and re-running the whole thing keeps
-    // this in step with the two paths that create a membership outright.
     const identity = await resolveLeagueIdentity(league.id, user);
 
     const updated = await db.update(memberships)

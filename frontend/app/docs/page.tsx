@@ -2,29 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { EyeOff, FileText, LifeBuoy, ListOrdered, Settings2 } from "lucide-react";
 
-// The index for all five documents, in two groups.
-//
-// It carries no copy of its own beyond the blurbs — everything binding lives in
-// the pages it points at, so there is nothing here to fall out of step with
-// them. That mattered most while this was the LEGAL index and is worth keeping
-// now that it is the whole section's.
-//
-// GROUPS RATHER THAN ONE GRID OF FIVE. Play and Legal are read for opposite
-// reasons — one before you start, one when something has gone wrong or you want
-// to know what you agreed to — and five undifferentiated cards made the reader
-// sort them out. The headings do that work instead.
-//
-// LEGAL IS FIRST, matching the rail. The order was Play-first on the argument
-// that a newcomer wants the walkthrough more than the Terms — true, but it put
-// the page and the nav beside it in different orders, and a reader who has just
-// used the rail to get here reads the two as one list. Agreeing with the nav
-// beats the argument about which document is wanted more.
-
 export const metadata: Metadata = {
-  // "Wagerwolf Docs", not "Docs — Wagerwolf". The dashed form is for a page
-  // INSIDE a product — the documents below still use it — but this is the
-  // section's front door, and a tab reading "Docs —" tells you nothing until
-  // you have read to the end of it.
   title: "Wagerwolf Docs",
   description: "How to play Wagerwolf, how it works underneath, and the terms that govern using it.",
 };
@@ -81,15 +59,9 @@ const GROUPS: Array<{
 export default function DocsPage() {
   return (
     <>
-      {/* NO PAGE TITLE AND NO LEDE. The bar above already says Docs, and the
-          two group headings say what is here more precisely than one line
-          spanning both could. */}
       {GROUPS.map(({ key, title, docs }) => (
         <section key={key} className="legal-group">
           <h2 className="legal-group-title">{title}</h2>
-          {/* The grid stays 3-up in both groups rather than fitting its own
-              count, so a Play card and a Legal card are the same object at the
-              same size. Play's two simply leave the third column empty. */}
           <div className="legal-cards">
             {docs.map(({ href, name, blurb, Icon }) => (
               <Link key={href} href={href} className="legal-card">

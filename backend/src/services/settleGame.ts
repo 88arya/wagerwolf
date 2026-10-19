@@ -11,15 +11,7 @@ import { invalidateGameMarkets } from "./weekBoard";
 
 const sgoAttempts = new GradeAttempts();
 
-/**
- * ESPN box-score fields, used only as a fallback.
- *
- * This table is why defensive and kicking props could never settle: it covers
- * 11 of our 23 StatTypes, and anything missing was left PENDING forever. The
- * primary path now reads the graded value straight off the market that set the
- * line (SportsGameOdds `score`), which needs no per-stat mapping at all and
- * covers every stat they price.
- */
+// Fallback only. SGO grades props directly; ESPN covers 11 of our 23 stat types.
 const ESPN_STAT_FIELD: Partial<Record<string, string>> = {
   PASSING_YARDS: "passingYards",
   PASSING_TOUCHDOWNS: "passingTouchdowns",
@@ -34,18 +26,8 @@ const ESPN_STAT_FIELD: Partial<Record<string, string>> = {
   TOUCHDOWNS: "touchdowns",
 };
 
-/**
- * Grade one bet and pay it, as one transaction guarded on the bet still being
- * PENDING.
- *
- * Every caller reads PENDING rows first and then closes them one by one, which
- * is only idempotent if nothing else closes them in between. The score sync
- * job, the hourly resolve and the manual resolve routes can all reach the same
- * game at once, and each used to update and credit as two separate statements:
- * both runs paid, and a crash between the two writes lost the payout. The
- * conditional UPDATE lets exactly one run claim the bet, and the credit commits
- * with it or not at all.
- */
+// Claim the PENDING bet and credit it in one transaction, so concurrent
+// settlement runs (score sync, resolve, manual) can't pay twice.
 async function closeBet(
   table: any,
   id: string,
@@ -63,25 +45,9 @@ async function closeBet(
   });
 }
 
-/**
- * Fill in `Prop.result` for a finished game.
- *
- * Primary: SportsGameOdds grades each market it priced and returns the value on
- * the same oddID we stored, so the lookup is by id — no player-name matching,
- * and no stat-field table to keep in step. Costs one entity, and `oddsSettledAt`
- * makes sure that happens once rather than on every minute-by-minute tick.
- *
- * RETURNS WHETHER PROPS ARE READY TO FINISH, meaning the ESPN fallback and the
- * DNP void may run. False while SGO has not finalized the event: `oddsSettledAt`
- * is what licenses `voidUngradedProps` to refund every prop still without a
- * result, so stamping it off an unfinished feed turned a lagging grader into
- * refunds, and running the ESPN fallback early would grade props SGO is about
- * to grade authoritatively. See services/gradeRetry.ts for the backoff and the
- * deadline past which an unfinalized event is taken as it stands.
- *
- * `atDeadline` is the week's resolve. It skips the backoff, because the week is
- * about to close and a bet left pending then stays pending for good.
- */
+// Writes Prop.result from SGO's graded markets, matched by oddID. Returns
+// false while SGO hasn't finalized, so the ESPN fallback and DNP voids wait.
+// `atDeadline` skips the backoff when the week is closing.
 async function gradePropsFromSGO(game: any, atDeadline = false): Promise<boolean> {
   const ungraded = (game.props as any[]).filter((p) => p.result == null && p.oddID);
   if (ungraded.length === 0 || !game.externalId || game.oddsSettledAt) return true;
@@ -92,16 +58,12 @@ async function gradePropsFromSGO(game: any, atDeadline = false): Promise<boolean
 
   try {
     const [ev] = await fetchEventsByID([game.externalId]);
-    // No event at all past the deadline: the feed has dropped the game, and
-    // waiting longer will not bring it back. Stamp it, so the ESPN fallback
-    // grades what it can and the rest refunds, rather than pending forever.
+    // Feed dropped the game: stamp it so the fallback and refunds can run.
     if (!ev && !acceptUnfinalized) {
       sgoAttempts.record(game.id, now);
       return false;
     }
-    // Scores on an unfinalized event are not written at all, not even the ones
-    // present: they may be in-progress values, and a prop graded on one is
-    // settled for good.
+    // Don't write in-progress values.
     if (ev && !ev.finalized && !acceptUnfinalized) {
       sgoAttempts.record(game.id, now);
       console.log(`[settle] SGO has not finalized game ${game.id} yet, retrying later`);
@@ -118,9 +80,6 @@ async function gradePropsFromSGO(game: any, atDeadline = false): Promise<boolean
       const score = ev.scores[prop.oddID];
       if (typeof score !== "number") continue;
       await db.update(props).set({ result: score }).where(eq(props.id, prop.id));
-      // At the write, not once per settlement: the score sync retries this
-      // every minute while SGO has not finalized, and a run that writes nothing
-      // must not make the bet board re-read the game.
       invalidateGameMarkets(prop.gameId);
       prop.result = score;
     }
@@ -145,7 +104,7 @@ async function gradePropsFromSGO(game: any, atDeadline = false): Promise<boolean
   }
 }
 
-/** Fallback for props SGO did not grade — 11 stat types, matched by name key. */
+/** Fallback for props SGO did not grade - 11 stat types, matched by name key. */
 async function gradePropsFromESPN(game: any): Promise<void> {
   const ungraded = (game.props as any[]).filter((p) => p.result == null);
   if (ungraded.length === 0 || !game.espnId) return;
@@ -159,10 +118,7 @@ async function gradePropsFromESPN(game: any): Promise<void> {
     for (const prop of ungraded) {
       const statKey = ESPN_STAT_FIELD[prop.statType as string];
       if (!statKey) continue;
-      // A name we cannot find is NOT graded as a DNP here. The old code settled
-      // it as 0 the moment a box score existed, so one spelling mismatch took
-      // every Over on that player. Leaving it pending is recoverable; grading it
-      // wrong is not.
+      // An unmatched name stays pending rather than being graded as 0.
       const playerStats = byKey.get(playerNameKey(prop.player.name));
       if (!playerStats) continue;
       const result = playerStats[statKey] ?? 0;
@@ -175,22 +131,8 @@ async function gradePropsFromESPN(game: any): Promise<void> {
   }
 }
 
-/**
- * A prop the game finished without a result for. In practice that means the
- * player never took the field: the book pulls the market on a scratch, and the
- * feed then grades nothing.
- *
- * Guarded on `oddsSettledAt` so this only ever runs after a grading attempt
- * actually succeeded — without that, one failed fetch would refund every open
- * bet on the game.
- *
- * Note what is deliberately NOT here: an in-game injury. A player who takes one
- * snap and leaves is graded on what he did, like any book. Only never playing
- * refunds.
- */
-// USER-FACING COPY, shown on the bet card, so it follows the docs' house rule
-// of no em dashes. A period reads the same and does not import a glyph the rest
-// of the product's copy has been cleared of.
+// No result after grading means the player never played: refund. Guarded on
+// oddsSettledAt so a failed fetch can't refund everything. Shown on the bet card.
 const DNP_REASON = "Player did not play. Stake refunded.";
 
 async function voidUngradedProps(game: any): Promise<string[]> {
@@ -219,28 +161,7 @@ async function voidUngradedProps(game: any): Promise<string[]> {
   return [...new Set(pendingLegs.map((l) => l.parlayId))];
 }
 
-/**
- * Refund everything riding on a game that was never played.
- *
- * `settleFinalGame` returns immediately on any status but FINAL, so a CANCELLED
- * game was settled by nothing at all: its picks, its game picks and every
- * parlay leg touching it stayed PENDING forever, while `resolveWeekById` marked
- * the week resolved around them. The stake had already been deducted at
- * placement, so that is not a bet left open — it is money taken for a game that
- * did not happen.
- *
- * VOID IS THE RIGHT GRADE, and it is the one the product already documents:
- * "cashed out, or the player never played". Nobody played. Every stake comes
- * back, whichever side it was on.
- *
- * NOT GUARDED ON `oddsSettledAt`, unlike `voidUngradedProps`. That guard exists
- * so a failed grading FETCH cannot be mistaken for "the player did not play" —
- * it is protection against a missing answer. Here there is no question to
- * answer: the status says the game was cancelled, and no feed is going to
- * change its mind.
- *
- * Idempotent, like everything else in this file: only PENDING rows are touched.
- */
+// Refund everything on a cancelled game. Only touches PENDING rows.
 export async function voidBetsOnUnplayedGame(
   gameId: string,
   reason: string,
@@ -277,10 +198,7 @@ export async function voidBetsOnUnplayedGame(
     }
   }
 
-  // Legs are voided but NOT refunded individually — a parlay's stake was struck
-  // once, against the combined odds, so the refund decision belongs to
-  // `settleParlay` over the whole ticket. See the parlay rules in CLAUDE.md: a
-  // voided leg refunds the ticket only while the ticket is still alive.
+  // Legs are voided, not refunded; settleParlay decides for the whole ticket.
   const legs = await db.query.parlayLegs.findMany({
     where: and(
       eq(parlayLegs.outcome, "PENDING"),
@@ -304,16 +222,8 @@ export async function voidBetsOnUnplayedGame(
   }
 }
 
-/**
- * Settle everything riding on one FINAL game.
- *
- * Idempotent: only PENDING rows are touched, so the minute-by-minute caller and
- * Tuesday's resolveWeekById can both run it safely.
- *
- * Game lines settle on the final score straight away. Props wait for SGO to
- * finalize (see gradePropsFromSGO); until then their bets simply stay PENDING
- * and the next call tries again. `atDeadline` is for resolveWeekById only.
- */
+// Idempotent: only PENDING rows are touched. Lines settle on the final score;
+// props wait for SGO to finalize.
 export async function settleFinalGame(gameId: string, atDeadline = false): Promise<void> {
   const game = await db.query.games.findFirst({
     where: eq(games.id, gameId),
@@ -400,8 +310,6 @@ export async function settleFinalGame(gameId: string, atDeadline = false): Promi
       ),
     ),
   });
-  // Legs voided just above are no longer PENDING, so the query above cannot see
-  // their parlays — merge them back in explicitly.
   const touchedParlayIds = [...new Set([...touchingLegs.map((l) => l.parlayId), ...voidedParlayIds])];
   if (touchedParlayIds.length === 0) return;
 
@@ -437,8 +345,6 @@ export async function settleTouchedParlays(parlayIds: string[]): Promise<void> {
     if (!settled || settled.outcome === "PENDING") continue;
 
     const voidedLeg = legs.some((l) => l.outcome === "VOID");
-    // WIN pays the (possibly re-priced) payout; VOID means every leg pushed and
-    // the stake goes back. LOSS returns nothing.
     const paid = settled.outcome === "WIN" || settled.outcome === "VOID";
     await closeBet(parlays, parlay.id, {
       outcome: settled.outcome as any,
@@ -450,12 +356,7 @@ export async function settleTouchedParlays(parlayIds: string[]): Promise<void> {
   }
 }
 
-/**
- * Is any money still riding on this week's games? The rollover's second
- * condition: every game FINAL says the football is over, this says the grading
- * is too. Without it the rollover could close a week while props were still
- * waiting on SGO to finalize, and those bets would never settle.
- */
+// Used by the rollover so a week isn't closed while props are still pending.
 export async function weekHasPendingBets(weekId: string): Promise<boolean> {
   const weekGames = await db.select({ id: games.id }).from(games).where(eq(games.weekId, weekId));
   if (weekGames.length === 0) return false;
@@ -474,11 +375,6 @@ export async function weekHasPendingBets(weekId: string): Promise<boolean> {
   return checks.some((rows) => rows.length > 0);
 }
 
-/**
- * Called after each live-score sync: settle every FINAL game in the week that
- * still has pending money on it. Cheap when nothing is pending, and self-healing
- * if the server restarts between FINAL and settle.
- */
 export async function settlePendingBetsOnFinalGames(weekId: string): Promise<void> {
   const finalGames = await db.query.games.findMany({
     where: and(eq(games.weekId, weekId), eq(games.status, "FINAL")),

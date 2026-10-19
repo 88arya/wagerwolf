@@ -4,7 +4,7 @@ import {
 import { relations, sql } from "drizzle-orm";
 import { randomUUID } from "crypto";
 
-// ─── Enums ───────────────────────────────────────────────────────────────────
+//  Enums
 
 export const statTypeEnum = pgEnum("StatType", [
   "PASSING_YARDS", "PASSING_TOUCHDOWNS", "PASSING_COMPLETIONS",
@@ -19,12 +19,10 @@ export const statTypeEnum = pgEnum("StatType", [
 
 export const directionEnum = pgEnum("Direction", ["OVER", "UNDER"]);
 export const membershipStatusEnum = pgEnum("MembershipStatus", ["PENDING", "ACTIVE"]);
-// PUSH = result landed exactly on the line; stake refunded, no profit. VOID =
-// cashed out or cancelled. They are distinct: a push is a graded bet that
-// happened to tie, a void never resolved.
+// PUSH: landed exactly on the line, stake back. VOID: cashed out or never played.
 export const outcomeEnum = pgEnum("Outcome", ["PENDING", "WIN", "LOSS", "VOID", "PUSH"]);
 
-// ─── Tables ──────────────────────────────────────────────────────────────────
+//  Tables
 
 export const users = pgTable("User", {
   id:          text("id").primaryKey().$defaultFn(() => randomUUID()),
@@ -33,66 +31,15 @@ export const users = pgTable("User", {
   googleId:    text("googleId").unique(),
   name:        text("name").notNull(),
   displayName: text("displayName").notNull(),
-  // Collected during onboarding. Nullable because accounts created before this
-  // existed have neither, and that absence is exactly what the onboarding gate
-  // checks for — a user with no firstName has not been through it yet.
   firstName:   text("firstName"),
   lastName:    text("lastName"),
-  // NOTE: there is deliberately no yearsExperience column. Experience is
-  // *derived* from createdAt — see services/experience.ts. It was briefly a
-  // self-reported integer, which meant the one number leagues gate on was a
-  // free-text field anyone could type "20" into, so a rookie could walk into a
-  // veterans-only league by lying. Tenure cannot be typed.
-  // IANA zone name, e.g. "America/Detroit". Auto-detected from the browser and
-  // refreshed whenever it changes, so it follows a user who travels. Not a
-  // preference and not editable — it is a fact the device already knows.
-  //
-  // Replaced `country` and `region`. Those were kept when the league directory
-  // was deleted, on the theory that location was still worth having; it turned
-  // out the only thing the app ever wanted location FOR was time. Deriving time
-  // from a country is strictly worse than asking the browser — the US spans six
-  // zones — and the old Detect button did exactly that backwards: it read the
-  // IANA zone, mapped it to a country, and threw the zone away.
-  //
-  // Nothing needs this to render a kickoff time; the client formats in the
-  // viewer's own zone with no server input. It exists for the server-side case
-  // — notifications sent at a sane local hour, where there is no browser to ask.
+  // IANA zone from the browser, re-synced when it changes.
   timeZone:    text("timeZone"),
-  // Defaults for the per-league identity on Membership. A league still owns its
-  // own copy — the whole point of that model is that you can be "The Fridge" in
-  // one league and yourself in another — but joining a league with nothing set
-  // used to mean an abbreviation generated from your display name and a colour
-  // picked at random. These are what it reaches for first.
-  //
-  // Both nullable, and null means "work it out": generateAbbreviation() and a
-  // random unused colour, exactly as before.
-  //
-  // NOTE the colour is a *preference*, not a guarantee. pickHelmetColor keeps
-  // colours unique within a league, so if someone already took yours you get
-  // another one. A default that silently loses is better than a duplicate.
+  // Seeds per-league identity on join; null means generate one.
   defaultAbbreviation: text("defaultAbbreviation"),
   defaultHelmetColor:  text("defaultHelmetColor"),
-  // Soft, reversible deactivation. Set by POST /users/me/deactivate, cleared by
-  // signing in with Google again — see that route for what it does to seats.
-  // A timestamp rather than a boolean so there is a record of when.
   deactivatedAt: timestamp("deactivatedAt"),
-  // Age gate. A `date`, not a timestamp: a birthday is a calendar day, and
-  // giving it a time would make it drift across time zones — someone born on
-  // the 1st could read as the 31st to a server an hour behind them.
-  //
-  // WHEN the 18+ box was ticked, not whether. A timestamp rather than a boolean
-  // because the whole value of a self-attested gate is the record that the
-  // question was put and answered — and "when" is the half of that a boolean
-  // throws away.
-  //
-  // This replaced a `dateOfBirth` date column. A stored birthdate is worth more
-  // in exactly one way: it can be re-evaluated if the threshold ever moves, and
-  // a tick cannot — raising the bar means re-asking everybody. That was traded
-  // for one less field on the only screen between a visitor and the app, on a
-  // product where the money is fake and no statutory age applies. See
-  // services/age.ts.
-  //
-  // Nullable: accounts that predate the box never saw it.
+  // When the user accepted the 18+ terms. Null for accounts predating it.
   ageConfirmedAt: timestamp("ageConfirmedAt"),
   createdAt:   timestamp("createdAt").defaultNow().notNull(),
 });
@@ -121,41 +68,13 @@ export const leagues = pgTable("League", {
   maxBetsPerWeek:     integer("maxBetsPerWeek"),
   maxParlayLegs:      integer("maxParlayLegs").default(10),
   feedVisibility:     text("feedVisibility").default("AFTER_KICKOFF").notNull(),
-  // "BEGINNER" | "PRO" — see services/leagueLevel.ts. The only thing
-  // matchmaking filters on besides size, and the only thing it will never
-  // compromise on.
-  //
-  // This is all that remains of a browsable directory: there were also
-  // `listed`, `description`, `minExperience`, `maxExperience`, `locationScope`,
-  // `country` and `region`, backing search, five skill tiers and
-  // country/region restriction. Players no longer see a list of open leagues at
-  // all — they state a size and a level and are assigned — so every one of
-  // those columns was machinery for a screen that does not exist. Do not
-  // reintroduce them without the screen.
   skillLevel:         text("skillLevel").default("BEGINNER").notNull(),
-  // ─── Denormalized occupancy ────────────────────────────────────────────
-  // Counts of ACTIVE memberships. PENDING requests do not count — a queued
-  // join has not taken a seat.
-  //
-  // These exist for two reasons, and the second is the important one:
-  //
-  //  1. Discovery filters on "has room", which without a counter means loading
-  //     every league's memberships to count them. That was the whole N+1.
-  //  2. They are the lock. Claiming a seat is a single conditional UPDATE that
-  //     increments and asserts capacity together, so two people cannot both
-  //     take the last seat. See services/leagueSeats.ts.
-  //
-  // Every write goes through that service. Never `insert` a membership and
-  // adjust these by hand, and never trust them over a recount when repairing.
+  // Counts of ACTIVE members, maintained only by services/leagueSeats.
   activeMemberCount:     integer("activeMemberCount").default(0).notNull(),
   activePublicFillCount: integer("activePublicFillCount").default(0).notNull(),
   createdAt:          timestamp("createdAt").defaultNow().notNull(),
 }, (t) => ({
-  // Partial: `seasonStarted = false` is the predicate matchmaking opens with,
-  // and it gets more selective over time — finished leagues accumulate forever
-  // while open ones stay a small working set. Indexing only that slice keeps
-  // the index small no matter how many seasons ship. The columns are exactly
-  // what the candidate query filters on.
+  // Partial index on open leagues, which stay a small set.
   matchIdx: index("League_match_idx")
     .on(t.skillLevel, t.startWeek, t.maxPlayers, t.isPublic)
     .where(sql`"seasonStarted" = false`),
@@ -193,14 +112,7 @@ export const memberships = pgTable("Membership", {
   abbreviation:   text("abbreviation").default("").notNull(),
   createdAt:      timestamp("createdAt").defaultNow().notNull(),
 }, (t) => ({
-  // Every join path already catches Postgres 23505 to mean "already a member".
-  // Until this existed that catch was dead code and a double join quietly
-  // created two memberships — `join-by-code` had no other guard at all, so the
-  // same user could queue for one league twice.
   userLeagueUniq: uniqueIndex("Membership_userId_leagueId_key").on(t.userId, t.leagueId),
-  // "What leagues am I in" and "who is in this league" are the two hottest
-  // lookups in the app and both were sequential scans — this table had nothing
-  // but a primary key on a random UUID.
   userIdx:   index("Membership_userId_idx").on(t.userId),
   leagueIdx: index("Membership_leagueId_idx").on(t.leagueId),
 }));
@@ -213,20 +125,7 @@ export const weeks = pgTable("Week", {
   resolved:             boolean("resolved").default(false).notNull(),
   locked:               boolean("locked").default(false).notNull(),
   allowanceDistributed: boolean("allowanceDistributed").default(false).notNull(),
-  /**
-   * THE LANDING PAGE'S BOARD, FROZEN. The marquee's card sample and the market
-   * count beside it are computed once, the first time this week becomes the
-   * current one, and read from here forever after.
-   *
-   * It is stored rather than recomputed because the queries behind it are not
-   * stable across a week: they filter on `available`, which shrinks as the book
-   * pulls markets, and on `Player.espnId`, which GROWS as headshots backfill
-   * lazily. An in-process cache hid that until the process restarted — and a
-   * deploy mid-season is an ordinary event. Persisting it makes "the same board
-   * all week" true rather than usually true, and shares it across replicas.
-   *
-   * Null means not yet computed. See services/publicMarkets.
-   */
+  // Landing page sample, computed once per week so it stays stable.
   publicBoard:          jsonb("publicBoard").$type<{
                           markets: unknown[];
                           totals: { lines: number; props: number };
@@ -244,26 +143,17 @@ export const games = pgTable("Game", {
   // SportsGameOdds eventID. (Previously held a SharpAPI event id; SharpAPI is gone.)
   externalId:   text("externalId").unique(),
   espnId:       text("espnId").unique(),
-  // Last time odds were pulled for this game. Drives the tiered poller — the
-  // cadence is a function of time-to-kickoff, so this is what makes "is this
-  // game due?" answerable without tracking schedules per game.
+  // Drives the tiered odds poller.
   oddsPolledAt: timestamp("oddsPolledAt"),
   // Set once the post-game settlement fetch has graded this game's markets.
   oddsSettledAt: timestamp("oddsSettledAt"),
   homeScore:    integer("homeScore"),
   awayScore:    integer("awayScore"),
   statusDetail: text("statusDetail").default("").notNull(),
-  // Nullable: ESPN only returns weather inside 10 days of kickoff, so these
-  // stay null until a sync close to the game fills them in. They always arrive
-  // together — ESPN never sends one without the other. `indoor` is available
-  // at any distance, but is nullable too for games seeded outside ESPN.
+  // Weather fields are null until ESPN has a forecast (~10 days out).
   indoor:       boolean("indoor"),
   weather:      text("weather"),
   weatherTemp:  integer("weatherTemp"),
-  // Overall W-L(-T) at the time of the last sync, e.g. "5-3" / "5-3-1".
-  // A snapshot, not a live value: ESPN reports the record as it stood when we
-  // fetched, so these are refreshed by the minute-by-minute score sync as well
-  // as the weekly game sync. Nullable for games seeded outside ESPN.
   homeRecord:   text("homeRecord"),
   awayRecord:   text("awayRecord"),
 }, (t) => ({
@@ -277,8 +167,6 @@ export const players = pgTable("Player", {
   team:     text("team").notNull(),
   position: text("position").notNull(),
   espnId:   text("espnId").unique(),
-  // SportsGameOdds playerID, e.g. "PUKA_NACUA_1_NFL" — stable, and the key the
-  // odds feed uses, so props never have to be matched by name.
   sgoId:    text("sgoId").unique(),
   imageUrl: text("imageUrl"),
   jersey:   text("jersey"),
@@ -294,21 +182,11 @@ export const props = pgTable("Prop", {
   line:     real("line").notNull(),
   odds:     integer("odds").default(-110).notNull(),
   result:   real("result"),
-  // "SHARP" = real book line from SharpAPI. The generator that wrote "FAKE"
-  // rows is gone, so every row written now is SHARP; the column stays as the
-  // marker that told the two apart and as the guard on any future import.
   source:   text("source").default("FAKE").notNull(),
-  // False once a sync stops returning this market — the book pulled it. Kept
-  // rather than deleted because bets may already be riding on it; hidden from
-  // the board, still settled (or voided) at game end.
   available: boolean("available").default(true).notNull(),
-  // SportsGameOdds oddID, e.g. "receiving_receptions-PUKA_NACUA_1_NFL-game-ou-over".
-  // Settlement reads the graded value straight off this market rather than
-  // matching a player name against an ESPN box score.
+  // SGO oddID; settlement reads the graded value by this.
   oddID:    text("oddID"),
-  // Real alternate-line ladder from the book, when we have one. Each entry is a
-  // full over/under pair at that line. Null means "fabricate one" — the old
-  // linear model in services/propOdds.ts.
+  // Book's alt-line ladder; null falls back to linear pricing (services/propOdds).
   altLadder: jsonb("altLadder").$type<Array<{ line: number; over: number; under: number }>>(),
 }, (t) => ({
   gamePlayerStatUniq: uniqueIndex("Prop_gameId_playerId_statType_key").on(t.gameId, t.playerId, t.statType),
@@ -328,9 +206,6 @@ export const picks = pgTable("Pick", {
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   voidReason: text("voidReason"),
 }, (t) => ({
-  // Postgres does not index foreign keys on its own, and these tables had
-  // nothing but a primary key. Settlement looks bets up by market, and My Bets,
-  // History and the weekly bet cap look them up by member.
   memberIdx: index("Pick_userId_leagueId_idx").on(t.userId, t.leagueId),
   propIdx:   index("Pick_propId_idx").on(t.propId),
 }));
@@ -343,9 +218,7 @@ export const gameLines = pgTable("GameLine", {
   odds:    integer("odds").notNull(),
   line:    real("line"),
   result:  boolean("result"),
-  // Exact tie against the line (NFL games do tie, and a whole-number total or
-  // spread lands on the number). `result` alone cannot express it, and grading
-  // a push as a loss quietly takes money a real book refunds.
+  // Result landed exactly on the line.
   pushed:  boolean("pushed").default(false).notNull(),
   available: boolean("available").default(true).notNull(),
   oddID:   text("oddID"),
@@ -411,16 +284,7 @@ export const leagueMessages = pgTable("LeagueMessage", {
   leagueCreatedIdx: index("LeagueMessage_leagueId_createdAt_idx").on(t.leagueId, t.createdAt),
 }));
 
-// PasswordResetToken IS GONE. Nothing ever wrote to it: auth is Google-only,
-// POST /users/auth/google is the entire login surface, and there was no route,
-// service or job that issued or consumed a reset token. It was scaffolding for
-// an email/password flow that was never built.
-//
-// users.password STAYS. It is not part of this — it is written only for the
-// ghost user that fills an odd-numbered league (see services/startSeason.ts),
-// and removing it would break season start.
-
-// ─── Relations ───────────────────────────────────────────────────────────────
+//  Relations
 
 export const usersRelations = relations(users, ({ many }) => ({
   memberships:        many(memberships),
@@ -505,28 +369,12 @@ export const parlayLegsRelations = relations(parlayLegs, ({ one }) => ({
   gameLine: one(gameLines, { fields: [parlayLegs.gameLineId], references: [gameLines.id] }),
 }));
 
-/**
- * A message sent through the support form.
- *
- * WRITTEN BEFORE IT IS SENT, and that ordering is the point of the table. The
- * mail provider is a third party over the network; if it is down, rate-limiting
- * us, or misconfigured, the row still exists and the message is not lost while
- * the sender is told to try again later. `deliveredAt` is stamped only once the
- * provider accepts it, so anything null is a queue of things to look at.
- *
- * `email` is asked for rather than taken from the account: the form is on the
- * marketing footer and inside /docs, both of which serve signed-out visitors,
- * and asking everyone is one flow instead of two. `userId` is filled in when
- * there IS a session, so a signed-in report can be tied to an account without
- * the sender having to prove who they are.
- */
+// Saved before sending; deliveredAt is null until the mail provider accepts it.
 export const supportMessages = pgTable("SupportMessage", {
   id:          text("id").primaryKey().$defaultFn(() => randomUUID()),
-  // Null for a signed-out sender — most of them, on the marketing routes.
+  // Null for a signed-out sender - most of them, on the marketing routes.
   userId:      text("userId"),
   email:       text("email").notNull(),
-  // "contact" | "issue" — which link was pressed. It becomes the subject line,
-  // and it is the only thing sorting a question from a bug report in one inbox.
   topic:       text("topic").default("contact").notNull(),
   body:        text("body").notNull(),
   createdAt:   timestamp("createdAt").defaultNow().notNull(),

@@ -1,24 +1,7 @@
-// Conflict detection for parlay legs. Mirrors `frontend/lib/conflicts.ts` —
-// keep the two in sync. The frontend copy is UX (it flags legs in amber and
-// dims the CTA); this one is what actually stops the bet being placed, since
-// the API can be hit directly.
-//
-// Model: every leg becomes an inclusive bound on one random variable. Two legs
-// on the same variable are compared by intersecting their bounds:
-//
-//   empty intersection      → CONTRADICTION  (they can never both win)
-//   one range inside other  → NESTED         (compound odds on a single event)
-//   partial overlap         → no conflict    (a legitimate band)
-//
-// Moneyline is just a spread at 0, which is what makes the cross-market cases
-// come out with the correct sign. This replaces the old market-string tables,
-// which compared market names and so were blind both to the line value (ALT_
-// markets slipped through, and legitimate bands like Over 40 + Under 48 were
-// rejected) and to which side was favoured.
-//
-// Only *logical* conflicts are detected. Correlated-but-possible combinations
-// (a QB's passing TDs plus his team's moneyline) are allowed on purpose —
-// that's a pricing question, not a conflict.
+// Parlay conflict detection; mirrors frontend/lib/conflicts.ts, but this copy is
+// the one that blocks. Each leg is a bound on one variable: disjoint bounds are a
+// contradiction, one inside another is nesting, partial overlap is fine.
+// Moneyline is treated as a spread of 0.
 
 export type ConflictKind = "CONTRADICTION" | "NESTED";
 
@@ -44,10 +27,7 @@ interface Bound {
 
 const EPS = 1e-9;
 
-// Every stat is whole-numbered except sacks, credited in halves. Granularity
-// matters: on an integer stat "Over 2" and "Over 2.5" are the same event, so
-// they must canonicalise to the same bound or the pair reads as a legitimate
-// band rather than a duplicate.
+// Sacks come in halves; everything else is whole numbers.
 function granularity(statType?: string | null): number {
   return statType === "SACKS" ? 0.5 : 1;
 }
@@ -66,11 +46,7 @@ function nextBelow(n: number, g: number): number {
   return (Math.abs(q - c) < EPS ? c - 1 : Math.floor(q + EPS)) * g;
 }
 
-/**
- * Same-player stats where the left value can never exceed the right, used to
- * carry a bound across variables so cross-stat impossibilities (over 60 longest
- * reception plus under 50 receiving yards) are caught.
- */
+// Pairs where the left stat can't exceed the right (longest reception <= yards).
 const STAT_AT_MOST: Array<[string, string]> = [
   ["PASSING_LONGEST", "PASSING_YARDS"],
   ["RUSHING_LONGEST", "RUSHING_YARDS"],
@@ -89,8 +65,6 @@ function atMost(a?: string | null, b?: string | null): boolean {
 }
 
 function propVariable(leg: ConflictLeg): string {
-  // Prefer player+stat so two prop rows for the same market land on one
-  // variable; fall back to the prop id when the stat type is unknown.
   if (leg.statType) return `stat:${leg.playerId ?? leg.id}:${leg.statType}`;
   return `prop:${leg.id}`;
 }
@@ -156,9 +130,6 @@ export function conflictBetween(a: ConflictLeg, b: ConflictLeg): ConflictKind | 
     return null;
   }
 
-  // Different variables: only a declared same-player constraint can make the
-  // pair impossible. A single "x ≤ y" can't produce nesting, so contradiction
-  // is the only verdict available here.
   if (a.type !== "prop" || b.type !== "prop") return null;
   if ((a.playerId ?? a.id) !== (b.playerId ?? b.id)) return null;
 
@@ -168,10 +139,6 @@ export function conflictBetween(a: ConflictLeg, b: ConflictLeg): ConflictKind | 
   return null;
 }
 
-/**
- * The first conflict in a set of legs, or null if they can all share a parlay.
- * Also catches an identical leg repeated, which is the degenerate nesting case.
- */
 export function findFirstConflict(
   legs: ConflictLeg[],
 ): { a: ConflictLeg; b: ConflictLeg; kind: ConflictKind } | null {
@@ -184,7 +151,7 @@ export function findFirstConflict(
   return null;
 }
 
-/** "ALT_TOTAL_OVER_45" → "total over"; prop legs describe player and stat. */
+/** "ALT_TOTAL_OVER_45" -> "total over"; prop legs describe player and stat. */
 export function legLabel(leg: ConflictLeg): string {
   if (leg.type === "prop") {
     const stat = (leg.statType ?? "prop").split("_").join(" ").toLowerCase();

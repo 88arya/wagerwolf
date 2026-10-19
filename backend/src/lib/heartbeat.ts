@@ -1,28 +1,5 @@
-/**
- * A dead man's switch for the scheduler, on healthchecks.io.
- *
- * Error tracking only speaks when something throws. The worst way this app can
- * fail throws nothing: Redis restarts without its job schedulers, or the worker
- * wedges, and the season simply stops — no resolve, no score sync, no
- * allowances, and nothing in any log. The only way to notice an absence is
- * something outside the box expecting a ping and alerting when it stops coming.
- *
- * Every job pings its own check after each run: success, or `/fail` if any step
- * failed. Checks are addressed by slug under one project ping key, and
- * `?create=1` makes healthchecks.io create a check on its first ping, so adding
- * a job needs no setup here. Each auto-created check does need its schedule set
- * once in the healthchecks.io dashboard, or it falls back to their default
- * period of one day.
- *
- * OFF UNLESS `HEALTHCHECKS_PING_KEY` IS SET. `HEALTHCHECKS_PING_URL` overrides the
- * host, for a self-hosted instance or a test.
- *
- * A ping can never fail a job: it is bounded by a timeout and every error is
- * swallowed, because a monitoring outage must not stop the work it monitors.
- * It is NOT silent, though. A rejected ping is logged, because the likeliest
- * cause is a wrong key, and a wrong key means every check stays empty and the
- * alert this exists for never fires.
- */
+// Pings healthchecks.io after each job so a stalled scheduler gets noticed.
+// Never throws. Off unless HEALTHCHECKS_PING_KEY is set.
 const DEFAULT_BASE = "https://hc-ping.com";
 export const HEARTBEAT_TIMEOUT_MS = 5000;
 

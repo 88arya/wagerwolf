@@ -1,9 +1,3 @@
-/**
- * Assertions over the pure settlement + polling logic, and a simulation of a
- * real NFL week to check the odds budget actually holds.
- *
- * No DB, no network — run it any time:  npx tsx scripts/verifySettlement.ts
- */
 import { gradeOverUnder, gradeGameLine, creditFor, settleParlay } from "../src/services/grading";
 import { intervalMinutesFor, isDue } from "../src/services/oddsPoller";
 import { normalizeEvent } from "../src/services/sportsGameOdds";
@@ -17,7 +11,7 @@ function eq(label: string, actual: unknown, expected: unknown) {
   failures.push(`${label}\n     expected ${JSON.stringify(expected)}\n     actual   ${JSON.stringify(actual)}`);
 }
 
-// ── Prop grading ────────────────────────────────────────────────────────────
+//  Prop grading
 eq("OVER beats the line",        gradeOverUnder(7, 6.5, "OVER"),  "WIN");
 eq("OVER misses the line",       gradeOverUnder(6, 6.5, "OVER"),  "LOSS");
 eq("UNDER beats the line",       gradeOverUnder(6, 6.5, "UNDER"), "WIN");
@@ -27,7 +21,7 @@ eq("OVER lands on the number",   gradeOverUnder(6, 6, "OVER"),    "PUSH");
 eq("UNDER lands on the number",  gradeOverUnder(6, 6, "UNDER"),   "PUSH");
 eq("zero result under a 0.5",    gradeOverUnder(0, 0.5, "UNDER"), "WIN");
 
-// ── Game lines ──────────────────────────────────────────────────────────────
+//  Game lines
 eq("ML home wins",   gradeGameLine("MONEYLINE_HOME", null, 24, 17), "WIN");
 eq("ML away loses",  gradeGameLine("MONEYLINE_AWAY", null, 24, 17), "LOSS");
 eq("ML on a tie",    gradeGameLine("MONEYLINE_HOME", null, 20, 20), "PUSH");
@@ -42,12 +36,12 @@ eq("alt total grades like its base",    gradeGameLine("ALT_TOTAL_OVER_38.5", 38.
 eq("unknown market is not a loss",      gradeGameLine("SOMETHING_ELSE", 1, 24, 17), null);
 eq("missing line is not a loss",        gradeGameLine("SPREAD_HOME", null, 24, 17), null);
 
-// ── Crediting ───────────────────────────────────────────────────────────────
+//  Crediting
 eq("win returns stake + profit", creditFor("WIN", 1000, -110), 1000 + 909);
 eq("loss returns nothing",       creditFor("LOSS", 1000, -110), 0);
 eq("push returns the stake",     creditFor("PUSH", 1000, -110), 1000);
 
-// ── Parlays ─────────────────────────────────────────────────────────────────
+//  Parlays
 {
   const stake = 1000;
   const legs = [{ outcome: "WIN", odds: -110 }, { outcome: "WIN", odds: 150 }];
@@ -63,8 +57,6 @@ eq("push returns the stake",     creditFor("PUSH", 1000, -110), 1000);
      settleParlay([{ outcome: "WIN", odds: -110 }, { outcome: "PENDING", odds: 150 }], stake),
      null);
 
-  // A pushed leg is dropped and the parlay re-priced on the survivors — it
-  // neither loses the ticket nor pays as though the leg had won.
   const survivorOdds = calcParlayOdds([-110, 150]);
   eq("a pushed leg is removed and the rest re-priced",
      settleParlay(
@@ -101,7 +93,7 @@ eq("push returns the stake",     creditFor("PUSH", 1000, -110), 1000);
   eq("push does not inflate the payout", withPush.payout, soloWin.payout);
 }
 
-// ── Poller tiers ────────────────────────────────────────────────────────────
+//  Poller tiers
 eq("inside 6h -> hourly",        intervalMinutesFor(3), 60);
 eq("6h boundary is hourly",      intervalMinutesFor(6), 60);
 eq("6-24h -> 2-hourly",          intervalMinutesFor(12), 120);
@@ -120,11 +112,6 @@ eq("beyond 72h -> daily",        intervalMinutesFor(100), 1440);
      isDue({ gameDate: new Date("2026-09-10T11:00:00Z"), oddsPolledAt: null }, now), false);
 }
 
-// ── Feed parsing ────────────────────────────────────────────────────────────
-// Defensive and kicking props cannot be checked against live data: no book in
-// the feed prices them for NFL right now, on any game. A synthetic event proves
-// the mapping is wired, so the Defensive and Kicking tabs will populate on their
-// own the moment a book opens those markets.
 {
   const ou = (stat: string, player: string, side: string, odds: string, line: string, alts: any[] = []) =>
     [`${stat}-${player}-game-ou-${side}`, {
@@ -163,8 +150,6 @@ eq("beyond 72h -> daily",        intervalMinutesFor(100), 1440);
   eq("alt rung has both sides priced", typeof rung?.under, "number");
 }
 
-// ── Budget simulation over a real, staggered NFL week ───────────────────────
-// Kickoffs in UTC. Week rolls over Tuesday 11:00 UTC (the resolve cron).
 const WEEK_START = new Date("2026-09-08T11:00:00Z");
 const KICKOFFS: Array<[string, string]> = [
   ["TNF",        "2026-09-11T00:15:00Z"],
@@ -212,7 +197,7 @@ for (const weeksInMonth of [4, 5]) {
   else passed++;
 }
 
-// ── Report ──────────────────────────────────────────────────────────────────
+//  Report
 console.log(`\n${failures.length === 0 ? "PASS" : "FAIL"} — ${passed} checks passed, ${failures.length} failed`);
 for (const f of failures) console.log(`  ✗ ${f}`);
 process.exit(failures.length === 0 ? 0 : 1);

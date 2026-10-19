@@ -1,79 +1,18 @@
-import { sql, eq, desc } from "drizzle-orm";
+import { sql, eq, desc, type SQL } from "drizzle-orm";
 import { db } from "../db/db";
 import { weeks } from "../db/schema";
 import { currentWeek } from "./currentWeek";
 
-/**
- * The numbers behind /home's two panels: what the platform is betting on this
- * week, and what it made or lost on last week.
- *
- * PLATFORM-WIDE, NOT LEAGUE-SCOPED. Every league's action is pooled, the same
- * way `betCounts.ts` pools the games-strip counters — and for the same reason:
- * the question "what is everyone on" has no league to scope to. Nothing here
- * names a user, so pooling leaks nothing a league boundary was protecting.
- *
- * WHAT COUNTS AS ONE BET — the rule is `betCounts.ts`'s, extended
- *
- * A Pick is one, a GamePick is one, and a Parlay is one *per entity it
- * touches*, however many legs it has on that entity. A two-leg parlay on two
- * Puka Nacua props is one wager on Nacua, not two, so it contributes its stake
- * once. That is what the DISTINCT over (entity, ticket) in every aggregate is
- * doing; without it a same-player parlay doubles both the count and the handle.
- *
- * A parlay spanning two entities counts once against each. Intended, and the
- * reason the money columns below do not sum to the week's total — see
- * ATTRIBUTION.
- *
- * Cashed-out wagers are excluded everywhere. Cashing out VOIDs the bet and
- * refunds it in full, so nothing is riding on the entity any more.
- *
- * THE THREE ENTITIES
- *
- * - **Player** — every market of theirs, any stat type, any direction. The unit
- *   is the person, not the line: "most bet on player" is a statement about
- *   Nacua, not about Nacua over 74.5 receiving yards.
- * - **Team** — their moneyline and spread only, alternates included. NOT their
- *   players' props, and NOT game totals, which belong to no team. A bet on the
- *   Bills is a bet on the Bills winning or covering.
- * - **Game** — everything attached to it: both teams' lines, the total, and
- *   every player prop in the fixture. So a game's numbers are always at least
- *   the sum of what its teams and players carry.
- *
- * The three deliberately nest. They answer different questions and are not
- * meant to reconcile.
- *
- * ATTRIBUTION, and why the money columns do not add up
- *
- * A winning parlay's whole profit is credited to *every* entity on the ticket.
- * A three-leg parlay that pays $60 credits $60 to each of its three players —
- * because each of them is a reason it won, and splitting it three ways would
- * understate what riding on that player was worth.
- *
- * Losses are the asymmetric half, and deliberately so. A parlay dies to one bad
- * leg, so a loss is charged **only to entities whose own leg graded LOSS**. A
- * player who cleared his line on a ticket that died elsewhere is not charged
- * for it. On the winning side there is no equivalent case to exclude: a parlay
- * only wins when every leg hit.
- *
- * Singles are unambiguous either way — profit on WIN, stake on LOSS.
- *
- * PUSH and VOID are excluded from both columns. Neither is a result.
- */
+// Platform-wide numbers for /home: this week's most-bet entities and last
+// week's results. A parlay counts once per entity it touches. A winning parlay
+// credits its profit to every entity on it; a loss is charged only to entities
+// whose own leg lost.
 
-/** American odds → profit on a winning stake, in whole cents. Mirrors lib/payout's calcProfit. */
+/** American odds -> profit on a winning stake, in whole cents. Mirrors lib/payout's calcProfit. */
 const PROFIT_SQL = sql`CASE WHEN odds > 0
                             THEN ROUND(stake * odds / 100.0)
                             ELSE ROUND(stake * 100.0 / ABS(odds)) END`;
 
-/**
- * One row per (wager, market it touches) for a week, with the entity keys
- * already resolved.
- *
- * `leg_outcome` is the ticket's own outcome for a single and the *leg's*
- * outcome for a parlay — which is what makes the loss rule above expressible:
- * a parlay row carries both how the ticket finished and how this particular
- * entity's leg did.
- */
 function legsFor(weekId: string) {
   return sql`
     SELECT 'PICK' AS kind, pk.id AS ticket, pk.stake AS stake, pk.odds AS odds,
@@ -117,23 +56,12 @@ function legsFor(weekId: string) {
   `;
 }
 
-/**
- * Moneyline and spread resolve to the team they name; alternate spreads carry
- * the side in the market string (`ALT_SPREAD_HOME_-3.5`). Totals resolve to
- * NULL and drop out — an over is not a bet on either team.
- */
 const TEAM_KEY = sql`CASE
     WHEN market = 'MONEYLINE_HOME' OR market = 'SPREAD_HOME' OR market LIKE 'ALT_SPREAD_HOME%' THEN home
     WHEN market = 'MONEYLINE_AWAY' OR market = 'SPREAD_AWAY' OR market LIKE 'ALT_SPREAD_AWAY%' THEN away
     ELSE NULL END`;
 
-/**
- * `db`, or a transaction handle. Both aggregates take one so the pulsecheck
- * script can build a fixture week, assert against it and roll the whole thing
- * back — the ledger's attribution rules have no way to show themselves wrong on
- * a screen, so they are asserted against a known answer instead.
- */
-type Executor = { execute: (q: any) => Promise<any> };
+type Executor = { execute: (q: SQL) => Promise<any> };
 
 function rowsOf(result: any): any[] {
   return Array.isArray(result) ? result : (result?.rows ?? []);
@@ -151,40 +79,12 @@ export type VolumeRow = {
   home?: string | null;
 };
 
-/**
- * NO TIES. Ranked by bet count, and where counts are equal, by which entity
- * REACHED that count first.
- *
- * An entity gets to N bets at the moment its Nth wager is placed — and since N
- * is its total, that is simply its most recent one. So `MAX(created) ASC` is
- * "who got here first", and `bets DESC` before it means the leader is only ever
- * displaced by something with strictly more. A new bet on a tied entity pushes
- * it DOWN the order rather than up, which is correct: it arrived at that count
- * later than the entity already sitting there.
- *
- * It replaced `wagered DESC` as the tie-break, which was a second contest
- * rather than a rule — a card could change its answer because someone staked
- * more on the same number of bets, and two entities level on both would still
- * be ordered arbitrarily by the planner. This is total: no two wagers share a
- * timestamp in practice, and the ordering never depends on row order.
- */
+// Ties go to whoever reached the count first.
 const NO_TIES = sql`ORDER BY bets DESC, last_bet ASC`;
 
-/**
- * This week's three leaderboards: bets placed and money staked, per entity.
- *
- * Includes settled bets. Nothing about a week is hidden once it starts playing
- * — the panel says what the week was bet, and that claim does not change when
- * the games kick off.
- */
 export async function volumeForWeek(exec: Executor, weekId: string, limit: number) {
   const legs = legsFor(weekId);
 
-  // Each aggregate collapses to one row per (entity, ticket) before summing, so
-  // a multi-leg parlay on one entity contributes its stake once. `kind` is in
-  // the DISTINCT because ids are UUIDs from three different tables — collision
-  // is not a real risk, but the key is honestly (table, id) and saying so costs
-  // nothing.
   const players = await exec.execute(sql`
     WITH legs AS (${legs})
     SELECT d.player_id AS key, COUNT(*)::int AS bets, SUM(d.stake)::bigint AS wagered,
@@ -246,18 +146,9 @@ export async function volumeForWeek(exec: Executor, weekId: string, limit: numbe
 
 export type LedgerRow = VolumeRow & { profit: number; lost: number; net: number };
 
-/**
- * Last week's money, per entity.
- *
- * `profit` and `lost` follow the ATTRIBUTION rules in the file header: a
- * winning parlay pays every entity on it in full, a losing one charges only the
- * entities whose own leg missed.
- */
 export async function ledgerForWeek(exec: Executor, weekId: string, limit: number) {
   const legs = legsFor(weekId);
 
-  // Per (entity, ticket): what that ticket paid the entity, and what it cost
-  // it. A ticket is never on both sides — the CASEs are exclusive on outcome.
   const amounts = sql`
     SELECT DISTINCT ON (entity, kind, ticket)
            entity, kind, ticket, stake, created,
@@ -271,9 +162,6 @@ export async function ledgerForWeek(exec: Executor, weekId: string, limit: numbe
       FROM scoped
      ORDER BY entity, kind, ticket, (CASE WHEN leg_outcome = 'LOSS' THEN 1 ELSE 0 END) DESC
   `;
-  // ORDER BY lost DESC inside DISTINCT ON is load-bearing: a parlay with two
-  // legs on one player, one of which missed, must keep the row that charges it.
-  // Without it Postgres keeps an arbitrary leg and the loss silently vanishes.
 
   const players = await exec.execute(sql`
     WITH legs AS (${legs}),
@@ -318,15 +206,6 @@ export async function ledgerForWeek(exec: Executor, weekId: string, limit: numbe
   const playerRows = rowsOf(players).map(norm);
   const teamRows = rowsOf(teams).map(norm);
 
-  // Teams rank by VOLUME within an outcome bucket, not by money: the card asks
-  // which heavily-backed team came through, so net decides the bucket and bets
-  // decide the winner of it. That also settles a team whose moneyline won while
-  // its spread did not — one net, one bucket.
-  //
-  // Every tie-break here is `lastBet ASC` — whoever reached the figure first
-  // keeps the card until something strictly beats it. Same rule as NO_TIES
-  // above, expressed in JS because these four lists are filtered into buckets
-  // after the query rather than ordered by it.
   const first = (a: { lastBet: number }, b: { lastBet: number }) => a.lastBet - b.lastBet;
   const byBets = (a: any, b: any) => b.bets - a.bets || first(a, b);
 
@@ -343,18 +222,10 @@ export async function ledgerForWeek(exec: Executor, weekId: string, limit: numbe
 export type Pulse = Awaited<ReturnType<typeof buildPulse>>;
 
 async function buildPulse(limit: number) {
-  // The week we are inside, else the next to start, else the first unresolved
-  // one at all — services/currentWeek.ts, the same ladder the games strip uses,
-  // so the panel and the strip can never disagree about which week it is. This
-  // used to be a fourth hand-written copy of it.
+  // Last week = most recently resolved week, not current - 1.
   const now = new Date();
   const current = await currentWeek(now);
 
-  // Last week is the most recently RESOLVED week, not `current.number - 1`.
-  // Between Sunday night and the resolve that follows the week's endDate (the
-  // hourly job in scheduler.ts), this week's games are played but ungraded — and grading is what the money panel reads. So it
-  // keeps showing the week before until the resolve lands, rather than briefly
-  // showing an empty ledger for a week that has finished.
   const last = await db.query.weeks.findFirst({
     where: eq(weeks.resolved, true),
     orderBy: desc(weeks.number),
@@ -370,63 +241,10 @@ async function buildPulse(limit: number) {
   };
 }
 
-/**
- * Cached in front of the aggregate, the way `betCounts.ts` is and for the same
- * reason: /home is the page every signed-in session lands on, so a busy moment
- * is everyone running the same six group-bys at once.
- *
- * 60s. The numbers move when someone places a bet, which is not a thing anyone
- * is watching in real time — and the last-week half cannot move at all until a
- * Tuesday resolve. Per-process and in-memory, no invalidation: the TTL is the
- * whole policy.
- *
- * WHY A TTL AND NOT A BACKGROUND WORKER
- *
- * A worker would recompute on a timer whether or not anyone is looking, and its
- * result would live in *that replica's* memory — so a second backend replica
- * would never see it, and handing the value across would mean Redis or a table
- * existing purely to carry it. A lazy cache costs nothing at zero traffic, and
- * several replicas each keeping their own copy is fine: worst case one extra
- * query per replica per minute.
- *
- * A worker only starts to win when the aggregate is too slow to sit inside a
- * request even once a minute, and at that point the answer is not a worker
- * either — it is materialising the numbers as bets are placed and selecting
- * them back. A worker is the middle option with the fixed cost of materialising
- * and none of the freshness.
- *
- * THE HALF THAT SHOULD NOT BE CACHED AT ALL — do this when it costs something
- *
- * `last` is computed from settled bets on a RESOLVED week, so it cannot change
- * until the next Tuesday resolve. Caching it means paying for a constant once
- * every TTL forever; polling it means asking a question whose answer is already
- * known. It wants computing **once, at the moment that freezes it** — in
- * `triggerPostWeekActions` (services/autoPlayoffs.ts), alongside the playoff
- * advance that already runs there — and storing the result to read back
- * directly.
- *
- * Deliberately not done yet: no week has resolved, so there is nothing to
- * precompute and it would be untested scaffolding. `ledgerForWeek` already
- * takes its executor as a parameter and returns the exact shape the response
- * carries, so that change is a call site and a table — the response shape does
- * not move, and neither does the client.
- */
+// Per-process TTL cache; numbers only move when bets are placed.
 const CACHE_TTL_MS = 60_000;
 
-/**
- * The cache holds the in-flight PROMISE, not the resolved value.
- *
- * Storing the value leaves a stampede at every expiry: the entry goes stale,
- * and every request that arrives before the first one finishes also misses and
- * runs its own copy of six group-bys — so the busiest moment is exactly the
- * moment the cache stops absorbing anything. Holding the promise means those
- * callers await the one query already running.
- *
- * `at` is stamped when the query STARTS, so a slow query cannot extend its own
- * lifetime past the TTL. A rejected promise is evicted rather than cached: a
- * failed aggregate must not be served to everyone for the next minute, and the
- * next caller should retry rather than inherit the error.
- */
+// Caches the in-flight promise so concurrent misses share one query.
 let cache: { at: number; limit: number; data: Promise<Pulse> } | null = null;
 
 export async function homePulse(limit = 5): Promise<Pulse> {

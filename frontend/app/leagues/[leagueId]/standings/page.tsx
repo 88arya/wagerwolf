@@ -6,6 +6,7 @@ import { api } from "@/lib/api";
 import { fmtMoney } from "@/lib/money";
 import { ACCENT } from "@/lib/constants";
 import HelmetAvatar from "@/components/HelmetAvatar";
+import type { League, Standing } from "@/lib/types";
 
 const TH = { fontSize: "0.65rem", fontWeight: 500, color: "var(--text-3)", padding: "10px 12px 8px", borderBottom: "1px solid var(--border-2)", whiteSpace: "nowrap" as const, overflow: "hidden" as const, textAlign: "left" as const, background: "transparent" };
 const TD = { fontSize: "0.78rem", fontWeight: 400, color: "var(--text)", padding: "10px 12px", borderTop: "1px solid var(--border)", fontVariantNumeric: "tabular-nums" as const, whiteSpace: "nowrap" as const, overflow: "hidden" as const };
@@ -14,8 +15,8 @@ export default function StandingsPage({ params }: PageProps<"/leagues/[leagueId]
   const router = useRouter();
   const [leagueId, setLeagueId] = useState("");
   const [userId, setUserId] = useState("");
-  const [league, setLeague] = useState<any>(null);
-  const [members, setMembers] = useState<any[]>([]);
+  const [league, setLeague] = useState<League | null>(null);
+  const [members, setMembers] = useState<Standing[]>([]);
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
@@ -82,7 +83,7 @@ export default function StandingsPage({ params }: PageProps<"/leagues/[leagueId]
               </tr>
             </thead>
             <tbody>
-              {members.map((m: any) => {
+              {members.map((m) => {
                 const isMe = m.userId === userId;
                 const total = m.wins + m.losses + m.ties;
                 const winPct = total > 0 ? Math.round((m.wins / total) * 100) : 0;
