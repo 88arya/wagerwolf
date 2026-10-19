@@ -94,10 +94,10 @@ eq("push returns the stake",     creditFor("PUSH", 1000, -110), 1000);
 }
 
 //  Poller tiers
-eq("inside 6h -> hourly",        intervalMinutesFor(3), 60);
-eq("6h boundary is hourly",      intervalMinutesFor(6), 60);
-eq("6-24h -> 2-hourly",          intervalMinutesFor(12), 120);
-eq("24-72h -> 6-hourly",         intervalMinutesFor(48), 360);
+eq("inside 3h -> hourly",        intervalMinutesFor(2), 60);
+eq("3h boundary is hourly",      intervalMinutesFor(3), 60);
+eq("3-24h -> 3-hourly",          intervalMinutesFor(12), 180);
+eq("24-72h -> 8-hourly",         intervalMinutesFor(48), 480);
 eq("beyond 72h -> daily",        intervalMinutesFor(100), 1440);
 
 {
