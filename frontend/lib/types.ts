@@ -2,7 +2,7 @@
 
 export type Outcome = "PENDING" | "WIN" | "LOSS" | "PUSH" | "VOID";
 export type Direction = "OVER" | "UNDER";
-export type GameStatus = "SCHEDULED" | "LIVE" | "FINAL" | "CANCELLED";
+export type GameStatus = "SCHEDULED" | "IN_PROGRESS" | "FINAL" | "CANCELLED";
 
 export interface Player {
   id: string;
@@ -47,7 +47,7 @@ export interface Game {
   homeTeam: string;
   awayTeam: string;
   gameDate: string;
-  status: GameStatus | string;
+  status: GameStatus;
   homeScore: number | null;
   awayScore: number | null;
   indoor: boolean | null;
