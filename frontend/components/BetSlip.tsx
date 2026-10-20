@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { api, apiError } from "@/lib/api";
 import { fmtMoney, fmtAmount, toCents } from "@/lib/money";
 import { BetHeader, BetRows, gameLineSubtitle, gameLineTitle, titleCase, type BetRow } from "./BetRows";
@@ -129,10 +129,8 @@ function MinusCircleIcon() {
   );
 }
 
-const RAIL_MAX = 24;
-
-const NAV_GUTTER = "var(--rail)";
-const CONTENT_TOP_FALLBACK = 100;
+// Distance the stuck slip keeps from the card's top and bottom edges.
+const SLIP_INSET = 16;
 
 /** Removes a leg from the slip - sits in the rail gutter of each leg row. */
 function RemoveBtn({ onRemove }: { onRemove: () => void }) {
@@ -196,30 +194,30 @@ export default function BetSlip({ leagueId }: { leagueId: string }) {
     return () => window.removeEventListener("betslip-update", refresh);
   }, [refresh]);
 
-  // Measured, since the chrome above varies by route.
-  const [contentTop, setContentTop] = useState(CONTENT_TOP_FALLBACK);
-  const [contentRight, setContentRight] = useState<number | null>(null);
+  // The slip is sticky in its own grid column, so only its height is measured:
+  // from wherever it sits now down to the card's bottom edge, which keeps the
+  // footer in view both under LeagueNav and once the nav has scrolled away.
+  const shellRef = useRef<HTMLDivElement>(null);
+  const [height, setHeight] = useState<number | null>(null);
   useEffect(() => {
-    // .app-card is the shell's scroller, .app-scroll the classic layout's.
-    const scroller = document.querySelector(".app-card, .app-scroll");
-    const page = document.querySelector(".page, .page-wide");
-    if (!scroller || !page) return;
+    const el = shellRef.current;
+    const scroller = el?.closest(".app-card, .app-scroll");
+    if (!el || !scroller) return;
     const measure = () => {
-      const cs = getComputedStyle(page);
-      const padTop = parseFloat(cs.paddingTop) || 0;
       const box = scroller.getBoundingClientRect();
-      // Page column's offset inside the scroller, independent of scroll position.
-      const contentStart = page.getBoundingClientRect().top - box.top + scroller.scrollTop;
-      setContentTop(box.top + contentStart + padTop);
-      const padRight = parseFloat(cs.paddingRight) || 0;
-      setContentRight(window.innerWidth - box.right + Math.min(padRight, RAIL_MAX));
+      const top = Math.max(el.getBoundingClientRect().top, box.top + SLIP_INSET);
+      setHeight(Math.max(0, box.bottom - SLIP_INSET - top));
     };
     measure();
     const ro = new ResizeObserver(measure);
-    ro.observe(page);
     ro.observe(scroller);
+    scroller.addEventListener("scroll", measure, { passive: true });
     window.addEventListener("resize", measure);
-    return () => { ro.disconnect(); window.removeEventListener("resize", measure); };
+    return () => {
+      ro.disconnect();
+      scroller.removeEventListener("scroll", measure);
+      window.removeEventListener("resize", measure);
+    };
   }, []);
 
   const betLabel = legs.length === 0
@@ -375,14 +373,12 @@ export default function BetSlip({ leagueId }: { leagueId: string }) {
   }
 
   return (
-    <div className="betslip-shell" style={{
-      position: "fixed",
-      top: contentTop,
-      bottom: 12,
-      right: contentRight ?? NAV_GUTTER,
-      width: 368,
-      maxWidth: `calc(100vw - ${NAV_GUTTER} - 12px)`,
-      zIndex: 500,
+    <div ref={shellRef} className="betslip-shell" style={{
+      position: "sticky",
+      top: SLIP_INSET,
+      height: height ?? undefined,
+      width: "100%",
+      zIndex: 5,
       pointerEvents: "none",
       display: "flex",
       flexDirection: "column",

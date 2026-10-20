@@ -101,14 +101,14 @@ export default function BracketPage({ params }: PageProps<"/leagues/[leagueId]/b
   return (
     <div className="page-wide" style={{ display: "flex", flexDirection: "column", alignItems: "center", paddingTop: "5vh" }}>
 
-      <div style={{ width: "100%", maxWidth: 860, marginBottom: 16, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+      <div style={{ width: "100%", marginBottom: 16, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <div style={{ fontWeight: 900, fontSize: "1.1rem", letterSpacing: "-0.01em", color: "var(--text)" }}>Playoff Bracket</div>
         {league?.playoffSize && (
           <div style={{ fontSize: "0.72rem", color: "var(--text-3)" }}>{league.playoffSize}-team bracket</div>
         )}
       </div>
 
-      <div style={{ width: "100%", maxWidth: 860 }}>
+      <div style={{ width: "100%" }}>
 
         {champion && (
           <div className="card" style={{ marginBottom: 16, padding: "14px 16px", display: "flex", alignItems: "center", gap: 12 }}>

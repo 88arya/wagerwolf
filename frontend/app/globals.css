@@ -426,6 +426,42 @@ button.dark:hover { opacity: 0.86; background: var(--text); border-color: var(--
 }
 .app-card::-webkit-scrollbar-thumb:hover { background: var(--text-3); }
 
+/* Inside the card the rail is a fixed gutter: the root formula centres a
+   1220px column in the WINDOW, which inside a card already inset by the
+   sidebar left ~240px of dead space either side of every league page. */
+.app-card { --rail: 28px; }
+.app-card .page { padding-left: var(--rail); padding-right: var(--rail); }
+
+/* Bet page: board and slip share one grid, so the slip sits on the page
+   instead of floating over it pinned to the card's edge. */
+.bet-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 368px;
+  column-gap: 32px;
+  align-items: start;
+}
+.bet-board { min-width: 0; }
+/* The board needs ~193px plus three odds boxes. Below 1240px the slip and the
+   boxes narrow together; below 1060px there is no room for two columns, so
+   the slip stacks above the board and stops being sticky. */
+@media (max-width: 1240px) {
+  .bet-layout {
+    grid-template-columns: minmax(0, 1fr) 300px;
+    column-gap: 24px;
+    --sl-box-w: 78px;
+    --pr-box-w: 78px;
+  }
+}
+@media (max-width: 1060px) {
+  .bet-layout { grid-template-columns: minmax(0, 1fr); row-gap: 16px; }
+  .bet-layout > .betslip-shell {
+    order: -1;
+    position: static !important;
+    height: auto !important;
+    max-height: 360px;
+  }
+}
+
 /* Sidebar contents */
 .sidenav-head {
   display: flex;
@@ -2228,19 +2264,6 @@ input[type="checkbox"].auth-check[aria-invalid="true"]:focus {
     gap: 4px;
   }
   .account-rail .mx-tab { width: auto; flex: 1 1 auto; justify-content: center; }
-}
-
-/* Bet slip */
-@media (max-width: 900px) {
-  .betslip-shell {
-    top: auto !important;
-    bottom: 0 !important;
-    left: 0 !important;
-    right: 0 !important;
-    width: 100% !important;
-    max-width: none !important;
-    max-height: 60vh;
-  }
 }
 
 /* Games strip */

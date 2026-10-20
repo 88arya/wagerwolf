@@ -227,7 +227,8 @@ export default function BetPage({ params }: PageProps<"/leagues/[leagueId]/bet">
 
     return (
       <>
-        <div className="page" style={pageStyle(dpr)}>
+        <div className="page bet-layout" style={pageStyle(dpr)}>
+          <div className="bet-board">
           <button
             className="ghost"
             style={{ fontSize: "0.78rem", padding: "5px 10px", marginBottom: 12, display: "inline-flex", alignItems: "center", gap: 5 }}
@@ -263,16 +264,18 @@ export default function BetPage({ params }: PageProps<"/leagues/[leagueId]/bet">
           {gameLines.length === 0 && gameProps.length === 0 && (
             <EmptyCard icon="🏈" text="No bets available for this game" />
           )}
-        </div>
+          </div>
 
-        <BetSlip leagueId={leagueId} />
+          <BetSlip leagueId={leagueId} />
+        </div>
       </>
     );
   }
 
   return (
     <>
-      <div className="page" style={pageStyle(dpr)}>
+      <div className="page bet-layout" style={pageStyle(dpr)}>
+        <div className="bet-board">
         {weekLocked && <LockedBanner />}
         {games.length === 0 && <EmptyCard icon="🏈" text="No games this week" />}
 
@@ -303,9 +306,10 @@ export default function BetPage({ params }: PageProps<"/leagues/[leagueId]/bet">
             </Fragment>
           ))}
         </div>
-      </div>
+        </div>
 
-      <BetSlip leagueId={leagueId} />
+        <BetSlip leagueId={leagueId} />
+      </div>
     </>
   );
 }

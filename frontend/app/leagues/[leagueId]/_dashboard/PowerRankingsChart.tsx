@@ -1,10 +1,15 @@
+import { useEffect, useRef, useState } from "react";
 import HelmetAvatar from "@/components/HelmetAvatar";
 import { ACCENT } from "@/lib/constants";
 import { emptyText } from "./Panel";
 import type { Standing } from "@/lib/types";
 
-const W = 400;
+const MIN_W = 400;
 const H = 190;
+// Pixels per viewBox unit, the scale the chart had in the old 1220px column.
+// The viewBox widens with the panel instead of the whole drawing scaling up,
+// so a wider column spreads the plot out without growing its height or text.
+const SCALE = 1.22;
 const MARGIN = { left: 30, right: 16, top: 14, bottom: 32 };
 const X_PAD = 20;
 
@@ -13,8 +18,20 @@ const axisLabel = { fontSize: 8, fill: "var(--text-3)", fontFamily: "system-ui" 
 // Rank on x, movement since last week on y. The SVG draws the axes; helmets
 // are HTML positioned over it in percentages so they scale with the chart.
 export default function PowerRankingsChart({ rankings }: { rankings: (Standing & { powerRank: number })[] }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [W, setW] = useState(MIN_W);
   const n = rankings.length;
-  if (n === 0) {
+  const empty = n === 0;
+  // Re-run once rankings arrive: the empty state renders no chart to observe.
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const ro = new ResizeObserver(([e]) => setW(Math.max(MIN_W, e.contentRect.width / SCALE)));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [empty]);
+
+  if (empty) {
     return (
       <div style={{ height: 160, display: "flex", alignItems: "center", justifyContent: "center" }}>
         <span style={emptyText}>No members yet</span>
@@ -37,7 +54,7 @@ export default function PowerRankingsChart({ rankings }: { rankings: (Standing &
     .filter((v, i, a) => a.indexOf(v) === i);
 
   return (
-    <div style={{ position: "relative" }}>
+    <div ref={ref} style={{ position: "relative" }}>
       <svg viewBox={`0 0 ${W} ${H}`} style={{ width: "100%", height: "auto", display: "block", overflow: "visible" }}>
         {yTicks.map((v) => (
           <line key={v} x1={MARGIN.left} x2={MARGIN.left + plotW} y1={y(v)} y2={y(v)}

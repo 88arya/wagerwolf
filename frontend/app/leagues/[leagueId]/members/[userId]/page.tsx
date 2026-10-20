@@ -94,7 +94,7 @@ export default function MemberProfilePage({ params }: PageProps<"/leagues/[leagu
   return (
     <div className="page-wide" style={{ display: "flex", flexDirection: "column", alignItems: "center", paddingTop: "5vh" }}>
 
-      <div style={{ width: "100%", maxWidth: 860, marginBottom: 16, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+      <div style={{ width: "100%", marginBottom: 16, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
           <HelmetAvatar color={stats.helmetColor ?? ACCENT} initials={stats.abbreviation || stats.displayName.slice(0, 2).toUpperCase()} size={40} />
           <div style={{ minWidth: 0 }}>
@@ -117,7 +117,7 @@ export default function MemberProfilePage({ params }: PageProps<"/leagues/[leagu
         </div>
       </div>
 
-      <div style={{ width: "100%", maxWidth: 860 }}>
+      <div style={{ width: "100%" }}>
 
         <div className="rg-6" style={{ display: "grid", gap: 8, marginBottom: 16 }}>
           {[

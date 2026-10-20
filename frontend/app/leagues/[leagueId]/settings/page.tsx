@@ -231,12 +231,12 @@ export default function LeagueSettingsPage({ params }: PageProps<"/leagues/[leag
   return (
     <div className="page-wide" style={{ display: "flex", flexDirection: "column", alignItems: "center", paddingTop: "5vh" }}>
 
-      <div style={{ width: "100%", maxWidth: 860, marginBottom: 16, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+      <div style={{ width: "100%", marginBottom: 16, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <div style={{ fontWeight: 900, fontSize: "1.1rem", letterSpacing: "-0.01em", color: "var(--text)" }}>League Settings</div>
         <div style={{ fontSize: "0.72rem", color: "var(--text-3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 320 }}>{league.name}</div>
       </div>
 
-      <div className="rg-2" style={{ width: "100%", maxWidth: 860, display: "grid", gap: 12, alignItems: "start" }}>
+      <div className="rg-2" style={{ width: "100%", display: "grid", gap: 12, alignItems: "start" }}>
 
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
 

@@ -121,7 +121,7 @@ export default function MembersPage({ params }: PageProps<"/leagues/[leagueId]/m
   return (
     <div className="page-wide" style={{ display: "flex", flexDirection: "column", alignItems: "center", paddingTop: "5vh" }}>
 
-      <div style={{ width: "100%", maxWidth: 860, marginBottom: 16, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+      <div style={{ width: "100%", marginBottom: 16, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <div style={{ fontWeight: 900, fontSize: "1.1rem", letterSpacing: "-0.01em", color: "var(--text)" }}>
           {league.seasonStarted ? "Members" : "Lobby"}
         </div>
@@ -130,7 +130,7 @@ export default function MembersPage({ params }: PageProps<"/leagues/[leagueId]/m
         </div>
       </div>
 
-      <div style={{ width: "100%", maxWidth: 860 }}>
+      <div style={{ width: "100%" }}>
 
         {!league.seasonStarted && (
           <div className="rg-2" style={{ display: "grid", gap: 12, marginBottom: 20, alignItems: "start" }}>

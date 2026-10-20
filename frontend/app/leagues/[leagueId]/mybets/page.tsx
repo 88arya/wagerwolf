@@ -108,7 +108,7 @@ export default function MyBetsPage({ params }: PageProps<"/leagues/[leagueId]/my
   return (
     <div className="page-wide" style={{ display: "flex", flexDirection: "column", alignItems: "center", paddingTop: "5vh" }}>
 
-      <div style={{ width: "100%", maxWidth: 860, marginBottom: 16, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+      <div style={{ width: "100%", marginBottom: 16, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <div style={{ fontWeight: 900, fontSize: "1.1rem", letterSpacing: "-0.01em", color: "var(--text)" }}>My Bets</div>
         {week && (
           <div style={{ fontSize: "0.72rem", color: "var(--text-3)" }}>
@@ -117,7 +117,7 @@ export default function MyBetsPage({ params }: PageProps<"/leagues/[leagueId]/my
         )}
       </div>
 
-      <div style={{ width: "100%", maxWidth: 860 }}>
+      <div style={{ width: "100%" }}>
 
         {loading && <div className="loading" style={{ height: "20vh" }}>Loading…</div>}
 
