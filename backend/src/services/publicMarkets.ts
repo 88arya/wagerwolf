@@ -134,23 +134,33 @@ async function boardTotals(weekId: string): Promise<BoardTotals> {
   return { lines: Number(r.lines ?? 0), props: Number(r.props ?? 0) };
 }
 
-const TOTALS_REFRESH_MS = 5 * 60_000;
+const REFRESH_MS = 5 * 60_000;
 
-async function raiseTotals(weekId: string): Promise<BoardTotals | null> {
+// The board is stored at the first request that finds any odds, which at a
+// week's rollover is often before most props are posted. So when the live prop
+// count has grown, the sample is rebuilt too, not only the totals; otherwise
+// the marquee showed the rollover's handful of players all week.
+// Raise-only, so two writers can never move the stored board backwards.
+async function refreshBoard(weekId: string, current: PublicBoard): Promise<PublicBoard> {
   const live = await boardTotals(weekId);
-  const sum = live.lines + live.props;
+  const before = current.totals.lines + current.totals.props;
+  if (live.lines + live.props <= before) return current;
+
+  const markets = live.props > current.totals.props ? await publicMarketSample(weekId) : current.markets;
+  const next: PublicBoard = { markets: markets.length > 0 ? markets : current.markets, totals: live };
+
   await db.execute(sql`
     UPDATE "Week"
-       SET "publicBoard" = jsonb_set("publicBoard", '{totals}', ${JSON.stringify(live)}::jsonb)
+       SET "publicBoard" = ${JSON.stringify(next)}::jsonb
      WHERE id = ${weekId}
        AND "publicBoard" IS NOT NULL
        AND COALESCE(("publicBoard"->'totals'->>'lines')::int, 0)
-         + COALESCE(("publicBoard"->'totals'->>'props')::int, 0) < ${sum}
+         + COALESCE(("publicBoard"->'totals'->>'props')::int, 0) < ${live.lines + live.props}
   `);
   const stored = rowsOf(await db.execute(sql`
-    SELECT "publicBoard"->'totals' AS totals FROM "Week" WHERE id = ${weekId}
-  `))[0]?.totals;
-  return stored ? { lines: Number(stored.lines ?? 0), props: Number(stored.props ?? 0) } : null;
+    SELECT "publicBoard" AS board FROM "Week" WHERE id = ${weekId}
+  `))[0]?.board;
+  return stored?.markets ? (stored as PublicBoard) : next;
 }
 
 export async function publicMarketSample(weekId: string): Promise<PublicMarket[]> {
@@ -158,7 +168,7 @@ export async function publicMarketSample(weekId: string): Promise<PublicMarket[]
   return [...props, ...teams];
 }
 
-let memo: { weekId: string; board: PublicBoard; totalsCheckedAt: number } | null = null;
+let memo: { weekId: string; board: PublicBoard; checkedAt: number } | null = null;
 
 async function storedBoard(weekId: string): Promise<PublicBoard> {
   const existing = rowsOf(await db.execute(sql`
@@ -195,17 +205,16 @@ export async function cachedPublicBoard(limit: number): Promise<PublicBoard> {
   if (!memo || memo.weekId !== weekId) {
     const board = await storedBoard(weekId);
     if (board.markets.length === 0) return board;
-    memo = { weekId, board, totalsCheckedAt: 0 };
+    memo = { weekId, board, checkedAt: 0 };
   }
   const m = memo;
 
-  if (Date.now() - m.totalsCheckedAt >= TOTALS_REFRESH_MS) {
-    m.totalsCheckedAt = Date.now();
+  if (Date.now() - m.checkedAt >= REFRESH_MS) {
+    m.checkedAt = Date.now();
     try {
-      const totals = await raiseTotals(weekId);
-      if (totals) m.board = { ...m.board, totals };
+      m.board = await refreshBoard(weekId, m.board);
     } catch (err) {
-      console.error("[publicMarkets] totals refresh failed:", err);
+      console.error("[publicMarkets] board refresh failed:", err);
     }
   }
   const n = Math.min(Math.max(Math.trunc(limit) || 12, 1), MAX);
