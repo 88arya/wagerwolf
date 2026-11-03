@@ -2,31 +2,25 @@ import localFont from "next/font/local";
 
 export const gilroy = localFont({
   src: [
-    { path: "./fonts/gilroy/Gilroy-Regular.woff", weight: "400", style: "normal" },
-    { path: "./fonts/gilroy/Gilroy-Medium.woff", weight: "500", style: "normal" },
-    { path: "./fonts/gilroy/Gilroy-SemiBold.woff", weight: "600", style: "normal" },
-    { path: "./fonts/gilroy/Gilroy-Bold.woff", weight: "700", style: "normal" },
+    { path: "./fonts/gilroy/Gilroy-Regular.woff2", weight: "400", style: "normal" },
+    { path: "./fonts/gilroy/Gilroy-Medium.woff2", weight: "500", style: "normal" },
+    { path: "./fonts/gilroy/Gilroy-SemiBold.woff2", weight: "600", style: "normal" },
+    { path: "./fonts/gilroy/Gilroy-Bold.woff2", weight: "700", style: "normal" },
   ],
   display: "swap",
   variable: "--font-gilroy",
   fallback: ["Inter Tight", "system-ui", "sans-serif"],
 });
 
-export const lemonMilk = localFont({
-  src: [
-    { path: "./fonts/lemon-milk/LemonMilk-Regular.otf", weight: "400", style: "normal" },
-    { path: "./fonts/lemon-milk/LemonMilk-Medium.otf", weight: "500", style: "normal" },
-    { path: "./fonts/lemon-milk/LemonMilk-Bold.otf", weight: "700", style: "normal" },
-  ],
-  display: "swap",
-  variable: "--font-lemon-milk",
-  fallback: ["Inter Tight", "system-ui", "sans-serif"],
-});
+// Lemon Milk is a /logo-only candidate and lives in app/logo/lemonMilk.ts: a font
+// defined in a module the root layout imports is preloaded on every route.
 
+// ArcaMajora3-Bold.otf stays beside the woff2: app/logo/lockup.png renders
+// through Satori, which cannot read woff2.
 export const arcaMajora = localFont({
   src: [
-    { path: "./fonts/arca-majora/ArcaMajora3-Bold.otf", weight: "700", style: "normal" },
-    { path: "./fonts/arca-majora/ArcaMajora3-Heavy.otf", weight: "900", style: "normal" },
+    { path: "./fonts/arca-majora/ArcaMajora3-Bold.woff2", weight: "700", style: "normal" },
+    { path: "./fonts/arca-majora/ArcaMajora3-Heavy.woff2", weight: "900", style: "normal" },
   ],
   display: "swap",
   variable: "--font-arca-majora",
@@ -93,4 +87,3 @@ export const WORDMARK_FONTS: WordmarkFont[] = [
   },
 ];
 
-export const MOUNTED_CLASSES = [gilroy.variable, lemonMilk.variable, arcaMajora.variable].join(" ");

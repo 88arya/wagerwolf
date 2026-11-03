@@ -3,18 +3,23 @@ import { Fugaz_One, Inter, Inter_Tight } from "next/font/google";
 import "./globals.css";
 import AppFrame from "@/components/AppFrame";
 import { SITE_URL } from "@/lib/siteUrl";
-import { arcaMajora, gilroy, lemonMilk } from "./wordmarkFonts";
+import { arcaMajora, gilroy } from "./wordmarkFonts";
 import SiteFooter from "@/components/SiteFooter";
 import FooterSlot from "@/components/FooterSlot";
 
+// Neither of these two is preloaded. Inter Tight is only a fallback behind Gilroy
+// in --font-sans, and Inter is only the signed-in sidebar's face; preloading
+// put ~92KB of fonts on the landing page's critical path that it never draws.
 const interTight = Inter_Tight({
   subsets: ["latin"],
+  preload: false,
   variable: "--font-inter-tight",
   display: "swap",
 });
 
 const inter = Inter({
   subsets: ["latin"],
+  preload: false,
   variable: "--font-inter",
   display: "swap",
 });
@@ -54,7 +59,7 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={`${interTight.variable} ${inter.variable} ${fugazOne.variable} ${arcaMajora.variable} ${lemonMilk.variable} ${gilroy.variable}`} suppressHydrationWarning>
+    <html lang="en" className={`${interTight.variable} ${inter.variable} ${fugazOne.variable} ${arcaMajora.variable} ${gilroy.variable}`} suppressHydrationWarning>
       <body suppressHydrationWarning>
         <AppFrame
           footer={

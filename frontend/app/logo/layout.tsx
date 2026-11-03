@@ -1,5 +1,8 @@
 import type { ReactNode } from "react";
-import { MOUNTED_CLASSES } from "../wordmarkFonts";
+import { arcaMajora, gilroy } from "../wordmarkFonts";
+import { lemonMilk } from "./lemonMilk";
+
+const MOUNTED_CLASSES = [gilroy.variable, lemonMilk.variable, arcaMajora.variable].join(" ");
 
 export default function LogoLayout({ children }: { children: ReactNode }) {
   return (
