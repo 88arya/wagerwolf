@@ -1,3 +1,5 @@
+import { teamLogoResized } from "./espnImage";
+
 const NFL_TEAMS: Array<{ names: string[]; abbr: string; color: string; altColor: string }> = [
   { names: ["arizona cardinals", "cardinals", "ari", "az"], abbr: "ari", color: "#97233F", altColor: "#FFB612" },
   { names: ["atlanta falcons", "falcons", "atl"], abbr: "atl", color: "#A71930", altColor: "#000000" },
@@ -80,12 +82,14 @@ export function getAllTeams() {
   }));
 }
 
-export function getTeamLogoUrl(teamName: string): string | null {
+/** Pass the drawn size in CSS px to get a resized copy instead of the 500px original. */
+export function getTeamLogoUrl(teamName: string, cssSize?: number): string | null {
   if (!teamName) return null;
   const lower = teamName.toLowerCase().trim();
   const team = NFL_TEAMS.find((t) =>
     t.names.some((n) => lower === n || lower.endsWith(n) || lower.startsWith(n))
   );
   if (!team) return null;
+  if (cssSize) return teamLogoResized(team.abbr, cssSize);
   return `${LOGO_BASE}/${team.abbr}.png`;
 }

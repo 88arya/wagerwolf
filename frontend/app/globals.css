@@ -3368,12 +3368,14 @@ textarea.support-box {
   border-radius: var(--radius);
   overflow: hidden;
 }
+/* Zoomed by layout, not transform: 150% of the box, cropped by the mark's
+   overflow. Same picture, but the image's laid-out size is its drawn size,
+   which is what Lighthouse sizes the file against (54px, not 36px). */
 .pm-mark.is-photo img {
-  width: 100%;
-  height: 100%;
+  width: 150%;
+  height: 150%;
+  flex-shrink: 0;
   object-fit: contain;
-  transform: scale(1.5);
-  transform-origin: center;
 }
 .pm-mark.is-crest img {
   width: 20px;
@@ -3428,6 +3430,27 @@ textarea.support-box {
 }
 .pm-side { font-size: 14px; font-weight: 600; line-height: 1.25; color: var(--text); }
 .pm-odds { font-size: 14px; font-weight: 600; line-height: 1; color: var(--accent); }
+
+/* Skeleton: the strip draws before its data, and each mark before its image. */
+.pm-skel {
+  background: linear-gradient(90deg, var(--surface-2) 25%, var(--surface-3) 50%, var(--surface-2) 75%);
+  background-size: 200% 100%;
+  animation: pm-shimmer 1.4s ease-in-out infinite;
+}
+@keyframes pm-shimmer {
+  from { background-position: 100% 0; }
+  to   { background-position: -100% 0; }
+}
+.pm-bar { border-radius: 3px; }
+.pm-track.is-skeleton { animation: none; }
+.pm-card.is-skeleton { pointer-events: none; }
+.pm-card.is-skeleton .pm-line { align-items: center; }
+.pm-mark img { opacity: 0; transition: opacity 0.25s ease; }
+.pm-mark img.is-loaded { opacity: 1; }
+@media (prefers-reduced-motion: reduce) {
+  .pm-skel { animation: none; }
+  .pm-mark img { transition: none; }
+}
 
 .pb-track {
   position: relative;

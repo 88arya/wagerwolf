@@ -9,7 +9,7 @@ interface Props {
 }
 
 export default function TeamLogo({ team, size = 40, plain = false }: Props) {
-  const url = getTeamLogoUrl(team);
+  const url = getTeamLogoUrl(team, size);
 
   if (!url) {
     return (
