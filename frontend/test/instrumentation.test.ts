@@ -9,9 +9,10 @@ const nextjs = vi.hoisted(() => {
     withScope: vi.fn((cb: (s: typeof scope) => void) => cb(scope)),
   };
 });
-const browser = vi.hoisted(() => ({ init: vi.fn() }));
+const browser = vi.hoisted(() => ({ init: vi.fn(), captureException: vi.fn() }));
 vi.mock("@sentry/nextjs", () => nextjs);
 vi.mock("@sentry/browser", () => browser);
+vi.mock("../lib/sentrySdk", () => browser);
 
 const REQUEST = { path: "/leagues/1", method: "GET", headers: {} };
 const CONTEXT = {
@@ -28,7 +29,7 @@ async function load(env: Record<string, string | undefined>) {
 }
 
 beforeEach(() => {
-  for (const f of [nextjs.init, nextjs.captureRequestError, nextjs.withScope, nextjs.scope.setTag, browser.init]) {
+  for (const f of [nextjs.init, nextjs.captureRequestError, nextjs.withScope, nextjs.scope.setTag, browser.init, browser.captureException]) {
     f.mockClear();
   }
 });
@@ -114,16 +115,48 @@ describe("instrumentation-client", () => {
     vi.resetModules();
     vi.stubEnv("NEXT_PUBLIC_SENTRY_DSN", dsn);
     await import("../instrumentation-client");
+    return import("../lib/sentryClient");
   }
 
   it("initialises the browser SDK when a DSN was built in", async () => {
     await loadClient(" https://k@o1.ingest.sentry.io/3 ");
-    expect(browser.init).toHaveBeenCalledOnce();
+    await vi.waitFor(() => expect(browser.init).toHaveBeenCalledOnce());
     expect(browser.init.mock.calls[0][0].dsn).toBe("https://k@o1.ingest.sentry.io/3");
   });
 
   it.each(["", "   "])("stays off for %j", async (dsn) => {
-    await loadClient(dsn);
+    const client = await loadClient(dsn);
+    expect(client.loadSentry()).toBeNull();
+    client.captureException(new Error("x"));
+    await new Promise((r) => setTimeout(r, 0));
     expect(browser.init).not.toHaveBeenCalled();
+    expect(browser.captureException).not.toHaveBeenCalled();
+  });
+
+  it("retries after the SDK chunk fails to load, without an unhandled rejection", async () => {
+    await loadClient("https://k@o1.ingest.sentry.io/3");
+    await vi.waitFor(() => expect(browser.init).toHaveBeenCalledOnce());
+    vi.resetModules();
+    vi.doMock("../lib/sentrySdk", () => { throw new Error("ChunkLoadError"); });
+    const fresh = await import("../lib/sentryClient");
+    const unhandled = vi.fn();
+    process.on("unhandledRejection", unhandled);
+    fresh.captureException(new Error("lost"));
+    await expect(fresh.loadSentry()).rejects.toThrow();
+    vi.doMock("../lib/sentrySdk", () => browser);
+    await expect(fresh.loadSentry()).resolves.toBeDefined();
+    await new Promise((r) => setTimeout(r, 0));
+    process.off("unhandledRejection", unhandled);
+    expect(unhandled).not.toHaveBeenCalled();
+    expect(browser.init).toHaveBeenCalledTimes(2);
+  });
+
+  it("loads the SDK once and reports through it", async () => {
+    const client = await loadClient("https://k@o1.ingest.sentry.io/3");
+    const err = new Error("boundary");
+    client.captureException(err);
+    await client.loadSentry();
+    await vi.waitFor(() => expect(browser.captureException).toHaveBeenCalledWith(err));
+    expect(browser.init).toHaveBeenCalledOnce();
   });
 });

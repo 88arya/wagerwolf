@@ -2,7 +2,7 @@
 
 import { useEffect } from "react";
 import Link from "next/link";
-import * as Sentry from "@sentry/browser";
+import { captureException } from "@/lib/sentryClient";
 
 export default function Error({
   error,
@@ -13,7 +13,7 @@ export default function Error({
 }) {
   useEffect(() => {
     console.error(error);
-    Sentry.captureException(error);
+    captureException(error);
   }, [error]);
 
   return (
